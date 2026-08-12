@@ -323,3 +323,27 @@ button.ghost {
   font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* --- trang đăng nhập / đăng ký --- */
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+}
+
+.auth-card h1 {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.auth-card button[type='submit'] {
+  width: 100%;
+  margin-top: 8px;
+}

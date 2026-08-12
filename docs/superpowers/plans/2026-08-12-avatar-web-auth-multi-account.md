@@ -4457,13 +4457,13 @@ với một lượt bấm tay theo đúng kịch bản ghi trong từng task.
   - `ws.ts`: `connectWs()`, `subscribeAccounts(ids: number[])`, `onWsMessage(fn: (m: WsMessage) => void): () => void`, `interface WsMessage { type: string; accountId: number; payload: any }`
   - `auth/useAuth.tsx`: `AuthProvider`, `useAuth(): { user, loading, login, register, logout, refresh }`, `RequireAuth`
 
-- [ ] **Step 1: Thêm react-router-dom**
+- [x] **Step 1: Thêm react-router-dom**
 
 ```bash
 cd web && npm install react-router-dom@^6.28.0
 ```
 
-- [ ] **Step 2: Viết `web/src/types.ts`**
+- [x] **Step 2: Viết `web/src/types.ts`**
 
 Chuyển các interface đang nằm ở đầu `web/src/App.tsx` (dòng 5–81) sang file riêng, thêm
 những kiểu mới của tầng nhiều-phiên. `web/src/types.ts`:
@@ -4603,7 +4603,7 @@ export interface AuthUser {
 }
 ```
 
-- [ ] **Step 3: Viết `web/src/api.ts`**
+- [x] **Step 3: Viết `web/src/api.ts`**
 
 `web/src/api.ts`:
 
@@ -4646,7 +4646,7 @@ export const apiPatch = <T,>(path: string, body: unknown) => request<T>('PATCH',
 export const apiDelete = <T,>(path: string) => request<T>('DELETE', path);
 ```
 
-- [ ] **Step 4: Viết `web/src/ws.ts`**
+- [x] **Step 4: Viết `web/src/ws.ts`**
 
 `web/src/ws.ts`:
 
@@ -4713,7 +4713,7 @@ export function onWsMessage(fn: Listener): () => void {
 }
 ```
 
-- [ ] **Step 5: Viết `web/src/auth/useAuth.tsx`**
+- [x] **Step 5: Viết `web/src/auth/useAuth.tsx`**
 
 `web/src/auth/useAuth.tsx`:
 
@@ -4792,7 +4792,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 }
 ```
 
-- [ ] **Step 6: Viết `web/src/auth/LoginPage.tsx`**
+- [x] **Step 6: Viết `web/src/auth/LoginPage.tsx`**
 
 `web/src/auth/LoginPage.tsx`:
 
@@ -4863,7 +4863,7 @@ export function LoginPage() {
 }
 ```
 
-- [ ] **Step 7: Viết `web/src/auth/RegisterPage.tsx`**
+- [x] **Step 7: Viết `web/src/auth/RegisterPage.tsx`**
 
 `web/src/auth/RegisterPage.tsx`:
 
@@ -4940,7 +4940,7 @@ export function RegisterPage() {
 }
 ```
 
-- [ ] **Step 8: Viết lại `web/src/main.tsx`**
+- [x] **Step 8: Viết lại `web/src/main.tsx`**
 
 Thay toàn bộ nội dung `web/src/main.tsx` bằng:
 
@@ -4979,7 +4979,7 @@ createRoot(document.getElementById('root')!).render(
 );
 ```
 
-- [ ] **Step 9: Thêm style cho trang đăng nhập**
+- [x] **Step 9: Thêm style cho trang đăng nhập**
 
 Thêm vào cuối `web/src/styles.css`:
 
@@ -5009,12 +5009,12 @@ Thêm vào cuối `web/src/styles.css`:
 }
 ```
 
-- [ ] **Step 10: Build để xác nhận không lỗi kiểu**
+- [x] **Step 10: Build để xác nhận không lỗi kiểu**
 
 Run: `cd web && npm run build`
 Expected: build thành công, không lỗi TypeScript.
 
-- [ ] **Step 11: Kiểm tay luồng đăng ký/đăng nhập**
+- [x] **Step 11: Kiểm tay luồng đăng ký/đăng nhập**
 
 ```bash
 cd server
@@ -5031,7 +5031,7 @@ Mở `http://localhost:5173/login`. Kiểm:
 4. F5 → vẫn ở `/accounts` (cookie còn).
 5. Đăng nhập sai mật khẩu → "email hoặc mật khẩu không đúng".
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add web/package.json web/package-lock.json web/src/types.ts web/src/api.ts web/src/ws.ts web/src/auth web/src/main.tsx web/src/styles.css
