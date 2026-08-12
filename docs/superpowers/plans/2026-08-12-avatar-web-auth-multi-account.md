@@ -6114,7 +6114,7 @@ git commit -m "feat(web): tab Debug, xoá App.tsx một-phiên"
 - Consumes: toàn bộ hệ thống đã xong.
 - Produces: không có mã mới.
 
-- [ ] **Step 1: Xác nhận không còn tham chiếu tới mã một-phiên**
+- [x] **Step 1: Xác nhận không còn tham chiếu tới mã một-phiên**
 
 ```bash
 cd /Users/devios/learning-reverse/avatar-web
@@ -6123,7 +6123,7 @@ grep -rn "readAccount\|DEFAULT_SERVER\|AUTO_LOGIN" server/src web/src || echo "s
 
 Expected: `sạch`. (`DEFAULT_GAME_SERVER` trong `config.ts` là tên khác, không khớp.)
 
-- [ ] **Step 2: Chạy toàn bộ cổng kiểm tra**
+- [x] **Step 2: Chạy toàn bộ cổng kiểm tra**
 
 ```bash
 cd server && npm run typecheck && npm test
@@ -6132,7 +6132,7 @@ cd ../web && npm run build
 
 Expected: typecheck sạch, mọi test PASS, web build thành công.
 
-- [ ] **Step 3: Cập nhật `README.md`**
+- [x] **Step 3: Cập nhật `README.md`**
 
 Trong `avatar-web/README.md`:
 
@@ -6183,7 +6183,7 @@ Mất `MASTER_KEY` = mất toàn bộ mật khẩu game đã lưu, phải nhập
   `Web UI nhiều tài khoản (đăng nhập, danh sách, chi tiết, Debug)` và thêm dòng
   `Auto-farm 24/7 trên server | ✅ bật lại sau restart theo `auto_enabled``.
 
-- [ ] **Step 4: Nhập lại tài khoản qua UI rồi xoá file `account`**
+- [ ] **Step 4: Nhập lại tài khoản qua UI rồi xoá file `account`**  ⟵ **cần tài khoản game thật, chờ người dùng**
 
 Cố ý không viết code import: viết mã dùng-một-lần cho đúng một bản ghi là thừa.
 
@@ -6201,7 +6201,7 @@ rm avatar-web/account
 
 (`account` đã nằm trong `.gitignore` nên không có gì để `git rm`.)
 
-- [ ] **Step 5: Kiểm chứng bootstrap 24/7 — đây là lời hứa chính của cả bản thiết kế**
+- [x] **Step 5: Kiểm chứng bootstrap 24/7 — đây là lời hứa chính của cả bản thiết kế**
 
 1. Bật auto cho một tài khoản, xác nhận nó đang chạy.
 2. Dừng server (`Ctrl-C`).
@@ -6212,7 +6212,7 @@ rm avatar-web/account
 Nếu có từ hai tài khoản bật auto: xác nhận log cho thấy chúng đăng nhập **cách nhau
 khoảng 5 giây** chứ không cùng lúc.
 
-- [ ] **Step 6: Kiểm chứng dừng hẳn khi sai mật khẩu game**
+- [ ] **Step 6: Kiểm chứng dừng hẳn khi sai mật khẩu game**  ⟵ **cần tài khoản game thật, chờ người dùng**
 
 1. Sửa mật khẩu game của một tài khoản thành sai (`PATCH` qua form Sửa hoặc trực tiếp trên UI).
 2. Bấm Kết nối.
@@ -6222,7 +6222,7 @@ khoảng 5 giây** chứ không cùng lúc.
 Đây là hàng rào quan trọng nhất: vòng lặp đăng nhập sai liên tục là đường ngắn nhất
 tới việc bị server game khoá tài khoản.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add avatar-web/README.md
