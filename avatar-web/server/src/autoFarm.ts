@@ -235,6 +235,35 @@ export class AutoFarm extends EventEmitter {
       let sent = 0;
       const overBudget = () => sent >= cfg.maxActionsPerCycle;
 
+      // --- Ảnh chụp những gì vòng này NHÌN THẤY ------------------------------
+      // Ghi cả khi không làm gì. `lastActions` vốn chỉ liệt kê việc ĐÃ làm, nên
+      // "không có gì để làm" và "có việc nhưng lệnh bị server bỏ qua" đều hiện
+      // ra y hệt nhau: một danh sách rỗng. Hai dòng dưới tách bạch hai ca đó.
+      const ripe = farm.cells.filter((c) => c.idTree !== -1 && c.time === 0).length;
+      const emptyCells = farm.cells.filter((c) => c.idTree === -1).length;
+      const sick = farm.animals.filter((a) => a.health < cfg.minHealth).length;
+      const hungry = farm.animals.filter((a) => a.hunger).length;
+      const withProduct = farm.animals.filter((a) => a.numEggOne > 0).length;
+      const sellable = farm.animals.filter(
+        (a) => cfg.sellWhenGrownSpecies.includes(a.species) && a.harvestPer >= cfg.minGrowthToSell,
+      ).length;
+      actions.push(
+        `[quét] ${farm.cells.length} ô: ${ripe} chín, ${emptyCells} trống · ` +
+          `${farm.animals.length} con: ${hungry} đói, ${sick} máu<${cfg.minHealth}, ` +
+          `${withProduct} có sản phẩm, ${sellable} đủ lớn để bán`,
+      );
+      // Việc bị tắt bằng config trông hệt như việc bị lỗi — nói thẳng ra.
+      const off: string[] = [];
+      if (!harvest) off.push('thu hoạch ô');
+      if (seedId === undefined) off.push('trồng (chưa chọn id hạt)');
+      if (!cfg.harvestAnimals) off.push('thu sản phẩm vật nuôi');
+      if (!cfg.sellAnimals) off.push('bán vật nuôi');
+      if (!cfg.healAnimals) off.push('chữa bệnh');
+      if (!feedAnimals) off.push('cho ăn');
+      if (!cfg.fertilizeCells) off.push('bón phân');
+      if (waterItemId === undefined) off.push('tưới (chưa chọn id)');
+      if (off.length > 0) actions.push(`[tắt] ${off.join(', ')}`);
+
       // --- Đo bornTime ------------------------------------------------------
       // Dấu của delta trả lời trực tiếp: âm = đếm ngược (còn sống được bao
       // lâu), dương = đếm lên (đã sống được bao lâu). Kèm số giây thật giữa 2

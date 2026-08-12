@@ -427,6 +427,16 @@ export class GameClient extends EventEmitter {
         this.emit('log', `server xác nhận: dùng vật phẩm #${idItem} lên ô ${index}`);
         break;
       }
+      case 64: // HERVEST — thu hoạch ô
+      case 66: // PLANT_SEED — trồng hạt
+      case 53: // SELL_ANIMAL — bán vật nuôi
+      case 54: { // HARVEST_ANIMAL — thu sản phẩm vật nuôi
+        // Bốn lệnh này chưa chốt được layout gói trả lời, và cũng chính là bốn
+        // lệnh hay "gửi xong không thấy gì xảy ra". Log nguyên hex để phân biệt
+        // được: server im lặng bỏ qua, hay có trả lời mà mình chưa đọc.
+        this.emit('log', `server trả lời cmd ${msg.command}: ${msg.getData().toString('hex')}`);
+        break;
+      }
       case 76: {
         // GET_TREE_INFO — bảng cây trồng
         try {
