@@ -1,0 +1,20 @@
+{
+  "name": "frida_scripts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "frida-compile agent.ts -o _agent.js -c",
+    "watch": "frida-compile agent.ts -o _agent.js -w",
+    "build:parser": "frida-compile parser.ts -o _parser.js -c"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/frida-gum": "^19.10.0",
+    "frida-compile": "^19.0.5",
+    "frida-il2cpp-bridge": "^0.13.1"
+  }
+}

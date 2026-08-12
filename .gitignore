@@ -1,0 +1,26 @@
+# --- bí mật, không bao giờ commit ---
+.env
+.env.*
+account
+data/
+
+# --- phụ thuộc & build ---
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+__pycache__/
+*.pyc
+
+# --- sản phẩm reverse: sinh lại được từ APK, quá lớn để theo dõi ---
+*.apk
+avatar-re/apk_extracted/
+avatar-re/apktool_out/
+avatar-re/jadx_out/
+avatar-re/il2cpp_out/
+avatar-re/tools/Il2CppDumper/
+avatar-re/tools/Il2CppDumper.zip
+avatar-re/notes/assembly-csharp.cs
+
+# --- hệ điều hành ---
+.DS_Store
