@@ -1,0 +1,34 @@
+-- Migration chạy lúc khởi động. Mọi câu lệnh phải idempotent (IF NOT EXISTS).
+
+CREATE TABLE IF NOT EXISTS users (
+  id            INTEGER PRIMARY KEY,
+  email         TEXT NOT NULL UNIQUE,   -- đã lowercase + trim
+  password_hash TEXT NOT NULL,          -- argon2id
+  created_at    INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS web_sessions (
+  id_hash    TEXT PRIMARY KEY,          -- SHA-256 của session id, không lưu id gốc
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_web_sessions_user ON web_sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS avatar_accounts (
+  id               INTEGER PRIMARY KEY,
+  user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label            TEXT NOT NULL,
+  game_user        TEXT NOT NULL,
+  game_pass_enc    TEXT NOT NULL,       -- v1:<iv>:<tag>:<ciphertext>
+  host             TEXT NOT NULL,
+  port             INTEGER NOT NULL,
+  device_json      TEXT,                -- DeviceProfile, NULL = sinh mặc định
+  auto_enabled     INTEGER NOT NULL DEFAULT 0,
+  auto_config_json TEXT,                -- AutoFarmConfig
+  created_at       INTEGER NOT NULL,
+  updated_at       INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_avatar_accounts_user ON avatar_accounts(user_id);
