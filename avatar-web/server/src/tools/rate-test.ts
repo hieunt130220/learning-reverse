@@ -1,24 +1,24 @@
 /**
  * Đo xem server chịu được nhịp gửi lệnh farm bao nhanh.
- *   npx tsx src/tools/rate-test.ts <delayMs> [soLenh]
+ *   npx tsx src/tools/rate-test.ts <user> <pass> [delayMs] [soLenh]
  * Đăng nhập mới, vào farm, chờ ổn định, rồi tưới liên tiếp các ô đang hạn.
  */
-import { DEFAULT_SERVER, readAccount } from '../account.js';
+import { DEFAULT_GAME_SERVER } from '../config.js';
 import { GameClient } from '../game/client.js';
 import { ITEM_WATER } from '../game/farmData.js';
 
-const delayMs = Number(process.argv[2] ?? 700);
-const n = Number(process.argv[3] ?? 6);
+const [user, pass] = process.argv.slice(2);
+const delayMs = Number(process.argv[4] ?? 700);
+const n = Number(process.argv[5] ?? 6);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const acc = readAccount();
-if (!acc) throw new Error('không đọc được file account');
+if (!user || !pass) throw new Error('dùng: rate-test.ts <user> <pass> [delayMs] [soLenh]');
 
 const c = new GameClient();
 let died = -1;
 c.on('log', (l: string) => console.log('   ', l));
 
-await c.login({ ...DEFAULT_SERVER, user: acc.user, pass: acc.pass });
+await c.login({ ...DEFAULT_GAME_SERVER, user, pass });
 await sleep(4000);
 
 const farmReady = new Promise<void>((r) => c.once('farm', () => r()));

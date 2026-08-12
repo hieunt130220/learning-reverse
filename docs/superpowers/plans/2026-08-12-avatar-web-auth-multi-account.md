@@ -4269,14 +4269,45 @@ Task này gỡ toàn bộ mã một-phiên: `account.ts`, `GameClient` toàn c�
 - Consumes: mọi thứ từ Task 1–12.
 - Produces: không có export mới — đây là điểm vào.
 
-- [ ] **Step 1: Xoá `account.ts`**
+- [x] **Step 1: Xoá `account.ts` và gỡ tham chiếu còn sót trong `tools/`**
 
 ```bash
 cd /Users/devios/learning-reverse/avatar-web
 git rm server/src/account.ts
+grep -rn "account.js" server/src
 ```
 
-- [ ] **Step 2: Viết lại `server/src/index.ts`**
+`server/src/tools/rate-test.ts` còn `import { DEFAULT_SERVER, readAccount } from '../account.js'`.
+Sửa nó nhận tài khoản qua argv như `login-test.ts` vẫn làm, và lấy host/port từ
+`DEFAULT_GAME_SERVER` trong `config.ts`:
+
+```ts
+/**
+ * Đo xem server chịu được nhịp gửi lệnh farm bao nhanh.
+ *   npx tsx src/tools/rate-test.ts <user> <pass> [delayMs] [soLenh]
+ * Đăng nhập mới, vào farm, chờ ổn định, rồi tưới liên tiếp các ô đang hạn.
+ */
+import { DEFAULT_GAME_SERVER } from '../config.js';
+import { GameClient } from '../game/client.js';
+import { ITEM_WATER } from '../game/farmData.js';
+
+const [user, pass] = process.argv.slice(2);
+const delayMs = Number(process.argv[4] ?? 700);
+const n = Number(process.argv[5] ?? 6);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+if (!user || !pass) throw new Error('dùng: rate-test.ts <user> <pass> [delayMs] [soLenh]');
+
+const c = new GameClient();
+let died = -1;
+c.on('log', (l: string) => console.log('   ', l));
+
+await c.login({ ...DEFAULT_GAME_SERVER, user, pass });
+```
+
+phần còn lại của file giữ nguyên.
+
+- [x] **Step 2: Viết lại `server/src/index.ts`**
 
 Thay toàn bộ nội dung `server/src/index.ts` bằng:
 
@@ -4350,7 +4381,7 @@ server.listen(config.port, () => {
 });
 ```
 
-- [ ] **Step 3: Viết `server/.env.example`**
+- [x] **Step 3: Viết `server/.env.example`**
 
 `server/.env.example`:
 
@@ -4367,12 +4398,12 @@ MAX_SESSIONS=20
 # NODE_ENV=production   # bật cookie Secure, chỉ dùng khi đã có HTTPS
 ```
 
-- [ ] **Step 4: Xác nhận server từ chối khởi động khi thiếu khoá**
+- [x] **Step 4: Xác nhận server từ chối khởi động khi thiếu khoá**
 
 Run: `cd server && npm start`
 Expected: thoát ngay với `thiếu MASTER_KEY — chạy \`npm run gen-key\` rồi đặt vào env`.
 
-- [ ] **Step 5: Xác nhận server khởi động được khi đủ khoá**
+- [x] **Step 5: Xác nhận server khởi động được khi đủ khoá**
 
 ```bash
 cd server
@@ -4391,7 +4422,7 @@ rm -f /tmp/avatar-web-smoke.db*
 
 Expected: `401` cho `/api/accounts`, và `{"error":"mã mời không đúng"}` cho register.
 
-- [ ] **Step 6: Typecheck, chạy toàn bộ test, commit**
+- [x] **Step 6: Typecheck, chạy toàn bộ test, commit**
 
 ```bash
 cd server && npm run typecheck && npm test
