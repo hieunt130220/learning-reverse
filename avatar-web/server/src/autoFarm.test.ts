@@ -110,7 +110,7 @@ test('vòng đầu tiên chỉ gửi tối đa maxActionsPerCycle lệnh dù t�
       if (s.cycle > 0) resolve();
     }),
   );
-  auto.start({ waterItemId: ITEM_WATER, harvest: false, maxActionsPerCycle: 5, stepDelayMs: 300 });
+  auto.start({ waterItemId: ITEM_WATER, harvest: false, maxActionsPerCycle: 5, stepDelayMs: 300, startDelayMs: 0 });
   await done;
 
   const waterCalls = client.calls.filter((c) => c.startsWith(`useItem:`) && c.endsWith(`:${ITEM_WATER}`));
@@ -136,7 +136,7 @@ test('không tồn đọng thì không bị trần chặn', async () => {
       if (s.cycle > 0) resolve();
     }),
   );
-  auto.start({ waterItemId: ITEM_WATER, harvest: false, maxActionsPerCycle: 20, stepDelayMs: 300 });
+  auto.start({ waterItemId: ITEM_WATER, harvest: false, maxActionsPerCycle: 20, stepDelayMs: 300, startDelayMs: 0 });
   await done;
 
   const waterCalls = client.calls.filter((c) => c.startsWith('useItem:') && c.endsWith(`:${ITEM_WATER}`));
@@ -150,7 +150,7 @@ test('stop() giữa vòng không bị trần lệnh ghi đè — vẫn dừng ng
   const client = new FakeClient(farmState);
   const auto = new AutoFarm(client as unknown as GameClient);
 
-  auto.start({ waterItemId: ITEM_WATER, harvest: false, maxActionsPerCycle: 100, stepDelayMs: 300 });
+  auto.start({ waterItemId: ITEM_WATER, harvest: false, maxActionsPerCycle: 100, stepDelayMs: 300, startDelayMs: 0 });
   // Để vòng chạy một chút (đã gửi vài lệnh) rồi dừng giữa chừng.
   await new Promise((r) => setTimeout(r, 350));
   auto.stop();
@@ -160,6 +160,33 @@ test('stop() giữa vòng không bị trần lệnh ghi đè — vẫn dừng ng
   assert.ok(callsAtStop > 0, 'phải đã gửi ít nhất một lệnh trước khi dừng');
   await new Promise((r) => setTimeout(r, 500));
   assert.equal(client.calls.length, callsAtStop, 'không gửi thêm lệnh nào sau stop()');
+});
+
+test('startDelayMs hoãn vòng đầu để phiên kịp ổn định, stop() trong lúc chờ thì không chạy', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(0, { isArid: true })],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  const auto = new AutoFarm(client as unknown as GameClient);
+  auto.start({ waterItemId: ITEM_WATER, harvest: false, stepDelayMs: 300, startDelayMs: 400 });
+
+  // Chưa tới hạn: chưa được gửi gì cả.
+  await new Promise((r) => setTimeout(r, 150));
+  assert.deepEqual(client.calls, [], 'không được bắn lệnh trước khi hết startDelayMs');
+
+  await new Promise((r) => setTimeout(r, 600));
+  assert.ok(client.calls.includes('enterFarm'), 'hết hạn thì phải chạy vòng đầu');
+  auto.stop();
+
+  // Dừng trong lúc còn đang chờ thì vòng đầu không bao giờ chạy.
+  const c2 = new FakeClient({ idFarm: 1, cells: [], animals: [], updatedAt: Date.now() });
+  const a2 = new AutoFarm(c2 as unknown as GameClient);
+  a2.start({ harvest: false, stepDelayMs: 300, startDelayMs: 5000 });
+  a2.stop();
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(c2.calls, [], 'stop() lúc đang chờ phải huỷ luôn vòng đầu');
 });
 
 /** Chạy đúng một vòng rồi dừng — dùng chung cho các test vật nuôi bên dưới. */
@@ -173,7 +200,7 @@ async function runOneCycle(
       if (s.cycle > 0) resolve();
     }),
   );
-  auto.start({ stepDelayMs: 300, ...cfg });
+  auto.start({ stepDelayMs: 300, startDelayMs: 0, ...cfg });
   await done;
   auto.stop();
   return auto;

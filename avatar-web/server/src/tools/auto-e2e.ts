@@ -29,19 +29,24 @@ await c.login({
   user: row.gameUser,
   pass: readGamePass(db, cfg.masterKey, accountId),
 });
-await sleep(3500);
+await sleep(Number(process.env.SETTLE_MS ?? 3500));
 
 // Bảng vật nuôi: `desc` có thể chứa tuổi thọ, thứ đang thiếu để làm nốt phần
 // "bán khi gần hết thời gian sống".
-const farmReady = new Promise<void>((r) => c.once('farm', () => r()));
-c.enterFarm();
-await farmReady;
-await sleep(1000);
-const treesReady = new Promise<void>((r) => c.once('trees', () => r()));
-c.farm.getTreeInfo();
-await Promise.race([treesReady, sleep(9000)]);
-console.log('\n===== BẢNG LOÀI ĐỌC TỪ desc =====');
-for (const a of c.animals) {
+const PRE = process.env.SKIP_PRE !== '1';
+if (PRE) {
+  const farmReady = new Promise<void>((r) => c.once('farm', () => r()));
+  c.enterFarm();
+  await farmReady;
+  await sleep(1000);
+}
+if (PRE && process.env.SKIP_TREE !== '1') {
+  const treesReady = new Promise<void>((r) => c.once('trees', () => r()));
+  c.farm.getTreeInfo();
+  await Promise.race([treesReady, sleep(9000)]);
+}
+if (PRE) console.log('\n===== BẢNG LOÀI ĐỌC TỪ desc =====');
+for (const a of PRE ? c.animals : []) {
   const s = parseAnimalSpec(a.desc);
   console.log(
     `  #${a.id} ${a.name.padEnd(14)} lớn=${String(s.growMinutes ?? '?').padStart(5)}p ` +
@@ -54,7 +59,7 @@ console.log('\n===== XEM TRƯỚC QUYẾT ĐỊNH BÁN (không thực hiện) ==
 const specs = new Map(c.animals.map((a) => [a.id, parseAnimalSpec(a.desc)] as const));
 const grownList = [52, 54, 59];
 const nearList = [50, 51, 55];
-for (const a of c.farmState!.animals) {
+for (const a of PRE ? c.farmState!.animals : []) {
   const sp = specs.get(a.species);
   const name = c.animals.find((x) => x.id === a.species)?.name ?? '?';
   const days = (a.bornTime / 1440).toFixed(2);
@@ -72,9 +77,11 @@ for (const a of c.farmState!.animals) {
 }
 
 const auto = new AutoFarm(c);
+const wantCycles = Number(process.env.CYCLES ?? 1);
 const done = new Promise<void>((r) =>
   auto.on('state', (s: { cycle: number }) => {
-    if (s.cycle > 0) r();
+    console.log(`   [vòng ${s.cycle}] status=${c.status}`);
+    if (s.cycle >= wantCycles) r();
   }),
 );
 console.log('\n===== CHẠY MỘT VÒNG AUTOFARM THẬT =====');
@@ -86,7 +93,7 @@ auto.start({
   fertilizeCells: false,
   sellAnimals: false, // không bán — không đảo ngược được
   waterItemId: undefined,
-  intervalMs: 600_000,
+  intervalMs: Number(process.env.INTERVAL_MS ?? 600_000),
   stepDelayMs: 900,
 });
 await done;

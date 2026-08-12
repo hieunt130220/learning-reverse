@@ -84,6 +84,16 @@ export interface AutoFarmConfig {
   /** Chu kỳ quét lại (ms). */
   intervalMs: number;
   /**
+   * Chờ bấy nhiêu ms sau khi đăng nhập rồi mới chạy vòng đầu.
+   *
+   * `AvatarSession.onOnline` gọi `start()` ngay khoảnh khắc nhận LOGIN_SUCESS,
+   * nên vòng đầu bắn `enterFarm` + `getInventory` vào lúc phiên chưa ổn định.
+   * `tools/rate-test.ts` — công cụ đo nhịp gửi với server thật — cố ý chờ 4s sau
+   * đăng nhập rồi 3s nữa "để phiên ổn định trước khi bắn"; ở đây làm điều tương
+   * tự thay vì lao vào ngay.
+   */
+  startDelayMs: number;
+  /**
    * Trần số lệnh farm gửi mỗi vòng (tưới/nhổ cỏ/bắt sâu/bón phân/thu hoạch/cho
    * ăn/chữa bệnh/mua, KHÔNG tính enterFarm/getInventory). Việc tồn đọng bị cắt
    * ở đây tự trôi sang vòng sau — farm còn tồn đọng nghĩa là `want`/điều kiện
@@ -123,6 +133,7 @@ const DEFAULTS: AutoFarmConfig = {
   maxBuyPerItem: 50,
   stepDelayMs: 700,
   intervalMs: 120_000,
+  startDelayMs: 3_000,
   maxActionsPerCycle: 20,
 };
 
@@ -182,7 +193,12 @@ export class AutoFarm extends EventEmitter {
     this.aborted = false;
     this.cycle = 0;
     this.lastError = undefined;
-    void this.runCycle();
+    // Vòng đầu chờ phiên ổn định; các vòng sau đã cách nhau `intervalMs`.
+    if (this.cfg.startDelayMs > 0) {
+      this.timer = setTimeout(() => void this.runCycle(), this.cfg.startDelayMs);
+    } else {
+      void this.runCycle();
+    }
   }
 
   stop(): void {

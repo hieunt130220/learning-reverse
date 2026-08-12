@@ -111,8 +111,14 @@ export class GameClient extends EventEmitter {
   playerId?: number;
   /** Trạng thái farm mới nhất, cập nhật mỗi khi nhận gói 69/61. */
   farmState?: FarmState;
-  /** Kho vật phẩm (cmd 70). */
+  /** Kho vật phẩm (cmd 70) — hạt giống + vật phẩm (section 1 + 2). */
   inventory: InventoryItem[] = [];
+  /**
+   * Nông sản thu được (section 3 của gói 70): id trùng bảng cây với nông sản
+   * trồng trọt, trùng bảng vật nuôi với trứng/sữa. Đây là nơi thu hoạch đổ vào —
+   * bằng chứng lệnh thu hoạch có chạy hay không.
+   */
+  produce: InventoryItem[] = [];
   /** Bảng cây trồng (cmd 76) — dùng để hiện tên thay vì id. */
   trees: TreeInfo[] = [];
   /** Bảng vật phẩm rút từ cùng gói 76. */
@@ -387,7 +393,16 @@ export class GameClient extends EventEmitter {
         // INVENTORY — 4 section; section 1 = hạt giống, 2 = vật phẩm
         const inv = decodeInventory(msg.getData());
         this.inventory = [...inv.seeds, ...inv.items];
-        this.emit('log', `kho: ${inv.seeds.length} loại hạt, ${inv.items.length} loại vật phẩm`);
+        // Section 3 = NÔNG SẢN thu được (đo thật: `#6×2813` lúa, `#50×530` trứng
+        // gà, `#51×202` sữa bò — id trùng bảng cây/bảng vật nuôi). Trước đây bị
+        // bỏ đi cùng section 4, nên thu hoạch xong nhìn vào kho thấy y nguyên và
+        // tưởng lệnh không chạy.
+        this.produce = inv.other[0] ?? [];
+        this.emit(
+          'log',
+          `kho: ${inv.seeds.length} loại hạt, ${inv.items.length} loại vật phẩm, ` +
+            `${this.produce.length} loại nông sản (${this.produce.map((i) => `#${i.id}×${i.num}`).join(' ')})`,
+        );
         this.emit('inventory', this.inventory);
         break;
       }
