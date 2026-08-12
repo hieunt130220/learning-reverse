@@ -1,8 +1,14 @@
 import { AutoFarm, type AutoFarmConfig, type AutoFarmState } from '../autoFarm.js';
-import { GameClient, type ClientStatus, type DeviceProfile, type TrafficEntry } from '../game/client.js';
+import {
+  GameClient,
+  type ClientStatus,
+  type DeviceProfile,
+  type TemporaryLoginRejection,
+  type TrafficEntry,
+} from '../game/client.js';
 import { MacroRunner, type Macro, type MacroState } from '../macro.js';
 
-export const RETRY_BASE_MS = 5_000;
+export const RETRY_BASE_MS = 10_000;
 export const RETRY_MAX_MS = 5 * 60 * 1000;
 const LOG_BUFFER = 500;
 const TRAFFIC_BUFFER = 100;
@@ -55,6 +61,7 @@ export interface AvatarSessionOptions {
   createMacroRunner?: (client: GameClient) => MacroRunner;
   setTimeoutFn?: typeof setTimeout;
   clearTimeoutFn?: typeof clearTimeout;
+  now?: () => number;
   random?: () => number;
 }
 
@@ -76,6 +83,9 @@ export class AvatarSession {
   private retries = 0;
   private nextRetryAt?: number;
   private retryTimer?: NodeJS.Timeout;
+  private connectionEpoch = 0;
+  private onlineEpoch?: number;
+  private retryAfter?: { epoch: number; notBefore: number };
   /** Đã nhận LOGIN_FAIL: không thử lại nữa dù rớt kết nối. */
   private permanentlyFailed = false;
   private lastAutoConfig: Partial<AutoFarmConfig> = {};
@@ -86,11 +96,13 @@ export class AvatarSession {
 
   private readonly setTimeoutFn: typeof setTimeout;
   private readonly clearTimeoutFn: typeof clearTimeout;
+  private readonly now: () => number;
   private readonly random: () => number;
 
   constructor(private readonly opts: AvatarSessionOptions) {
     this.setTimeoutFn = opts.setTimeoutFn ?? setTimeout;
     this.clearTimeoutFn = opts.clearTimeoutFn ?? clearTimeout;
+    this.now = opts.now ?? Date.now;
     this.random = opts.random ?? Math.random;
   }
 
@@ -207,13 +219,15 @@ export class AvatarSession {
     this.wantAuto = creds.autoEnabled;
     this.lastAutoConfig = creds.autoConfig ?? {};
 
+    const epoch = ++this.connectionEpoch;
     const client = this.opts.createClient ? this.opts.createClient() : new GameClient();
     this.client = client;
+    this.retryAfter = undefined;
     this.auto = this.opts.createAutoFarm ? this.opts.createAutoFarm(client) : new AutoFarm(client);
     this.macros = this.opts.createMacroRunner
       ? this.opts.createMacroRunner(client)
       : new MacroRunner(client);
-    this.wire(client);
+    this.wire(client, epoch);
 
     try {
       await client.login({
@@ -224,48 +238,86 @@ export class AvatarSession {
         device: creds.device,
       });
     } catch (err) {
+      if (!this.isCurrent(client, epoch)) return;
       this.pushLog(`kết nối lỗi: ${(err as Error).message}`);
-      this.scheduleRetry();
-      return;
+      this.scheduleRetry(epoch);
     }
-
-    this.retries = 0;
-    this.nextRetryAt = undefined;
-    if (this.wantAuto && client.status === 'online') this.tryStartAuto();
   }
 
-  private wire(client: GameClient): void {
+  private isCurrent(client: GameClient, epoch: number): boolean {
+    return this.client === client && this.connectionEpoch === epoch;
+  }
+
+  private wire(client: GameClient, epoch: number): void {
     // EventEmitter không có listener 'error' sẽ ném và giết cả process, kéo
     // theo mọi phiên khác. Đây là listener bắt buộc, không phải phòng xa.
-    client.on('error', (err: Error) => this.pushLog(`lỗi client: ${err.message}`));
-
-    client.on('status', (s: ClientStatus) => {
-      this.emit('status', s);
-      if (s === 'online' && this.wantAuto) this.tryStartAuto();
-      if (s === 'idle' || s === 'error') this.onDisconnected();
+    client.on('error', (err: Error) => {
+      if (!this.isCurrent(client, epoch)) return;
+      this.pushLog(`lỗi client: ${err.message}`);
     });
 
-    client.on('log', (line: string) => this.pushLog(line));
+    client.on('status', (s: ClientStatus) => {
+      if (!this.isCurrent(client, epoch)) return;
+      this.emit('status', s);
+      if (s === 'online') this.onOnline(client, epoch);
+      if (s === 'idle' || s === 'error') this.onDisconnected(epoch);
+    });
+
+    client.on('log', (line: string) => {
+      if (!this.isCurrent(client, epoch)) return;
+      this.pushLog(line);
+    });
 
     client.on('traffic', (entry: TrafficEntry) => {
+      if (!this.isCurrent(client, epoch)) return;
       this.traffic.push(entry);
       if (this.traffic.length > TRAFFIC_BUFFER) this.traffic.shift();
       this.emit('traffic', entry);
     });
 
-    client.on('farm', (state: unknown) => this.emit('farm', state));
-    client.on('inventory', (inv: unknown) => this.emit('inventory', inv));
-    client.on('trees', (t: unknown) => this.emit('trees', t));
-    client.on('money', (m: unknown) => this.emit('money', m));
+    client.on('farm', (state: unknown) => {
+      if (this.isCurrent(client, epoch)) this.emit('farm', state);
+    });
+    client.on('inventory', (inv: unknown) => {
+      if (this.isCurrent(client, epoch)) this.emit('inventory', inv);
+    });
+    client.on('trees', (t: unknown) => {
+      if (this.isCurrent(client, epoch)) this.emit('trees', t);
+    });
+    client.on('money', (m: unknown) => {
+      if (this.isCurrent(client, epoch)) this.emit('money', m);
+    });
 
     client.on('message', (msg: { command: number }) => {
+      if (!this.isCurrent(client, epoch)) return;
       // LOGIN_FAIL: sai mật khẩu hoặc tài khoản bị khoá. Thử lại là đường ngắn
       // nhất tới việc bị server game khoá thật — dừng hẳn, chờ người dùng sửa.
       if (msg.command === -35) this.failPermanently('đăng nhập thất bại — kiểm tra lại mật khẩu game');
     });
 
-    this.auto!.on('state', (s: AutoFarmState) => this.emit('auto', s));
-    this.macros!.on('state', (s: MacroState) => this.emit('macro', s));
+    client.on('temporary-rejection', (rejection: TemporaryLoginRejection) => {
+      if (!this.isCurrent(client, epoch)) return;
+      this.retryAfter = { epoch, notBefore: this.now() + rejection.retryAfterMs };
+      this.pushLog(
+        `server yêu cầu chờ ${Math.ceil(rejection.retryAfterMs / 1000)}s trước khi đăng nhập lại`,
+      );
+    });
+
+    this.auto!.on('state', (s: AutoFarmState) => {
+      if (this.isCurrent(client, epoch)) this.emit('auto', s);
+    });
+    this.macros!.on('state', (s: MacroState) => {
+      if (this.isCurrent(client, epoch)) this.emit('macro', s);
+    });
+  }
+
+  private onOnline(client: GameClient, epoch: number): void {
+    if (!this.isCurrent(client, epoch) || this.onlineEpoch === epoch) return;
+    this.onlineEpoch = epoch;
+    this.cancelRetry();
+    this.retries = 0;
+    this.retryAfter = undefined;
+    if (this.wantAuto) this.tryStartAuto();
   }
 
   private tryStartAuto(): void {
@@ -289,30 +341,36 @@ export class AvatarSession {
     }
   }
 
-  private onDisconnected(): void {
+  private onDisconnected(epoch: number): void {
     this.auto?.stop();
     this.macros?.stop();
-    if (!this.wanted || this.permanentlyFailed) return;
-    this.scheduleRetry();
+    if (!this.wanted || this.permanentlyFailed || epoch !== this.connectionEpoch) return;
+    this.scheduleRetry(epoch);
   }
 
-  private scheduleRetry(): void {
-    if (this.retryTimer) return;
-    // 5s, 10s, 20s, 40s… trần 5 phút; jitter ±20% để nhiều phiên rớt cùng lúc
+  private scheduleRetry(epoch: number): void {
+    if (this.retryTimer || epoch !== this.connectionEpoch) return;
+    // 10s, 20s, 40s, 80s… trần 5 phút; jitter ±20% để nhiều phiên rớt cùng lúc
     // không đồng loạt gõ lại server game.
     const base = Math.min(RETRY_BASE_MS * 2 ** this.retries, RETRY_MAX_MS);
-    const delay = Math.round(base * (0.8 + 0.4 * this.random()));
+    const jittered = Math.round(base * (0.8 + 0.4 * this.random()));
+    const serverDelay =
+      this.retryAfter?.epoch === epoch
+        ? Math.max(0, this.retryAfter.notBefore - this.now())
+        : 0;
+    const delay = Math.max(jittered, serverDelay);
     this.retries += 1;
-    this.nextRetryAt = Date.now() + delay;
+    this.nextRetryAt = this.now() + delay;
     this.pushLog(`thử kết nối lại sau ${Math.round(delay / 1000)}s (lần ${this.retries})`);
 
     this.retryTimer = this.setTimeoutFn(() => {
       this.retryTimer = undefined;
-      if (!this.wanted || this.permanentlyFailed) return;
+      this.nextRetryAt = undefined;
+      if (!this.wanted || this.permanentlyFailed || epoch !== this.connectionEpoch) return;
       this.teardown();
       void this.connect().catch((err: Error) => {
         this.pushLog(`thử lại lỗi: ${err.message}`);
-        this.scheduleRetry();
+        this.scheduleRetry(this.connectionEpoch);
       });
     }, delay);
   }
@@ -324,6 +382,7 @@ export class AvatarSession {
   }
 
   private teardown(): void {
+    this.connectionEpoch += 1;
     this.auto?.stop();
     this.macros?.stop();
     const client = this.client;
@@ -331,11 +390,11 @@ export class AvatarSession {
     this.auto = undefined;
     this.macros = undefined;
     if (!client) return;
+    client.removeAllListeners();
     try {
       client.logout();
     } catch {
       /* bỏ qua */
     }
-    client.removeAllListeners();
   }
 }

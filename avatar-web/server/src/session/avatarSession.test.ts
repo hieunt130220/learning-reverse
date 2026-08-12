@@ -10,6 +10,7 @@ import { AvatarSession, RETRY_BASE_MS, RETRY_MAX_MS, type AvatarCredentials } fr
 /** GameClient giả: đủ bề mặt để `AvatarSession` chạy, không mở socket nào. */
 class FakeClient extends EventEmitter {
   status = 'idle';
+  autoOnline = true;
   lastError: string | undefined;
   playerId: number | undefined;
   farmState: unknown;
@@ -29,12 +30,16 @@ class FakeClient extends EventEmitter {
   async login(opts: unknown): Promise<void> {
     this.loginArgs.push(opts);
     if (this.loginError) throw this.loginError;
+    if (this.autoOnline) this.goOnline();
+  }
+  goOnline(): void {
     this.status = 'online';
     this.emit('status', 'online');
   }
   logout(): void {
     this.logoutCount += 1;
     this.status = 'idle';
+    this.emit('status', 'idle');
   }
   enterFarm(): void {
     this.calls.push('enterFarm');
@@ -47,6 +52,9 @@ class FakeClient extends EventEmitter {
     this.status = 'idle';
     this.emit('status', 'idle');
   }
+  rejectTemporarily(retryAfterMs: number): void {
+    this.emit('temporary-rejection', { reason: 'throttle', retryAfterMs });
+  }
 }
 
 /**
@@ -56,12 +64,14 @@ class FakeClient extends EventEmitter {
  */
 class FakeAuto extends EventEmitter {
   running = false;
+  startCount = 0;
   lastCfg: unknown;
-  start(cfg: unknown) {
+  start(cfg: unknown): void {
+    this.startCount += 1;
     this.running = true;
     this.lastCfg = cfg;
   }
-  stop() {
+  stop(): void {
     this.running = false;
   }
   state() {
@@ -84,23 +94,34 @@ class FakeMacro extends EventEmitter {
 
 const flush = () => new Promise((r) => setImmediate(r));
 
+interface FakeTimer {
+  id: number;
+  fn: () => void;
+  delay: number;
+  active: boolean;
+}
+
 interface Harness {
   session: AvatarSession;
   clients: FakeClient[];
   autos: FakeAuto[];
-  timers: Array<{ fn: () => void; delay: number }>;
+  timers: FakeTimer[];
   events: Array<{ type: string; payload: unknown }>;
   permanent: string[];
-  /** Chạy timer đang chờ sớm nhất, trả về độ trễ của nó. */
+  pendingTimers(): FakeTimer[];
   fireTimer(): number;
 }
 
-function harness(creds: Partial<AvatarCredentials> = {}, loginError?: Error): Harness {
+function harness(
+  creds: Partial<AvatarCredentials> = {},
+  clientCfg: { loginError?: Error; autoOnline?: boolean } = {},
+): Harness {
   const clients: FakeClient[] = [];
   const autos: FakeAuto[] = [];
-  const timers: Array<{ fn: () => void; delay: number }> = [];
+  const timers: FakeTimer[] = [];
   const events: Array<{ type: string; payload: unknown }> = [];
   const permanent: string[] = [];
+  let nextTimerId = 1;
 
   const session = new AvatarSession({
     accountId: 7,
@@ -113,10 +134,11 @@ function harness(creds: Partial<AvatarCredentials> = {}, loginError?: Error): Ha
       ...creds,
     }),
     createClient: () => {
-      const c = new FakeClient();
-      c.loginError = loginError ?? null;
-      clients.push(c);
-      return c as unknown as GameClient;
+      const client = new FakeClient();
+      client.loginError = clientCfg.loginError ?? null;
+      client.autoOnline = clientCfg.autoOnline ?? true;
+      clients.push(client);
+      return client as unknown as GameClient;
     },
     createAutoFarm: () => {
       const a = new FakeAuto();
@@ -127,10 +149,14 @@ function harness(creds: Partial<AvatarCredentials> = {}, loginError?: Error): Ha
     onEvent: (type, payload) => events.push({ type, payload }),
     onPermanentFailure: (reason) => permanent.push(reason),
     setTimeoutFn: ((fn: () => void, delay: number) => {
-      timers.push({ fn, delay });
-      return timers.length as unknown as NodeJS.Timeout;
+      const timer: FakeTimer = { id: nextTimerId++, fn, delay, active: true };
+      timers.push(timer);
+      return timer as unknown as NodeJS.Timeout;
     }) as unknown as typeof setTimeout,
-    clearTimeoutFn: (() => {}) as unknown as typeof clearTimeout,
+    clearTimeoutFn: ((timer: NodeJS.Timeout) => {
+      (timer as unknown as FakeTimer).active = false;
+    }) as unknown as typeof clearTimeout,
+    now: () => 1_000_000,
     random: () => 0.5, // jitter = hệ số 1.0, backoff thành số tròn
   });
 
@@ -141,10 +167,13 @@ function harness(creds: Partial<AvatarCredentials> = {}, loginError?: Error): Ha
     timers,
     events,
     permanent,
+    pendingTimers: () => timers.filter((timer) => timer.active),
     fireTimer() {
-      const t = timers.shift()!;
-      t.fn();
-      return t.delay;
+      const timer = timers.find((candidate) => candidate.active);
+      assert.ok(timer, 'không có timer active');
+      timer.active = false;
+      timer.fn();
+      return timer.delay;
     },
   };
 }
@@ -180,7 +209,7 @@ test('autoEnabled = false thì không tự bật', async () => {
 });
 
 test('login liên tục lỗi thì backoff tăng gấp đôi, trần 5 phút', async () => {
-  const h = harness({}, new Error('không nhận được gói khóa (-27) sau 10s'));
+  const h = harness({}, { loginError: new Error('không nhận được gói khóa (-27) sau 10s') });
   await h.session.start();
 
   const delays: number[] = [];
@@ -194,17 +223,17 @@ test('login liên tục lỗi thì backoff tăng gấp đôi, trần 5 phút', a
     RETRY_BASE_MS * 4,
     RETRY_BASE_MS * 8,
     RETRY_BASE_MS * 16,
-    RETRY_BASE_MS * 32,
+    RETRY_MAX_MS,
     RETRY_MAX_MS,
     RETRY_MAX_MS,
   ]);
 });
 
 test('login ném lỗi thì start không ném ra ngoài mà ghi log rồi hẹn thử lại', async () => {
-  const h = harness({}, new Error('không nhận được gói khóa (-27) sau 10s'));
+  const h = harness({}, { loginError: new Error('không nhận được gói khóa (-27) sau 10s') });
   await h.session.start();
-  assert.equal(h.timers.length, 1);
-  assert.equal(h.timers[0].delay, RETRY_BASE_MS);
+  assert.equal(h.pendingTimers().length, 1);
+  assert.equal(h.pendingTimers()[0].delay, RETRY_BASE_MS);
   const logs = h.session.snapshot().logs.map((l) => l.line);
   assert.ok(logs.some((l) => l.includes('kết nối lỗi')));
 });
@@ -213,8 +242,8 @@ test('rớt kết nối khi đang muốn kết nối thì hẹn thử lại', as
   const h = harness();
   await h.session.start();
   h.clients[0].drop();
-  assert.equal(h.timers.length, 1);
-  assert.equal(h.timers[0].delay, RETRY_BASE_MS);
+  assert.equal(h.pendingTimers().length, 1);
+  assert.equal(h.pendingTimers()[0].delay, RETRY_BASE_MS);
 });
 
 test('kết nối lại thành công thì đặt lại bộ đếm backoff', async () => {
@@ -225,6 +254,72 @@ test('kết nối lại thành công thì đặt lại bộ đếm backoff', asy
   await flush();
   assert.equal(h.clients.length, 2, 'phải tạo client mới');
   assert.equal(h.session.snapshot().retries, 0);
+});
+
+test('timer retry teardown không sinh timer thứ hai', async () => {
+  const h = harness();
+  await h.session.start();
+  h.clients[0].drop();
+  assert.equal(h.pendingTimers().length, 1);
+  h.fireTimer();
+  await flush();
+  assert.equal(h.clients.length, 2);
+  assert.equal(h.pendingTimers().length, 0);
+});
+
+test('callback retry cũ không đóng client mới', async () => {
+  const h = harness();
+  await h.session.start();
+  h.clients[0].drop();
+  const stale = h.pendingTimers()[0].fn;
+  h.fireTimer();
+  await flush();
+  assert.equal(h.clients.length, 2);
+  stale();
+  await flush();
+  assert.equal(h.clients.length, 2);
+  assert.equal(h.clients[1].logoutCount, 0);
+});
+
+test('login trả về chưa online không reset backoff', async () => {
+  const h = harness({}, { autoOnline: false });
+  await h.session.start();
+  h.clients[0].drop();
+  assert.equal(h.fireTimer(), RETRY_BASE_MS);
+  await flush();
+  assert.equal(h.clients.length, 2);
+  assert.equal(h.session.snapshot().retries, 1);
+});
+
+test('online reset backoff và auto chỉ start một lần', async () => {
+  const h = harness({ autoEnabled: true }, { autoOnline: false });
+  await h.session.start();
+  h.clients[0].drop();
+  h.fireTimer();
+  await flush();
+  h.clients[1].goOnline();
+  h.clients[1].goOnline();
+  assert.equal(h.session.snapshot().retries, 0);
+  assert.equal(h.autos[1].startCount, 1);
+});
+
+test('server retry-after lớn hơn exponential backoff quyết định delay', async () => {
+  const h = harness();
+  await h.session.start();
+  h.clients[0].rejectTemporarily(30_000);
+  h.clients[0].drop();
+  assert.equal(h.pendingTimers()[0].delay, 30_000);
+});
+
+test('retry-after không được giảm exponential backoff hiện tại', async () => {
+  const h = harness({}, { autoOnline: false });
+  await h.session.start();
+  h.clients[0].drop();
+  h.fireTimer();
+  await flush();
+  h.clients[1].rejectTemporarily(10_000);
+  h.clients[1].drop();
+  assert.equal(h.pendingTimers()[0].delay, RETRY_BASE_MS * 2);
 });
 
 test('stop thì không thử lại nữa', async () => {
@@ -242,7 +337,7 @@ test('nhận LOGIN_FAIL (-35) thì dừng hẳn và báo lỗi vĩnh viễn', as
   h.clients[0].emit('message', { command: -35 });
   h.clients[0].drop();
 
-  assert.equal(h.timers.length, 0, 'không được hẹn thử lại');
+  assert.equal(h.pendingTimers().length, 0, 'không được hẹn thử lại');
   assert.equal(h.session.desiredConnected, false);
   assert.equal(h.permanent.length, 1);
   assert.match(h.permanent[0], /đăng nhập/);

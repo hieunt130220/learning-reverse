@@ -22,11 +22,35 @@ const BIG_LEN_CMDS = new Set([-69, -51, -44, 79]);
 /** cmd của gói trao khóa, kiểm tra trong MessageCollector.run @0x7FEC6C. */
 export const CMD_GET_KEY = -27;
 
+export type SessionCloseKind = 'remote-end' | 'socket-error' | 'local-close' | 'socket-close';
+
+export interface SessionSocketError {
+  message: string;
+  code?: string;
+  errno?: string | number;
+  syscall?: string;
+}
+
+export interface SessionCloseInfo {
+  kind: SessionCloseKind;
+  hadError: boolean;
+  host: string;
+  port: number;
+  startedAt: number;
+  connectedAt?: number;
+  closedAt: number;
+  lastDataAt?: number;
+  lifetimeMs: number;
+  bytesRead: number;
+  bytesWritten: number;
+  error?: SessionSocketError;
+}
+
 export interface SessionEvents {
   message: (msg: Message) => void;
   key: () => void;
   connected: () => void;
-  closed: (reason: string) => void;
+  closed: (info: SessionCloseInfo) => void;
   error: (err: Error) => void;
   /** Log thô cho UI. */
   traffic: (dir: 'tx' | 'rx', cmd: number, body: Buffer) => void;
@@ -46,33 +70,80 @@ export class Session extends EventEmitter {
   private curW = 0;
   private getKeyComplete = false;
 
+  private targetHost = '';
+  private targetPort = 0;
+  private startedAt = 0;
+  private connectedAt?: number;
+  private lastDataAt?: number;
+  private remoteEnded = false;
+  private localCloseRequested = false;
+  private lastSocketError?: SessionSocketError;
+
   connected = false;
 
   connect(host: string, port: number): Promise<void> {
     return new Promise((resolve, reject) => {
       this.reset();
+      this.targetHost = host;
+      this.targetPort = port;
+      this.startedAt = Date.now();
       const sock = net.createConnection({ host, port });
       this.socket = sock;
       sock.setNoDelay(true);
 
       sock.once('connect', () => {
         this.connected = true;
+        this.connectedAt = Date.now();
         this.emit('connected');
         resolve();
       });
-      sock.on('data', (chunk) => this.onData(chunk));
-      sock.on('error', (err) => {
+      sock.on('data', (chunk) => {
+        this.lastDataAt = Date.now();
+        this.onData(chunk);
+      });
+      sock.on('end', () => {
+        this.remoteEnded = true;
+      });
+      sock.on('error', (err: NodeJS.ErrnoException) => {
+        this.lastSocketError = {
+          message: err.message,
+          code: err.code,
+          errno: err.errno,
+          syscall: err.syscall,
+        };
         this.emit('error', err);
         reject(err);
       });
-      sock.on('close', () => {
+      sock.on('close', (hadError) => {
+        const closedAt = Date.now();
+        const kind: SessionCloseKind = this.localCloseRequested
+          ? 'local-close'
+          : this.lastSocketError
+            ? 'socket-error'
+            : this.remoteEnded
+              ? 'remote-end'
+              : 'socket-close';
         this.connected = false;
-        this.emit('closed', 'socket closed');
+        this.emit('closed', {
+          kind,
+          hadError,
+          host: this.targetHost,
+          port: this.targetPort,
+          startedAt: this.startedAt,
+          connectedAt: this.connectedAt,
+          closedAt,
+          lastDataAt: this.lastDataAt,
+          lifetimeMs: closedAt - this.startedAt,
+          bytesRead: sock.bytesRead,
+          bytesWritten: sock.bytesWritten,
+          error: this.lastSocketError,
+        });
       });
     });
   }
 
   close(): void {
+    this.localCloseRequested = true;
     this.socket?.destroy();
     this.connected = false;
   }
@@ -83,6 +154,11 @@ export class Session extends EventEmitter {
     this.curR = 0;
     this.curW = 0;
     this.getKeyComplete = false;
+    this.connectedAt = undefined;
+    this.lastDataAt = undefined;
+    this.remoteEnded = false;
+    this.localCloseRequested = false;
+    this.lastSocketError = undefined;
   }
 
   send(msg: Message): void {

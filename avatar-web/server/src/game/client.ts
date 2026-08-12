@@ -67,6 +67,25 @@ export const DEFAULT_DEVICE: DeviceProfile = {
 /** Gói có chứa mật khẩu — không log body ra ngoài. */
 const SENSITIVE_CMDS = new Set([-33, -32, -30]);
 
+export interface TemporaryLoginRejection {
+  reason: string;
+  retryAfterMs: number;
+}
+
+const MIN_LOGIN_RETRY_MS = 10_000;
+
+export function parseTemporaryLoginRejection(text: string): TemporaryLoginRejection | null {
+  const isThrottle = /đăng nhập quá nhanh|đăng nhập lại sau\s+\d+\s*s/i.test(text);
+  if (!isThrottle) return null;
+  const seconds = text.match(/sau\s+(\d+)\s*s/i)?.[1];
+  return {
+    reason: text,
+    retryAfterMs: seconds
+      ? Math.max(Number(seconds) * 1_000, MIN_LOGIN_RETRY_MS)
+      : MIN_LOGIN_RETRY_MS,
+  };
+}
+
 export type ClientStatus = 'idle' | 'connecting' | 'handshaking' | 'logging-in' | 'online' | 'error';
 
 export interface TrafficEntry {
@@ -132,10 +151,20 @@ export class GameClient extends EventEmitter {
     });
 
     this.session.on('message', (msg) => this.onMessage(msg));
-    this.session.on('closed', (reason) => {
+    this.session.on('closed', (info) => {
       this.stopKeepAlive();
+      const statusAtClose = this.status;
+      const idleMs = info.lastDataAt === undefined ? undefined : info.closedAt - info.lastDataAt;
+      const error = info.error
+        ? `, lỗi=${[info.error.code, info.error.syscall].filter(Boolean).join('/') || info.error.message}`
+        : '';
+      const idle = idleMs === undefined ? '' : `, im lặng ${idleMs}ms`;
       this.setStatus('idle');
-      this.emit('log', `mất kết nối: ${reason}`);
+      this.emit(
+        'log',
+        `mất kết nối: ${info.kind} ${info.host}:${info.port}, sống ${info.lifetimeMs}ms, ` +
+          `rx=${info.bytesRead}B tx=${info.bytesWritten}B, trạng thái=${statusAtClose}${idle}${error}`,
+      );
     });
     this.session.on('error', (err) => {
       this.lastError = err.message;
@@ -344,9 +373,13 @@ export class GameClient extends EventEmitter {
       case -37: // VERSION — server báo sai phiên bản
         this.emit('log', `server trả VERSION: ${safeUtf(msg)}`);
         break;
-      case -40: // hộp thoại thông báo chung của server (lỗi login, giục update…)
-        this.emit('log', `server: ${safeUtf(msg)}`);
+      case -40: { // hộp thoại thông báo chung của server (lỗi login, giục update…)
+        const reason = safeUtf(msg);
+        this.emit('log', `server: ${reason}`);
+        const rejection = parseTemporaryLoginRejection(reason);
+        if (rejection) this.emit('temporary-rejection', rejection);
         break;
+      }
       case -87: // INFO_TEXT_BOX_SERVER — phản hồi getServerLoginInfo
         this.emit('log', 'server phản hồi getServerLoginInfo — giải mã hai chiều OK');
         break;
