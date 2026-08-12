@@ -3909,7 +3909,7 @@ git commit -m "feat(server): route điều khiển phiên theo từng tài kho�
   - `interface WsHub { broadcast(userId: number, accountId: number, type: string, payload: unknown): void; clientCount(): number; close(): void }`
   - `attachWebSocket(server: http.Server, deps: { db: Db; sessions: SessionManager }): WsHub`
 
-- [ ] **Step 1: Viết test**
+- [x] **Step 1: Viết test**
 
 `server/src/ws.test.ts`:
 
@@ -4133,12 +4133,12 @@ test('tin nhắn rác không làm sập server', async () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test để xác nhận thất bại**
+- [x] **Step 2: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module './ws.js'`.
 
-- [ ] **Step 3: Viết `ws.ts`**
+- [x] **Step 3: Viết `ws.ts`**
 
 `server/src/ws.ts`:
 
@@ -4241,12 +4241,12 @@ export function attachWebSocket(
 }
 ```
 
-- [ ] **Step 4: Chạy test để xác nhận pass**
+- [x] **Step 4: Chạy test để xác nhận pass**
 
 Run: `cd server && npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Typecheck và commit**
+- [x] **Step 5: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
