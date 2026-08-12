@@ -5054,7 +5054,7 @@ git commit -m "feat(web): router, tầng api/ws, trang đăng nhập và đăng 
   - `StatusBadge({ status }: { status: ClientStatus })` — xuất khẩu để trang chi tiết dùng lại
   - `statusLabel: Record<ClientStatus, string>`
 
-- [ ] **Step 1: Viết `web/src/accounts/AccountsPage.tsx`**
+- [x] **Step 1: Viết `web/src/accounts/AccountsPage.tsx`**
 
 `web/src/accounts/AccountsPage.tsx`:
 
@@ -5310,7 +5310,7 @@ function AddAccountForm({ onAdded }: { onAdded: () => Promise<void> }) {
 }
 ```
 
-- [ ] **Step 2: Nối route thật vào `main.tsx`**
+- [x] **Step 2: Nối route thật vào `main.tsx`**
 
 Trong `web/src/main.tsx`, thêm import:
 
@@ -5331,7 +5331,7 @@ và thay khối `<Route path="/accounts" …>` tạm bằng:
           />
 ```
 
-- [ ] **Step 3: Thêm style cho bảng**
+- [x] **Step 3: Thêm style cho bảng**
 
 Thêm vào cuối `web/src/styles.css`:
 
@@ -5378,12 +5378,12 @@ header .hint {
 }
 ```
 
-- [ ] **Step 4: Build để xác nhận không lỗi kiểu**
+- [x] **Step 4: Build để xác nhận không lỗi kiểu**
 
 Run: `cd web && npm run build`
 Expected: build thành công.
 
-- [ ] **Step 5: Kiểm tay**
+- [x] **Step 5: Kiểm tay**
 
 Chạy cả hai server như Task 14, đăng nhập, rồi kiểm:
 1. Thêm tài khoản → xuất hiện trong bảng, badge "chưa kết nối".
@@ -5392,7 +5392,7 @@ Chạy cả hai server như Task 14, đăng nhập, rồi kiểm:
 4. Bật công tắc "Tự động" → F5 vẫn thấy bật.
 5. Xoá tài khoản → biến khỏi bảng.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add web/src/accounts/AccountsPage.tsx web/src/main.tsx web/src/styles.css

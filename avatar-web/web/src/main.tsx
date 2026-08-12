@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
+import { AccountsPage } from './accounts/AccountsPage.js';
 import { AuthProvider, RequireAuth } from './auth/useAuth.js';
 import { LoginPage } from './auth/LoginPage.js';
 import { RegisterPage } from './auth/RegisterPage.js';
@@ -18,9 +19,7 @@ createRoot(document.getElementById('root')!).render(
             path="/accounts"
             element={
               <RequireAuth>
-                <p className="hint" style={{ padding: 24 }}>
-                  danh sách tài khoản — sẽ có ở task sau
-                </p>
+                <AccountsPage />
               </RequireAuth>
             }
           />

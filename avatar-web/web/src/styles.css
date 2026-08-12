@@ -347,3 +347,44 @@ button.ghost {
   width: 100%;
   margin-top: 8px;
 }
+
+/* --- bảng danh sách tài khoản --- */
+table.accounts {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table.accounts th,
+table.accounts td {
+  padding: 8px 6px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #23262d;
+}
+
+table.accounts th {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8b93a1;
+}
+
+table.accounts td.row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  border-bottom: 1px solid #23262d;
+}
+
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid #2c3038;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+header .hint {
+  margin-left: auto;
+}
