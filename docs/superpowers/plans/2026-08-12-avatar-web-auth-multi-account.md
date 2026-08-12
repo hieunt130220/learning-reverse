@@ -5958,7 +5958,7 @@ git commit -m "feat(web): trang chi tiết tài khoản, tab Vận hành"
 - Consumes: `ACTIONS`/`GROUPS`/`ActionDef` từ `web/src/actions.ts` (không đổi), `apiPost` (Task 14).
 - Produces: `DebugPanel({ accountId, macro, traffic }: { accountId: number; macro: MacroState; traffic: TrafficEntry[] })`
 
-- [ ] **Step 1: Viết `panels/DebugPanel.tsx`**
+- [x] **Step 1: Viết `panels/DebugPanel.tsx`**
 
 Gộp bốn component từ `App.tsx` vào một file: `ActionPanel` (504–523), `ActionRow`
 (525–558), `MacroPanel` (560–609), `RawPanel` (611–668), `TrafficPanel` (686–715).
@@ -6052,7 +6052,7 @@ Thêm một dòng chú thích ở đầu `ActionPanel`, ngay dưới `<h2>Hành 
       </p>
 ```
 
-- [ ] **Step 2: Nối `DebugPanel` vào trang chi tiết**
+- [x] **Step 2: Nối `DebugPanel` vào trang chi tiết**
 
 Trong `web/src/accounts/AccountDetailPage.tsx`, thêm import:
 
@@ -6072,7 +6072,7 @@ và thay dòng tạm bằng:
       )}
 ```
 
-- [ ] **Step 3: Xoá `App.tsx`**
+- [x] **Step 3: Xoá `App.tsx`**
 
 Mọi phần của nó đã có nhà mới. Không còn chỗ nào import nó (`main.tsx` đã viết lại ở Task 14).
 
@@ -6082,12 +6082,12 @@ grep -rn "App.js\|from './App'" web/src || echo "không còn tham chiếu"
 git rm web/src/App.tsx
 ```
 
-- [ ] **Step 4: Build**
+- [x] **Step 4: Build**
 
 Run: `cd web && npm run build`
 Expected: build thành công, không cảnh báo về `App.tsx`.
 
-- [ ] **Step 5: Kiểm tay**
+- [x] **Step 5: Kiểm tay**
 
 1. Mở tab Debug của một tài khoản đang online.
 2. Bấm một action bất kỳ (vd `getInventory`) → hiện "đã gửi", log gói tin xuất hiện dòng TX mới.
@@ -6095,7 +6095,7 @@ Expected: build thành công, không cảnh báo về `App.tsx`.
 4. Chạy một macro một-lần → panel báo "đang chạy" rồi về "đang dừng".
 5. Ngắt kết nối rồi bấm action → hiện lỗi "phiên chưa kết nối", không sập trang.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add web/src/accounts/panels/DebugPanel.tsx web/src/accounts/AccountDetailPage.tsx

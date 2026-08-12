@@ -7,6 +7,7 @@ import type { AccountWithRuntime, SessionSnapshot } from '../types.js';
 import { StatusBadge } from './AccountsPage.js';
 import { AssetsPanel } from './panels/AssetsPanel.js';
 import { AutoFarmPanel } from './panels/AutoFarmPanel.js';
+import { DebugPanel } from './panels/DebugPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
 import { StatusPanel } from './panels/StatusPanel.js';
 
@@ -140,7 +141,13 @@ export function AccountDetailPage() {
         </div>
       )}
 
-      {tab === 'debug' && <p className="hint">tab Debug — sẽ có ở task sau</p>}
+      {tab === 'debug' && (
+        <DebugPanel
+          accountId={accountId}
+          macro={snap?.macro ?? { running: false, cycle: 0 }}
+          traffic={snap?.traffic ?? []}
+        />
+      )}
     </div>
   );
 }
