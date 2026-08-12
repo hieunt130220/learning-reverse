@@ -3499,7 +3499,7 @@ git commit -m "feat(server): route CRUD tài khoản avatar, cách ly theo ngư�
   - `interface SessionRoutesDeps { db: Db; isProduction: boolean; sessions: SessionManager }`
   - `sessionRouter(deps: SessionRoutesDeps): Router` — mount tại `/api/accounts`
 
-- [ ] **Step 1: Viết test**
+- [x] **Step 1: Viết test**
 
 `server/src/session/routes.test.ts`:
 
@@ -3636,7 +3636,8 @@ test('auto/start khi chưa kết nối vẫn ghi được ý muốn vào DB', as
     method: 'POST',
     json: { harvest: true },
   });
-  assert.equal(r.status, 200);
+  // 409 vì phiên chưa tồn tại — nhưng ý muốn đã kịp ghi vào DB trước đó.
+  assert.equal(r.status, 409);
   assert.equal(getAccountById(db, id)!.autoEnabled, true);
   await server.close();
   db.close();
@@ -3736,12 +3737,12 @@ test('không điều khiển được phiên của người khác', async () => 
 });
 ```
 
-- [ ] **Step 2: Chạy test để xác nhận thất bại**
+- [x] **Step 2: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module './routes.js'`.
 
-- [ ] **Step 3: Viết `session/routes.ts`**
+- [x] **Step 3: Viết `session/routes.ts`**
 
 `server/src/session/routes.ts`:
 
@@ -3880,12 +3881,12 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
 }
 ```
 
-- [ ] **Step 4: Chạy test để xác nhận pass**
+- [x] **Step 4: Chạy test để xác nhận pass**
 
 Run: `cd server && npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Typecheck và commit**
+- [x] **Step 5: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
