@@ -46,6 +46,12 @@ class FakeClient extends EventEmitter {
   farmState: FarmState;
   inventory: { id: number; num: number }[] = [];
   items: { id: number; price: number }[] = [];
+  /** Bảng vật nuôi (cmd 76) — `desc` là nguồn tuổi lớn/tuổi thọ. */
+  animals: { id: number; name: string; desc: string }[] = [
+    { id: 50, name: 'Gà', desc: 'Thời gian lớn : 1 ngày - Sản phẩm : 20 trứng gà sau mỗi 6 giờ - Thời gian sống: 7 ngày' },
+    { id: 52, name: 'Heo', desc: 'Thời gian lớn : 2 ngày - Không  có sản phẩm - Thời gian sống: 20 ngày' },
+    { id: 59, name: 'Rùa', desc: 'Thời gian lớn : 1 ngày - Không có sản phẩm - Thời gian sống: 15 ngày' },
+  ];
   readonly calls: string[] = [];
 
   readonly farm = {
@@ -64,6 +70,10 @@ class FakeClient extends EventEmitter {
     },
     plantSeed: (): void => {
       this.calls.push('plantSeed');
+    },
+    getTreeInfo: (): void => {
+      this.calls.push('getTreeInfo');
+      queueMicrotask(() => this.emit('trees', { animals: this.animals }));
     },
     harvestAnimal: (idFarm: number, index: number): void => {
       this.calls.push(`harvestAnimal:${index}`);
@@ -169,6 +179,33 @@ async function runOneCycle(
   return auto;
 }
 
+test('chỉ thu hoạch ô có hervestPer > 0, không đụng ô non và ô vừa thu (time=-1)', async () => {
+  // Số liệu lấy nguyên từ farm thật: `time` đếm LÊN (phút kể từ lúc trồng) nên
+  // ô `time=501` vẫn còn non, còn ô 43 `time=2978 hervestPer=20` mới thu được.
+  // Ô vừa thu xong mang `time=-1 hervestPer=100` và server từ chối thu lại.
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [
+      cell(0, { idTree: 6, time: 501, hervestPer: 0 }), // non — server bỏ qua
+      cell(1, { idTree: 6, time: 2978, hervestPer: 20 }), // chín thật
+      cell(2, { idTree: 6, time: -1, hervestPer: 100 }), // vừa thu, đừng bắn lại
+      cell(3, { idTree: 6, time: 415, hervestPer: 0 }), // non
+    ],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  const auto = await runOneCycle(client, { harvest: true });
+
+  assert.deepEqual(
+    client.calls.filter((c) => c.startsWith('harvest:')),
+    ['harvest:1'],
+  );
+  assert.ok(
+    auto.state().lastActions.some((a) => a.includes('1 chín')),
+    `dòng [quét] phải đếm đúng 1 ô chín: ${JSON.stringify(auto.state().lastActions)}`,
+  );
+});
+
 test('thu hoạch sản phẩm vật nuôi khi numEggOne > 0, bỏ qua con chưa có sản phẩm', async () => {
   const client = new FakeClient({
     idFarm: 1,
@@ -192,7 +229,7 @@ test('mặc định KHÔNG bán vật nuôi — bán là thao tác không đảo
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
-    animals: [animal(0, { species: 59, harvestPer: 100 })], // Rùa đã lớn hẳn
+    animals: [animal(0, { species: 59, bornTime: 99999 })], // Rùa đã quá tuổi lớn
     updatedAt: Date.now(),
   });
   await runOneCycle(client, { harvest: false });
@@ -203,35 +240,78 @@ test('mặc định KHÔNG bán vật nuôi — bán là thao tác không đảo
   );
 });
 
-test('bán loài không có sản phẩm khi đã lớn, giữ loài chưa lớn và loài có sản phẩm', async () => {
+test('bán loài không sản phẩm khi đã quá tuổi lớn, giữ con chưa lớn', async () => {
+  // Tuổi lớn lấy từ desc: Rùa 1 ngày = 1440 phút, Heo 2 ngày = 2880 phút.
+  // `bornTime` là số phút đã sống (đo được: đếm lên +1 mỗi 60 giây).
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
     animals: [
-      animal(0, { species: 59, harvestPer: 100 }), // Rùa lớn -> bán
-      animal(1, { species: 52, harvestPer: 60 }), // Heo chưa lớn -> giữ
-      animal(2, { species: 54, harvestPer: 100 }), // Cá chép lớn -> bán
-      animal(3, { species: 50, harvestPer: 100 }), // Gà (có sản phẩm) -> giữ
+      animal(0, { species: 59, bornTime: 1836 }), // Rùa 1,3 ngày > 1 ngày -> bán
+      animal(1, { species: 52, bornTime: 1000 }), // Heo 0,7 ngày < 2 ngày -> giữ
+      animal(2, { species: 59, bornTime: 100 }), // Rùa còn non -> giữ
+      animal(3, { species: 52, bornTime: 4000 }), // Heo 2,8 ngày > 2 ngày -> bán
+    ],
+    updatedAt: Date.now(),
+  });
+  await runOneCycle(client, { harvest: false, sellAnimals: true });
+
+  // Duyệt từ index CAO xuống THẤP: bán con sau không xê dịch index con trước.
+  assert.deepEqual(
+    client.calls.filter((c) => c.startsWith('sellAnimal:')),
+    ['sellAnimal:3', 'sellAnimal:0'],
+  );
+});
+
+test('loài có sản phẩm chỉ bán khi đã sống quá nearDeathRatio của tuổi thọ', async () => {
+  // Gà: tuổi thọ 7 ngày = 10080 phút; ngưỡng 0,9 -> 9072 phút.
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [
+      animal(0, { species: 50, bornTime: 2220 }), // 1,5 ngày — còn lâu, giữ
+      animal(1, { species: 50, bornTime: 9500 }), // 6,6 ngày — gần hết đời, bán
     ],
     updatedAt: Date.now(),
   });
   const auto = await runOneCycle(client, { harvest: false, sellAnimals: true });
 
-  const sells = client.calls.filter((c) => c.startsWith('sellAnimal:'));
-  // Duyệt từ index CAO xuống THẤP: bán con sau không làm xê dịch index con trước.
-  assert.deepEqual(sells, ['sellAnimal:2', 'sellAnimal:0']);
-  assert.equal(
-    auto.state().lastActions.some((a) => a.includes('chưa biết bornTime')),
-    true,
-    'phải báo rõ vì sao chưa bán loài có sản phẩm',
+  assert.deepEqual(
+    client.calls.filter((c) => c.startsWith('sellAnimal:')),
+    ['sellAnimal:1'],
   );
+  assert.ok(
+    auto.state().lastActions.some((a) => a.includes('gần hết đời')),
+    'phải ghi rõ lý do bán',
+  );
+});
+
+test('không có bảng vật nuôi thì KHÔNG bán con nào', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [animal(0, { species: 59, bornTime: 99999 })],
+    updatedAt: Date.now(),
+  });
+  client.animals = []; // server chưa trả bảng loài
+  client.farm.getTreeInfo = (): void => {
+    client.calls.push('getTreeInfo');
+  }; // không phát 'trees'
+  const auto = await runOneCycle(client, { harvest: false, sellAnimals: true });
+
+  assert.equal(
+    client.calls.some((c) => c.startsWith('sellAnimal:')),
+    false,
+    'thiếu tuổi lớn/tuổi thọ thì thà bỏ lỡ còn hơn bán nhầm',
+  );
+  assert.ok(auto.state().lastActions.some((a) => a.includes('chưa có bảng vật nuôi')));
 });
 
 test('không bán con còn sản phẩm chưa thu — để vòng sau thu xong mới bán', async () => {
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
-    animals: [animal(0, { species: 59, harvestPer: 100, numEggOne: 2 })],
+    animals: [animal(0, { species: 59, bornTime: 99999, numEggOne: 2 })],
     updatedAt: Date.now(),
   });
   await runOneCycle(client, { harvest: false, sellAnimals: true, harvestAnimals: true });
@@ -248,7 +328,7 @@ test('trần maxSellsPerCycle chặn số con bán mỗi vòng', async () => {
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
-    animals: Array.from({ length: 6 }, (_, i) => animal(i, { species: 59, harvestPer: 100 })),
+    animals: Array.from({ length: 6 }, (_, i) => animal(i, { species: 59, bornTime: 99999 })),
     updatedAt: Date.now(),
   });
   await runOneCycle(client, { harvest: false, sellAnimals: true, maxSellsPerCycle: 2 });
@@ -302,7 +382,7 @@ test('thu hoạch/trồng/chữa bệnh không bị việc chăm sóc ô (nhổ 
   const farmState: FarmState = {
     idFarm: 1,
     cells: [
-      cell(0, { idTree: 5, time: 0 }), // sẵn sàng thu hoạch
+      cell(0, { idTree: 5, time: 200, hervestPer: 20 }), // sẵn sàng thu hoạch
       cell(1, { idTree: -1 }), // trống, cần trồng
       // time: 100 (chưa chín) để không lẫn vào điều kiện thu hoạch.
       ...Array.from({ length: 5 }, (_, i) => cell(2 + i, { isGrass: true, time: 100 })),

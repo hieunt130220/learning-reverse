@@ -300,16 +300,100 @@ repeat nAnimal:
 
 `desc` chứa sẵn thời gian lớn và giá bán, vd *"Thời gian lớn : 1 ngày - Bán : 950 xu"*.
 
+## ✓✓ Đo trên server thật — `time`/`bornTime` ĐẾM LÊN, tính bằng PHÚT
+
+Đọc dữ liệu farm hai lần cách nhau đúng 60 giây trong **một** phiên
+(`tools/farm-sample.ts`, đăng nhập lại sẽ bị đá phiên cũ):
+
+| trường | lần 1 | lần 2 (+60s) | kết luận |
+|---|---|---|---|
+| ô `time` | 491 | **492** | +1 mỗi phút → **số phút kể từ lúc trồng** |
+| con `bornTime` | 1837 / 2200 | **1838 / 2201** | +1 mỗi phút → **số phút kể từ lúc sinh** |
+
+**Hệ quả**: điều kiện `time === 0` để biết ô chín là **SAI** — `time` bắt đầu từ 0
+lúc trồng rồi tăng mãi, nên chỉ đúng trong đúng phút đầu tiên. Đây là nguyên nhân
+auto-farm không bao giờ thu hoạch.
+
+### Ô chín: `hervestPer > 0`, không phải `time`
+
+Farm thật 46 ô, tất cả `idTree=6` (Lúa) nhưng `time` khác nhau:
+
+| ô | time (phút) | ≈ giờ | hervestPer | thu được? |
+|---|---|---|---|---|
+| 0–22 | 501 | 8,4 | 0 | ✗ server im lặng |
+| 23–37 | 415 | 6,9 | 0 | ✗ |
+| 44 | 2194 | 36,6 | 0 | ✗ |
+| 45 | 2296 | 38,3 | 0 | ✗ |
+| **43** | **2978** | **49,6** | **20** | **✓** |
+
+Chỉ ô 43 thu được: server trả `cmd 64` (`2b 00c0` = i8 index 43 + i16) kèm `-40`
+*"Chúc mừng bạn đã nhận"*. Các ô `hervestPer=0` bị **bỏ qua im lặng** — không lỗi,
+không phản hồi gì, y hệt như gửi vào hư không.
+
+`TreeInfo.growMinutes` của Lúa = 48 mà ô chín ở 2978 phút ≈ 49,6 giờ → **đơn vị
+trường đó là GIỜ**, không phải phút (48h = 2880 phút, đúng ngưỡng ô 43 vượt qua).
+Dù vậy `hervestPer` mới là thứ nên dùng: tín hiệu trực tiếp từ server, không phải
+suy ra từ bảng cây (mà lấy bảng cây còn phải xin thêm gói 76).
+
+### Ô vừa thu xong: `time = -1`, `hervestPer = 100`
+
+Ngay sau khi thu, ô 43 chuyển sang `idTree=6 (giữ nguyên) time=-1 hervestPer=100`
+và **đứng yên ở đó** (kiểm tra lại sau nhiều phút vẫn vậy). Thu lại lần nữa →
+server im lặng. Vậy phải loại trạng thái này ra khỏi điều kiện chín, nếu không mỗi
+vòng auto lại bắn một lệnh vô ích.
+
+⚠ **`idTree` KHÔNG về -1 sau khi thu** → điều kiện "ô trống" `idTree === -1` cũng
+không bao giờ đúng, nên auto không bao giờ trồng lại. `doPlantSeed` vào ô
+`time=-1` bị server bỏ qua im lặng (thử cả hạt #6 lẫn #10, kho còn đủ hạt) → **cách
+làm ô trống trở lại vẫn CHƯA tìm ra**, phần trồng còn treo ở đây.
+
+### ✓ Tuổi lớn / tuổi thọ nằm trong `desc` bảng vật nuôi
+
+`desc` (gói 76) có sẵn mọi thứ cần cho luật bán — không phải cứng hoá bảng loài:
+
+| id | loài | lớn | sản phẩm | thọ |
+|---|---|---|---|---|
+| 50 | Gà | 1 ngày | 20 trứng / 6h | 7 ngày |
+| 51 | Bò | 3 ngày | 30 sữa / 6h | 30 ngày |
+| 52 | Heo | 2 ngày | **không** | 20 ngày |
+| 53 | Chó | — | giữ nhà | 15 ngày |
+| 54 | Cá chép | 3 ngày | **không** | 30 ngày |
+| 55 | Vịt | 2 ngày | 20 trứng / 6h | 7 ngày |
+| 56 | Cừu | 2 ngày | 20 lông / 12h | 10 ngày |
+| 57 | Mèo | — | hỗ trợ trộm | 15 ngày |
+| 58 | Trâu | 3 ngày | **không** | 30 ngày |
+| 59 | Rùa | 1 ngày | **không** | 15 ngày |
+| 60 | Dê | 1 ngày | 40 sữa / 4h | 10 ngày |
+| 61 | Thỏ | 2 ngày | **không** | 10 ngày |
+
+Lưu ý chuỗi thật ghi *"Không  có sản phẩm"* với **hai** dấu cách. Chó/Mèo không có
+"Thời gian lớn".
+
+⚠ **`gói 76 phải xin SAU `enterFarm``**: server chỉ định tuyến lệnh farm sau
+`GET_HANDLER(-1)`. Gọi `getTreeInfo` trước thì bảng cây về **rỗng** (đã dính).
+
 ### `harvestPer` = phần trăm LỚN, không phải phần trăm sản phẩm
 
-Gói thật của con Rùa (`species=59`): `harvestPer=100` nhưng `numEggOne=0`. Rùa là loài
-**không có sản phẩm** để thu — nếu `harvestPer` là mức sẵn sàng của sản phẩm thì loài này
-không bao giờ lên được 100. Vậy:
+⚠ **Đã đo lại, kết luận cũ ở đây không vững.** Mẫu mới trên farm thật (16 con):
 
-| trường | nghĩa | dùng để |
+| loài | bornTime | tuổi | tuổi lớn | harvestPer | numEggOne |
+|---|---|---|---|---|---|
+| Rùa 59 (không sản phẩm) | 1836 | 1,29 ngày | 1 ngày | **0** | 0 |
+| Gà 50 (20 trứng/6h) | 2220 | 1,54 ngày | 1 ngày | **100** | 0 |
+
+Cả hai đều **đã quá tuổi lớn**, nhưng Rùa vẫn `harvestPer=0` → `harvestPer` **không
+phải** phần trăm lớn (nếu vậy Rùa phải là 100). Nó gắn với việc loài đó có sản phẩm
+hay không. `doHarvestAnimal` lên con Gà `harvestPer=100` cũng bị **bỏ qua im lặng**,
+mà lúc đó `numEggOne=0` → khớp với việc chưa có sản phẩm nào chờ thu (Gà đẻ mỗi 6h).
+
+| trường | nghĩa (theo dữ liệu hiện có) | dùng để |
 |---|---|---|
-| `harvestPer` | % lớn (100 = lớn hẳn) | biết con vật đã lớn chưa |
+| `harvestPer` | gắn với khả năng ra sản phẩm; loài không sản phẩm luôn 0 | **không** dùng để biết đã lớn |
 | `numEggOne` | số sản phẩm đang chờ thu | `> 0` thì gọi `doHarvestAnimal` |
+| `bornTime` | số phút đã sống | so với "Thời gian lớn"/"Thời gian sống" trong `desc` |
+
+→ Muốn biết **đã lớn chưa** thì so `bornTime` với `Thời gian lớn` trong `desc`, chứ
+đừng dùng `harvestPer`.
 
 Phân loài theo sản phẩm: **không có sản phẩm** Heo 52 / Cá chép 54 / Rùa 59 — nuôi lớn
 rồi bán. **Có sản phẩm** (thu nhiều lần) Gà 50 / Bò 51 / Vịt 55 — giữ lại để thu.

@@ -251,14 +251,49 @@ export function decodeTreeInfo(body: Buffer): { trees: TreeInfo[]; restHex: stri
   return { trees, restHex: r.rest().toString('hex') };
 }
 
+/**
+ * `time` của ô vừa thu hoạch xong. Server đặt -1 và ô đứng yên ở trạng thái đó
+ * (đo được: ô 43 giữ nguyên `time=-1, hervestPer=100` suốt nhiều phút).
+ */
+export const CELL_SPENT_TIME = -1;
+
+/** Ô đã thu xong, đang chờ trồng lại. */
+export function isCellSpent(c: FarmCell): boolean {
+  return c.time === CELL_SPENT_TIME;
+}
+
+/**
+ * Ô đã chín, thu hoạch được.
+ *
+ * ĐO ĐƯỢC trên server thật, không phải suy đoán:
+ *
+ * - `time` **ĐẾM LÊN** +1 mỗi 60 giây = số phút kể từ lúc trồng (đo 2 lần cách
+ *   nhau 60s: 491 -> 492). Điều kiện cũ `time === 0` vì thế chỉ đúng trong đúng
+ *   một phút đầu sau khi trồng — nên auto **không bao giờ** thu hoạch.
+ * - `hervestPer > 0` mới là tín hiệu chín. Trong 46 ô của farm thật chỉ ô 43 có
+ *   `hervestPer=20`, và **chỉ ô đó** thu được: server trả `cmd 64` kèm hộp thoại
+ *   *"Chúc mừng bạn đã nhận"*. 45 ô còn lại `hervestPer=0` đều bị bỏ qua im
+ *   lặng, kể cả ô `time=501` (8,4 giờ) — tức `time` lớn KHÔNG có nghĩa là chín.
+ * - `TreeInfo.growMinutes` của Lúa = 48 nhưng ô chín ở `time=2978` phút ≈ 49,6
+ *   giờ, nên đơn vị của trường đó là **giờ**, không phải phút. Không dùng nó
+ *   làm điều kiện: `hervestPer` là tín hiệu trực tiếp từ server, không phải suy
+ *   ra từ bảng cây (mà muốn có bảng cây còn phải xin thêm gói 76).
+ * - Ô vừa thu xong chuyển sang `time=-1, hervestPer=100` và **không** thu lại
+ *   được (thử lại: server im lặng). Phải loại trừ, nếu không mỗi vòng auto lại
+ *   bắn một lệnh vô ích vào đúng ô đó.
+ */
+export function isCellRipe(c: FarmCell): boolean {
+  return c.idTree !== -1 && !isCellSpent(c) && c.hervestPer > 0;
+}
+
 /** Ô cần chăm sóc gì — dùng cho macro tự động. */
 export function cellNeeds(c: FarmCell): string[] {
   const n: string[] = [];
   if (c.isArid) n.push('tưới');
   if (c.isGrass) n.push('nhổ cỏ');
   if (c.isWorm) n.push('bắt sâu');
-  if (c.idTree !== -1 && c.time === 0) n.push('thu hoạch');
-  if (c.idTree === -1) n.push('trống');
+  if (isCellRipe(c)) n.push('thu hoạch');
+  if (c.idTree === -1 || isCellSpent(c)) n.push('trống');
   return n;
 }
 
@@ -390,20 +425,64 @@ export const FOOD = {
   CHO: 119,
 };
 
+export interface AnimalSpec {
+  /** Phút để lớn hẳn — `Thời gian lớn : N ngày`. */
+  growMinutes?: number;
+  /** Phút sống được — `Thời gian sống: N ngày`. */
+  lifeMinutes?: number;
+  /** Có sản phẩm thu nhiều lần (trứng/sữa/lông) không. */
+  hasProduct: boolean;
+}
+
+const DAY_MINUTES = 24 * 60;
+
 /**
- * Loài KHÔNG có sản phẩm thu hoạch — nuôi lớn rồi bán là hết vòng đời sử dụng:
- * Heo 52, Cá chép 54, Rùa 59.
+ * Rút thông số từ `desc` của bảng vật nuôi (cmd 76) — chuỗi có sẵn mọi thứ cần,
+ * đọc từ server thật:
  *
- * Căn cứ: gói thật của con Rùa (`species=59`) đã lớn `harvestPer=100` nhưng
- * `numEggOne=0` — loài này không bao giờ sinh sản phẩm để thu.
+ *   Gà : "Thời gian lớn : 1 ngày - Bán : 950 xu - … - Sản phẩm : 20 trứng gà
+ *         sau mỗi 6 giờ - … - Thời gian sống: 7 ngày"
+ *   Heo: "Thời gian lớn : 2 ngày - … - Không  có sản phẩm - Thời gian sống: 20 ngày"
+ *   Chó: "Giữ nhà chống trộm - Thời gian sống: 15 ngày"   (không có thời gian lớn)
+ *
+ * Đọc từ đây thay vì cứng hoá bảng loài: server đổi số là mình theo được ngay.
+ * Lưu ý "Không  có sản phẩm" trong dữ liệu thật có HAI dấu cách.
+ */
+export function parseAnimalSpec(desc: string): AnimalSpec {
+  const grow = /Thời gian lớn\s*:?\s*(\d+)\s*ngày/i.exec(desc);
+  const life = /Thời gian sống\s*:?\s*(\d+)\s*ngày/i.exec(desc);
+  return {
+    growMinutes: grow ? Number(grow[1]) * DAY_MINUTES : undefined,
+    lifeMinutes: life ? Number(life[1]) * DAY_MINUTES : undefined,
+    hasProduct: /Sản phẩm\s*:/i.test(desc) && !/Không\s+có\s+sản phẩm/i.test(desc),
+  };
+}
+
+/**
+ * Loài KHÔNG có sản phẩm thu hoạch — nuôi lớn rồi bán là hết vòng đời sử dụng.
+ *
+ * Căn cứ: mô tả từ server ghi thẳng "Không có sản phẩm" cho Heo 52, Cá chép 54,
+ * Trâu 58, Rùa 59, Thỏ 61. Mặc định ở đây CỐ Ý chỉ gồm ba loài người dùng nêu
+ * tên (52/54/59) — bán là không lấy lại được nên không tự ý nới mặc định; hai
+ * loài còn lại thêm được từ UI.
+ *
+ * Chó 53 và Mèo 57 là thú tiện ích (giữ nhà / hỗ trợ trộm), không bán.
  */
 export const SPECIES_SELL_WHEN_GROWN = [52, 54, 59];
 
 /**
- * Loài CÓ sản phẩm thu hoạch nhiều lần (trứng/sữa) — giữ lại để thu, chỉ bán
- * khi gần hết đời: Gà 50, Bò 51, Vịt 55.
+ * Loài CÓ sản phẩm thu nhiều lần — giữ lại để thu, chỉ bán khi gần hết đời.
+ * Mô tả từ server: Gà 50 (20 trứng/6h), Bò 51 (30 sữa/6h), Vịt 55 (20 trứng/6h),
+ * Cừu 56 (20 lông/12h), Dê 60 (40 sữa/4h). Mặc định chỉ gồm ba loài người dùng
+ * nêu tên; Cừu/Dê thêm được từ UI.
  */
 export const SPECIES_SELL_NEAR_DEATH = [50, 51, 55];
+
+/**
+ * Coi là "gần hết thời gian sống" khi đã sống quá tỉ lệ này của tuổi thọ.
+ * 0.9 = còn 10% đời — đủ sớm để bán được giá, đủ muộn để đã thu gần hết sản phẩm.
+ */
+export const NEAR_DEATH_RATIO = 0.9;
 
 /** `harvestPer` đạt mức này coi như đã lớn hẳn. */
 export const GROWN_PERCENT = 100;

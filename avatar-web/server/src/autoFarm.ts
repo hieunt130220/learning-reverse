@@ -4,10 +4,14 @@ import {
   GROWN_PERCENT,
   ITEM_FERTILIZER,
   ITEM_TONIC,
+  NEAR_DEATH_RATIO,
   SHOP_XU,
   SPECIES_SELL_NEAR_DEATH,
   SPECIES_SELL_WHEN_GROWN,
   foodForSpecies,
+  isCellRipe,
+  parseAnimalSpec,
+  isCellSpent,
 } from './game/farmData.js';
 import type { GameClient } from './game/client.js';
 
@@ -41,13 +45,18 @@ export interface AutoFarmConfig {
    * Loài chỉ bán khi gần hết thời gian sống — loài có sản phẩm thu nhiều lần.
    * Mặc định Gà 50 / Bò 51 / Vịt 55.
    *
-   * ⚠ CHƯA CHẠY: chưa xác định được `bornTime` là "đã sống được bao lâu" hay
-   * "còn sống được bao lâu", mà đó là trường duy nhất suy ra tuổi thọ còn lại.
-   * `bornProbe` bên dưới đang đo; khi biết chiều đếm thì mở phần này.
+   * Đã chạy được: đo trên server thật thấy `bornTime` ĐẾM LÊN +1 mỗi 60 giây =
+   * số phút kể từ lúc sinh, còn tuổi thọ nằm trong `desc` của bảng vật nuôi
+   * ("Thời gian sống: 7 ngày"). Bán khi `bornTime >= tuổi thọ × nearDeathRatio`.
    */
   sellNearDeathSpecies: number[];
   /** `harvestPer` tối thiểu để coi là đã lớn, dùng cho `sellWhenGrownSpecies`. */
   minGrowthToSell: number;
+  /**
+   * Sống quá tỉ lệ này của tuổi thọ thì coi là "gần hết thời gian sống".
+   * 0.9 = còn 10% đời.
+   */
+  nearDeathRatio: number;
   /**
    * Trần số con bán mỗi vòng. Giữ nhỏ: bán là thao tác không đảo ngược, nếu
    * điều kiện bị hiểu sai thì trần này chặn thiệt hại lại ở vài con.
@@ -102,6 +111,7 @@ const DEFAULTS: AutoFarmConfig = {
   sellWhenGrownSpecies: SPECIES_SELL_WHEN_GROWN,
   sellNearDeathSpecies: SPECIES_SELL_NEAR_DEATH,
   minGrowthToSell: GROWN_PERCENT,
+  nearDeathRatio: NEAR_DEATH_RATIO,
   maxSellsPerCycle: 3,
   feedAnimals: false,
   healAnimals: false,
@@ -226,6 +236,25 @@ export class AutoFarm extends EventEmitter {
       await invFresh;
       const idFarm = farm.idFarm;
       const cfg = this.cfg;
+
+      // Bảng vật nuôi: `desc` chứa "Thời gian lớn : N ngày" và "Thời gian sống:
+      // N ngày" — hai số quyết định khi nào bán. Chỉ xin khi còn thiếu (bảng
+      // tĩnh, gói ~13 KB). PHẢI gọi SAU enterFarm: server chỉ định tuyến lệnh
+      // farm sau GET_HANDLER, gọi trước thì gói 76 rơi vào hư không.
+      if (cfg.sellAnimals && this.client.animals.length === 0) {
+        const cat = new Promise<void>((resolve) => {
+          const t = setTimeout(resolve, 5000);
+          this.client.once('trees', () => {
+            clearTimeout(t);
+            resolve();
+          });
+        });
+        this.client.farm.getTreeInfo();
+        await cat;
+      }
+      const specs = new Map(
+        this.client.animals.map((a) => [a.id, parseAnimalSpec(a.desc)] as const),
+      );
       const { seedId, waterItemId, grassItemId, wormItemId, harvest, feedAnimals, stepDelayMs } = cfg;
 
       // Trần lệnh/vòng: việc bị cắt ở đây KHÔNG return khỏi runCycle (khác
@@ -239,16 +268,25 @@ export class AutoFarm extends EventEmitter {
       // Ghi cả khi không làm gì. `lastActions` vốn chỉ liệt kê việc ĐÃ làm, nên
       // "không có gì để làm" và "có việc nhưng lệnh bị server bỏ qua" đều hiện
       // ra y hệt nhau: một danh sách rỗng. Hai dòng dưới tách bạch hai ca đó.
-      const ripe = farm.cells.filter((c) => c.idTree !== -1 && c.time === 0).length;
+      const ripe = farm.cells.filter(isCellRipe).length;
       const emptyCells = farm.cells.filter((c) => c.idTree === -1).length;
+      const spent = farm.cells.filter(isCellSpent).length;
       const sick = farm.animals.filter((a) => a.health < cfg.minHealth).length;
       const hungry = farm.animals.filter((a) => a.hunger).length;
       const withProduct = farm.animals.filter((a) => a.numEggOne > 0).length;
-      const sellable = farm.animals.filter(
-        (a) => cfg.sellWhenGrownSpecies.includes(a.species) && a.harvestPer >= cfg.minGrowthToSell,
-      ).length;
+      const sellable = farm.animals.filter((a) => {
+        const s = specs.get(a.species);
+        if (!s) return false;
+        if (cfg.sellWhenGrownSpecies.includes(a.species)) {
+          return s.growMinutes !== undefined && a.bornTime >= s.growMinutes;
+        }
+        if (cfg.sellNearDeathSpecies.includes(a.species)) {
+          return s.lifeMinutes !== undefined && a.bornTime >= s.lifeMinutes * cfg.nearDeathRatio;
+        }
+        return false;
+      }).length;
       actions.push(
-        `[quét] ${farm.cells.length} ô: ${ripe} chín, ${emptyCells} trống · ` +
+        `[quét] ${farm.cells.length} ô: ${ripe} chín, ${emptyCells} trống, ${spent} vừa thu (time=-1) · ` +
           `${farm.animals.length} con: ${hungry} đói, ${sick} máu<${cfg.minHealth}, ` +
           `${withProduct} có sản phẩm, ${sellable} đủ lớn để bán`,
       );
@@ -357,10 +395,10 @@ export class AutoFarm extends EventEmitter {
       for (const c of farm.cells) {
         if (this.aborted) return;
         if (overBudget()) break;
-        if (harvest && c.idTree !== -1 && c.time === 0) {
+        if (harvest && isCellRipe(c)) {
           this.client.farm.harvest(idFarm, c.index);
           sent += 1;
-          actions.push(`ô ${c.index}: thu hoạch`);
+          actions.push(`ô ${c.index}: thu hoạch (hervestPer=${c.hervestPer})`);
           await sleep(stepDelayMs);
         }
         if (seedId !== undefined && c.idTree === -1) {
@@ -397,32 +435,50 @@ export class AutoFarm extends EventEmitter {
         // nhầm con khác. Duyệt từ index CAO xuống THẤP: bỏ phần tử phía sau
         // không làm xê dịch phần tử phía trước, nên index còn lại luôn đúng —
         // đúng cả khi server để lại chỗ trống thay vì dồn mảng.
-        const desc = [...farm.animals].sort((x, y) => y.index - x.index);
+        const byIndexDesc = [...farm.animals].sort((x, y) => y.index - x.index);
         let sold = 0;
-        for (const a of desc) {
+        let noSpec = 0;
+        for (const a of byIndexDesc) {
           if (this.aborted) return;
           if (overBudget()) break;
           if (sold >= cfg.maxSellsPerCycle) break;
-          if (!cfg.sellWhenGrownSpecies.includes(a.species)) continue;
-          if (a.harvestPer < cfg.minGrowthToSell) continue;
           // Còn sản phẩm chưa lấy thì để vòng sau: thu hoạch xong mới bán.
           if (a.numEggOne > 0) continue;
+
+          const whenGrown = cfg.sellWhenGrownSpecies.includes(a.species);
+          const nearDeath = cfg.sellNearDeathSpecies.includes(a.species);
+          if (!whenGrown && !nearDeath) continue;
+
+          // Thông số lấy từ mô tả trong bảng vật nuôi. Không có bảng thì KHÔNG
+          // bán — thà bỏ lỡ một vòng còn hơn bán nhầm bằng phỏng đoán.
+          const spec = specs.get(a.species);
+          if (!spec) {
+            noSpec += 1;
+            continue;
+          }
+
+          let why: string | undefined;
+          if (whenGrown && spec.growMinutes !== undefined && a.bornTime >= spec.growMinutes) {
+            why = `đã lớn (${fmtDays(a.bornTime)}/${fmtDays(spec.growMinutes)} tuổi lớn)`;
+          } else if (nearDeath && spec.lifeMinutes !== undefined) {
+            const limit = spec.lifeMinutes * cfg.nearDeathRatio;
+            if (a.bornTime >= limit) {
+              why = `gần hết đời (${fmtDays(a.bornTime)}/${fmtDays(spec.lifeMinutes)} tuổi thọ)`;
+            }
+          }
+          if (!why) continue;
+
           this.client.farm.sellAnimal(idFarm, a.index);
           sent += 1;
           sold += 1;
-          actions.push(`vật nuôi ${a.index} (loài ${a.species}): BÁN — đã lớn ${a.harvestPer}%`);
+          actions.push(`vật nuôi ${a.index} (loài ${a.species}): BÁN — ${why}`);
           await sleep(stepDelayMs);
         }
         if (sold >= cfg.maxSellsPerCycle) {
           actions.push(`đã đạt trần ${cfg.maxSellsPerCycle} con bán/vòng`);
         }
-        // Loài có sản phẩm: chỉ bán khi gần hết đời — chưa bật, xem chú thích
-        // của `sellNearDeathSpecies`.
-        const nearDeath = farm.animals.filter((a) => cfg.sellNearDeathSpecies.includes(a.species));
-        if (nearDeath.length > 0) {
-          actions.push(
-            `bỏ qua bán ${nearDeath.length} con có sản phẩm: chưa biết bornTime đếm lên hay xuống`,
-          );
+        if (noSpec > 0) {
+          actions.push(`bỏ qua bán ${noSpec} con: chưa có bảng vật nuôi để biết tuổi lớn/tuổi thọ`);
         }
       }
 
@@ -535,6 +591,9 @@ export class AutoFarm extends EventEmitter {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 2220 phút -> "1,5 ngày" — số ngày dễ đối chiếu với mô tả loài hơn số phút. */
+const fmtDays = (minutes: number): string => `${(minutes / (24 * 60)).toFixed(1)} ngày`;
 
 /** Lọc danh sách loài về mảng số thật; thứ không phải mảng mới rơi về mặc định. */
 const speciesList = (v: unknown, fallback: number[]): number[] =>
