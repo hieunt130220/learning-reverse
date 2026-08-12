@@ -457,7 +457,14 @@ export class GameClient extends EventEmitter {
         try {
           this.farmState = decodeFarmData(msg.getData());
           const n = this.farmState.cells.filter((c) => c.idTree !== -1).length;
-          this.emit('log', `dữ liệu farm: ${this.farmState.cells.length} ô (${n} ô có cây)`);
+          // In kèm idFarm và playerId: lệnh farm gửi đi lấy idFarm làm tham số
+          // đầu, nhưng client thật gọi `doUsingItem(playerId, …)`. Hai số này
+          // khác nhau là nghi can số một khi lệnh gửi đi mà không có tác dụng.
+          this.emit(
+            'log',
+            `dữ liệu farm: ${this.farmState.cells.length} ô (${n} ô có cây) · ` +
+              `idFarm=${this.farmState.idFarm} playerId=${this.playerId}`,
+          );
           this.emit('farm', this.farmState);
         } catch (err) {
           this.emit('log', `giải mã farm lỗi: ${(err as Error).message}`);
