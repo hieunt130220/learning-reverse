@@ -19,9 +19,15 @@ export function AutoFarmPanel({
   const [grassItemId, setGrassItemId] = useState('123');
   const [wormItemId, setWormItemId] = useState('124');
   const [harvest, setHarvest] = useState(true);
+  const [harvestAnimals, setHarvestAnimals] = useState(true);
   const [feedAnimals, setFeedAnimals] = useState(true);
   const [healAnimals, setHealAnimals] = useState(true);
   const [fertilizeCells, setFertilizeCells] = useState(true);
+  // Bán là thao tác KHÔNG lấy lại được -> mặc định tắt, người dùng phải tự bật.
+  const [sellAnimals, setSellAnimals] = useState(false);
+  // Heo 52 / Cá chép 54 / Rùa 59 — loài không có sản phẩm, nuôi lớn rồi bán.
+  const [sellWhenGrown, setSellWhenGrown] = useState('52, 54, 59');
+  const [maxSellsPerCycle, setMaxSellsPerCycle] = useState(3);
   const [autoBuy, setAutoBuy] = useState(false);
   const [buyBudgetXu, setBuyBudgetXu] = useState(5000);
   const [intervalSec, setIntervalSec] = useState(120);
@@ -29,6 +35,12 @@ export function AutoFarmPanel({
   const [err, setErr] = useState('');
 
   const num = (s: string) => (s.trim() === '' ? undefined : Number(s));
+  /** "52, 54, 59" -> [52, 54, 59]. Bỏ phần rác thay vì gửi NaN lên server. */
+  const idList = (s: string) =>
+    s
+      .split(',')
+      .map((x) => Number(x.trim()))
+      .filter((x) => Number.isFinite(x));
 
   async function start() {
     setErr('');
@@ -39,9 +51,13 @@ export function AutoFarmPanel({
         grassItemId: num(grassItemId),
         wormItemId: num(wormItemId),
         harvest,
+        harvestAnimals,
         feedAnimals,
         healAnimals,
         fertilizeCells,
+        sellAnimals,
+        sellWhenGrownSpecies: idList(sellWhenGrown),
+        maxSellsPerCycle,
         autoBuy,
         buyBudgetXu,
         intervalMs: intervalSec * 1000,
@@ -130,7 +146,54 @@ export function AutoFarmPanel({
           />
           bón phân khi sức sống &lt; 100
         </label>
+        <label className="inline">
+          <input
+            type="checkbox"
+            checked={harvestAnimals}
+            onChange={(e) => setHarvestAnimals(e.target.checked)}
+            style={{ width: 'auto' }}
+          />
+          thu hoạch sản phẩm vật nuôi
+        </label>
       </div>
+      <div className="row">
+        <label className="inline">
+          <input
+            type="checkbox"
+            checked={sellAnimals}
+            onChange={(e) => setSellAnimals(e.target.checked)}
+            style={{ width: 'auto' }}
+          />
+          bán vật nuôi khi đã lớn
+        </label>
+        <label className="inline">
+          loài bán khi lớn
+          <input
+            value={sellWhenGrown}
+            onChange={(e) => setSellWhenGrown(e.target.value)}
+            placeholder="không bán"
+            disabled={!sellAnimals}
+          />
+        </label>
+        <label className="inline">
+          trần bán/vòng
+          <input
+            type="number"
+            value={maxSellsPerCycle}
+            onChange={(e) => setMaxSellsPerCycle(Number(e.target.value))}
+            disabled={!sellAnimals}
+          />
+        </label>
+      </div>
+      {sellAnimals && (
+        <p className="hint" style={{ color: '#d9a441' }}>
+          ⚠ Bán vật nuôi là <b>không lấy lại được</b>. Chỉ bán con thuộc danh sách loài ở trên và đã
+          lớn 100%; con còn sản phẩm chưa thu thì để lại vòng sau. Loài <b>có</b> sản phẩm (Gà 50, Bò
+          51, Vịt 55) chưa bán theo tuổi thọ vì chưa biết <code>bornTime</code> đếm lên hay đếm
+          xuống — mỗi vòng auto ghi một dòng <code>[đo]</code> vào nhật ký khi giá trị này đổi, đủ
+          vài vòng là xác định được.
+        </p>
+      )}
       <div className="row">
         <label className="inline">
           <input

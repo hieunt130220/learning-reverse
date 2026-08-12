@@ -1,9 +1,12 @@
 import { EventEmitter } from 'node:events';
 
 import {
+  GROWN_PERCENT,
   ITEM_FERTILIZER,
   ITEM_TONIC,
   SHOP_XU,
+  SPECIES_SELL_NEAR_DEATH,
+  SPECIES_SELL_WHEN_GROWN,
   foodForSpecies,
 } from './game/farmData.js';
 import type { GameClient } from './game/client.js';
@@ -19,6 +22,37 @@ export interface AutoFarmConfig {
   wormItemId?: number;
   /** Có thu hoạch ô đã chín không. */
   harvest: boolean;
+  /**
+   * Thu hoạch sản phẩm vật nuôi (trứng/sữa) khi `numEggOne > 0`. Miễn phí và
+   * không phá huỷ gì nên mặc định bật, cùng nhóm với `harvest`.
+   */
+  harvestAnimals: boolean;
+  /**
+   * Bán vật nuôi. **Mặc định TẮT vì bán là KHÔNG LẤY LẠI ĐƯỢC** — phải bật rõ
+   * ràng. Xem `sellWhenGrownSpecies` / `sellNearDeathSpecies`.
+   */
+  sellAnimals: boolean;
+  /**
+   * Loài bán ngay khi lớn — loài không có sản phẩm để thu, giữ lại chỉ tốn
+   * thức ăn. Mặc định Heo 52 / Cá chép 54 / Rùa 59.
+   */
+  sellWhenGrownSpecies: number[];
+  /**
+   * Loài chỉ bán khi gần hết thời gian sống — loài có sản phẩm thu nhiều lần.
+   * Mặc định Gà 50 / Bò 51 / Vịt 55.
+   *
+   * ⚠ CHƯA CHẠY: chưa xác định được `bornTime` là "đã sống được bao lâu" hay
+   * "còn sống được bao lâu", mà đó là trường duy nhất suy ra tuổi thọ còn lại.
+   * `bornProbe` bên dưới đang đo; khi biết chiều đếm thì mở phần này.
+   */
+  sellNearDeathSpecies: number[];
+  /** `harvestPer` tối thiểu để coi là đã lớn, dùng cho `sellWhenGrownSpecies`. */
+  minGrowthToSell: number;
+  /**
+   * Trần số con bán mỗi vòng. Giữ nhỏ: bán là thao tác không đảo ngược, nếu
+   * điều kiện bị hiểu sai thì trần này chặn thiệt hại lại ở vài con.
+   */
+  maxSellsPerCycle: number;
   /** Cho vật nuôi đang đói ăn (thức ăn chọn theo loài). */
   feedAnimals: boolean;
   /** Dùng Thuốc bổ (#122) cho vật nuôi có máu dưới `minHealth`. Mỗi liều +20. */
@@ -63,6 +97,12 @@ export interface AutoFarmState {
 
 const DEFAULTS: AutoFarmConfig = {
   harvest: true,
+  harvestAnimals: true,
+  sellAnimals: false,
+  sellWhenGrownSpecies: SPECIES_SELL_WHEN_GROWN,
+  sellNearDeathSpecies: SPECIES_SELL_NEAR_DEATH,
+  minGrowthToSell: GROWN_PERCENT,
+  maxSellsPerCycle: 3,
   feedAnimals: false,
   healAnimals: false,
   minHealth: 100,
@@ -92,6 +132,14 @@ export class AutoFarm extends EventEmitter {
   private lastRun?: number;
   private lastError?: string;
   private lastActions: string[] = [];
+  /**
+   * Đo `bornTime` giữa các vòng để biết nó đếm LÊN (đã sống được) hay XUỐNG
+   * (còn sống được) — chưa xác định được từ gói tĩnh, mà đó là trường duy nhất
+   * suy ra "gần hết thời gian sống". Key `index:species` vì `index` (= IDDB)
+   * bị dồn lại sau mỗi lần bán. Không gửi gói tin nào: chỉ đọc dữ liệu farm mà
+   * vòng nào cũng đã xin sẵn.
+   */
+  private bornProbe = new Map<string, { value: number; at: number }>();
 
   constructor(private readonly client: GameClient) {
     super();
@@ -112,6 +160,15 @@ export class AutoFarm extends EventEmitter {
     this.stop();
     this.cfg = { ...DEFAULTS, ...cfg };
     if (this.cfg.stepDelayMs < 300) throw new Error('stepDelayMs tối thiểu 300ms');
+    // Hai danh sách này tới thẳng từ HTTP body (JSON tuỳ ý) và điều khiển thao
+    // tác KHÔNG ĐẢO NGƯỢC — chuẩn hoá ngay lúc nhận thay vì tin tưởng ở mỗi
+    // vòng. Mảng rỗng là ý muốn hợp lệ ("không bán loài nào"), chỉ thứ không
+    // phải mảng mới rơi về mặc định.
+    this.cfg.sellWhenGrownSpecies = speciesList(cfg.sellWhenGrownSpecies, SPECIES_SELL_WHEN_GROWN);
+    this.cfg.sellNearDeathSpecies = speciesList(cfg.sellNearDeathSpecies, SPECIES_SELL_NEAR_DEATH);
+    if (!Number.isFinite(this.cfg.maxSellsPerCycle) || this.cfg.maxSellsPerCycle < 0) {
+      throw new Error('maxSellsPerCycle phải là số không âm');
+    }
     this.aborted = false;
     this.cycle = 0;
     this.lastError = undefined;
@@ -177,6 +234,25 @@ export class AutoFarm extends EventEmitter {
       // cho tới khi được xử lý.
       let sent = 0;
       const overBudget = () => sent >= cfg.maxActionsPerCycle;
+
+      // --- Đo bornTime ------------------------------------------------------
+      // Dấu của delta trả lời trực tiếp: âm = đếm ngược (còn sống được bao
+      // lâu), dương = đếm lên (đã sống được bao lâu). Kèm số giây thật giữa 2
+      // lần đọc để suy ra đơn vị. Chỉ đọc, không gửi gói tin nào.
+      const nowMs = Date.now();
+      for (const a of farm.animals) {
+        const key = `${a.index}:${a.species}`;
+        const prev = this.bornProbe.get(key);
+        if (prev && prev.value !== a.bornTime) {
+          const delta = a.bornTime - prev.value;
+          const secs = Math.round((nowMs - prev.at) / 1000);
+          actions.push(
+            `[đo] vật nuôi ${a.index} (loài ${a.species}): bornTime ${prev.value} -> ${a.bornTime} ` +
+              `(${delta > 0 ? '+' : ''}${delta} sau ${secs}s)`,
+          );
+        }
+        this.bornProbe.set(key, { value: a.bornTime, at: nowMs });
+      }
 
       // --- Tính nhu cầu vật phẩm cho vòng này -----------------------------
       const need = new Map<number, number>();
@@ -266,6 +342,61 @@ export class AutoFarm extends EventEmitter {
         }
       }
 
+      // Thu hoạch sản phẩm vật nuôi (trứng/sữa): miễn phí và không phá huỷ gì
+      // nên cùng nhóm ưu tiên với thu hoạch ô. `numEggOne > 0` = đang có sản
+      // phẩm chờ lấy — căn cứ: con Rùa (loài không có sản phẩm) đo được
+      // `numEggOne = 0` dù `harvestPer` đã 100.
+      if (cfg.harvestAnimals) {
+        for (const a of farm.animals) {
+          if (this.aborted) return;
+          if (overBudget()) break;
+          if (a.numEggOne <= 0) continue;
+          this.client.farm.harvestAnimal(idFarm, a.index);
+          sent += 1;
+          actions.push(`vật nuôi ${a.index}: thu hoạch ${a.numEggOne} sản phẩm`);
+          await sleep(stepDelayMs);
+        }
+      }
+
+      // --- Bán vật nuôi -----------------------------------------------------
+      // KHÔNG ĐẢO NGƯỢC ĐƯỢC: mặc định tắt, và khi bật vẫn chặn nhiều lớp
+      // (chỉ đúng loài trong danh sách, phải đủ lớn, còn sản phẩm thì để lại,
+      // và trần `maxSellsPerCycle` mỗi vòng).
+      if (cfg.sellAnimals) {
+        // `iddb` = vị trí trong mảng `animals`. Bán một con thì các con đứng
+        // SAU nó tụt index xuống 1, nên index đọc từ ảnh chụp đầu vòng sẽ trỏ
+        // nhầm con khác. Duyệt từ index CAO xuống THẤP: bỏ phần tử phía sau
+        // không làm xê dịch phần tử phía trước, nên index còn lại luôn đúng —
+        // đúng cả khi server để lại chỗ trống thay vì dồn mảng.
+        const desc = [...farm.animals].sort((x, y) => y.index - x.index);
+        let sold = 0;
+        for (const a of desc) {
+          if (this.aborted) return;
+          if (overBudget()) break;
+          if (sold >= cfg.maxSellsPerCycle) break;
+          if (!cfg.sellWhenGrownSpecies.includes(a.species)) continue;
+          if (a.harvestPer < cfg.minGrowthToSell) continue;
+          // Còn sản phẩm chưa lấy thì để vòng sau: thu hoạch xong mới bán.
+          if (a.numEggOne > 0) continue;
+          this.client.farm.sellAnimal(idFarm, a.index);
+          sent += 1;
+          sold += 1;
+          actions.push(`vật nuôi ${a.index} (loài ${a.species}): BÁN — đã lớn ${a.harvestPer}%`);
+          await sleep(stepDelayMs);
+        }
+        if (sold >= cfg.maxSellsPerCycle) {
+          actions.push(`đã đạt trần ${cfg.maxSellsPerCycle} con bán/vòng`);
+        }
+        // Loài có sản phẩm: chỉ bán khi gần hết đời — chưa bật, xem chú thích
+        // của `sellNearDeathSpecies`.
+        const nearDeath = farm.animals.filter((a) => cfg.sellNearDeathSpecies.includes(a.species));
+        if (nearDeath.length > 0) {
+          actions.push(
+            `bỏ qua bán ${nearDeath.length} con có sản phẩm: chưa biết bornTime đếm lên hay xuống`,
+          );
+        }
+      }
+
       // Chữa bệnh: ưu tiên cao (vật nuôi có thể chết) — đặt TRƯỚC cho ăn/chăm
       // sóc ô vì cùng lý do trên. Thuốc bổ +20 máu/liều, dùng lặp tới khi đủ
       // minHealth.
@@ -338,7 +469,10 @@ export class AutoFarm extends EventEmitter {
       }
       // Tưới nước KHÔNG được server đẩy kèm INFO_CELL, nên state cục bộ vẫn giữ
       // isArid cũ. Xin lại dữ liệu farm cuối vòng để UI phản ánh đúng thực tế.
-      if (actions.length > 0 && !this.aborted) {
+      // Điều kiện là `sent` chứ không phải `actions`: `actions` còn chứa dòng
+      // chẩn đoán ([đo], "bỏ qua…") không đổi trạng thái farm, refresh theo nó
+      // là gửi thừa một gói mỗi vòng.
+      if (sent > 0 && !this.aborted) {
         const refreshed = new Promise<void>((resolve) => {
           const t = setTimeout(resolve, 5000);
           this.client.once('farm', () => {
@@ -372,3 +506,7 @@ export class AutoFarm extends EventEmitter {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Lọc danh sách loài về mảng số thật; thứ không phải mảng mới rơi về mặc định. */
+const speciesList = (v: unknown, fallback: number[]): number[] =>
+  Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)) : fallback;

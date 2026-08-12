@@ -390,6 +390,24 @@ export const FOOD = {
   CHO: 119,
 };
 
+/**
+ * Loài KHÔNG có sản phẩm thu hoạch — nuôi lớn rồi bán là hết vòng đời sử dụng:
+ * Heo 52, Cá chép 54, Rùa 59.
+ *
+ * Căn cứ: gói thật của con Rùa (`species=59`) đã lớn `harvestPer=100` nhưng
+ * `numEggOne=0` — loài này không bao giờ sinh sản phẩm để thu.
+ */
+export const SPECIES_SELL_WHEN_GROWN = [52, 54, 59];
+
+/**
+ * Loài CÓ sản phẩm thu hoạch nhiều lần (trứng/sữa) — giữ lại để thu, chỉ bán
+ * khi gần hết đời: Gà 50, Bò 51, Vịt 55.
+ */
+export const SPECIES_SELL_NEAR_DEATH = [50, 51, 55];
+
+/** `harvestPer` đạt mức này coi như đã lớn hẳn. */
+export const GROWN_PERCENT = 100;
+
 /** Loài -> id thức ăn tương ứng, suy từ tên vật phẩm và loài. CHƯA kiểm chứng. */
 export function foodForSpecies(species: number): number | undefined {
   if (species === 50 || species === 55) return FOOD.GIA_CAM;

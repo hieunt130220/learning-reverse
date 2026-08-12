@@ -300,6 +300,38 @@ repeat nAnimal:
 
 `desc` chứa sẵn thời gian lớn và giá bán, vd *"Thời gian lớn : 1 ngày - Bán : 950 xu"*.
 
+### `harvestPer` = phần trăm LỚN, không phải phần trăm sản phẩm
+
+Gói thật của con Rùa (`species=59`): `harvestPer=100` nhưng `numEggOne=0`. Rùa là loài
+**không có sản phẩm** để thu — nếu `harvestPer` là mức sẵn sàng của sản phẩm thì loài này
+không bao giờ lên được 100. Vậy:
+
+| trường | nghĩa | dùng để |
+|---|---|---|
+| `harvestPer` | % lớn (100 = lớn hẳn) | biết con vật đã lớn chưa |
+| `numEggOne` | số sản phẩm đang chờ thu | `> 0` thì gọi `doHarvestAnimal` |
+
+Phân loài theo sản phẩm: **không có sản phẩm** Heo 52 / Cá chép 54 / Rùa 59 — nuôi lớn
+rồi bán. **Có sản phẩm** (thu nhiều lần) Gà 50 / Bò 51 / Vịt 55 — giữ lại để thu.
+
+### ⚠ `bornTime` — CHƯA xác định chiều đếm
+
+`bornTime` (i32, +0x94) là trường duy nhất suy ra được "còn sống được bao lâu", nhưng
+gói tĩnh không cho biết nó đếm LÊN (đã sống được) hay XUỐNG (còn lại). Mẫu duy nhất đo
+được: con Rùa `bornTime=990` lúc đã lớn 100%.
+
+`AutoFarm.bornProbe` đang đo: mỗi vòng so `bornTime` với vòng trước, ghi
+`[đo] vật nuôi … bornTime 990 -> 930 (-60 sau 120s)` vào `lastActions`. Dấu của delta
+trả lời câu hỏi, khoảng giây thật cho biết đơn vị. **Chừng nào chưa có kết quả thì
+không bán loài có sản phẩm theo tuổi thọ.**
+
+### ⚠ Bán vật nuôi làm xê dịch IDDB
+
+`iddb` = vị trí trong mảng `animals`. Bán một con thì các con đứng sau tụt index xuống 1,
+nên index đọc từ ảnh chụp đầu vòng sẽ trỏ nhầm con khác. `AutoFarm` duyệt từ index **CAO
+xuống THẤP**: bỏ phần tử phía sau không làm xê dịch phần tử phía trước, đúng cả khi
+server để lại chỗ trống thay vì dồn mảng.
+
 ### Địa chỉ hoá: IDDB = vị trí trong danh sách
 
 `FarmScr.IActionSetAnimal/IActionChichThuocAnimal/IActionTriBenh3` đều gọi
