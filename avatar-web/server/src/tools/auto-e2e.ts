@@ -92,7 +92,10 @@ auto.start({
   feedAnimals: true,
   fertilizeCells: false,
   sellAnimals: false, // không bán — không đảo ngược được
-  waterItemId: undefined,
+  waterItemId: process.env.WATER === '1' ? 100 : undefined,
+  grassItemId: process.env.WATER === '1' ? 123 : undefined,
+  wormItemId: process.env.WATER === '1' ? 124 : undefined,
+  maxActionsPerCycle: Number(process.env.MAX_ACTIONS ?? 20),
   intervalMs: Number(process.env.INTERVAL_MS ?? 600_000),
   stepDelayMs: 900,
 });

@@ -347,6 +347,55 @@ không bao giờ đúng, nên auto không bao giờ trồng lại. `doPlantSeed`
 `time=-1` bị server bỏ qua im lặng (thử cả hạt #6 lẫn #10, kho còn đủ hạt) → **cách
 làm ô trống trở lại vẫn CHƯA tìm ra**, phần trồng còn treo ở đây.
 
+### ✓ Section 3 gói kho = NÔNG SẢN (nơi thu hoạch đổ vào)
+
+`decodeInventory` trả 4 section nhưng `GameClient` chỉ ghép section 1 (hạt) + 2
+(vật phẩm) rồi bỏ phần còn lại. **Section 3 chính là nông sản**: `#6×2813` lúa,
+`#50×530` trứng gà, `#51×202` sữa bò — id trùng bảng cây với cây trồng, trùng bảng
+vật nuôi với trứng/sữa.
+
+Đây là lý do "thu hoạch xong kho vẫn y nguyên": lệnh chạy đúng, hàng vào section 3,
+chỉ là chỗ đó không được đọc. Kiểm chứng bằng chênh lệch: thu sản phẩm của 12 con
+Gà → `#50` đi từ **530 → 730** (+200, khớp 12 con × 16–19 trứng).
+
+Section 4 (`#283 #279 #297 #208`) vẫn chưa rõ.
+
+### ✓ Thu sản phẩm vật nuôi: `numEggOne > 0` là đúng
+
+Lúc đo lần đầu mọi con đều `numEggOne=0` nên `doHarvestAnimal` bị từ chối im lặng —
+đúng, vì Gà đẻ mỗi 6 giờ và vừa thu xong. Sau một đêm `numEggOne` lên 12–19 và
+`doHarvestAnimal` chạy ngon, trứng vào section 3. Vậy **`numEggOne` mới là số sản
+phẩm chờ thu**, không phải `harvestPer`.
+
+### ⚠ cmd 61 KHÔNG phải "giá trồng cây"
+
+`doRequestPricePlant` (cmd 61) thực ra hỏi giá **mở ô đất mới**. Server trả:
+
+> "Bạn có muốn mở ô đất thứ 47 bằng 634800 xu hoặc 634 lượng không ?"
+
+Farm có 46 ô nên "ô thứ 47" là ô kế tiếp. Tên method trong `FarmService` dễ gây
+hiểu nhầm; nó đi cặp với `doOpenLand` (cmd 60), không liên quan tới việc gieo hạt.
+
+### ⚠ Ô đã thu hoạch: CÂY VẪN CÒN, không trồng đè được
+
+Byte thô của ô 43 (offset 349 trong gói 69) sau khi thu:
+
+```
+06 ffff 64 64 00 00 00     idTree=6  time=-1  vitality=100  hervestPer=100
+```
+
+`nAnimal` đọc ngay sau vùng ô vẫn ra đúng 16 → decode **không** lệch, `idTree=6`
+là thật: **cây lúa vẫn nằm trên ô**, đây không phải ô trống. Sau 7 giờ vẫn y
+nguyên, không tự về trạng thái trồng được.
+
+Đã thử và đều bị bỏ qua im lặng: `doHervest` lại (cả ngay sau lẫn sau 7 giờ),
+`doPlantSeed` hạt #6 / #10 / #5, cmd 66 với `idSeed` rộng i16, và `doJoinFarm`
+trước khi trồng. Trong dải 51–103 **không có** lệnh nào mang nghĩa "nhổ/dọn cây".
+
+→ Cách đưa ô đã thu về trạng thái trồng được **vẫn chưa tìm ra**. Điều kiện ô
+trống `idTree === -1` nhiều khả năng vẫn đúng cho ô trống thật (mở bằng
+`doOpenLand`), chỉ là chưa có ô nào như vậy để thử.
+
 ### ✓ Tuổi lớn / tuổi thọ nằm trong `desc` bảng vật nuôi
 
 `desc` (gói 76) có sẵn mọi thứ cần cho luật bán — không phải cứng hoá bảng loài:
