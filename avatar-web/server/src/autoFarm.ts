@@ -206,6 +206,8 @@ export class AutoFarm extends EventEmitter {
       }
 
       // --- Mua bù phần thiếu ----------------------------------------------
+      // Đi TRƯỚC các bước dùng vật phẩm (chữa bệnh/cho ăn) để có hàng trong
+      // kho trước khi dùng — không đổi vị trí bước này.
       if (cfg.autoBuy && this.client.inventory.length === 0) {
         actions.push('bỏ qua tự mua: chưa đọc được kho');
       } else if (cfg.autoBuy) {
@@ -241,23 +243,32 @@ export class AutoFarm extends EventEmitter {
         if (spent > 0) await sleep(stepDelayMs);
       }
 
-      // Vật nuôi: địa chỉ hoá bằng vị trí trong danh sách (= IDDB), thức ăn
-      // chọn theo loài. Kiểm chứng: useItem(farm, 0, 116) làm hunger true->false.
-      if (feedAnimals) {
-        for (const a of farm.animals) {
-          if (this.aborted) return;
-          if (overBudget()) break;
-          if (!a.hunger) continue;
-          const food = foodForSpecies(a.species);
-          if (food === undefined) continue;
-          this.client.farm.useItem(idFarm, a.index, food);
+      // Thu hoạch + trồng lại: ưu tiên cao nhất (đây là mục đích chính của
+      // farm) và không phụ thuộc kho (thu hoạch không tốn gì, trồng dùng hạt
+      // đã có sẵn — không nằm trong `need`/tự mua). Đặt TRƯỚC cho ăn/chữa
+      // bệnh/chăm sóc ô: nếu không, một nông trại tồn đọng nhiều việc phụ sẽ
+      // ngốn hết trần maxActionsPerCycle trước khi chạm tới thu hoạch/trồng,
+      // dù hai việc này đã bật — vòng nào cũng vậy, không chỉ vòng đầu.
+      for (const c of farm.cells) {
+        if (this.aborted) return;
+        if (overBudget()) break;
+        if (harvest && c.idTree !== -1 && c.time === 0) {
+          this.client.farm.harvest(idFarm, c.index);
           sent += 1;
-          actions.push(`vật nuôi ${a.index}: cho ăn #${food}`);
+          actions.push(`ô ${c.index}: thu hoạch`);
+          await sleep(stepDelayMs);
+        }
+        if (seedId !== undefined && c.idTree === -1) {
+          this.client.farm.plantSeed(idFarm, c.index, seedId);
+          sent += 1;
+          actions.push(`ô ${c.index}: trồng #${seedId}`);
           await sleep(stepDelayMs);
         }
       }
 
-      // Chữa bệnh: Thuốc bổ +20 máu/liều, dùng lặp tới khi đủ minHealth.
+      // Chữa bệnh: ưu tiên cao (vật nuôi có thể chết) — đặt TRƯỚC cho ăn/chăm
+      // sóc ô vì cùng lý do trên. Thuốc bổ +20 máu/liều, dùng lặp tới khi đủ
+      // minHealth.
       if (cfg.healAnimals) {
         for (const a of farm.animals) {
           if (this.aborted) return;
@@ -275,6 +286,24 @@ export class AutoFarm extends EventEmitter {
         }
       }
 
+      // Vật nuôi: địa chỉ hoá bằng vị trí trong danh sách (= IDDB), thức ăn
+      // chọn theo loài. Kiểm chứng: useItem(farm, 0, 116) làm hunger true->false.
+      if (feedAnimals) {
+        for (const a of farm.animals) {
+          if (this.aborted) return;
+          if (overBudget()) break;
+          if (!a.hunger) continue;
+          const food = foodForSpecies(a.species);
+          if (food === undefined) continue;
+          this.client.farm.useItem(idFarm, a.index, food);
+          sent += 1;
+          actions.push(`vật nuôi ${a.index}: cho ăn #${food}`);
+          await sleep(stepDelayMs);
+        }
+      }
+
+      // Chăm sóc ô (tưới/nhổ cỏ/bắt sâu/bón phân): việc bảo trì thấp ưu tiên
+      // hơn, đi cuối cùng.
       for (const c of farm.cells) {
         if (this.aborted) return;
         if (overBudget()) break;
@@ -301,18 +330,6 @@ export class AutoFarm extends EventEmitter {
           this.client.farm.useItem(idFarm, c.index, ITEM_FERTILIZER);
           sent += 1;
           actions.push(`ô ${c.index}: bón phân (sức sống ${c.vitalityPer})`);
-          await sleep(stepDelayMs);
-        }
-        if (harvest && c.idTree !== -1 && c.time === 0) {
-          this.client.farm.harvest(idFarm, c.index);
-          sent += 1;
-          actions.push(`ô ${c.index}: thu hoạch`);
-          await sleep(stepDelayMs);
-        }
-        if (seedId !== undefined && c.idTree === -1) {
-          this.client.farm.plantSeed(idFarm, c.index, seedId);
-          sent += 1;
-          actions.push(`ô ${c.index}: trồng #${seedId}`);
           await sleep(stepDelayMs);
         }
       }

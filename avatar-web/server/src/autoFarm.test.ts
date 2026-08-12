@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 
 import { AutoFarm } from './autoFarm.js';
-import { ITEM_WATER } from './game/farmData.js';
+import { ITEM_GRASS, ITEM_TONIC, ITEM_WATER } from './game/farmData.js';
 import type { GameClient } from './game/client.js';
-import type { FarmCell, FarmState } from './game/farmData.js';
+import type { FarmAnimal, FarmCell, FarmState } from './game/farmData.js';
 
 function cell(index: number, overrides: Partial<FarmCell> = {}): FarmCell {
   return {
@@ -17,6 +17,21 @@ function cell(index: number, overrides: Partial<FarmCell> = {}): FarmCell {
     isArid: false,
     isWorm: false,
     isGrass: false,
+    ...overrides,
+  };
+}
+
+function animal(index: number, overrides: Partial<FarmAnimal> = {}): FarmAnimal {
+  return {
+    index,
+    species: 50,
+    bornTime: 0,
+    health: 100,
+    harvestPer: 0,
+    numEggOne: 0,
+    hunger: false,
+    flag20: false,
+    flag21: false,
     ...overrides,
   };
 }
@@ -129,4 +144,52 @@ test('stop() giữa vòng không bị trần lệnh ghi đè — vẫn dừng ng
   assert.ok(callsAtStop > 0, 'phải đã gửi ít nhất một lệnh trước khi dừng');
   await new Promise((r) => setTimeout(r, 500));
   assert.equal(client.calls.length, callsAtStop, 'không gửi thêm lệnh nào sau stop()');
+});
+
+test('thu hoạch/trồng/chữa bệnh không bị việc chăm sóc ô (nhổ cỏ) chiếm hết trần lệnh', async () => {
+  // Ô chín cần thu hoạch, ô trống cần trồng, rồi một loạt ô cần nhổ cỏ —
+  // trước fix, nhổ cỏ nằm trước thu hoạch/trồng trong vòng lặp nên chiếm hết
+  // maxActionsPerCycle, khiến thu hoạch/trồng/chữa bệnh không bao giờ chạy.
+  const farmState: FarmState = {
+    idFarm: 1,
+    cells: [
+      cell(0, { idTree: 5, time: 0 }), // sẵn sàng thu hoạch
+      cell(1, { idTree: -1 }), // trống, cần trồng
+      // time: 100 (chưa chín) để không lẫn vào điều kiện thu hoạch.
+      ...Array.from({ length: 5 }, (_, i) => cell(2 + i, { isGrass: true, time: 100 })),
+    ],
+    animals: [animal(0, { health: 80 })], // thiếu 20 máu = 1 liều thuốc bổ
+    updatedAt: Date.now(),
+  };
+  const client = new FakeClient(farmState);
+  const auto = new AutoFarm(client as unknown as GameClient);
+
+  const done = new Promise<void>((resolve) =>
+    auto.on('state', (s) => {
+      if (s.cycle > 0) resolve();
+    }),
+  );
+  auto.start({
+    harvest: true,
+    seedId: 5,
+    healAnimals: true,
+    minHealth: 100,
+    grassItemId: ITEM_GRASS,
+    maxActionsPerCycle: 3, // đúng bằng thu hoạch(1) + trồng(1) + 1 liều thuốc bổ(1)
+    stepDelayMs: 300,
+  });
+  await done;
+
+  assert.ok(client.calls.includes('harvest:0'), 'phải thu hoạch ô 0');
+  assert.ok(client.calls.includes('plantSeed'), 'phải trồng lại ô trống');
+  assert.ok(
+    client.calls.includes(`useItem:0:${ITEM_TONIC}`),
+    'phải chữa bệnh cho vật nuôi 0',
+  );
+  assert.equal(
+    client.calls.some((c) => c.endsWith(`:${ITEM_GRASS}`)),
+    false,
+    'nhổ cỏ phải nhường chỗ cho thu hoạch/trồng/chữa bệnh khi hết trần lệnh',
+  );
+  auto.stop();
 });
