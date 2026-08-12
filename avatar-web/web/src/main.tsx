@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
+import { AccountDetailPage } from './accounts/AccountDetailPage.js';
 import { AccountsPage } from './accounts/AccountsPage.js';
 import { AuthProvider, RequireAuth } from './auth/useAuth.js';
 import { LoginPage } from './auth/LoginPage.js';
@@ -20,6 +21,14 @@ createRoot(document.getElementById('root')!).render(
             element={
               <RequireAuth>
                 <AccountsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/accounts/:id"
+            element={
+              <RequireAuth>
+                <AccountDetailPage />
               </RequireAuth>
             }
           />

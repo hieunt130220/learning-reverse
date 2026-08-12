@@ -5426,7 +5426,7 @@ phần "vận hành"; Task 17 lấy phần "debug" rồi xoá `App.tsx`.
   - `LogPanel({ logs })`
   - `cellNeeds(c: FarmCell): string[]` (xuất khẩu từ `AssetsPanel.tsx`)
 
-- [ ] **Step 1: Viết `panels/LogPanel.tsx`**
+- [x] **Step 1: Viết `panels/LogPanel.tsx`**
 
 `web/src/accounts/panels/LogPanel.tsx`:
 
@@ -5462,7 +5462,7 @@ export function LogPanel({ logs }: { logs: LogLine[] }) {
 }
 ```
 
-- [ ] **Step 2: Viết `panels/StatusPanel.tsx`**
+- [x] **Step 2: Viết `panels/StatusPanel.tsx`**
 
 `web/src/accounts/panels/StatusPanel.tsx`:
 
@@ -5530,7 +5530,7 @@ export function StatusPanel({
 }
 ```
 
-- [ ] **Step 3: Viết `panels/AutoFarmPanel.tsx`**
+- [x] **Step 3: Viết `panels/AutoFarmPanel.tsx`**
 
 Chuyển `AutoPanel` từ `web/src/App.tsx` dòng 276–415 sang file mới, đổi đúng những chỗ sau:
 
@@ -5620,7 +5620,7 @@ Bổ sung một dòng vào phần chú thích của panel, ngay sau đoạn `<p 
       </p>
 ```
 
-- [ ] **Step 4: Viết `panels/AssetsPanel.tsx`**
+- [x] **Step 4: Viết `panels/AssetsPanel.tsx`**
 
 Gộp `FarmPanel` (`App.tsx` 417–502) và `AnimalPanel` (`App.tsx` 252–274) cùng hàm
 `cellNeeds` (242–250) vào một file. Đổi:
@@ -5740,7 +5740,7 @@ Cụ thể, `FarmSection` sau khi sửa bắt đầu bằng:
 
 phần còn lại (lưới ô và khối `sel`) chép nguyên từ `App.tsx` dòng 465–501.
 
-- [ ] **Step 5: Viết `AccountDetailPage.tsx`**
+- [x] **Step 5: Viết `AccountDetailPage.tsx`**
 
 `web/src/accounts/AccountDetailPage.tsx`:
 
@@ -5893,7 +5893,7 @@ export function AccountDetailPage() {
 }
 ```
 
-- [ ] **Step 6: Nối route vào `main.tsx`**
+- [x] **Step 6: Nối route vào `main.tsx`**
 
 Thêm import `import { AccountDetailPage } from './accounts/AccountDetailPage.js';` và
 thêm route ngay sau route `/accounts`:
@@ -5909,7 +5909,7 @@ thêm route ngay sau route `/accounts`:
           />
 ```
 
-- [ ] **Step 7: Style cho header có nút quay lại**
+- [x] **Step 7: Style cho header có nút quay lại**
 
 Thêm vào cuối `web/src/styles.css`:
 
@@ -5925,12 +5925,12 @@ header a {
 }
 ```
 
-- [ ] **Step 8: Build**
+- [x] **Step 8: Build**
 
 Run: `cd web && npm run build`
 Expected: build thành công.
 
-- [ ] **Step 9: Kiểm tay**
+- [x] **Step 9: Kiểm tay**
 
 1. Từ danh sách bấm vào một tài khoản → vào `/accounts/:id`, thấy tab Vận hành.
 2. Bấm "Kết nối" rồi "Vào nông trại" → lưới ô và kho hiện ra **không cần F5**.
@@ -5938,7 +5938,7 @@ Expected: build thành công.
 4. Bấm nút quay lại rồi vào lại → dữ liệu nạp lại đúng (kiểm chứng `subscribe` gửi lại snapshot).
 5. Mở hai tab cùng một tài khoản → cả hai cùng cập nhật.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add web/src/accounts web/src/main.tsx web/src/styles.css

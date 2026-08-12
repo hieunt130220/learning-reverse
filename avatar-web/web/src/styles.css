@@ -388,3 +388,14 @@ table.accounts td.row {
 header .hint {
   margin-left: auto;
 }
+
+/* --- header trang chi tiết --- */
+header a {
+  font-size: 18px;
+  text-decoration: none;
+  margin-right: 4px;
+}
+
+.app > .tabs {
+  margin-bottom: 12px;
+}
