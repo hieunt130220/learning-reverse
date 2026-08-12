@@ -79,13 +79,20 @@ Task này gánh toàn bộ phần dựng khung (deps, script test, tsconfig) vì
   - `encryptSecret(key: Buffer, aad: string, plain: string): string`
   - `decryptSecret(key: Buffer, aad: string, boxed: string): string`
 
-- [ ] **Step 1: Thêm dependency và script**
+- [x] **Step 1: Thêm dependency và script**
 
 ```bash
 cd server
-npm install better-sqlite3@^11.8.0 argon2@^0.41.1
+npm install better-sqlite3@^12.11.1 argon2@^0.44.0
 npm install -D @types/better-sqlite3@^7.6.12
 ```
+
+Cả hai là native module. Bản `better-sqlite3@11` và `argon2@0.41` **không có prebuilt
+cho Node 25** nên rơi vào build bằng node-gyp, và trên máy này Python của Homebrew đang
+hỏng (`pyexpat` link nhầm `libexpat` hệ thống) nên build thất bại. Hai bản trên có
+prebuilt sẵn, cài xong chạy được ngay. `argon2@0.44` mang sẵn `argon2.d.cts` với
+**named export** — dùng `import { argon2id, hash, verify, type Options } from 'argon2'`,
+không có default export.
 
 Sửa khối `"scripts"` trong `server/package.json` thành:
 
@@ -100,7 +107,7 @@ Sửa khối `"scripts"` trong `server/package.json` thành:
   },
 ```
 
-- [ ] **Step 2: Loại test khỏi bản build**
+- [x] **Step 2: Loại test khỏi bản build**
 
 Thêm `"exclude"` vào `server/tsconfig.json` (giữ nguyên mọi thứ khác):
 
@@ -109,7 +116,7 @@ Thêm `"exclude"` vào `server/tsconfig.json` (giữ nguyên mọi thứ khác):
   "exclude": ["src/**/*.test.ts", "src/test-helpers.ts"]
 ```
 
-- [ ] **Step 3: Viết test cho `config`**
+- [x] **Step 3: Viết test cho `config`**
 
 `server/src/config.test.ts`:
 
@@ -150,7 +157,7 @@ test('NODE_ENV=production bật isProduction', () => {
 });
 ```
 
-- [ ] **Step 4: Viết test cho `secretBox`**
+- [x] **Step 4: Viết test cho `secretBox`**
 
 `server/src/crypto/secretBox.test.ts`:
 
@@ -203,12 +210,12 @@ test('định dạng lạ thì ném lỗi rõ ràng', () => {
 });
 ```
 
-- [ ] **Step 5: Chạy test để xác nhận thất bại**
+- [x] **Step 5: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module './config.js'` và `'./secretBox.js'`.
 
-- [ ] **Step 6: Viết `config.ts`**
+- [x] **Step 6: Viết `config.ts`**
 
 `server/src/config.ts`:
 
@@ -263,7 +270,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 }
 ```
 
-- [ ] **Step 7: Viết `crypto/secretBox.ts`**
+- [x] **Step 7: Viết `crypto/secretBox.ts`**
 
 `server/src/crypto/secretBox.ts`:
 
@@ -310,7 +317,7 @@ export function decryptSecret(key: Buffer, aad: string, boxed: string): string {
 }
 ```
 
-- [ ] **Step 8: Viết `tools/gen-key.ts`**
+- [x] **Step 8: Viết `tools/gen-key.ts`**
 
 `server/src/tools/gen-key.ts`:
 
@@ -321,17 +328,17 @@ import crypto from 'node:crypto';
 console.log(`MASTER_KEY=${crypto.randomBytes(32).toString('base64')}`);
 ```
 
-- [ ] **Step 9: Chạy test để xác nhận đã pass**
+- [x] **Step 9: Chạy test để xác nhận đã pass**
 
 Run: `cd server && npm test`
 Expected: PASS — 12 test.
 
-- [ ] **Step 10: Kiểm tra `gen-key` chạy được**
+- [x] **Step 10: Kiểm tra `gen-key` chạy được**
 
 Run: `cd server && npm run gen-key`
 Expected: một dòng `MASTER_KEY=<44 ký tự base64>`.
 
-- [ ] **Step 11: Typecheck và commit**
+- [x] **Step 11: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
@@ -356,7 +363,7 @@ git commit -m "feat(server): cấu hình từ env và mã hoá bí mật AES-256
   - `openDb(file: string): Db` — bật `foreign_keys`, chạy schema, idempotent
   - `newTestDb(): Db` — trong `test-helpers.ts`, DB `:memory:` đã migrate
 
-- [ ] **Step 1: Viết test**
+- [x] **Step 1: Viết test**
 
 `server/src/db/index.test.ts`:
 
@@ -433,12 +440,12 @@ test('chạy migration hai lần không lỗi', () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test để xác nhận thất bại**
+- [x] **Step 2: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module '../test-helpers.js'`.
 
-- [ ] **Step 3: Viết `db/schema.sql`**
+- [x] **Step 3: Viết `db/schema.sql`**
 
 `server/src/db/schema.sql`:
 
@@ -479,7 +486,7 @@ CREATE TABLE IF NOT EXISTS avatar_accounts (
 CREATE INDEX IF NOT EXISTS idx_avatar_accounts_user ON avatar_accounts(user_id);
 ```
 
-- [ ] **Step 4: Viết `db/index.ts`**
+- [x] **Step 4: Viết `db/index.ts`**
 
 `server/src/db/index.ts`:
 
@@ -510,7 +517,7 @@ export function openDb(file: string): Db {
 }
 ```
 
-- [ ] **Step 5: Viết `test-helpers.ts`**
+- [x] **Step 5: Viết `test-helpers.ts`**
 
 `server/src/test-helpers.ts`:
 
@@ -528,12 +535,12 @@ export function newTestDb(): Db {
 export const TEST_KEY = crypto.createHash('sha256').update('test-master-key').digest();
 ```
 
-- [ ] **Step 6: Chạy test để xác nhận pass**
+- [x] **Step 6: Chạy test để xác nhận pass**
 
 Run: `cd server && npm test`
 Expected: PASS — toàn bộ test của Task 1 và Task 2.
 
-- [ ] **Step 7: Typecheck và commit**
+- [x] **Step 7: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
@@ -564,7 +571,7 @@ git commit -m "feat(server): schema SQLite và tầng mở DB"
   - `findUserByEmail(db: Db, email: string): User | null`
   - `findUserById(db: Db, id: number): User | null`
 
-- [ ] **Step 1: Viết test cho `password`**
+- [x] **Step 1: Viết test cho `password`**
 
 `server/src/auth/password.test.ts`:
 
@@ -602,7 +609,7 @@ test('độ dài tối thiểu là 10', () => {
 });
 ```
 
-- [ ] **Step 2: Viết test cho `users`**
+- [x] **Step 2: Viết test cho `users`**
 
 `server/src/auth/users.test.ts`:
 
@@ -642,12 +649,12 @@ test('email trùng (khác hoa thường) bị chặn', () => {
 });
 ```
 
-- [ ] **Step 3: Chạy test để xác nhận thất bại**
+- [x] **Step 3: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module './password.js'` và `'./users.js'`.
 
-- [ ] **Step 4: Viết `auth/password.ts`**
+- [x] **Step 4: Viết `auth/password.ts`**
 
 `server/src/auth/password.ts`:
 
@@ -686,7 +693,7 @@ export async function verifyDummy(plain: string): Promise<void> {
 }
 ```
 
-- [ ] **Step 5: Viết `auth/users.ts`**
+- [x] **Step 5: Viết `auth/users.ts`**
 
 `server/src/auth/users.ts`:
 
@@ -740,12 +747,12 @@ export function findUserById(db: Db, id: number): User | null {
 }
 ```
 
-- [ ] **Step 6: Chạy test để xác nhận pass**
+- [x] **Step 6: Chạy test để xác nhận pass**
 
 Run: `cd server && npm test`
 Expected: PASS.
 
-- [ ] **Step 7: Typecheck và commit**
+- [x] **Step 7: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
@@ -773,7 +780,7 @@ git commit -m "feat(server): hash mật khẩu argon2id và CRUD người dùng"
   - `destroySession(db: Db, rawId: string): void`
   - `purgeExpiredSessions(db: Db, now?: number): number`
 
-- [ ] **Step 1: Viết test**
+- [x] **Step 1: Viết test**
 
 `server/src/auth/sessions.test.ts`:
 
@@ -875,12 +882,12 @@ test('purge dọn đúng những phiên đã hết hạn', () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test để xác nhận thất bại**
+- [x] **Step 2: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module './sessions.js'`.
 
-- [ ] **Step 3: Viết `auth/sessions.ts`**
+- [x] **Step 3: Viết `auth/sessions.ts`**
 
 `server/src/auth/sessions.ts`:
 
@@ -953,12 +960,12 @@ export function purgeExpiredSessions(db: Db, now = Date.now()): number {
 }
 ```
 
-- [ ] **Step 4: Chạy test để xác nhận pass**
+- [x] **Step 4: Chạy test để xác nhận pass**
 
 Run: `cd server && npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Typecheck và commit**
+- [x] **Step 5: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
@@ -990,7 +997,7 @@ git commit -m "feat(server): phiên web lưu bằng hash, tự gia hạn"
   - `setAutoEnabled(db, id: number, enabled: boolean, autoConfig: unknown | null, now?): void`
   - `readGamePass(db, key: Buffer, id: number): string`
 
-- [ ] **Step 1: Viết test**
+- [x] **Step 1: Viết test**
 
 `server/src/accounts/repo.test.ts`:
 
@@ -1158,12 +1165,12 @@ test('xoá rồi thì không còn trong danh sách', () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test để xác nhận thất bại**
+- [x] **Step 2: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module './repo.js'`.
 
-- [ ] **Step 3: Viết `accounts/repo.ts`**
+- [x] **Step 3: Viết `accounts/repo.ts`**
 
 `server/src/accounts/repo.ts`:
 
@@ -1389,12 +1396,12 @@ export function readGamePass(db: Db, key: Buffer, id: number): string {
 }
 ```
 
-- [ ] **Step 4: Chạy test để xác nhận pass**
+- [x] **Step 4: Chạy test để xác nhận pass**
 
 Run: `cd server && npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Typecheck và commit**
+- [x] **Step 5: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
@@ -1426,7 +1433,7 @@ git commit -m "feat(server): kho tài khoản avatar, mật khẩu mã hoá bu�
   - `authenticateCookieHeader(db: Db, header: string | undefined): AuthUser | null`
   - `makeRequireAuth(db: Db, isProduction: boolean): RequestHandler`
 
-- [ ] **Step 1: Viết test cho `rateLimit`**
+- [x] **Step 1: Viết test cho `rateLimit`**
 
 `server/src/auth/rateLimit.test.ts`:
 
@@ -1473,7 +1480,7 @@ test('không giữ khoá đã hết hạn mãi trong RAM', () => {
 });
 ```
 
-- [ ] **Step 2: Viết test cho `middleware`**
+- [x] **Step 2: Viết test cho `middleware`**
 
 `server/src/auth/middleware.test.ts`:
 
@@ -1527,12 +1534,12 @@ test('phiên còn sống nhưng user đã bị xoá thì trả null', () => {
 });
 ```
 
-- [ ] **Step 3: Chạy test để xác nhận thất bại**
+- [x] **Step 3: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module './rateLimit.js'` và `'./middleware.js'`.
 
-- [ ] **Step 4: Viết `auth/rateLimit.ts`**
+- [x] **Step 4: Viết `auth/rateLimit.ts`**
 
 `server/src/auth/rateLimit.ts`:
 
@@ -1582,7 +1589,7 @@ export function createRateLimiter(opts: { max: number; windowMs: number }): Rate
 }
 ```
 
-- [ ] **Step 5: Viết `auth/middleware.ts`**
+- [x] **Step 5: Viết `auth/middleware.ts`**
 
 `server/src/auth/middleware.ts`:
 
@@ -1678,12 +1685,12 @@ export function makeRequireAuth(db: Db, isProduction: boolean): RequestHandler {
 }
 ```
 
-- [ ] **Step 6: Chạy test để xác nhận pass**
+- [x] **Step 6: Chạy test để xác nhận pass**
 
 Run: `cd server && npm test`
 Expected: PASS.
 
-- [ ] **Step 7: Typecheck và commit**
+- [x] **Step 7: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
@@ -1709,7 +1716,7 @@ git commit -m "feat(server): middleware xác thực bằng cookie và rate limit
     `interface TestServer { url: string; close(): Promise<void>; fetch(path: string, init?: RequestInit & { json?: unknown }): Promise<TestResponse> }`
     và `interface TestResponse { status: number; body: any; cookies: string[] }`
 
-- [ ] **Step 1: Bổ sung helper dựng server test**
+- [x] **Step 1: Bổ sung helper dựng server test**
 
 Thêm vào cuối `server/src/test-helpers.ts`:
 
@@ -1784,7 +1791,7 @@ export async function startTestServer(app: Express): Promise<TestServer> {
 }
 ```
 
-- [ ] **Step 2: Viết test cho route auth**
+- [x] **Step 2: Viết test cho route auth**
 
 `server/src/auth/routes.test.ts`:
 
@@ -1955,12 +1962,12 @@ test('/me khi chưa đăng nhập trả 401', async () => {
 });
 ```
 
-- [ ] **Step 3: Chạy test để xác nhận thất bại**
+- [x] **Step 3: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module './routes.js'`.
 
-- [ ] **Step 4: Viết `auth/routes.ts`**
+- [x] **Step 4: Viết `auth/routes.ts`**
 
 `server/src/auth/routes.ts`:
 
@@ -2069,12 +2076,12 @@ export function authRouter(deps: AuthDeps): Router {
 }
 ```
 
-- [ ] **Step 5: Chạy test để xác nhận pass**
+- [x] **Step 5: Chạy test để xác nhận pass**
 
 Run: `cd server && npm test`
 Expected: PASS. Test rate limit chạy ~10 lần argon2 nên có thể mất vài giây.
 
-- [ ] **Step 6: Typecheck và commit**
+- [x] **Step 6: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
@@ -2096,11 +2103,14 @@ git commit -m "feat(server): route đăng ký/đăng nhập/đăng xuất theo m
   - `interface AvatarCredentials { host: string; port: number; user: string; pass: string; device?: Partial<DeviceProfile>; autoEnabled: boolean; autoConfig?: Partial<AutoFarmConfig> }`
   - `interface LogLine { t: number; line: string }`
   - `interface AvatarSessionSnapshot { accountId, status, lastError, playerId, money, farm, auto, macro, inventory, trees, items, animals, logs, traffic, retries, nextRetryAt, desiredConnected }`
-  - `interface AvatarSessionOptions { accountId, loadCredentials, onEvent, onPermanentFailure, createClient?, setTimeoutFn?, clearTimeoutFn?, random? }`
+  - `interface AvatarSessionOptions { accountId, loadCredentials, onEvent, onPermanentFailure, createClient?, createAutoFarm?, createMacroRunner?, setTimeoutFn?, clearTimeoutFn?, random? }`
+    — `createAutoFarm`/`createMacroRunner` là test seam bắt buộc: `AutoFarm.runCycle`
+    dùng `setTimeout` thật với chu kỳ 5s/120s và không nhận đồng hồ từ ngoài, nên
+    test dùng `AutoFarm` thật sẽ treo hàng giây và không xác định được.
   - `class AvatarSession` với `start()`, `stop()`, `startAuto(cfg)`, `stopAuto()`, `startMacro(m)`, `stopMacro()`, `callFarm(name, args)`, `sendRaw(cmd, fields)`, `enterFarm()`, `lastPacketHex(cmd)`, `snapshot()`, getter `status`, `desiredConnected`
   - `RETRY_BASE_MS = 5000`, `RETRY_MAX_MS = 300_000`
 
-- [ ] **Step 1: Viết test**
+- [x] **Step 1: Viết test**
 
 `server/src/session/avatarSession.test.ts`:
 
@@ -2370,12 +2380,12 @@ test('snapshot có đủ trường cho UI', async () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test để xác nhận thất bại**
+- [x] **Step 2: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module './avatarSession.js'`.
 
-- [ ] **Step 3: Viết `session/avatarSession.ts`**
+- [x] **Step 3: Viết `session/avatarSession.ts`**
 
 `server/src/session/avatarSession.ts`:
 
@@ -2719,12 +2729,12 @@ export class AvatarSession {
 }
 ```
 
-- [ ] **Step 4: Chạy test để xác nhận pass**
+- [x] **Step 4: Chạy test để xác nhận pass**
 
 Run: `cd server && npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Typecheck và commit**
+- [x] **Step 5: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
@@ -2747,7 +2757,7 @@ git commit -m "feat(server): AvatarSession bọc GameClient kèm backoff và cá
   - `interface SessionManagerDeps { db: Db; masterKey: Buffer; maxSessions: number; broadcast(userId: number, accountId: number, type: string, payload: unknown): void; createSession?(opts: AvatarSessionOptions): AvatarSession; setTimeoutFn?: typeof setTimeout }`
   - `class SessionManager` với `connect(accountId): Promise<void>`, `disconnect(accountId): void`, `destroy(accountId): void`, `peek(accountId): AvatarSession | undefined`, `require(accountId): AvatarSession`, `snapshot(accountId): AvatarSessionSnapshot | null`, `bootstrap(): Promise<void>`, `stopAll(): void`, `size(): number`
 
-- [ ] **Step 1: Viết test**
+- [x] **Step 1: Viết test**
 
 `server/src/session/manager.test.ts`:
 
@@ -2962,12 +2972,12 @@ test('snapshot trả null khi chưa có phiên', async () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test để xác nhận thất bại**
+- [x] **Step 2: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module './manager.js'`.
 
-- [ ] **Step 3: Viết `session/manager.ts`**
+- [x] **Step 3: Viết `session/manager.ts`**
 
 `server/src/session/manager.ts`:
 
@@ -3116,12 +3126,12 @@ export class SessionManager {
 }
 ```
 
-- [ ] **Step 4: Chạy test để xác nhận pass**
+- [x] **Step 4: Chạy test để xác nhận pass**
 
 Run: `cd server && npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Typecheck và commit**
+- [x] **Step 5: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
@@ -3145,7 +3155,7 @@ git commit -m "feat(server): SessionManager với trần phiên và bootstrap gi
   - `requireOwnedAccount(db: Db): RequestHandler` — đặt `req.account`, xuất khẩu để Task 11 dùng lại
   - `interface AccountRequest extends AuthedRequest { account?: AvatarAccount }`
 
-- [ ] **Step 1: Viết test**
+- [x] **Step 1: Viết test**
 
 `server/src/accounts/routes.test.ts`:
 
@@ -3331,12 +3341,12 @@ test('id không phải số thì 400', async () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test để xác nhận thất bại**
+- [x] **Step 2: Chạy test để xác nhận thất bại**
 
 Run: `cd server && npm test`
 Expected: FAIL — `Cannot find module './routes.js'`.
 
-- [ ] **Step 3: Viết `accounts/routes.ts`**
+- [x] **Step 3: Viết `accounts/routes.ts`**
 
 `server/src/accounts/routes.ts`:
 
@@ -3462,12 +3472,12 @@ export function accountsRouter(deps: AccountsDeps): Router {
 }
 ```
 
-- [ ] **Step 4: Chạy test để xác nhận pass**
+- [x] **Step 4: Chạy test để xác nhận pass**
 
 Run: `cd server && npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Typecheck và commit**
+- [x] **Step 5: Typecheck và commit**
 
 ```bash
 cd server && npm run typecheck
