@@ -456,109 +456,113 @@ export class AutoFarm extends EventEmitter {
         await tick();
       }
 
-      // Thu hoạch sản phẩm vật nuôi (trứng/sữa): miễn phí và không phá huỷ gì
-      // nên cùng nhóm ưu tiên với thu hoạch ô. `numEggOne > 0` = đang có sản
-      // phẩm chờ lấy — căn cứ: con Rùa (loài không có sản phẩm) đo được
-      // `numEggOne = 0` dù `harvestPer` đã 100.
-      if (cfg.harvestAnimals) {
-        for (const a of farm.animals) {
-          if (this.aborted) return;
-            if (a.numEggOne <= 0) continue;
+      // --- GIAI ĐOẠN VẬT NUÔI ------------------------------------------------
+      // `index` là vị trí trong mảng `animals`: bán một con làm mọi con index cao
+      // hơn tụt xuống 1. Duyệt từ index CAO xuống THẤP thì việc bỏ phần tử phía
+      // sau không xê dịch phần tử phía trước, nên index đọc từ ảnh chụp đầu vòng
+      // luôn còn đúng — kể cả khi server để lại chỗ trống thay vì dồn mảng.
+      // Gộp cả bốn việc vào một lượt cũng sửa luôn một lỗi cũ: trước đây bán
+      // chạy trước rồi chữa/cho ăn mới duyệt lại từ ảnh chụp cũ, nên sau một
+      // lần bán là các lệnh sau đó trỏ nhầm con.
+      const byIndexDesc = [...farm.animals].sort((x, y) => y.index - x.index);
+      let sold = 0;
+      let noSpec = 0;
+
+      for (const a of byIndexDesc) {
+        if (this.aborted) return;
+        const name = this.client.animals.find((x) => x.id === a.species)?.name ?? `loài ${a.species}`;
+        const seen: string[] = [];
+        const did: string[] = [];
+
+        // Thu sản phẩm (trứng/sữa): miễn phí và không phá huỷ gì. `numEggOne > 0`
+        // = đang có sản phẩm chờ lấy — căn cứ: con Rùa (loài không có sản phẩm)
+        // đo được `numEggOne = 0` dù `harvestPer` đã 100.
+        if (cfg.harvestAnimals && a.numEggOne > 0) {
           this.client.farm.harvestAnimal(idFarm, a.index);
           sent += 1;
-          note(`vật nuôi ${a.index}: thu hoạch ${a.numEggOne} sản phẩm`);
+          seen.push(`${a.numEggOne} sản phẩm`);
+          did.push('thu sản phẩm');
           await tick();
         }
-      }
 
-      // --- Bán vật nuôi -----------------------------------------------------
-      // KHÔNG ĐẢO NGƯỢC ĐƯỢC: mặc định tắt, và khi bật vẫn chặn nhiều lớp
-      // (chỉ đúng loài trong danh sách, phải đủ lớn, còn sản phẩm thì để lại,
-      // và trần `maxSellsPerCycle` mỗi vòng).
-      if (cfg.sellAnimals) {
-        // `iddb` = vị trí trong mảng `animals`. Bán một con thì các con đứng
-        // SAU nó tụt index xuống 1, nên index đọc từ ảnh chụp đầu vòng sẽ trỏ
-        // nhầm con khác. Duyệt từ index CAO xuống THẤP: bỏ phần tử phía sau
-        // không làm xê dịch phần tử phía trước, nên index còn lại luôn đúng —
-        // đúng cả khi server để lại chỗ trống thay vì dồn mảng.
-        const byIndexDesc = [...farm.animals].sort((x, y) => y.index - x.index);
-        let sold = 0;
-        let noSpec = 0;
-        for (const a of byIndexDesc) {
-          if (this.aborted) return;
-            if (sold >= cfg.maxSellsPerCycle) break;
-          // Còn sản phẩm chưa lấy thì để vòng sau: thu hoạch xong mới bán.
-          if (a.numEggOne > 0) continue;
-
+        // Bán KHÔNG ĐẢO NGƯỢC ĐƯỢC: mặc định tắt, và khi bật vẫn chặn nhiều lớp
+        // (chỉ đúng loài trong danh sách, phải đủ lớn, còn sản phẩm thì để lại,
+        // và trần `maxSellsPerCycle` mỗi vòng). Xét TRƯỚC chữa/cho ăn để không
+        // đổ thuốc và thức ăn vào con sắp bán.
+        let didSell = false;
+        if (cfg.sellAnimals && sold < cfg.maxSellsPerCycle && a.numEggOne <= 0) {
           const whenGrown = cfg.sellWhenGrownSpecies.includes(a.species);
           const nearDeath = cfg.sellNearDeathSpecies.includes(a.species);
-          if (!whenGrown && !nearDeath) continue;
-
-          // Thông số lấy từ mô tả trong bảng vật nuôi. Không có bảng thì KHÔNG
-          // bán — thà bỏ lỡ một vòng còn hơn bán nhầm bằng phỏng đoán.
-          const spec = specs.get(a.species);
-          if (!spec) {
-            noSpec += 1;
-            continue;
-          }
-
-          let why: string | undefined;
-          if (whenGrown && spec.growMinutes !== undefined && a.bornTime >= spec.growMinutes) {
-            why = `đã lớn (${fmtDays(a.bornTime)}/${fmtDays(spec.growMinutes)} tuổi lớn)`;
-          } else if (nearDeath && spec.lifeMinutes !== undefined) {
-            const limit = spec.lifeMinutes * cfg.nearDeathRatio;
-            if (a.bornTime >= limit) {
-              why = `gần hết đời (${fmtDays(a.bornTime)}/${fmtDays(spec.lifeMinutes)} tuổi thọ)`;
+          if (whenGrown || nearDeath) {
+            // Thông số lấy từ mô tả trong bảng vật nuôi. Không có bảng thì KHÔNG
+            // bán — thà bỏ lỡ một vòng còn hơn bán nhầm bằng phỏng đoán.
+            const spec = specs.get(a.species);
+            if (!spec) {
+              noSpec += 1;
+            } else {
+              let why: string | undefined;
+              if (whenGrown && spec.growMinutes !== undefined && a.bornTime >= spec.growMinutes) {
+                why = `đã lớn (${fmtDays(a.bornTime)}/${fmtDays(spec.growMinutes)} tuổi lớn)`;
+              } else if (nearDeath && spec.lifeMinutes !== undefined) {
+                const limit = spec.lifeMinutes * cfg.nearDeathRatio;
+                if (a.bornTime >= limit) {
+                  why = `gần hết đời (${fmtDays(a.bornTime)}/${fmtDays(spec.lifeMinutes)} tuổi thọ)`;
+                }
+              }
+              if (why) {
+                this.client.farm.sellAnimal(idFarm, a.index);
+                sent += 1;
+                sold += 1;
+                didSell = true;
+                did.push(`BÁN — ${why}`);
+                await tick();
+              }
             }
           }
-          if (!why) continue;
+        }
 
-          this.client.farm.sellAnimal(idFarm, a.index);
-          sent += 1;
-          sold += 1;
-          note(`vật nuôi ${a.index} (loài ${a.species}): BÁN — ${why}`);
-          await tick();
-        }
-        if (sold >= cfg.maxSellsPerCycle) {
-          note(`đã đạt trần ${cfg.maxSellsPerCycle} con bán/vòng`);
-        }
-        if (noSpec > 0) {
-          note(`bỏ qua bán ${noSpec} con: chưa có bảng vật nuôi để biết tuổi lớn/tuổi thọ`);
-        }
-      }
-
-      // Chữa bệnh: ưu tiên cao (vật nuôi có thể chết) — đặt TRƯỚC cho ăn/chăm
-      // sóc ô vì cùng lý do trên. Thuốc bổ +20 máu/liều, dùng lặp tới khi đủ
-      // minHealth.
-      if (cfg.healAnimals) {
-        for (const a of farm.animals) {
-          if (this.aborted) return;
+        if (!didSell) {
+          // Thuốc bổ +20 máu mỗi liều (đo được 76 -> 96), dùng lặp tới khi đủ.
+          if (cfg.healAnimals && a.health < cfg.minHealth) {
             let hp = a.health;
-          let doses = 0;
-          while (hp < cfg.minHealth && doses < 10) {
-            this.client.farm.useItem(idFarm, a.index, ITEM_TONIC);
-            sent += 1;
-            hp += 20;
-            doses += 1;
-            await tick();
+            let doses = 0;
+            while (hp < cfg.minHealth && doses < 10) {
+              this.client.farm.useItem(idFarm, a.index, ITEM_TONIC);
+              sent += 1;
+              hp += 20;
+              doses += 1;
+              await tick();
+            }
+            seen.push(`máu ${a.health}`);
+            did.push(`${doses} liều thuốc bổ (->~${hp})`);
           }
-          if (doses > 0) note(`vật nuôi ${a.index}: ${doses} liều thuốc bổ (${a.health}->~${hp})`);
+          // Thức ăn chọn theo loài. Kiểm chứng: useItem(farm, 0, 116) làm
+          // hunger true -> false.
+          if (feedAnimals && a.hunger) {
+            const food = foodForSpecies(a.species);
+            if (food !== undefined) {
+              this.client.farm.useItem(idFarm, a.index, food);
+              sent += 1;
+              seen.push('đói');
+              did.push(`cho ăn #${food}`);
+              await tick();
+            }
+          }
         }
+
+        note(
+          did.length > 0
+            ? `[vật nuôi] ${a.index} (${name}): ${seen.length > 0 ? `${seen.join(', ')} -> ` : ''}${did.join(', ')}`
+            : `[vật nuôi] ${a.index} (${name}): không có việc`,
+        );
+        await tick();
       }
 
-      // Vật nuôi: địa chỉ hoá bằng vị trí trong danh sách (= IDDB), thức ăn
-      // chọn theo loài. Kiểm chứng: useItem(farm, 0, 116) làm hunger true->false.
-      if (feedAnimals) {
-        for (const a of farm.animals) {
-          if (this.aborted) return;
-            if (!a.hunger) continue;
-          const food = foodForSpecies(a.species);
-          if (food === undefined) continue;
-          this.client.farm.useItem(idFarm, a.index, food);
-          sent += 1;
-          note(`vật nuôi ${a.index}: cho ăn #${food}`);
-          await tick();
-        }
+      if (cfg.sellAnimals && sold >= cfg.maxSellsPerCycle) {
+        note(`đã đạt trần ${cfg.maxSellsPerCycle} con bán/vòng`);
+      }
+      if (noSpec > 0) {
+        note(`bỏ qua bán ${noSpec} con: chưa có bảng vật nuôi để biết tuổi lớn/tuổi thọ`);
       }
 
       // Tưới nước KHÔNG được server đẩy kèm INFO_CELL, nên state cục bộ vẫn giữ

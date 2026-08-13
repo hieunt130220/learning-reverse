@@ -247,9 +247,10 @@ test('thu hoạch sản phẩm vật nuôi khi numEggOne > 0, bỏ qua con chưa
   });
   await runOneCycle(client, { harvest: false, harvestAnimals: true });
 
+  // Giai đoạn vật nuôi duyệt index giảm dần để lệnh bán không trỏ nhầm con.
   assert.deepEqual(
     client.calls.filter((c) => c.startsWith('harvestAnimal:')),
-    ['harvestAnimal:0', 'harvestAnimal:2'],
+    ['harvestAnimal:2', 'harvestAnimal:0'],
   );
 });
 
@@ -477,4 +478,69 @@ test('mỗi ô đã duyệt sinh đúng một dòng log, kể cả ô không có
   assert.equal(cellLines.length, 2, `mỗi ô một dòng: ${JSON.stringify(cellLines)}`);
   assert.ok(cellLines[0].includes('ô 0:') && cellLines[0].includes('tưới'), cellLines[0]);
   assert.ok(cellLines[1].includes('ô 1: không có việc'), cellLines[1]);
+});
+
+test('làm hết cây rồi mới tới vật nuôi', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(0, { isArid: true }), cell(1, { isArid: true })],
+    animals: [animal(0, { hunger: true }), animal(1, { hunger: true })],
+    updatedAt: Date.now(),
+  });
+  await runOneCycle(client, { harvest: false, waterItemId: ITEM_WATER, feedAnimals: true });
+
+  const useItems = client.calls.filter((c) => c.startsWith('useItem:'));
+  const isWater = useItems.map((c) => c.endsWith(`:${ITEM_WATER}`));
+  const lastWater = isWater.lastIndexOf(true);
+  const firstFood = isWater.indexOf(false);
+  assert.ok(lastWater >= 0 && firstFood >= 0, `thiếu lệnh: ${JSON.stringify(useItems)}`);
+  assert.ok(lastWater < firstFood, `mọi lệnh cây phải đứng trước lệnh vật nuôi: ${JSON.stringify(useItems)}`);
+});
+
+test('mỗi con đã duyệt sinh đúng một dòng log, kể cả con không có việc', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [animal(0, { species: 50, hunger: true }), animal(1, { species: 50 })],
+    updatedAt: Date.now(),
+  });
+  const auto = new AutoFarm(client as unknown as GameClient);
+  const logs: string[] = [];
+  auto.on('log', (line: string) => logs.push(line));
+  const done = new Promise<void>((resolve) =>
+    auto.on('state', (s) => {
+      if (s.cycle > 0) resolve();
+    }),
+  );
+  auto.start({ harvest: false, feedAnimals: true, stepDelayMs: 300, startDelayMs: 0 });
+  await done;
+  auto.stop();
+
+  const lines = logs.filter((l) => l.startsWith('[vật nuôi] '));
+  assert.equal(lines.length, 2, `mỗi con một dòng: ${JSON.stringify(lines)}`);
+  assert.ok(lines[0].includes('1 (Gà): không có việc'), lines[0]);
+  assert.ok(lines[1].includes('0 (Gà)') && lines[1].includes('cho ăn'), lines[1]);
+});
+
+test('không tốn thuốc và thức ăn cho con sắp bán', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [animal(0, { species: 59, bornTime: 99999, health: 20, hunger: true })],
+    updatedAt: Date.now(),
+  });
+  await runOneCycle(client, {
+    harvest: false,
+    sellAnimals: true,
+    healAnimals: true,
+    feedAnimals: true,
+    minHealth: 100,
+  });
+
+  assert.ok(client.calls.includes('sellAnimal:0'), 'phải bán con đã quá tuổi lớn');
+  assert.equal(
+    client.calls.some((c) => c.startsWith('useItem:')),
+    false,
+    'con đã bán thì không chữa bệnh, không cho ăn',
+  );
 });
