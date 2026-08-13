@@ -283,29 +283,40 @@ export function isCellSpent(c: FarmCell): boolean {
  * - `time` **ĐẾM LÊN** +1 mỗi 60 giây = số phút kể từ lúc trồng (đo 2 lần cách
  *   nhau 60s: 491 -> 492). Điều kiện cũ `time === 0` vì thế chỉ đúng trong đúng
  *   một phút đầu sau khi trồng — nên auto **không bao giờ** thu hoạch.
- * - `hervestPer > 0` mới là tín hiệu chín. Trong 46 ô của farm thật chỉ ô 43 có
- *   `hervestPer=20`, và **chỉ ô đó** thu được: server trả `cmd 64` kèm hộp thoại
- *   *"Chúc mừng bạn đã nhận"*. 45 ô còn lại `hervestPer=0` đều bị bỏ qua im
- *   lặng, kể cả ô `time=501` (8,4 giờ) — tức `time` lớn KHÔNG có nghĩa là chín.
- * - `TreeInfo.growMinutes` của Lúa = 48 nhưng ô chín ở `time=2978` phút ≈ 49,6
- *   giờ, nên đơn vị của trường đó là **giờ**, không phải phút. Không dùng nó
- *   làm điều kiện: `hervestPer` là tín hiệu trực tiếp từ server, không phải suy
- *   ra từ bảng cây (mà muốn có bảng cây còn phải xin thêm gói 76).
+ * - Điều kiện chín là **đủ thời gian lớn**: `time >= growHours × 60`, với
+ *   `growHours` là `TreeInfo.growMinutes` (trường bị đặt sai tên, đơn vị là GIỜ).
+ *   Ba quan sát trên farm Lúa (`growHours=48` -> ngưỡng 2880) kẹp lấy ngưỡng:
+ *   ô 44 `time=2836` thử thu thì server IM LẶNG; ô 45 `time=2938` và một ô khác
+ *   `time=2978` thu được, server trả `cmd 64` *"Chúc mừng bạn đã nhận"*. Ngưỡng
+ *   nằm trong (2836, 2938] và 2880 rơi đúng vào đó.
+ * - `hervestPer` KHÔNG phải tín hiệu chín. Trước đây tưởng vậy vì bắt được một ô
+ *   `hervestPer=20` thu được, nhưng trên gói thật **cả 46 ô đều bằng 0** kể cả
+ *   những ô thu được — nên điều kiện cũ `hervestPer > 0` làm auto **không bao
+ *   giờ** thu hoạch. Vẫn giữ nó làm tín hiệu đủ (không cần), để còn thu được khi
+ *   chưa có bảng cây.
+ * - Không có bảng cây thì KHÔNG đoán: `time` lớn tự nó vô nghĩa nếu không biết
+ *   cây cần bao lâu (ô `time=501` của cây 48 giờ vẫn còn xanh).
  * - Ô vừa thu xong chuyển sang `time=-1, hervestPer=100` và **không** thu lại
  *   được (thử lại: server im lặng). Phải loại trừ, nếu không mỗi vòng auto lại
  *   bắn một lệnh vô ích vào đúng ô đó.
+ *
+ * @param growHours giờ để cây lớn, lấy từ `TreeInfo.growMinutes` của `c.idTree`.
+ *   Bỏ trống khi chưa xin được bảng cây (gói 76).
  */
-export function isCellRipe(c: FarmCell): boolean {
-  return c.idTree !== -1 && !isCellSpent(c) && c.hervestPer > 0;
+export function isCellRipe(c: FarmCell, growHours?: number): boolean {
+  if (c.idTree === -1 || isCellSpent(c)) return false;
+  if (c.hervestPer > 0) return true;
+  if (growHours === undefined) return false;
+  return c.time >= growHours * 60;
 }
 
 /** Ô cần chăm sóc gì — dùng cho macro tự động. */
-export function cellNeeds(c: FarmCell): string[] {
+export function cellNeeds(c: FarmCell, growHours?: number): string[] {
   const n: string[] = [];
   if (c.isArid) n.push('tưới');
   if (c.isGrass) n.push('nhổ cỏ');
   if (c.isWorm) n.push('bắt sâu');
-  if (isCellRipe(c)) n.push('thu hoạch');
+  if (isCellRipe(c, growHours)) n.push('thu hoạch');
   if (c.idTree === -1 || isCellSpent(c)) n.push('trống');
   return n;
 }

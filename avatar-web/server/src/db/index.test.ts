@@ -3,15 +3,42 @@ import assert from 'node:assert/strict';
 
 import { newTestDb } from '../test-helpers.js';
 
-test('tạo đủ 3 bảng', () => {
+test('tạo đủ bảng, gồm cache farm profile', () => {
   const db = newTestDb();
   const names = db
     .prepare<[], { name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")
     .all()
     .map((r) => r.name);
-  for (const t of ['users', 'web_sessions', 'avatar_accounts']) {
+  for (const t of ['users', 'web_sessions', 'avatar_accounts', 'avatar_farm_profile_cache']) {
     assert.ok(names.includes(t), `thiếu bảng ${t}`);
   }
+  db.close();
+});
+
+test('cache farm profile có FK xoá theo account', () => {
+  const db = newTestDb();
+  db.prepare('INSERT INTO users (id, email, password_hash, created_at) VALUES (1, ?, ?, 0)').run(
+    'profile@b.c',
+    'h',
+  );
+  db.prepare(
+    `INSERT INTO avatar_accounts
+       (id, user_id, label, game_user, game_pass_enc, host, port, created_at, updated_at)
+     VALUES (4, 1, 'nhãn', 'u', 'enc', 'h', 19129, 0, 0)`,
+  ).run();
+  db.prepare(
+    `INSERT INTO avatar_farm_profile_cache
+       (account_id, farm_id, cell_indices_json, cells_observed_at, updated_at)
+     VALUES (4, 12, '[2,7]', 100, 100)`,
+  ).run();
+
+  db.prepare('DELETE FROM avatar_accounts WHERE id = 4').run();
+
+  const row = db
+    .prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM avatar_farm_profile_cache')
+    .get();
+  assert.equal(row!.n, 0);
+  assert.deepEqual(db.pragma('foreign_key_check'), []);
   db.close();
 });
 

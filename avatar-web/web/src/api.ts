@@ -2,6 +2,7 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly body?: unknown,
   ) {
     super(message);
   }
@@ -26,11 +27,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     // Phiên hết hạn khi tab đang mở: đá về đăng nhập thay vì để UI trống trơn.
     if (location.pathname !== '/login') location.assign('/login');
   }
-  if (!res.ok) throw new ApiError(res.status, data?.error ?? `lỗi ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, data?.error ?? `lỗi ${res.status}`, data);
   return data as T;
 }
 
 export const apiGet = <T,>(path: string) => request<T>('GET', path);
 export const apiPost = <T,>(path: string, body?: unknown) => request<T>('POST', path, body ?? {});
+export const apiPut = <T,>(path: string, body: unknown) => request<T>('PUT', path, body);
 export const apiPatch = <T,>(path: string, body: unknown) => request<T>('PATCH', path, body);
 export const apiDelete = <T,>(path: string) => request<T>('DELETE', path);

@@ -474,6 +474,141 @@ button.ghost {
 .drawer-debug-link { justify-self: start; margin-bottom: 20px; }
 .dashboard-empty { text-align: center; }
 
+/* --- kế hoạch cây theo ô --- */
+.tree-plan-editor {
+  min-width: 0;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.tree-plan-heading {
+  color: var(--fg);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tree-plan-cache-note,
+.tree-plan-guidance {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.tree-plan-guidance {
+  padding: 9px 10px;
+  border: 1px solid #665122;
+  border-radius: 6px;
+  color: #e4bb61;
+  background: rgba(217, 164, 65, 0.08);
+}
+
+.tree-plan-toolbar { margin-top: 10px; }
+
+.tree-plan-refresh { white-space: normal; }
+
+.tree-plan-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.tree-plan-palette-item {
+  max-width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  background: #111722;
+  color: var(--fg);
+  font-weight: 500;
+  white-space: normal;
+}
+
+.tree-plan-palette-item small { color: var(--muted); }
+
+.tree-plan-palette-item[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.tree-plan-palette-item--default[aria-pressed='true'] { color: var(--accent); }
+.tree-plan-palette-item--skip[aria-pressed='true'] { color: #ffbc76; }
+.tree-plan-palette-item--seed[aria-pressed='true'] { color: var(--ok); }
+
+.tree-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+  margin-top: 12px;
+  touch-action: none;
+}
+
+.tree-plan-cell {
+  min-width: 0;
+  min-height: 66px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 5px 3px;
+  border: 1px solid var(--line);
+  background: #111722;
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  user-select: none;
+}
+
+.tree-plan-cell strong { font-size: 12px; }
+.tree-plan-cell--default { border-style: dashed; color: var(--muted); }
+.tree-plan-cell--skip { border-color: #9c652f; color: #ffbc76; }
+.tree-plan-cell--seed { border-color: #347d68; color: var(--ok); }
+
+.tree-plan-cell--invalid {
+  border-color: var(--err);
+  box-shadow: inset 0 0 0 1px var(--err);
+  color: var(--err);
+}
+
+.tree-plan-cell-warning { font-size: 9px; font-weight: 700; }
+
+.tree-plan-palette-item:focus-visible,
+.tree-plan-cell:focus-visible,
+.tree-plan-refresh:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tree-plan-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tree-plan-invalid {
+  display: grid;
+  gap: 3px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--err);
+  border-radius: 6px;
+  color: var(--err);
+  background: rgba(255, 123, 114, 0.07);
+  font-size: 12px;
+}
+
+.tree-plan-invalid-entry { overflow-wrap: anywhere; }
+
 @keyframes dialog-fade { from { opacity: 0; } }
 @keyframes drawer-in { from { transform: translateX(24px); opacity: 0; } }
 
@@ -488,6 +623,7 @@ button.ghost {
   .accounts-grid { grid-template-columns: 1fr; }
   .account-drawer { width: 100%; border-width: 0; }
   .account-card-actions { flex-wrap: wrap; }
+  .tree-plan-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

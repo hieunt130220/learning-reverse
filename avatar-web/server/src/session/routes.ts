@@ -1,7 +1,15 @@
 import { Router, type Response } from 'express';
 
+import { normalizeAutoConfig, type AutoConfigProfile } from '../accounts/autoConfig.js';
+import { getFarmProfile } from '../accounts/farmProfileRepo.js';
 import { requireOwnedAccount, type AccountRequest } from '../accounts/routes.js';
-import { setAutoEnabled } from '../accounts/repo.js';
+import {
+  AutoConfigProfileError,
+  enableAutoWithConfigPatch,
+  getAutoConfig,
+  saveAutoConfig,
+  setAutoEnabled,
+} from '../accounts/repo.js';
 import type { AutoFarmConfig } from '../autoFarm.js';
 import { makeRequireAuth } from '../auth/middleware.js';
 import type { Db } from '../db/index.js';
@@ -20,7 +28,69 @@ export interface SessionRoutesDeps {
  */
 function fail(res: Response, err: unknown): void {
   const message = (err as Error).message;
-  res.status(message.includes('chưa kết nối') ? 409 : 500).json({ error: message });
+  const unavailable = message.includes('chưa kết nối') || message.includes('chưa online');
+  res.status(unavailable ? 409 : 500).json({ error: message });
+}
+
+function configFail(res: Response, err: unknown): void {
+  if (err instanceof AutoConfigProfileError) {
+    const status = err.code === 'invalid-tree-cell-plan' ? 400 : 409;
+    res.status(status).json({
+      error: err.message,
+      code: err.code,
+      ...(err.code === 'invalid-tree-cell-plan' ? {
+        invalidCellIndices: err.invalidCellIndices,
+        invalidSeedIds: err.invalidSeedIds,
+      } : {}),
+    });
+    return;
+  }
+  res.status(400).json({ error: (err as Error).message });
+}
+
+function profileForConfig(db: Db, accountId: number): AutoConfigProfile | null {
+  const profile = getFarmProfile(db, accountId);
+  if (profile.cellsObservedAt === null && profile.seedsObservedAt === null) return null;
+  return {
+    cellIndices: profile.cellIndices,
+    seedIds: profile.seedCatalog.map((seed) => seed.id),
+  };
+}
+
+function validateProfile(config: Partial<AutoFarmConfig>, profile: AutoConfigProfile | null): void {
+  const plan = config.treeCellPlan;
+  if (plan === undefined || plan.length === 0) return;
+  if (profile === null || profile.cellIndices.length === 0) {
+    throw new AutoConfigProfileError(
+      'farm-profile-required',
+      'cần đồng bộ farm profile trước khi lưu kế hoạch',
+    );
+  }
+
+  const seedEntries = plan.filter((entry) => entry.action === 'seed');
+  if (profile.seedIds.length === 0 && seedEntries.length > 0) {
+    throw new AutoConfigProfileError(
+      'seed-catalog-required',
+      'cần đồng bộ seed catalog trước khi lưu kế hoạch trồng',
+    );
+  }
+
+  const knownCells = new Set(profile.cellIndices);
+  const knownSeeds = new Set(profile.seedIds);
+  const invalidCellIndices = [...new Set(
+    plan.filter((entry) => !knownCells.has(entry.cellIndex)).map((entry) => entry.cellIndex),
+  )].sort((left, right) => left - right);
+  const invalidSeedIds = [...new Set(
+    seedEntries.filter((entry) => !knownSeeds.has(entry.seedId)).map((entry) => entry.seedId),
+  )].sort((left, right) => left - right);
+  if (invalidCellIndices.length > 0 || invalidSeedIds.length > 0) {
+    throw new AutoConfigProfileError(
+      'invalid-tree-cell-plan',
+      'kế hoạch cây không khớp farm profile hiện tại',
+      invalidCellIndices,
+      invalidSeedIds,
+    );
+  }
 }
 
 export function sessionRouter(deps: SessionRoutesDeps): Router {
@@ -30,6 +100,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
 
   const owned = requireOwnedAccount(db);
   const accountId = (req: unknown) => (req as AccountRequest).account!.id;
+  const userId = (req: unknown) => (req as AccountRequest).user!.id;
 
   router.post('/:id/connect', owned, async (req, res) => {
     try {
@@ -45,23 +116,133 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     res.json({ ok: true });
   });
 
-  router.post('/:id/auto/start', owned, (req, res) => {
-    const id = accountId(req);
-    const cfg = (req.body ?? {}) as Partial<AutoFarmConfig>;
-    // Ghi ý muốn vào DB TRƯỚC. Làm ngược lại thì restart giữa chừng là mất ý
-    // muốn của người dùng, và bootstrap sẽ không bật lại tài khoản này.
-    setAutoEnabled(db, id, true, cfg);
+  router.get('/:id/auto/config', owned, (req, res) => {
+    res.json(getAutoConfig(db, userId(req), accountId(req)));
+  });
+
+  router.put('/:id/auto/config', owned, (req, res) => {
+    const body = req.body;
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return res.status(400).json({ error: 'payload phải là object' });
+    }
+    const payload = body as Record<string, unknown>;
+    const payloadKeys = Object.keys(payload);
+    if (
+      payloadKeys.length !== 2
+      || !Object.prototype.hasOwnProperty.call(payload, 'expectedRevision')
+      || !Number.isInteger(payload.expectedRevision)
+      || (payload.expectedRevision as number) < 0
+      || !Object.prototype.hasOwnProperty.call(payload, 'config')
+    ) {
+      return res.status(400).json({ error: 'expectedRevision phải là số nguyên không âm' });
+    }
+
+    let config: Partial<AutoFarmConfig>;
     try {
-      sessions.require(id).startAuto(cfg);
-      res.json(sessions.snapshot(id));
+      config = normalizeAutoConfig(payload.config);
+    } catch (err) {
+      configFail(res, err);
+      return;
+    }
+
+    try {
+      validateProfile(config, profileForConfig(db, accountId(req)));
+    } catch (err) {
+      if (err instanceof AutoConfigProfileError) configFail(res, err);
+      else fail(res, err);
+      return;
+    }
+
+    try {
+      const saved = saveAutoConfig(
+        db,
+        userId(req),
+        accountId(req),
+        payload.expectedRevision as number,
+        config,
+      );
+      if (saved.status === 'conflict') {
+        return res.status(409).json({
+          error: 'revision cấu hình đã thay đổi',
+          code: 'revision-conflict',
+          current: saved.current,
+        });
+      }
+      if (saved.status === 'missing') return res.status(404).json({ error: 'không có tài khoản này' });
+
+      try {
+        const application = sessions.peek(accountId(req))?.updateAutoConfig(saved.state.config)
+          ?? 'next-start';
+        res.json({ ...saved.state, application });
+      } catch (err) {
+        fail(res, err);
+      }
     } catch (err) {
       fail(res, err);
     }
   });
 
+  router.get('/:id/farm/profile', owned, (req, res) => {
+    res.json(getFarmProfile(db, accountId(req)));
+  });
+
+  router.post('/:id/farm/profile/refresh', owned, async (req, res) => {
+    try {
+      await sessions.require(accountId(req)).refreshFarmProfile();
+      res.json(getFarmProfile(db, accountId(req)));
+    } catch (err) {
+      const message = (err as Error).message;
+      if (message.includes('quá hạn')) return res.status(504).json({ error: message });
+      fail(res, err);
+    }
+  });
+
+  router.post('/:id/auto/start', owned, (req, res) => {
+    const id = accountId(req);
+    let patch: Partial<AutoFarmConfig>;
+    try {
+      patch = normalizeAutoConfig(req.body ?? {});
+    } catch (err) {
+      configFail(res, err);
+      return;
+    }
+    try {
+      let cfg: Partial<AutoFarmConfig>;
+      if (Object.keys(patch).length === 0) {
+        setAutoEnabled(db, id, true);
+        cfg = getAutoConfig(db, userId(req), id)!.config;
+      } else {
+        const result = enableAutoWithConfigPatch(
+          db,
+          userId(req),
+          id,
+          patch,
+          profileForConfig(db, id),
+        );
+        if (result.status === 'missing') {
+          return res.status(404).json({ error: 'không có tài khoản này' });
+        }
+        if (result.status === 'conflict') {
+          return res.status(409).json({
+            error: 'revision cấu hình đã thay đổi',
+            code: 'revision-conflict',
+            current: result.current,
+          });
+        }
+        cfg = result.state.config;
+      }
+      // DB là nguồn sự thật: commit ý muốn trước khi chạm runtime.
+      sessions.require(id).startAuto(cfg);
+      res.json(sessions.snapshot(id));
+    } catch (err) {
+      if (err instanceof AutoConfigProfileError) configFail(res, err);
+      else fail(res, err);
+    }
+  });
+
   router.post('/:id/auto/stop', owned, (req, res) => {
     const id = accountId(req);
-    setAutoEnabled(db, id, false, null);
+    setAutoEnabled(db, id, false);
     sessions.peek(id)?.stopAuto();
     res.json({ ok: true });
   });

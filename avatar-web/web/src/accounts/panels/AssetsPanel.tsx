@@ -3,13 +3,31 @@ import { useState } from 'react';
 import { apiPost } from '../../api.js';
 import type { AnimalInfo, FarmCell, FarmState, InventoryItem, TreeInfo } from '../../types.js';
 
-export function cellNeeds(c: FarmCell): string[] {
+/**
+ * Ô đã chín chưa — giữ ĐÚNG điều kiện của server (`isCellRipe` trong
+ * `server/src/game/farmData.ts`), đừng để hai bên lệch nhau.
+ *
+ * `time` đếm LÊN, là số phút kể từ lúc trồng, nên điều kiện cũ `time === 0`
+ * chỉ đúng trong đúng một phút đầu sau khi trồng — tức UI **không bao giờ**
+ * báo ô nào chín. Tín hiệu thật là đủ thời gian lớn: `time >= growHours × 60`,
+ * với `growHours` là `TreeInfo.growMinutes` (trường đặt sai tên, đơn vị GIỜ).
+ * `hervestPer` thường bằng 0 kể cả trên ô chín nên chỉ dùng làm tín hiệu đủ.
+ */
+export function isCellRipe(c: FarmCell, trees: TreeInfo[]): boolean {
+  if (c.idTree === -1 || c.time === -1) return false;
+  if (c.hervestPer > 0) return true;
+  const growHours = trees.find((t) => t.id === c.idTree)?.growMinutes;
+  if (growHours === undefined) return false;
+  return c.time >= growHours * 60;
+}
+
+export function cellNeeds(c: FarmCell, trees: TreeInfo[]): string[] {
   if (c.idTree === -1) return ['trống'];
   const n: string[] = [];
   if (c.isArid) n.push('tưới');
   if (c.isGrass) n.push('cỏ');
   if (c.isWorm) n.push('sâu');
-  if (c.time === 0) n.push('thu hoạch');
+  if (isCellRipe(c, trees)) n.push('thu hoạch');
   return n;
 }
 
@@ -94,11 +112,11 @@ function FarmSection({
       {farm && (
         <div className="grid">
           {farm.cells.map((c) => {
-            const needs = cellNeeds(c);
+            const needs = cellNeeds(c, trees);
             const cls = [
               'cell',
               c.idTree === -1 ? 'empty' : '',
-              c.time === 0 && c.idTree !== -1 ? 'ready' : '',
+              isCellRipe(c, trees) ? 'ready' : '',
               c.isArid || c.isGrass || c.isWorm ? 'care' : '',
               sel?.index === c.index ? 'sel' : '',
             ]
@@ -119,11 +137,16 @@ function FarmSection({
           <b>Ô {sel.index}</b> — {sel.idTree === -1 ? 'trống' : treeName(sel.idTree)}
           {sel.idTree !== -1 && (
             <>
-              {' '}· còn {sel.time}s · sức sống {sel.vitalityPer}% · thu hoạch {sel.hervestPer}%
+              {' '}· đã trồng {sel.time} phút
+              {(() => {
+                const need = trees.find((t) => t.id === sel.idTree)?.growMinutes;
+                return need === undefined ? '' : `/${need * 60}`;
+              })()}
+              {' '}· sức sống {sel.vitalityPer}% · thu hoạch {sel.hervestPer}%
               {sel.level !== undefined && ` · level ${sel.level}`}
             </>
           )}
-          <div className="hint">cần: {cellNeeds(sel).join(', ') || 'không'}</div>
+          <div className="hint">cần: {cellNeeds(sel, trees).join(', ') || 'không'}</div>
         </div>
       )}
     </section>

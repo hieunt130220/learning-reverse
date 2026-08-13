@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import type { AccountWithRuntime } from '../types.js';
@@ -20,8 +20,27 @@ export function AccountOperationsDrawer() {
     : undefined;
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const close = () => navigate('/accounts');
+  const [planDirty, setPlanDirty] = useState(false);
+  const canLeave = () => !planDirty || window.confirm('Kế hoạch cây chưa lưu. Bỏ thay đổi?');
+  const close = () => {
+    if (canLeave()) navigate('/accounts');
+  };
   useDialogFocus({ open: true, containerRef: dialogRef, initialFocusRef: closeRef, onClose: close });
+
+  useEffect(() => {
+    if (!planDirty) return;
+    const blockUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', blockUnload);
+    return () => window.removeEventListener('beforeunload', blockUnload);
+  }, [planDirty]);
+
+  const openDebug = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    if (canLeave()) navigate(`/accounts/${accountId}/debug`);
+  };
 
   return (
     <div className="dialog-backdrop dialog-backdrop--drawer" onMouseDown={(event) => {
@@ -33,7 +52,12 @@ export function AccountOperationsDrawer() {
           <button ref={closeRef} type="button" className="ghost" onClick={close} aria-label="Đóng">×</button>
         </header>
         {loading ? <p className="hint">đang tải…</p> : account ? (
-          <LoadedOperations account={account} reload={reload} />
+          <LoadedOperations
+            account={account}
+            reload={reload}
+            onPlanDirtyChange={setPlanDirty}
+            onOpenDebug={openDebug}
+          />
         ) : (
           <div className="drawer-empty"><p className="err">không có tài khoản này</p><Link to="/accounts">Về dashboard</Link></div>
         )}
@@ -43,15 +67,32 @@ export function AccountOperationsDrawer() {
 }
 
 /** Tách riêng vì hook runtime chỉ được gọi khi đã chắc chắn có account. */
-function LoadedOperations({ account, reload }: { account: AccountWithRuntime; reload(): Promise<void> }) {
+function LoadedOperations({
+  account,
+  reload,
+  onPlanDirtyChange,
+  onOpenDebug,
+}: {
+  account: AccountWithRuntime;
+  reload(): Promise<void>;
+  onPlanDirtyChange(dirty: boolean): void;
+  onOpenDebug(event: MouseEvent<HTMLAnchorElement>): void;
+}) {
   const snapshot = useAccountRuntime(account.id, account.runtime);
   return (
     <div className="drawer-panels">
       <StatusPanel accountId={account.id} snap={snapshot} gameUser={account.gameUser} onChanged={() => void reload()} />
-      <AutoFarmPanel accountId={account.id} auto={snapshot?.auto ?? { running: false, cycle: 0, lastActions: [] }} items={snapshot?.items ?? []} />
+      <AutoFarmPanel
+        accountId={account.id}
+        auto={snapshot?.auto ?? { running: false, cycle: 0, lastActions: [] }}
+        items={snapshot?.items ?? []}
+        onPlanDirtyChange={onPlanDirtyChange}
+      />
       <AssetsPanel accountId={account.id} farm={snapshot?.farm ?? null} inventory={snapshot?.inventory ?? []} trees={snapshot?.trees ?? []} animals={snapshot?.animals ?? []} />
       <LogPanel logs={snapshot?.logs ?? []} />
-      <Link className="btn-link drawer-debug-link" to={`/accounts/${account.id}/debug`}>Debug chuyên sâu →</Link>
+      <Link className="btn-link drawer-debug-link" to={`/accounts/${account.id}/debug`} onClick={onOpenDebug}>
+        Debug chuyên sâu →
+      </Link>
     </div>
   );
 }

@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 
 import { newTestDb, TEST_KEY } from '../test-helpers.js';
 import { createUser } from '../auth/users.js';
-import { createAccount, getAccountById, setAutoEnabled } from '../accounts/repo.js';
+import {
+  createAccount,
+  getAccountById,
+  getAutoConfig,
+  saveAutoConfig,
+  setAutoEnabled,
+} from '../accounts/repo.js';
+import { getFarmProfile } from '../accounts/farmProfileRepo.js';
 import type { AvatarSession, AvatarSessionOptions } from './avatarSession.js';
 import { BOOTSTRAP_STAGGER_MS, SessionManager } from './manager.js';
 
@@ -12,10 +19,12 @@ class FakeSession {
   started = 0;
   stopped = 0;
   desiredConnected = false;
+  startedConfig: unknown;
   constructor(readonly opts: AvatarSessionOptions) {}
   async start() {
     this.started += 1;
     this.desiredConnected = true;
+    this.startedConfig = (await this.opts.loadCredentials()).autoConfig;
   }
   stop() {
     this.stopped += 1;
@@ -26,18 +35,29 @@ class FakeSession {
   }
 }
 
-function setup(maxSessions = 20) {
+function setup(
+  maxSessions = 20,
+  observeBroadcast?: (
+    db: ReturnType<typeof newTestDb>,
+    accountId: number,
+    type: string,
+    payload: unknown,
+  ) => void,
+) {
   const db = newTestDb();
   const user = createUser(db, 'a@b.c', 'h', 0);
   const made: FakeSession[] = [];
-  const sent: Array<{ userId: number; accountId: number; type: string }> = [];
+  const sent: Array<{ userId: number; accountId: number; type: string; payload: unknown }> = [];
   const timers: Array<{ fn: () => void; delay: number }> = [];
 
   const manager = new SessionManager({
     db,
     masterKey: TEST_KEY,
     maxSessions,
-    broadcast: (userId, accountId, type) => sent.push({ userId, accountId, type }),
+    broadcast: (userId, accountId, type, payload) => {
+      observeBroadcast?.(db, accountId, type, payload);
+      sent.push({ userId, accountId, type, payload });
+    },
     createSession: (opts) => {
       const s = new FakeSession(opts);
       made.push(s);
@@ -87,7 +107,8 @@ test('loadCredentials đọc lại DB mỗi lần — đổi cấu hình là có
   const { db, manager, made, newAccount } = setup();
   const acc = newAccount('x');
   await manager.connect(acc.id);
-  setAutoEnabled(db, acc.id, true, { harvest: true });
+  assert.equal(saveAutoConfig(db, acc.userId, acc.id, 0, { harvest: true }).status, 'saved');
+  setAutoEnabled(db, acc.id, true);
   const creds = await made[0].opts.loadCredentials();
   assert.equal(creds.autoEnabled, true);
   assert.deepEqual(creds.autoConfig, { harvest: true });
@@ -133,17 +154,143 @@ test('sự kiện của phiên được phát tới đúng chủ sở hữu', as
   const acc = newAccount('x');
   await manager.connect(acc.id);
   made[0].opts.onEvent('status', 'online');
-  assert.deepEqual(sent, [{ userId: user.id, accountId: acc.id, type: 'status' }]);
+  assert.deepEqual(sent, [{ userId: user.id, accountId: acc.id, type: 'status', payload: 'online' }]);
   db.close();
 });
 
-test('lỗi vĩnh viễn thì tắt auto_enabled trong DB', async () => {
+test('permanent failure chỉ tắt cờ, giữ config envelope', async () => {
   const { db, manager, made, newAccount } = setup();
   const acc = newAccount('x');
-  setAutoEnabled(db, acc.id, true, { harvest: true });
+  assert.equal(saveAutoConfig(db, acc.userId, acc.id, 0, {
+    harvest: true,
+    treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
+  }).status, 'saved');
+  setAutoEnabled(db, acc.id, true);
   await manager.connect(acc.id);
   made[0].opts.onPermanentFailure('đăng nhập thất bại');
   assert.equal(getAccountById(db, acc.id)!.autoEnabled, false);
+  assert.deepEqual(getAutoConfig(db, acc.userId, acc.id), {
+    revision: 1,
+    config: {
+      harvest: true,
+      treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
+    },
+  });
+  db.close();
+});
+
+test('manager ghi cache trước khi broadcast farm và trees', async () => {
+  const observed: unknown[] = [];
+  const { db, manager, made, newAccount } = setup(
+    20,
+    (currentDb, accountId, type, payload) => {
+      const profile = getFarmProfile(currentDb, accountId);
+      observed.push({
+        type,
+        payload,
+        profile: {
+          farmId: profile.farmId,
+          cellIndices: profile.cellIndices,
+          seedCatalog: profile.seedCatalog,
+        },
+      });
+    },
+  );
+  const acc = newAccount('x');
+  await manager.connect(acc.id);
+
+  const farm = {
+    idFarm: 12,
+    cells: [{ index: 7, idTree: -1 }, { index: 2, idTree: 6 }],
+    animals: [],
+    updatedAt: 100,
+  };
+  made[0].opts.onEvent('farm', farm);
+  const trees = {
+    trees: [{
+      id: 6,
+      name: 'Lúa',
+      growMinutes: 48,
+      value: 20,
+      stageImages: [1, 2, 3],
+      attrsHex: 'abcd',
+    }],
+    items: [{ id: 100, name: 'Nước' }],
+    animals: [{ id: 50, name: 'Gà' }],
+  };
+  made[0].opts.onEvent('trees', trees);
+
+  assert.deepEqual(observed, [
+    {
+      type: 'farm',
+      payload: farm,
+      profile: {
+        farmId: 12,
+        cellIndices: [2, 7],
+        seedCatalog: [],
+      },
+    },
+    {
+      type: 'trees',
+      payload: trees,
+      profile: {
+        farmId: 12,
+        cellIndices: [2, 7],
+        seedCatalog: [{ id: 6, name: 'Lúa', growMinutes: 48, value: 20 }],
+      },
+    },
+  ]);
+  db.close();
+});
+
+test('payload profile lỗi bị bỏ qua nhưng vẫn broadcast', async () => {
+  const { db, manager, made, sent, newAccount } = setup();
+  const acc = newAccount('x');
+  await manager.connect(acc.id);
+
+  assert.doesNotThrow(() => made[0].opts.onEvent('farm', { idFarm: '12', cells: null }));
+  assert.deepEqual(getFarmProfile(db, acc.id).cellIndices, []);
+  assert.equal(sent.at(-1)?.type, 'farm');
+  db.close();
+});
+
+test('persistence lỗi với payload hợp lệ thì không broadcast và không ném', async () => {
+  const { db, manager, made, sent, newAccount } = setup();
+  const acc = newAccount('x');
+  await manager.connect(acc.id);
+  const before = sent.length;
+  db.close();
+
+  assert.doesNotThrow(() => made[0].opts.onEvent('farm', {
+    idFarm: 12,
+    cells: [{ index: 2 }],
+    animals: [],
+    updatedAt: 100,
+  }));
+  assert.equal(sent.length, before);
+});
+
+test('bootstrap unwrap envelope và giữ nguyên treeCellPlan khi start auto', async () => {
+  const { db, manager, made, newAccount } = setup();
+  const acc = newAccount('x');
+  assert.equal(saveAutoConfig(db, acc.userId, acc.id, 0, {
+    harvest: false,
+    treeCellPlan: [
+      { cellIndex: 2, action: 'seed', seedId: 6 },
+      { cellIndex: 7, action: 'skip' },
+    ],
+  }).status, 'saved');
+  setAutoEnabled(db, acc.id, true);
+
+  await manager.bootstrap();
+
+  assert.deepEqual(made[0].startedConfig, {
+    harvest: false,
+    treeCellPlan: [
+      { cellIndex: 2, action: 'seed', seedId: 6 },
+      { cellIndex: 7, action: 'skip' },
+    ],
+  });
   db.close();
 });
 

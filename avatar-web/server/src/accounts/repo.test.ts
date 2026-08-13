@@ -4,14 +4,18 @@ import assert from 'node:assert/strict';
 import { newTestDb, TEST_KEY } from '../test-helpers.js';
 import { createUser } from '../auth/users.js';
 import { DEFAULT_GAME_SERVER } from '../config.js';
+import { getFarmProfile, updateFarmCells } from './farmProfileRepo.js';
 import {
   createAccount,
   deleteAccount,
+  enableAutoWithConfigPatch,
   getAccount,
   getAccountById,
+  getAutoConfig,
   listAccounts,
   listAutoEnabled,
   readGamePass,
+  saveAutoConfig,
   setAutoEnabled,
   updateAccount,
 } from './repo.js';
@@ -126,20 +130,207 @@ test('device lưu và đọc lại đúng', () => {
   db.close();
 });
 
-test('setAutoEnabled ghi cờ và config, listAutoEnabled đọc lại đúng', () => {
+test('config null được chuẩn hóa và account không lộ envelope raw', () => {
+  const { db, a } = setup();
+  const acc = createAccount(db, TEST_KEY, { userId: a.id, label: 'x', gameUser: 'u', gamePass: 'p' });
+  assert.deepEqual(getAutoConfig(db, a.id, acc.id), { revision: 0, config: {} });
+  assert.deepEqual(acc.autoConfig, {});
+  assert.equal(acc.autoConfigRevision, 0);
+
+  db.prepare('UPDATE avatar_accounts SET auto_config_json = ? WHERE id = ?').run(
+    JSON.stringify({ version: 1, revision: 3, config: { harvest: true } }),
+    acc.id,
+  );
+  const reread = getAccount(db, a.id, acc.id)!;
+  assert.deepEqual(reread.autoConfig, { harvest: true });
+  assert.equal(reread.autoConfigRevision, 3);
+  assert.equal('version' in reread.autoConfig, false);
+  db.close();
+});
+
+test('đọc config JSON legacy với revision 0 và save CAS ghi envelope revision kế', () => {
+  const { db, a } = setup();
+  const acc = createAccount(db, TEST_KEY, { userId: a.id, label: 'x', gameUser: 'u', gamePass: 'p' });
+  db.prepare('UPDATE avatar_accounts SET auto_config_json = ? WHERE id = ?').run(
+    JSON.stringify({ harvest: true }),
+    acc.id,
+  );
+  assert.deepEqual(getAutoConfig(db, a.id, acc.id), {
+    revision: 0,
+    config: { harvest: true },
+  });
+
+  const saved = saveAutoConfig(db, a.id, acc.id, 0, { harvest: false }, 10);
+  assert.deepEqual(saved, {
+    status: 'saved',
+    state: { revision: 1, config: { harvest: false } },
+  });
+  const raw = db
+    .prepare<[number], { auto_config_json: string }>(
+      'SELECT auto_config_json FROM avatar_accounts WHERE id = ?',
+    )
+    .get(acc.id)!;
+  assert.deepEqual(JSON.parse(raw.auto_config_json), {
+    version: 1,
+    revision: 1,
+    config: { harvest: false },
+  });
+  db.close();
+});
+
+test('CAS config phát hiện revision xung đột và ownership/missing', () => {
+  const { db, a, b } = setup();
+  const acc = createAccount(db, TEST_KEY, { userId: a.id, label: 'x', gameUser: 'u', gamePass: 'p' });
+  const first = saveAutoConfig(db, a.id, acc.id, 0, { harvest: true }, 10);
+  assert.equal(first.status, 'saved');
+  assert.equal(first.status === 'saved' && first.state.revision, 1);
+
+  const stale = saveAutoConfig(db, a.id, acc.id, 0, { harvest: false }, 11);
+  assert.deepEqual(stale, {
+    status: 'conflict',
+    current: { revision: 1, config: { harvest: true } },
+  });
+  assert.equal(getAutoConfig(db, b.id, acc.id), null);
+  assert.deepEqual(saveAutoConfig(db, b.id, acc.id, 1, {}, 12), { status: 'missing' });
+  db.close();
+});
+
+test('setAutoEnabled chỉ đổi cờ, giữ config và revision', () => {
   const { db, a, b } = setup();
   const acc = createAccount(db, TEST_KEY, { userId: a.id, label: 'x', gameUser: 'u', gamePass: 'p' });
   createAccount(db, TEST_KEY, { userId: b.id, label: 'y', gameUser: 'u', gamePass: 'p' });
+  assert.equal(saveAutoConfig(db, a.id, acc.id, 0, { harvest: true, intervalMs: 60000 }).status, 'saved');
 
-  setAutoEnabled(db, acc.id, true, { harvest: true, intervalMs: 60000 });
+  setAutoEnabled(db, acc.id, true, 20);
   const on = listAutoEnabled(db);
   assert.equal(on.length, 1);
   assert.equal(on[0].id, acc.id);
   assert.deepEqual(on[0].autoConfig, { harvest: true, intervalMs: 60000 });
+  assert.equal(on[0].autoConfigRevision, 1);
 
-  setAutoEnabled(db, acc.id, false, null);
+  setAutoEnabled(db, acc.id, false, 30);
   assert.equal(listAutoEnabled(db).length, 0);
   assert.equal(getAccount(db, a.id, acc.id)!.autoEnabled, false);
+  assert.deepEqual(getAutoConfig(db, a.id, acc.id), {
+    revision: 1,
+    config: { harvest: true, intervalMs: 60000 },
+  });
+  db.close();
+});
+
+test('legacy start merge config, tăng revision và bật auto cùng transaction', () => {
+  const { db, a } = setup();
+  const acc = createAccount(db, TEST_KEY, { userId: a.id, label: 'x', gameUser: 'u', gamePass: 'p' });
+  saveAutoConfig(db, a.id, acc.id, 0, {
+    treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
+  });
+
+  const result = enableAutoWithConfigPatch(
+    db,
+    a.id,
+    acc.id,
+    { harvest: false },
+    { cellIndices: [2], seedIds: [] },
+    50,
+  );
+  assert.deepEqual(result, {
+    status: 'saved',
+    state: {
+      revision: 2,
+      config: {
+        harvest: false,
+        treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
+      },
+    },
+  });
+  assert.equal(getAccount(db, a.id, acc.id)!.autoEnabled, true);
+  db.close();
+});
+
+test('legacy start reject profile thiếu hoặc lệch và rollback revision lẫn cờ auto', () => {
+  const cases = [
+    {
+      profile: null,
+      patch: { treeCellPlan: [{ cellIndex: 2, action: 'skip' }] },
+      code: 'farm-profile-required',
+    },
+    {
+      profile: { cellIndices: [2], seedIds: [] },
+      patch: { treeCellPlan: [{ cellIndex: 2, action: 'seed', seedId: 6 }] },
+      code: 'seed-catalog-required',
+    },
+    {
+      profile: { cellIndices: [2], seedIds: [6] },
+      patch: { treeCellPlan: [{ cellIndex: 9, action: 'seed', seedId: 7 }] },
+      code: 'invalid-tree-cell-plan',
+    },
+  ] as const;
+
+  for (const item of cases) {
+    const { db, a } = setup();
+    const acc = createAccount(db, TEST_KEY, { userId: a.id, label: 'x', gameUser: 'u', gamePass: 'p' });
+    assert.throws(
+      () => enableAutoWithConfigPatch(db, a.id, acc.id, item.patch, item.profile, 100),
+      (error: unknown) =>
+        error instanceof Error
+        && 'code' in error
+        && error.code === item.code,
+    );
+    assert.deepEqual(getAutoConfig(db, a.id, acc.id), { revision: 0, config: {} });
+    assert.equal(getAccount(db, a.id, acc.id)!.autoEnabled, false);
+    db.close();
+  }
+});
+
+test('profile có cell nhưng chưa có catalog chấp nhận plan rỗng hoặc chỉ skip', () => {
+  const { db, a } = setup();
+  const acc = createAccount(db, TEST_KEY, { userId: a.id, label: 'x', gameUser: 'u', gamePass: 'p' });
+  const skip = enableAutoWithConfigPatch(
+    db,
+    a.id,
+    acc.id,
+    { treeCellPlan: [{ cellIndex: 2, action: 'skip' }] },
+    { cellIndices: [2], seedIds: [] },
+  );
+  assert.equal(skip.status, 'saved');
+  setAutoEnabled(db, acc.id, false);
+  const empty = enableAutoWithConfigPatch(
+    db,
+    a.id,
+    acc.id,
+    { treeCellPlan: [] },
+    { cellIndices: [2], seedIds: [] },
+  );
+  assert.equal(empty.status, 'saved');
+  db.close();
+});
+
+test('đổi gameUser xóa riêng profile trong transaction và giữ config/password', () => {
+  const { db, a } = setup();
+  const acc = createAccount(db, TEST_KEY, { userId: a.id, label: 'x', gameUser: 'u', gamePass: 'p' });
+  saveAutoConfig(db, a.id, acc.id, 0, {
+    treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
+  });
+  updateFarmCells(db, acc.id, 1, [2]);
+  updateAccount(db, TEST_KEY, a.id, acc.id, { gameUser: ' nhan-vat-moi ' });
+
+  assert.equal(getAccount(db, a.id, acc.id)!.gameUser, 'nhan-vat-moi');
+  assert.deepEqual(getFarmProfile(db, acc.id).cellIndices, []);
+  assert.deepEqual(getAutoConfig(db, a.id, acc.id)?.config.treeCellPlan, [
+    { cellIndex: 2, action: 'skip' },
+  ]);
+  assert.equal(readGamePass(db, TEST_KEY, acc.id), 'p');
+  db.close();
+});
+
+test('gameUser hiện tại có whitespace nhưng sau chuẩn hóa không đổi thì giữ farm profile', () => {
+  const { db, a } = setup();
+  const acc = createAccount(db, TEST_KEY, { userId: a.id, label: 'x', gameUser: 'u', gamePass: 'p' });
+  db.prepare('UPDATE avatar_accounts SET game_user = ? WHERE id = ?').run(' u ', acc.id);
+  updateFarmCells(db, acc.id, 1, [2]);
+  updateAccount(db, TEST_KEY, a.id, acc.id, { gameUser: 'u' });
+  assert.equal(getAccount(db, a.id, acc.id)!.gameUser, 'u');
+  assert.deepEqual(getFarmProfile(db, acc.id).cellIndices, [2]);
   db.close();
 });
 

@@ -21,10 +21,17 @@ class FakeClient extends EventEmitter {
   money: number | undefined;
   traffic: unknown[] = [];
   lastPacket = new Map<number, string>();
-  readonly farm = { getInventory: () => this.calls.push('getInventory') };
+  readonly farm = {
+    getInventory: () => this.calls.push('getInventory'),
+    getTreeInfo: () => {
+      this.calls.push('getTreeInfo');
+      if (this.treeInfoError) throw this.treeInfoError;
+    },
+  };
   calls: string[] = [];
   loginArgs: unknown[] = [];
   loginError: Error | null = null;
+  treeInfoError: Error | null = null;
   logoutCount = 0;
 
   async login(opts: unknown): Promise<void> {
@@ -66,6 +73,7 @@ class FakeAuto extends EventEmitter {
   running = false;
   startCount = 0;
   lastCfg: unknown;
+  queued: unknown[] = [];
   start(cfg: unknown): void {
     this.startCount += 1;
     this.running = true;
@@ -73,6 +81,9 @@ class FakeAuto extends EventEmitter {
   }
   stop(): void {
     this.running = false;
+  }
+  queueConfig(cfg: unknown): void {
+    this.queued.push(cfg);
   }
   state() {
     return { running: this.running, cycle: 0, lastActions: [] };
@@ -114,7 +125,7 @@ interface Harness {
 
 function harness(
   creds: Partial<AvatarCredentials> = {},
-  clientCfg: { loginError?: Error; autoOnline?: boolean } = {},
+  clientCfg: { loginError?: Error; autoOnline?: boolean; treeInfoError?: Error } = {},
 ): Harness {
   const clients: FakeClient[] = [];
   const autos: FakeAuto[] = [];
@@ -137,6 +148,7 @@ function harness(
       const client = new FakeClient();
       client.loginError = clientCfg.loginError ?? null;
       client.autoOnline = clientCfg.autoOnline ?? true;
+      client.treeInfoError = clientCfg.treeInfoError ?? null;
       clients.push(client);
       return client as unknown as GameClient;
     },
@@ -206,6 +218,99 @@ test('autoEnabled = false thì không tự bật', async () => {
   const h = harness();
   await h.session.start();
   assert.equal(h.session.snapshot().auto.running, false);
+});
+
+test('update config khi auto chạy queue cho vòng kế tiếp, không start lại', async () => {
+  const h = harness({ autoEnabled: true, autoConfig: { seedId: 5 } });
+  await h.session.start();
+
+  assert.equal(h.session.updateAutoConfig({ seedId: 6 }), 'next-cycle');
+  assert.equal(h.autos[0].startCount, 1);
+  assert.deepEqual(h.autos[0].queued.at(-1), { seedId: 6 });
+});
+
+test('update config khi auto dừng giữ cho lần start kế tiếp', async () => {
+  const h = harness(
+    { autoEnabled: true, autoConfig: { seedId: 5 } },
+    { autoOnline: false },
+  );
+  await h.session.start();
+  assert.equal(h.session.updateAutoConfig({ seedId: 7 }), 'next-start');
+  h.clients[0].goOnline();
+
+  assert.deepEqual(h.autos[0].lastCfg, { seedId: 7 });
+});
+
+test('refresh bỏ qua trees sớm và payload lỗi, chỉ nhận catalog đúng sau farm', async () => {
+  const h = harness();
+  await h.session.start();
+
+  let completed = false;
+  const refresh = h.session.refreshFarmProfile(1_000);
+  void refresh.then(() => {
+    completed = true;
+  });
+  assert.deepEqual(h.clients[0].calls, ['enterFarm']);
+  h.clients[0].emit('trees', { trees: [], items: [], animals: [] });
+  await flush();
+  assert.equal(completed, false);
+  assert.equal(h.clients[0].listenerCount('trees'), 2);
+
+  h.clients[0].emit('farm', { idFarm: 1, cells: [], animals: [], updatedAt: 1 });
+  assert.deepEqual(h.clients[0].calls, ['enterFarm', 'getTreeInfo']);
+  h.clients[0].emit('farm', { idFarm: 1, cells: [], animals: [], updatedAt: 2 });
+  assert.deepEqual(h.clients[0].calls, ['enterFarm', 'getTreeInfo']);
+  h.clients[0].emit('trees', { trees: [] });
+  await flush();
+  assert.equal(completed, false);
+  assert.equal(h.clients[0].listenerCount('trees'), 2);
+
+  h.clients[0].emit('trees', { trees: [], items: [], animals: [] });
+  await refresh;
+
+  assert.equal(h.clients[0].listenerCount('farm'), 1);
+  assert.equal(h.clients[0].listenerCount('trees'), 1);
+  assert.equal(h.pendingTimers().length, 0);
+});
+
+test('refresh quá hạn dùng timer tiêm và chỉ cleanup listener riêng', async () => {
+  const h = harness();
+  await h.session.start();
+
+  const refresh = h.session.refreshFarmProfile(321);
+  assert.equal(h.pendingTimers().length, 1);
+  assert.equal(h.pendingTimers()[0].delay, 321);
+  assert.equal(h.clients[0].listenerCount('farm'), 2);
+  assert.equal(h.clients[0].listenerCount('trees'), 2);
+  h.fireTimer();
+
+  await assert.rejects(refresh, /quá hạn đồng bộ farm/);
+  assert.equal(h.clients[0].listenerCount('farm'), 1);
+  assert.equal(h.clients[0].listenerCount('trees'), 1);
+  assert.deepEqual(h.clients[0].calls, ['enterFarm']);
+});
+
+test('refresh reject ngay và cleanup khi lệnh getTreeInfo ném', async () => {
+  const h = harness({}, { treeInfoError: new Error('không gửi được catalog') });
+  await h.session.start();
+
+  const refresh = h.session.refreshFarmProfile(1_000);
+  assert.doesNotThrow(() => {
+    h.clients[0].emit('farm', { idFarm: 1, cells: [], animals: [], updatedAt: 1 });
+  });
+  await assert.rejects(refresh, /không gửi được catalog/);
+
+  assert.deepEqual(h.clients[0].calls, ['enterFarm', 'getTreeInfo']);
+  assert.equal(h.pendingTimers().length, 0);
+  assert.equal(h.clients[0].listenerCount('farm'), 1);
+  assert.equal(h.clients[0].listenerCount('trees'), 1);
+});
+
+test('refresh yêu cầu client online', async () => {
+  const h = harness({}, { autoOnline: false });
+  await h.session.start();
+  await assert.rejects(() => h.session.refreshFarmProfile(), /chưa online/);
+  assert.deepEqual(h.clients[0].calls, []);
 });
 
 test('login liên tục lỗi thì backoff tăng gấp đôi, trần 5 phút', async () => {

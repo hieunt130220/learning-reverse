@@ -1,4 +1,9 @@
 import { getAccountById, listAutoEnabled, readGamePass, setAutoEnabled } from '../accounts/repo.js';
+import {
+  updateFarmCells,
+  updateSeedCatalog,
+  type CachedSeed,
+} from '../accounts/farmProfileRepo.js';
 import type { AutoFarmConfig } from '../autoFarm.js';
 import type { Db } from '../db/index.js';
 import type { DeviceProfile } from '../game/client.js';
@@ -19,6 +24,74 @@ export interface SessionManagerDeps {
   broadcast(userId: number, accountId: number, type: string, payload: unknown): void;
   createSession?(opts: AvatarSessionOptions): AvatarSession;
   setTimeoutFn?: typeof setTimeout;
+}
+
+interface FarmProfileEvent {
+  idFarm: number;
+  cells: Array<{ index: number }>;
+  updatedAt?: number;
+}
+
+interface TreesProfileEvent {
+  trees: CachedSeed[];
+}
+
+function farmProfileEvent(payload: unknown): FarmProfileEvent | null {
+  if (typeof payload !== 'object' || payload === null || !('idFarm' in payload) || !('cells' in payload)) {
+    return null;
+  }
+  const idFarm = payload.idFarm;
+  const cells = payload.cells;
+  const updatedAt = 'updatedAt' in payload ? payload.updatedAt : undefined;
+  if (
+    typeof idFarm !== 'number'
+    || !Number.isInteger(idFarm)
+    || !Array.isArray(cells)
+    || cells.some((cell) => (
+      typeof cell !== 'object'
+      || cell === null
+      || !('index' in cell)
+      || typeof cell.index !== 'number'
+      || !Number.isInteger(cell.index)
+    ))
+    || (updatedAt !== undefined && (typeof updatedAt !== 'number' || !Number.isFinite(updatedAt)))
+  ) {
+    return null;
+  }
+  return { idFarm, cells, updatedAt };
+}
+
+function treesProfileEvent(payload: unknown): TreesProfileEvent | null {
+  if (typeof payload !== 'object' || payload === null || !('trees' in payload) || !Array.isArray(payload.trees)) {
+    return null;
+  }
+  const trees: CachedSeed[] = [];
+  for (const tree of payload.trees) {
+    if (
+      typeof tree !== 'object'
+      || tree === null
+      || !('id' in tree)
+      || !('name' in tree)
+      || !('growMinutes' in tree)
+      || !('value' in tree)
+      || typeof tree.id !== 'number'
+      || !Number.isInteger(tree.id)
+      || typeof tree.name !== 'string'
+      || typeof tree.growMinutes !== 'number'
+      || !Number.isFinite(tree.growMinutes)
+      || typeof tree.value !== 'number'
+      || !Number.isFinite(tree.value)
+    ) {
+      return null;
+    }
+    trees.push({
+      id: tree.id,
+      name: tree.name,
+      growMinutes: tree.growMinutes,
+      value: tree.value,
+    });
+  }
+  return { trees };
 }
 
 /**
@@ -124,11 +197,38 @@ export class SessionManager {
           autoConfig: row.autoConfig as Partial<AutoFarmConfig> | undefined,
         };
       },
-      onEvent: (type, payload) => broadcast(userId, accountId, type, payload),
+      onEvent: (type, payload) => {
+        if (type === 'farm') {
+          const farm = farmProfileEvent(payload);
+          if (farm) {
+            try {
+              updateFarmCells(
+                db,
+                accountId,
+                farm.idFarm,
+                farm.cells.map((cell) => cell.index),
+                farm.updatedAt,
+              );
+            } catch {
+              return;
+            }
+          }
+        } else if (type === 'trees') {
+          const catalog = treesProfileEvent(payload);
+          if (catalog) {
+            try {
+              updateSeedCatalog(db, accountId, catalog.trees);
+            } catch {
+              return;
+            }
+          }
+        }
+        broadcast(userId, accountId, type, payload);
+      },
       onPermanentFailure: () => {
         // DB là ý muốn của người dùng. Sai mật khẩu game thì ý muốn "chạy 24/7"
         // phải bị gỡ, nếu không restart sau đó lại lao vào vòng đăng nhập sai.
-        setAutoEnabled(db, accountId, false, null);
+        setAutoEnabled(db, accountId, false);
         broadcast(userId, accountId, 'auto-disabled', { accountId });
       },
     };

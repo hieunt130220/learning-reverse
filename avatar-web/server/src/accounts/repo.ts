@@ -2,6 +2,16 @@ import { DEFAULT_GAME_SERVER } from '../config.js';
 import { decryptSecret, encryptSecret } from '../crypto/secretBox.js';
 import type { Db } from '../db/index.js';
 import type { DeviceProfile } from '../game/client.js';
+import type { AutoFarmConfig } from '../autoFarm.js';
+import {
+  mergeAutoConfig,
+  normalizeAutoConfig,
+  readStoredAutoConfig,
+  storedAutoConfigEnvelope,
+  type AutoConfigProfile,
+  type StoredAutoConfigState,
+} from './autoConfig.js';
+import { deleteFarmProfile } from './farmProfileRepo.js';
 
 /**
  * Bản ghi tài khoản avatar như phần còn lại của ứng dụng được phép nhìn thấy.
@@ -17,7 +27,8 @@ export interface AvatarAccount {
   port: number;
   device?: Partial<DeviceProfile>;
   autoEnabled: boolean;
-  autoConfig?: unknown;
+  autoConfig: Partial<AutoFarmConfig>;
+  autoConfigRevision: number;
   hasPassword: boolean;
   createdAt: number;
   updatedAt: number;
@@ -69,6 +80,7 @@ function parseJson<T>(raw: string | null): T | undefined {
 }
 
 function toAccount(r: AccountRow): AvatarAccount {
+  const stored = readStoredAutoConfig(parseJson<unknown>(r.auto_config_json));
   return {
     id: r.id,
     userId: r.user_id,
@@ -78,7 +90,8 @@ function toAccount(r: AccountRow): AvatarAccount {
     port: r.port,
     device: parseJson<Partial<DeviceProfile>>(r.device_json),
     autoEnabled: r.auto_enabled === 1,
-    autoConfig: parseJson<unknown>(r.auto_config_json),
+    autoConfig: stored.config,
+    autoConfigRevision: stored.revision,
     hasPassword: r.game_pass_enc.length > 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -162,28 +175,36 @@ export function updateAccount(
   patch: UpdateAccountInput,
   now = Date.now(),
 ): AvatarAccount | null {
-  const current = getAccount(db, userId, id);
-  if (!current) return null;
+  return db.transaction((): AvatarAccount | null => {
+    const current = getAccount(db, userId, id);
+    if (!current) return null;
 
-  const sets: string[] = ['updated_at = ?'];
-  const args: unknown[] = [now];
-  const set = (col: string, value: unknown) => {
-    sets.push(`${col} = ?`);
-    args.push(value);
-  };
+    const sets: string[] = ['updated_at = ?'];
+    const args: unknown[] = [now];
+    const set = (col: string, value: unknown) => {
+      sets.push(`${col} = ?`);
+      args.push(value);
+    };
 
-  if (patch.label !== undefined) set('label', patch.label);
-  if (patch.gameUser !== undefined) set('game_user', patch.gameUser);
-  if (patch.host !== undefined) set('host', patch.host);
-  if (patch.port !== undefined) set('port', patch.port);
-  if (patch.device !== undefined) set('device_json', patch.device ? JSON.stringify(patch.device) : null);
-  // Chuỗi rỗng cũng là "không đổi": form gửi lên ô mật khẩu trống chứ không phải
-  // là ý muốn đặt mật khẩu rỗng.
-  if (patch.gamePass) set('game_pass_enc', encryptSecret(key, String(id), patch.gamePass));
+    if (patch.label !== undefined) set('label', patch.label);
+    const normalizedGameUser = patch.gameUser?.trim();
+    if (normalizedGameUser !== undefined) set('game_user', normalizedGameUser);
+    if (patch.host !== undefined) set('host', patch.host);
+    if (patch.port !== undefined) set('port', patch.port);
+    if (patch.device !== undefined) {
+      set('device_json', patch.device ? JSON.stringify(patch.device) : null);
+    }
+    // Chuỗi rỗng cũng là "không đổi": form gửi lên ô mật khẩu trống chứ không phải
+    // là ý muốn đặt mật khẩu rỗng.
+    if (patch.gamePass) set('game_pass_enc', encryptSecret(key, String(id), patch.gamePass));
 
-  args.push(id, userId);
-  db.prepare(`UPDATE avatar_accounts SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`).run(...args);
-  return getAccount(db, userId, id);
+    args.push(id, userId);
+    db.prepare(`UPDATE avatar_accounts SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`).run(...args);
+    if (normalizedGameUser !== undefined && normalizedGameUser !== current.gameUser.trim()) {
+      deleteFarmProfile(db, id);
+    }
+    return getAccount(db, userId, id);
+  })();
 }
 
 export function deleteAccount(db: Db, userId: number, id: number): boolean {
@@ -197,16 +218,178 @@ export function deleteAccount(db: Db, userId: number, id: number): boolean {
  * bootstrap sau restart. Vì thế nó được ghi tách khỏi `updateAccount`, để route
  * gọi được nó TRƯỚC khi đụng vào phiên đang chạy.
  */
+export function setAutoEnabled(db: Db, id: number, enabled: boolean, now?: number): void;
+/** @deprecated Config được lưu riêng; overload này chỉ giữ caller cũ biên dịch trong lúc chuyển tiếp. */
 export function setAutoEnabled(
   db: Db,
   id: number,
   enabled: boolean,
-  autoConfig: unknown | null,
-  now = Date.now(),
+  ignoredLegacyConfig: unknown | null,
+  now?: number,
+): void;
+export function setAutoEnabled(
+  db: Db,
+  id: number,
+  enabled: boolean,
+  nowOrIgnoredConfig: number | unknown | null = Date.now(),
+  legacyNow = Date.now(),
 ): void {
-  db.prepare(
-    'UPDATE avatar_accounts SET auto_enabled = ?, auto_config_json = ?, updated_at = ? WHERE id = ?',
-  ).run(enabled ? 1 : 0, autoConfig === null ? null : JSON.stringify(autoConfig), now, id);
+  const now = typeof nowOrIgnoredConfig === 'number' ? nowOrIgnoredConfig : legacyNow;
+  db.prepare('UPDATE avatar_accounts SET auto_enabled = ?, updated_at = ? WHERE id = ?').run(
+    enabled ? 1 : 0,
+    now,
+    id,
+  );
+}
+
+interface AutoConfigRow {
+  auto_config_json: string | null;
+}
+
+export type SaveAutoConfigResult =
+  | { status: 'saved'; state: StoredAutoConfigState }
+  | { status: 'conflict'; current: StoredAutoConfigState }
+  | { status: 'missing' };
+
+export type AutoConfigProfileErrorCode =
+  | 'farm-profile-required'
+  | 'seed-catalog-required'
+  | 'invalid-tree-cell-plan';
+
+export class AutoConfigProfileError extends Error {
+  readonly code: AutoConfigProfileErrorCode;
+  readonly invalidCellIndices: number[];
+  readonly invalidSeedIds: number[];
+
+  constructor(
+    code: AutoConfigProfileErrorCode,
+    message: string,
+    invalidCellIndices: number[] = [],
+    invalidSeedIds: number[] = [],
+  ) {
+    super(message);
+    this.name = 'AutoConfigProfileError';
+    this.code = code;
+    this.invalidCellIndices = invalidCellIndices;
+    this.invalidSeedIds = invalidSeedIds;
+  }
+}
+
+function ownedAutoConfigRow(db: Db, userId: number, id: number): AutoConfigRow | undefined {
+  return db
+    .prepare<[number, number], AutoConfigRow>(
+      'SELECT auto_config_json FROM avatar_accounts WHERE id = ? AND user_id = ?',
+    )
+    .get(id, userId);
+}
+
+function storedState(row: AutoConfigRow): StoredAutoConfigState {
+  return readStoredAutoConfig(parseJson<unknown>(row.auto_config_json));
+}
+
+function validateProfile(
+  config: Partial<AutoFarmConfig>,
+  profile: AutoConfigProfile | null,
+): void {
+  const plan = config.treeCellPlan;
+  if (plan === undefined || plan.length === 0) return;
+  if (profile === null || profile.cellIndices.length === 0) {
+    throw new AutoConfigProfileError(
+      'farm-profile-required',
+      'cần đồng bộ farm profile trước khi lưu kế hoạch',
+    );
+  }
+
+  const seedEntries = plan.filter((entry) => entry.action === 'seed');
+  if (profile.seedIds.length === 0 && seedEntries.length > 0) {
+    throw new AutoConfigProfileError(
+      'seed-catalog-required',
+      'cần đồng bộ seed catalog trước khi lưu kế hoạch trồng',
+    );
+  }
+
+  const knownCells = new Set(profile.cellIndices);
+  const knownSeeds = new Set(profile.seedIds);
+  const invalidCellIndices = [...new Set(
+    plan.filter((entry) => !knownCells.has(entry.cellIndex)).map((entry) => entry.cellIndex),
+  )].sort((left, right) => left - right);
+  const invalidSeedIds = [...new Set(
+    seedEntries.filter((entry) => !knownSeeds.has(entry.seedId)).map((entry) => entry.seedId),
+  )].sort((left, right) => left - right);
+  if (invalidCellIndices.length > 0 || invalidSeedIds.length > 0) {
+    throw new AutoConfigProfileError(
+      'invalid-tree-cell-plan',
+      'kế hoạch cây không khớp farm profile hiện tại',
+      invalidCellIndices,
+      invalidSeedIds,
+    );
+  }
+}
+
+export function getAutoConfig(
+  db: Db,
+  userId: number,
+  id: number,
+): StoredAutoConfigState | null {
+  const row = ownedAutoConfigRow(db, userId, id);
+  return row ? storedState(row) : null;
+}
+
+export function saveAutoConfig(
+  db: Db,
+  userId: number,
+  id: number,
+  expectedRevision: number,
+  config: Partial<AutoFarmConfig>,
+  now = Date.now(),
+): SaveAutoConfigResult {
+  return db.transaction((): SaveAutoConfigResult => {
+    const row = ownedAutoConfigRow(db, userId, id);
+    if (!row) return { status: 'missing' };
+    const current = storedState(row);
+    if (current.revision !== expectedRevision) return { status: 'conflict', current };
+
+    const state: StoredAutoConfigState = {
+      revision: current.revision + 1,
+      config: normalizeAutoConfig(config),
+    };
+    db.prepare(
+      `UPDATE avatar_accounts
+          SET auto_config_json = ?, updated_at = ?
+        WHERE id = ? AND user_id = ?`,
+    ).run(JSON.stringify(storedAutoConfigEnvelope(state)), now, id, userId);
+    return { status: 'saved', state: storedState(ownedAutoConfigRow(db, userId, id)!) };
+  })();
+}
+
+export function enableAutoWithConfigPatch(
+  db: Db,
+  userId: number,
+  id: number,
+  patch: unknown,
+  profile: AutoConfigProfile | null,
+  now = Date.now(),
+): SaveAutoConfigResult {
+  return db.transaction((): SaveAutoConfigResult => {
+    const row = ownedAutoConfigRow(db, userId, id);
+    if (!row) return { status: 'missing' };
+    const current = storedState(row);
+    const normalizedPatch = normalizeAutoConfig(patch);
+    if (Object.keys(normalizedPatch).length === 0) {
+      setAutoEnabled(db, id, true, now);
+      return { status: 'saved', state: current };
+    }
+
+    const config = mergeAutoConfig(current.config, normalizedPatch);
+    validateProfile(config, profile);
+    const state: StoredAutoConfigState = { revision: current.revision + 1, config };
+    db.prepare(
+      `UPDATE avatar_accounts
+          SET auto_config_json = ?, auto_enabled = 1, updated_at = ?
+        WHERE id = ? AND user_id = ?`,
+    ).run(JSON.stringify(storedAutoConfigEnvelope(state)), now, id, userId);
+    return { status: 'saved', state };
+  })();
 }
 
 /** Đường duy nhất chạm tới mật khẩu game. Chỉ tầng phiên được gọi. */

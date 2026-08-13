@@ -130,3 +130,76 @@ export interface AuthUser {
   id: number;
   email: string;
 }
+
+export type TreeCellPlanEntry =
+  | { cellIndex: number; action: 'seed'; seedId: number }
+  | { cellIndex: number; action: 'skip' };
+
+export interface AutoFarmConfigDto {
+  seedId?: number;
+  waterItemId?: number;
+  grassItemId?: number;
+  wormItemId?: number;
+  harvest: boolean;
+  harvestAnimals: boolean;
+  sellAnimals: boolean;
+  sellWhenGrownSpecies: number[];
+  sellNearDeathSpecies: number[];
+  minGrowthToSell: number;
+  nearDeathRatio: number;
+  maxSellsPerCycle: number;
+  feedAnimals: boolean;
+  healAnimals: boolean;
+  minHealth: number;
+  fertilizeCells: boolean;
+  minVitality: number;
+  autoBuy: boolean;
+  buyBudgetXu: number;
+  maxBuyPerItem: number;
+  stepDelayMs: number;
+  intervalMs: number;
+  startDelayMs: number;
+  treeCellPlan: TreeCellPlanEntry[];
+}
+
+export interface CachedSeedDto {
+  id: number;
+  name: string;
+  growMinutes: number;
+  value: number;
+}
+
+export interface AutoConfigStateDto {
+  revision: number;
+  config: Partial<AutoFarmConfigDto>;
+}
+
+export interface AutoConfigResponse extends AutoConfigStateDto {
+  application?: 'next-cycle' | 'next-start';
+}
+
+export interface FarmProfileDto {
+  farmId: number | null;
+  cellIndices: number[];
+  seedCatalog: CachedSeedDto[];
+  cellsObservedAt: number | null;
+  seedsObservedAt: number | null;
+  updatedAt: number | null;
+}
+
+export type AutoConfigErrorDto =
+  | {
+      error: string;
+      code: 'revision-conflict';
+      current: AutoConfigStateDto;
+    }
+  | {
+      error: string;
+      code: 'farm-profile-required' | 'seed-catalog-required';
+    }
+  | {
+      error: string;
+      code: 'invalid-tree-cell-plan';
+      invalidCellIndices: number[];
+      invalidSeedIds: number[];
+    };

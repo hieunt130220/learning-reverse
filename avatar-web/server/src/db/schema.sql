@@ -32,3 +32,14 @@ CREATE TABLE IF NOT EXISTS avatar_accounts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_avatar_accounts_user ON avatar_accounts(user_id);
+
+CREATE TABLE IF NOT EXISTS avatar_farm_profile_cache (
+  account_id        INTEGER PRIMARY KEY
+                    REFERENCES avatar_accounts(id) ON DELETE CASCADE,
+  farm_id           INTEGER,
+  cell_indices_json TEXT NOT NULL DEFAULT '[]',
+  seed_catalog_json TEXT NOT NULL DEFAULT '[]',
+  cells_observed_at INTEGER,
+  seeds_observed_at INTEGER,
+  updated_at        INTEGER NOT NULL
+);

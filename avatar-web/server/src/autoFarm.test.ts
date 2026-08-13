@@ -2,10 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 
-import { AutoFarm } from './autoFarm.js';
+import { AutoFarm, type AutoFarmOptions } from './autoFarm.js';
 import { ITEM_GRASS, ITEM_TONIC, ITEM_WATER } from './game/farmData.js';
-import type { GameClient } from './game/client.js';
-import type { FarmAnimal, FarmCell, FarmState } from './game/farmData.js';
+import type { FarmAnimal, FarmCell, FarmState, TreeInfo } from './game/farmData.js';
 
 function cell(index: number, overrides: Partial<FarmCell> = {}): FarmCell {
   return {
@@ -36,6 +35,18 @@ function animal(index: number, overrides: Partial<FarmAnimal> = {}): FarmAnimal 
   };
 }
 
+function tree(id: number): TreeInfo {
+  return { id, name: `Cây ${id}`, growMinutes: 60, value: 1, stageImages: [], attrsHex: '' };
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 /**
  * GameClient giả: đủ bề mặt để `AutoFarm` chạy một vòng thật, không mở socket
  * nào. `enterFarm`/`getInventory` tự phát lại 'farm'/'inventory' ở microtask
@@ -46,6 +57,7 @@ class FakeClient extends EventEmitter {
   farmState: FarmState;
   inventory: { id: number; num: number }[] = [];
   items: { id: number; price: number }[] = [];
+  trees: TreeInfo[] = [];
   /** Bảng vật nuôi (cmd 76) — `desc` là nguồn tuổi lớn/tuổi thọ. */
   animals: { id: number; name: string; desc: string }[] = [
     { id: 50, name: 'Gà', desc: 'Thời gian lớn : 1 ngày - Sản phẩm : 20 trứng gà sau mỗi 6 giờ - Thời gian sống: 7 ngày' },
@@ -53,6 +65,7 @@ class FakeClient extends EventEmitter {
     { id: 59, name: 'Rùa', desc: 'Thời gian lớn : 1 ngày - Không có sản phẩm - Thời gian sống: 15 ngày' },
   ];
   readonly calls: string[] = [];
+  onPlantSeed?: (cellIndex: number, seedId: number) => void;
 
   readonly farm = {
     getInventory: (): void => {
@@ -65,15 +78,20 @@ class FakeClient extends EventEmitter {
     harvest: (idFarm: number, index: number): void => {
       this.calls.push(`harvest:${index}`);
     },
-    buyItem: (id: number, num: number): void => {
+    buyItem: (id: number, num: number, typeShop: number): void => {
       this.calls.push(`buy:${id}x${num}`);
     },
-    plantSeed: (): void => {
-      this.calls.push('plantSeed');
+    plantSeed: (idFarm: number, cellIndex: number, seedId: number): void => {
+      this.calls.push(`plantSeed:${cellIndex}:${seedId}`);
+      this.onPlantSeed?.(cellIndex, seedId);
     },
     getTreeInfo: (): void => {
       this.calls.push('getTreeInfo');
-      queueMicrotask(() => this.emit('trees', { animals: this.animals }));
+      queueMicrotask(() => this.emit('trees', {
+        trees: this.trees,
+        items: this.items,
+        animals: this.animals,
+      }));
     },
     harvestAnimal: (idFarm: number, index: number): void => {
       this.calls.push(`harvestAnimal:${index}`);
@@ -110,7 +128,7 @@ test('một vòng làm hết việc tồn đọng, không còn trần lệnh', a
     updatedAt: Date.now(),
   };
   const client = new FakeClient(farmState);
-  const auto = new AutoFarm(client as unknown as GameClient);
+  const auto = new AutoFarm(client);
 
   // start() gọi stop() nội bộ trước — phát 'state' {cycle:0} ngay lập tức.
   // Chờ vòng thật (cycle > 0) hoàn tất, không phải sự kiện dọn dẹp đó.
@@ -149,7 +167,7 @@ test('một vòng làm hết việc tồn đọng, không còn trần lệnh', a
 test('stop() giữa vòng vẫn dừng ngay, không có lần thử sau', async () => {
   const farmState: FarmState = { idFarm: 1, cells: manyAridCells(4), animals: [], updatedAt: Date.now() };
   const client = new FakeClient(farmState);
-  const auto = new AutoFarm(client as unknown as GameClient);
+  const auto = new AutoFarm(client);
 
   auto.start({ waterItemId: ITEM_WATER, harvest: false, stepDelayMs: 300, startDelayMs: 0 });
   // Để vòng chạy một chút (đã gửi vài lệnh) rồi dừng giữa chừng.
@@ -170,7 +188,7 @@ test('startDelayMs hoãn vòng đầu để phiên kịp ổn định, stop() tr
     animals: [],
     updatedAt: Date.now(),
   });
-  const auto = new AutoFarm(client as unknown as GameClient);
+  const auto = new AutoFarm(client);
   auto.start({ waterItemId: ITEM_WATER, harvest: false, stepDelayMs: 300, startDelayMs: 400 });
 
   // Chưa tới hạn: chưa được gửi gì cả.
@@ -183,7 +201,7 @@ test('startDelayMs hoãn vòng đầu để phiên kịp ổn định, stop() tr
 
   // Dừng trong lúc còn đang chờ thì vòng đầu không bao giờ chạy.
   const c2 = new FakeClient({ idFarm: 1, cells: [], animals: [], updatedAt: Date.now() });
-  const a2 = new AutoFarm(c2 as unknown as GameClient);
+  const a2 = new AutoFarm(c2);
   a2.start({ harvest: false, stepDelayMs: 300, startDelayMs: 5000 });
   a2.stop();
   await new Promise((r) => setTimeout(r, 300));
@@ -194,8 +212,9 @@ test('startDelayMs hoãn vòng đầu để phiên kịp ổn định, stop() tr
 async function runOneCycle(
   client: FakeClient,
   cfg: Parameters<AutoFarm['start']>[0],
+  options?: AutoFarmOptions,
 ): Promise<AutoFarm> {
-  const auto = new AutoFarm(client as unknown as GameClient);
+  const auto = new AutoFarm(client, options);
   const done = new Promise<void>((resolve) =>
     auto.on('state', (s) => {
       if (s.cycle > 0) resolve();
@@ -206,6 +225,157 @@ async function runOneCycle(
   auto.stop();
   return auto;
 }
+
+test('override, fallback và skip chọn đúng hành động cho ô trống không liền nhau', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(2, { idTree: -1 }), cell(7, { idTree: -1 }), cell(9, { idTree: -1 })],
+    animals: [],
+    updatedAt: 0,
+  });
+  client.trees = [tree(5), tree(6)];
+  client.inventory = [{ id: 5, num: 2 }, { id: 6, num: 2 }];
+
+  await runOneCycle(client, {
+    seedId: 5,
+    treeCellPlan: [
+      { cellIndex: 2, action: 'seed', seedId: 6 },
+      { cellIndex: 7, action: 'skip' },
+    ],
+    harvest: false,
+  });
+
+  assert.ok(client.calls.includes('plantSeed:2:6'));
+  assert.equal(client.calls.some((call) => call.startsWith('plantSeed:7:')), false);
+  assert.ok(client.calls.includes('plantSeed:9:5'));
+});
+
+test('không thay cây đang mọc và không trồng khi kho chỉ còn một hạt', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(2, { idTree: 5 }), cell(7, { idTree: -1 }), cell(9, { idTree: -1 })],
+    animals: [],
+    updatedAt: 0,
+  });
+  client.trees = [tree(5)];
+  client.inventory = [{ id: 5, num: 1 }];
+
+  const auto = await runOneCycle(client, { seedId: 5, harvest: false, autoBuy: true });
+
+  assert.deepEqual(client.calls.filter((call) => call.startsWith('plantSeed:')), ['plantSeed:7:5']);
+  assert.equal(client.calls.some((call) => call.startsWith('buy:')), false);
+  assert.ok(auto.state().lastActions.some((line) => line.includes('ô 9') && line.includes('thiếu hạt #5')));
+});
+
+test('seed ngoài catalog bị bỏ qua và ghi rõ ô cùng id hạt', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(2, { idTree: -1 })],
+    animals: [],
+    updatedAt: 0,
+  });
+  client.trees = [tree(5), tree(6)];
+  client.inventory = [{ id: 99, num: 3 }];
+
+  const auto = await runOneCycle(client, {
+    seedId: 5,
+    treeCellPlan: [{ cellIndex: 2, action: 'seed', seedId: 99 }],
+    harvest: false,
+  });
+
+  assert.equal(client.calls.some((call) => call.endsWith(':99')), false);
+  assert.ok(auto.state().lastActions.some((line) => line.includes('ô 2') && line.includes('hạt #99') && line.includes('catalog')));
+});
+
+test('catalog rỗng được tải đúng một lần rồi mới trồng', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(4, { idTree: -1 })],
+    animals: [],
+    updatedAt: 0,
+  });
+  client.inventory = [{ id: 5, num: 1 }];
+  client.farm.getTreeInfo = (): void => {
+    client.calls.push('getTreeInfo');
+    client.trees = [tree(5)];
+    queueMicrotask(() => client.emit('trees', {
+      trees: client.trees,
+      items: client.items,
+      animals: client.animals,
+    }));
+  };
+
+  await runOneCycle(client, { seedId: 5, harvest: false });
+
+  assert.equal(client.calls.filter((call) => call === 'getTreeInfo').length, 1);
+  assert.ok(client.calls.includes('plantSeed:4:5'));
+});
+
+test('catalog timeout không trồng mù', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(4, { idTree: -1 })],
+    animals: [],
+    updatedAt: 0,
+  });
+  client.inventory = [{ id: 5, num: 1 }];
+  client.farm.getTreeInfo = (): void => {
+    client.calls.push('getTreeInfo');
+  };
+
+  const auto = await runOneCycle(
+    client,
+    { seedId: 5, harvest: false },
+    { catalogTimeout: () => Promise.resolve() },
+  );
+
+  assert.equal(client.calls.some((call) => call.startsWith('plantSeed:')), false);
+  assert.ok(auto.state().lastActions.some((line) => line.includes('hết thời gian') && line.includes('catalog')));
+});
+
+test('config queue giữa vòng chỉ áp từ vòng kế tiếp', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(2, { idTree: -1 }), cell(7, { idTree: -1 }), cell(9, { idTree: -1 })],
+    animals: [],
+    updatedAt: 0,
+  });
+  client.trees = [tree(5), tree(6)];
+  client.inventory = [{ id: 5, num: 3 }, { id: 6, num: 3 }];
+  const firstTick = deferred();
+  const firstPlant = deferred();
+  client.onPlantSeed = (cellIndex, seedId) => {
+    if (cellIndex === 2 && seedId === 5) firstPlant.resolve();
+  };
+  let tickCount = 0;
+  const auto = new AutoFarm(client, {
+    sleep: () => {
+      tickCount += 1;
+      return tickCount === 1 ? firstTick.promise : Promise.resolve();
+    },
+  });
+  const cycle2 = new Promise<void>((resolve) =>
+    auto.on('state', (state) => {
+      if (state.cycle >= 2) resolve();
+    }),
+  );
+
+  auto.start({ seedId: 5, harvest: false, intervalMs: 0, stepDelayMs: 300, startDelayMs: 0 });
+  await firstPlant.promise;
+  auto.queueConfig({ seedId: 6, harvest: false, intervalMs: 60_000, stepDelayMs: 300 });
+  firstTick.resolve();
+  await cycle2;
+  auto.stop();
+
+  assert.deepEqual(client.calls.filter((call) => call.startsWith('plantSeed:')), [
+    'plantSeed:2:5',
+    'plantSeed:7:5',
+    'plantSeed:9:5',
+    'plantSeed:2:6',
+    'plantSeed:7:6',
+    'plantSeed:9:6',
+  ]);
+});
 
 test('chỉ thu hoạch ô có hervestPer > 0, không đụng ô non và ô vừa thu (time=-1)', async () => {
   // Số liệu lấy nguyên từ farm thật: `time` đếm LÊN (phút kể từ lúc trồng) nên
@@ -373,7 +543,7 @@ test('bornTime đổi giữa 2 vòng thì ghi lại delta để xác định chi
     updatedAt: Date.now(),
   };
   const client = new FakeClient(farmState);
-  const auto = new AutoFarm(client as unknown as GameClient);
+  const auto = new AutoFarm(client);
 
   const cycle1 = new Promise<void>((resolve) =>
     auto.on('state', (s) => {
@@ -411,7 +581,7 @@ test('mỗi dòng ghi vào lastActions cũng phát ra sự kiện log', async ()
     animals: [],
     updatedAt: Date.now(),
   });
-  const auto = new AutoFarm(client as unknown as GameClient);
+  const auto = new AutoFarm(client);
   const logs: string[] = [];
   auto.on('log', (line: string) => logs.push(line));
 
@@ -437,7 +607,7 @@ test('ô không có việc vẫn tốn một nhịp nghỉ', async () => {
     animals: [],
     updatedAt: Date.now(),
   });
-  const auto = new AutoFarm(client as unknown as GameClient);
+  const auto = new AutoFarm(client);
   const done = new Promise<void>((resolve) =>
     auto.on('state', (s) => {
       if (s.cycle > 0) resolve();
@@ -460,7 +630,7 @@ test('mỗi ô đã duyệt sinh đúng một dòng log, kể cả ô không có
     animals: [],
     updatedAt: Date.now(),
   });
-  const auto = new AutoFarm(client as unknown as GameClient);
+  const auto = new AutoFarm(client);
   const logs: string[] = [];
   auto.on('log', (line: string) => logs.push(line));
   const done = new Promise<void>((resolve) =>
@@ -504,7 +674,7 @@ test('mỗi con đã duyệt sinh đúng một dòng log, kể cả con không c
     animals: [animal(0, { species: 50, hunger: true }), animal(1, { species: 50 })],
     updatedAt: Date.now(),
   });
-  const auto = new AutoFarm(client as unknown as GameClient);
+  const auto = new AutoFarm(client);
   const logs: string[] = [];
   auto.on('log', (line: string) => logs.push(line));
   const done = new Promise<void>((resolve) =>
@@ -543,4 +713,49 @@ test('không tốn thuốc và thức ăn cho con sắp bán', async () => {
     false,
     'con đã bán thì không chữa bệnh, không cho ăn',
   );
+});
+
+test('thu ô đủ thời gian lớn dù hervestPer = 0', async () => {
+  // Tái hiện đúng farm thật: cây Lúa 48 giờ (ngưỡng 2880 phút), mọi ô
+  // `hervestPer = 0`. Ô 41 đã 3335 phút — người dùng thấy nó chín trong game
+  // nhưng auto bỏ qua vì điều kiện cũ đòi `hervestPer > 0`.
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [
+      cell(41, { idTree: 6, time: 3335 }),
+      cell(42, { idTree: 6, time: 1957 }),
+      cell(45, { idTree: 6, time: 3576 }),
+    ],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  client.trees = [{ ...tree(6), name: 'Lúa', growMinutes: 48 }];
+
+  await runOneCycle(client, { harvest: true });
+
+  assert.deepEqual(
+    client.calls.filter((c) => c.startsWith('harvest:')),
+    ['harvest:41', 'harvest:45'],
+  );
+});
+
+test('bật thu hoạch thì phải xin bảng cây, không có nó là không biết ô nào chín', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(41, { idTree: 6, time: 3335 })],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  // Bảng cây chỉ có sau khi auto gọi getTreeInfo — giống lần chạy thật đầu tiên.
+  client.trees = [];
+  client.farm.getTreeInfo = (): void => {
+    client.calls.push('getTreeInfo');
+    client.trees = [{ ...tree(6), name: 'Lúa', growMinutes: 48 }];
+    queueMicrotask(() => client.emit('trees', { trees: client.trees, items: [], animals: [] }));
+  };
+
+  await runOneCycle(client, { harvest: true });
+
+  assert.ok(client.calls.includes('getTreeInfo'), 'phải xin bảng cây khi bật thu hoạch');
+  assert.ok(client.calls.includes('harvest:41'), 'ô 41 đủ tuổi phải được thu');
 });

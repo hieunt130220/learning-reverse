@@ -13,11 +13,24 @@ import {
   parseAnimalSpec,
   isCellSpent,
 } from './game/farmData.js';
-import type { GameClient } from './game/client.js';
+import type {
+  AnimalInfo,
+  FarmCell,
+  FarmState,
+  InventoryItem,
+  ItemInfo,
+  TreeInfo,
+} from './game/farmData.js';
+
+export type TreeCellPlanEntry =
+  | { cellIndex: number; action: 'seed'; seedId: number }
+  | { cellIndex: number; action: 'skip' };
 
 export interface AutoFarmConfig {
   /** Hạt để trồng lại ô trống. Bỏ trống = không trồng. */
   seedId?: number;
+  /** Kế hoạch trồng riêng cho từng ô; không có entry thì dùng `seedId`. */
+  treeCellPlan?: TreeCellPlanEntry[];
   /** id vật phẩm tưới nước. Bỏ trống = không tưới. */
   waterItemId?: number;
   /** id vật phẩm nhổ cỏ. */
@@ -104,6 +117,33 @@ export interface AutoFarmState {
   lastActions: string[];
 }
 
+export interface AutoFarmClient {
+  status: string;
+  farmState?: FarmState;
+  inventory: InventoryItem[];
+  items: ItemInfo[];
+  trees: TreeInfo[];
+  animals: AnimalInfo[];
+  once(eventName: string | symbol, listener: () => void): this;
+  removeListener(eventName: string | symbol, listener: () => void): this;
+  enterFarm(): void;
+  farm: {
+    getInventory(): void;
+    getTreeInfo(): void;
+    useItem(idFarm: number, index: number, idItem: number): void;
+    harvest(idFarm: number, index: number): void;
+    buyItem(id: number, num: number, typeShop: number): void;
+    plantSeed(idFarm: number, cellIndex: number, seedId: number): void;
+    harvestAnimal(idFarm: number, index: number): void;
+    sellAnimal(idFarm: number, index: number): void;
+  };
+}
+
+export interface AutoFarmOptions {
+  sleep?: (ms: number) => Promise<void>;
+  catalogTimeout?: (signal: AbortSignal) => Promise<void>;
+}
+
 const DEFAULTS: AutoFarmConfig = {
   harvest: true,
   harvestAnimals: true,
@@ -137,7 +177,10 @@ const DEFAULTS: AutoFarmConfig = {
 export class AutoFarm extends EventEmitter {
   private timer?: NodeJS.Timeout;
   private aborted = true;
-  private cfg: AutoFarmConfig = DEFAULTS;
+  private activeConfig: AutoFarmConfig = DEFAULTS;
+  private pendingConfig?: AutoFarmConfig;
+  private readonly wait: (ms: number) => Promise<void>;
+  private readonly catalogTimeout: (signal: AbortSignal) => Promise<void>;
   private cycle = 0;
   private lastRun?: number;
   private lastError?: string;
@@ -151,8 +194,10 @@ export class AutoFarm extends EventEmitter {
    */
   private bornProbe = new Map<string, { value: number; at: number }>();
 
-  constructor(private readonly client: GameClient) {
+  constructor(private readonly client: AutoFarmClient, options: AutoFarmOptions = {}) {
     super();
+    this.wait = options.sleep ?? sleep;
+    this.catalogTimeout = options.catalogTimeout ?? waitForCatalogTimeout;
   }
 
   state(): AutoFarmState {
@@ -168,26 +213,21 @@ export class AutoFarm extends EventEmitter {
   start(cfg: Partial<AutoFarmConfig>): void {
     if (this.client.status !== 'online') throw new Error('chưa đăng nhập');
     this.stop();
-    this.cfg = { ...DEFAULTS, ...cfg };
-    if (this.cfg.stepDelayMs < 300) throw new Error('stepDelayMs tối thiểu 300ms');
-    // Hai danh sách này tới thẳng từ HTTP body (JSON tuỳ ý) và điều khiển thao
-    // tác KHÔNG ĐẢO NGƯỢC — chuẩn hoá ngay lúc nhận thay vì tin tưởng ở mỗi
-    // vòng. Mảng rỗng là ý muốn hợp lệ ("không bán loài nào"), chỉ thứ không
-    // phải mảng mới rơi về mặc định.
-    this.cfg.sellWhenGrownSpecies = speciesList(cfg.sellWhenGrownSpecies, SPECIES_SELL_WHEN_GROWN);
-    this.cfg.sellNearDeathSpecies = speciesList(cfg.sellNearDeathSpecies, SPECIES_SELL_NEAR_DEATH);
-    if (!Number.isFinite(this.cfg.maxSellsPerCycle) || this.cfg.maxSellsPerCycle < 0) {
-      throw new Error('maxSellsPerCycle phải là số không âm');
-    }
+    this.activeConfig = makeConfig(cfg);
+    this.pendingConfig = undefined;
     this.aborted = false;
     this.cycle = 0;
     this.lastError = undefined;
     // Vòng đầu chờ phiên ổn định; các vòng sau đã cách nhau `intervalMs`.
-    if (this.cfg.startDelayMs > 0) {
-      this.timer = setTimeout(() => void this.runCycle(), this.cfg.startDelayMs);
+    if (this.activeConfig.startDelayMs > 0) {
+      this.timer = setTimeout(() => void this.runCycle(), this.activeConfig.startDelayMs);
     } else {
       void this.runCycle();
     }
+  }
+
+  queueConfig(cfg: Partial<AutoFarmConfig>): void {
+    this.pendingConfig = makeConfig(cfg);
   }
 
   stop(): void {
@@ -198,6 +238,11 @@ export class AutoFarm extends EventEmitter {
   }
 
   private async runCycle(): Promise<void> {
+    if (this.pendingConfig) {
+      this.activeConfig = this.pendingConfig;
+      this.pendingConfig = undefined;
+    }
+    const cfg = this.activeConfig;
     if (this.aborted) return;
     const actions: string[] = [];
     // Một nguồn, hai đích: panel Tự động đọc `lastActions`, còn nhật ký phiên
@@ -246,7 +291,30 @@ export class AutoFarm extends EventEmitter {
       this.client.farm.getInventory();
       await invFresh;
       const idFarm = farm.idFarm;
-      const cfg = this.cfg;
+
+      const plantingConfigured = cfg.seedId !== undefined
+        || cfg.treeCellPlan?.some((entry) => entry.action === 'seed') === true;
+      // Thu hoạch cũng cần bảng cây: điều kiện chín là `time >= growHours × 60`,
+      // không có bảng thì không biết ô nào đã đủ tuổi và auto sẽ bỏ qua hết.
+      const needTreeCatalog = plantingConfigured || cfg.harvest;
+      let treeCatalogTimedOut = false;
+      if (needTreeCatalog && this.client.trees.length === 0) {
+        let received = false;
+        let onTrees = (): void => {};
+        const timeout = new AbortController();
+        const catalogEvent = new Promise<void>((resolve) => {
+          onTrees = (): void => {
+            received = true;
+            resolve();
+          };
+          this.client.once('trees', onTrees);
+        });
+        this.client.farm.getTreeInfo();
+        await Promise.race([catalogEvent, this.catalogTimeout(timeout.signal)]);
+        timeout.abort();
+        treeCatalogTimedOut = !received;
+        if (treeCatalogTimedOut) this.client.removeListener('trees', onTrees);
+      }
 
       // Bảng vật nuôi: `desc` chứa "Thời gian lớn : N ngày" và "Thời gian sống:
       // N ngày" — hai số quyết định khi nào bán. Chỉ xin khi còn thiếu (bảng
@@ -273,13 +341,21 @@ export class AutoFarm extends EventEmitter {
       // Nhịp nghỉ dùng chung: sau mỗi lệnh gửi đi, và sau mỗi đối tượng đã duyệt
       // dù không gửi gì. `tick` chỉ chờ; việc dừng vòng do `this.aborted` ở đầu
       // mỗi lượt lặp lo.
-      const tick = (): Promise<void> => sleep(cfg.stepDelayMs);
+      const tick = (): Promise<void> => this.wait(cfg.stepDelayMs);
 
       // --- Ảnh chụp những gì vòng này NHÌN THẤY ------------------------------
       // Ghi cả khi không làm gì. `lastActions` vốn chỉ liệt kê việc ĐÃ làm, nên
       // "không có gì để làm" và "có việc nhưng lệnh bị server bỏ qua" đều hiện
       // ra y hệt nhau: một danh sách rỗng. Hai dòng dưới tách bạch hai ca đó.
-      const ripe = farm.cells.filter(isCellRipe).length;
+      // Giờ để lớn theo loại cây, lấy từ bảng cây (gói 76). `TreeInfo.growMinutes`
+      // bị đặt sai tên: đơn vị là GIỜ. Không có bảng thì `undefined` và
+      // `isCellRipe` lùi về tín hiệu `hervestPer`, không đoán mò.
+      const growHours = new Map(this.client.trees.map((t) => [t.id, t.growMinutes]));
+      const cellRipe = (c: FarmCell): boolean => isCellRipe(c, growHours.get(c.idTree));
+
+      // KHÔNG viết `filter(isCellRipe)`: filter truyền cả chỉ số mảng vào tham số
+      // thứ hai, biến vị trí ô thành "giờ để lớn" và làm ô non hoá chín.
+      const ripe = farm.cells.filter((c) => cellRipe(c)).length;
       const emptyCells = farm.cells.filter((c) => c.idTree === -1).length;
       const spent = farm.cells.filter(isCellSpent).length;
       const sick = farm.animals.filter((a) => a.health < cfg.minHealth).length;
@@ -312,6 +388,7 @@ export class AutoFarm extends EventEmitter {
       if (!cfg.fertilizeCells) off.push('bón phân');
       if (waterItemId === undefined) off.push('tưới (chưa chọn id)');
       if (off.length > 0) note(`[tắt] ${off.join(', ')}`);
+      if (treeCatalogTimedOut) note('bỏ qua trồng: hết thời gian chờ catalog cây');
 
       // --- Đo bornTime ------------------------------------------------------
       // Dấu của delta trả lời trực tiếp: âm = đếm ngược (còn sống được bao
@@ -400,24 +477,44 @@ export class AutoFarm extends EventEmitter {
       // Mỗi ô chạm đúng một lần, làm hết mọi việc của ô đó rồi mới sang ô sau.
       // Thu hoạch và trồng đi trước vì đó là mục đích chính của farm và không
       // phụ thuộc kho; chăm sóc ô là việc bảo trì nên xếp sau.
+      const planByCell = new Map(cfg.treeCellPlan?.map((entry) => [entry.cellIndex, entry]));
+      const seedInventory = new Map(this.client.inventory.map((item) => [item.id, item.num]));
+      const knownSeeds = new Set(this.client.trees.map((tree) => tree.id));
       for (const c of farm.cells) {
         if (this.aborted) return;
         const seen: string[] = [];
         const did: string[] = [];
 
-        if (harvest && isCellRipe(c)) {
+        if (harvest && cellRipe(c)) {
           this.client.farm.harvest(idFarm, c.index);
           sent += 1;
-          seen.push(`chín ${c.hervestPer}%`);
+          // `hervestPer` thường là 0 kể cả trên ô chín, nên nói theo thời gian
+          // lớn — số đó mới là căn cứ thật để quyết định thu.
+          const need = growHours.get(c.idTree);
+          seen.push(need === undefined ? `chín ${c.hervestPer}%` : `đủ tuổi ${c.time}/${need * 60} phút`);
           did.push('thu hoạch');
           await tick();
         }
-        if (seedId !== undefined && c.idTree === -1) {
-          this.client.farm.plantSeed(idFarm, c.index, seedId);
-          sent += 1;
-          seen.push('trống');
-          did.push(`trồng #${seedId}`);
-          await tick();
+        if (c.idTree === -1) {
+          const plan = planByCell.get(c.index);
+          const plannedSeedId = plan?.action === 'seed' ? plan.seedId : seedId;
+          if (plan?.action === 'skip') {
+            seen.push('trống');
+            did.push('bỏ qua theo kế hoạch');
+          } else if (plannedSeedId !== undefined && !knownSeeds.has(plannedSeedId)) {
+            seen.push('trống');
+            did.push(`bỏ qua hạt #${plannedSeedId} — không có trong catalog cây`);
+          } else if (plannedSeedId !== undefined && (seedInventory.get(plannedSeedId) ?? 0) <= 0) {
+            seen.push('trống');
+            did.push(`bỏ qua — thiếu hạt #${plannedSeedId} trong kho`);
+          } else if (plannedSeedId !== undefined) {
+            this.client.farm.plantSeed(idFarm, c.index, plannedSeedId);
+            seedInventory.set(plannedSeedId, (seedInventory.get(plannedSeedId) ?? 0) - 1);
+            sent += 1;
+            seen.push('trống');
+            did.push(`trồng #${plannedSeedId}`);
+            await tick();
+          }
         }
         if (c.isArid && waterItemId !== undefined) {
           this.client.farm.useItem(idFarm, c.index, waterItemId);
@@ -567,12 +664,13 @@ export class AutoFarm extends EventEmitter {
         note(`bỏ qua bán ${noSpec} con: chưa có bảng vật nuôi để biết tuổi lớn/tuổi thọ`);
       }
 
-      // Tưới nước KHÔNG được server đẩy kèm INFO_CELL, nên state cục bộ vẫn giữ
-      // isArid cũ. Xin lại dữ liệu farm cuối vòng để UI phản ánh đúng thực tế.
-      // Điều kiện là `sent` chứ không phải `actions`: `actions` còn chứa dòng
-      // chẩn đoán ([đo], "bỏ qua…") không đổi trạng thái farm, refresh theo nó
-      // là gửi thừa một gói mỗi vòng.
-      if (sent > 0 && !this.aborted) {
+      // TẠM — THÍ NGHIỆM CHẨN ĐOÁN, KHÔNG COMMIT.
+      // Nghi vấn: `enterFarm()` (GET_HANDLER 10) gọi lần thứ hai trong một phiên
+      // làm server đóng kết nối. Hai phiên đo được đều chết 0–7ms sau khi server
+      // trả lời lần enterFarm thứ hai. Tắt bước làm mới cuối vòng để xem điểm
+      // chết có dời sang lần enterFarm đầu vòng 2 hay không.
+      const REFRESH_AT_END = false;
+      if (REFRESH_AT_END && sent > 0 && !this.aborted) {
         const refreshed = new Promise<void>((resolve) => {
           const t = setTimeout(resolve, 5000);
           this.client.once('farm', () => {
@@ -600,12 +698,52 @@ export class AutoFarm extends EventEmitter {
     this.emit('state', this.state());
 
     if (!this.aborted) {
-      this.timer = setTimeout(() => void this.runCycle(), this.cfg.intervalMs);
+      this.timer = setTimeout(() => void this.runCycle(), cfg.intervalMs);
     }
   }
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+const waitForCatalogTimeout = (signal: AbortSignal): Promise<void> => new Promise((resolve) => {
+  const timer = setTimeout(resolve, 5_000);
+  signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
+});
+
+function makeConfig(input: Partial<AutoFarmConfig>): AutoFarmConfig {
+  const cfg: AutoFarmConfig = {
+    ...DEFAULTS,
+    ...input,
+    sellWhenGrownSpecies: speciesList(input.sellWhenGrownSpecies, SPECIES_SELL_WHEN_GROWN),
+    sellNearDeathSpecies: speciesList(input.sellNearDeathSpecies, SPECIES_SELL_NEAR_DEATH),
+    treeCellPlan: validateTreeCellPlan(input.treeCellPlan),
+  };
+  if (!Number.isFinite(cfg.stepDelayMs) || cfg.stepDelayMs < 300) {
+    throw new Error('stepDelayMs tối thiểu 300ms');
+  }
+  if (!Number.isFinite(cfg.maxSellsPerCycle) || cfg.maxSellsPerCycle < 0) {
+    throw new Error('maxSellsPerCycle phải là số không âm');
+  }
+  return cfg;
+}
+
+function validateTreeCellPlan(value: TreeCellPlanEntry[] | undefined): TreeCellPlanEntry[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error('treeCellPlan phải là mảng');
+  const seen = new Set<number>();
+  return value.map((entry) => {
+    if (!Number.isInteger(entry.cellIndex) || entry.cellIndex < 0) {
+      throw new Error('cellIndex phải là số nguyên không âm');
+    }
+    if (seen.has(entry.cellIndex)) throw new Error(`ô ${entry.cellIndex} bị lặp`);
+    seen.add(entry.cellIndex);
+    if (entry.action === 'skip') return { cellIndex: entry.cellIndex, action: 'skip' };
+    if (entry.action !== 'seed' || !Number.isInteger(entry.seedId) || entry.seedId < 0) {
+      throw new Error(`kế hoạch ô ${entry.cellIndex} không hợp lệ`);
+    }
+    return { cellIndex: entry.cellIndex, action: 'seed', seedId: entry.seedId };
+  });
+}
 
 /** 2220 phút -> "1,5 ngày" — số ngày dễ đối chiếu với mô tả loài hơn số phút. */
 const fmtDays = (minutes: number): string => `${(minutes / (24 * 60)).toFixed(1)} ngày`;

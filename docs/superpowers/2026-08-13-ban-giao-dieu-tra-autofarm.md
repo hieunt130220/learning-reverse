@@ -75,9 +75,8 @@ Gói hex mẫu nằm trong log phiên (`HEX69 …`); nếu cần bắt lại th�
    Bảng vật phẩm: `#120 Thuốc cúm`, `#121 Thuốc tiêu chảy`, `#122 Thuốc bổ`.
    Auto chỉ biết `máu < minHealth → #122`, nên bắn thuốc bổ vào con full máu đang bệnh
    và ăn 60 lần `"Không cần thuốc bổ"` mỗi vòng. Ánh xạ f20→120, f21→121 **chưa kiểm chứng**.
-3. **Điều kiện thu hoạch** — cả 46 ô đều `hervestPer = 0`, nhưng ô 45 (`time=2938`) thu
-   được còn ô 44 (`time=2836`) thì không. Lúa `growMinutes=48` (đơn vị **giờ** → 2880
-   phút) khớp cả hai. Giả thuyết: `time >= growMinutes × 60`. Cần thu thử ô 45 để chốt.
+3. ~~**Điều kiện thu hoạch**~~ — ✅ XONG (chưa commit, xem §8). Giả thuyết
+   `time >= growMinutes × 60` đã được xác nhận bằng điểm dữ liệu thứ ba.
 4. **Mua bù vật nuôi sau khi bán** (yêu cầu mới). `farmService.buyAnimal(idAnimal, typeBuy)`
    đã có sẵn (cmd 51) nhưng auto chưa gọi. Ba ẩn số: `typeBuy` có cùng quy ước `1 = xu`
    không, giá vật nuôi lấy ở đâu (bảng loài không có giá; có `requestPriceAnimal` nhưng
@@ -138,6 +137,44 @@ Hai số này lệch nhau ngay khi farm từng bán con nào. Tra bằng `find`,
 xong. Không phải do thay đổi này: file đó không đụng `animals`/`farmState`, và
 `session/routes.ts`, `manager.ts` cùng test của chúng đang được **phiên khác sửa dở**
 ngay lúc đó. Chạy cả suite lại sau khi phiên kia xong.
+
+## 8. Đã làm ở phiên 2026-08-13 (chiều) — điều kiện thu hoạch
+
+Triệu chứng người dùng báo: ô 41 lúa đã chín trong game nhưng auto không thu.
+
+**Nguyên nhân gốc:** `isCellRipe` lấy `hervestPer > 0` làm tín hiệu chín. Trên gói thật
+**cả 46 ô đều `hervestPer = 0`**, kể cả những ô thu được — nên cổng ở `autoFarm` không bao
+giờ mở. Tín hiệu thật là đủ thời gian lớn: `time >= growHours × 60`, `growHours` lấy từ
+`TreeInfo.growMinutes` (trường đặt sai tên, đơn vị **giờ**).
+
+Ba quan sát độc lập kẹp lấy ngưỡng 2880 của Lúa (48 giờ):
+
+| ô | `time` | kết quả |
+|---|---|---|
+| 44 | 2836 | thử thu → server im lặng |
+| 45 | 2938 | thu được → cmd 64 "Chúc mừng bạn đã nhận" |
+| 41 | 2697 lúc chụp, **3335** lúc người dùng thấy chín | khớp |
+
+Ngưỡng nằm trong `(2836, 2938]`, và `48 × 60 = 2880` rơi đúng vào đó. Điểm dữ liệu ô 41 là
+cái chốt: gói chụp lúc 02:44:16, người dùng báo lúc 13:22 → trôi 638 phút.
+
+Sửa: `isCellRipe(c, growHours?)` — `hervestPer > 0` giữ làm tín hiệu **đủ** (để còn chạy
+khi chưa có bảng cây), thêm nhánh thời gian; không có bảng cây thì **không đoán**.
+`autoFarm` giờ xin bảng cây khi bật thu hoạch (trước chỉ xin khi có cấu hình trồng/bán).
+
+UI có bản sao `cellNeeds` riêng dùng điều kiện `time === 0` — sai còn nặng hơn, nên
+dashboard cũng chưa bao giờ báo ô nào chín. Đã sửa theo cùng điều kiện, kèm test.
+
+⚠ **Bẫy đã sập một lần:** `farm.cells.filter(isCellRipe)` truyền cả **chỉ số mảng** vào
+tham số `growHours` thứ hai, biến vị trí ô thành "giờ để lớn" và làm ô non hoá chín. Một
+test cũ bắt được. Luôn viết `filter((c) => isCellRipe(c, …))`.
+
+Kiểm chứng: server 71/71 pass + typecheck; web 75/75 pass + typecheck. Hai test mới đã
+xác minh đỏ đúng lý do (auto thu **rỗng**) bằng cách tạm lùi `isCellRipe` về logic cũ.
+
+**Chưa xác minh trên game thật.** Dự đoán kiểm chứng được: lúc 13:35 các ô chín phải là
+đúng **{38, 39, 41, 44, 45}** — 38/39 ở 3262, 41 ở 3348, 44 ở 3487, 45 ở 3589; mọi ô còn
+lại đều dưới 2000. Sai tập này là giả thuyết ngưỡng có vấn đề.
 
 ## 7. Môi trường
 

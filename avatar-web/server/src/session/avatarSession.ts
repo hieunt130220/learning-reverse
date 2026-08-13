@@ -68,6 +68,17 @@ export interface AvatarSessionOptions {
 const EMPTY_AUTO: AutoFarmState = { running: false, cycle: 0, lastActions: [] };
 const EMPTY_MACRO: MacroState = { running: false, cycle: 0 };
 
+function isTreesPayload(payload: unknown): boolean {
+  return typeof payload === 'object'
+    && payload !== null
+    && 'trees' in payload
+    && Array.isArray(payload.trees)
+    && 'items' in payload
+    && Array.isArray(payload.items)
+    && 'animals' in payload
+    && Array.isArray(payload.animals);
+}
+
 /**
  * Một tài khoản avatar đang sống trên server: giữ `GameClient` + `AutoFarm` +
  * `MacroRunner`, đệm log/traffic trong RAM, và tự kết nối lại khi rớt.
@@ -135,6 +146,15 @@ export class AvatarSession {
     this.auto!.start(cfg);
   }
 
+  updateAutoConfig(cfg: Partial<AutoFarmConfig>): 'next-cycle' | 'next-start' {
+    this.lastAutoConfig = cfg;
+    if (this.auto?.state().running) {
+      this.auto.queueConfig(cfg);
+      return 'next-cycle';
+    }
+    return 'next-start';
+  }
+
   stopAuto(): void {
     this.wantAuto = false;
     this.auto?.stop();
@@ -162,6 +182,58 @@ export class AvatarSession {
 
   enterFarm(): void {
     this.requireClient().enterFarm();
+  }
+
+  async refreshFarmProfile(timeoutMs = 10_000): Promise<void> {
+    const client = this.requireClient();
+    if (client.status !== 'online') throw new Error('phiên chưa online');
+    const epoch = this.connectionEpoch;
+    let timeout: NodeJS.Timeout | undefined;
+    let waitingForCatalog = false;
+    let rejectRefresh: ((reason: Error) => void) | undefined;
+    let resolveRefresh: (() => void) | undefined;
+    const completed = new Promise<void>((resolve, reject) => {
+      resolveRefresh = resolve;
+      rejectRefresh = reject;
+      timeout = this.setTimeoutFn(() => {
+        reject(new Error(
+          this.isCurrent(client, epoch)
+            ? 'quá hạn đồng bộ farm'
+            : 'phiên đã thay đổi khi đồng bộ farm',
+        ));
+      }, timeoutMs);
+    });
+    const onFarm = (): void => {
+      if (!this.isCurrent(client, epoch)) {
+        rejectRefresh?.(new Error('phiên đã thay đổi khi đồng bộ farm'));
+        return;
+      }
+      waitingForCatalog = true;
+      try {
+        client.farm.getTreeInfo();
+      } catch (error) {
+        rejectRefresh?.(error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+    const onTrees = (payload: unknown): void => {
+      if (!waitingForCatalog || !isTreesPayload(payload)) return;
+      if (!this.isCurrent(client, epoch)) {
+        rejectRefresh?.(new Error('phiên đã thay đổi khi đồng bộ farm'));
+        return;
+      }
+      resolveRefresh?.();
+    };
+    client.once('farm', onFarm);
+    client.on('trees', onTrees);
+
+    try {
+      client.enterFarm();
+      await completed;
+    } finally {
+      if (timeout) this.clearTimeoutFn(timeout);
+      client.removeListener('farm', onFarm);
+      client.removeListener('trees', onTrees);
+    }
   }
 
   lastPacketHex(cmd: number): string | undefined {
@@ -209,6 +281,8 @@ export class AvatarSession {
 
   private pushLog(line: string): void {
     const entry = { t: Date.now(), line };
+    // TẠM — CHẨN ĐOÁN RỚT KẾT NỐI. XOÁ SAU KHI XONG, KHÔNG COMMIT.
+    console.log(`[#${this.opts.accountId}] ${new Date(entry.t).toISOString().slice(11, 23)} ${line}`);
     this.logs.push(entry);
     if (this.logs.length > LOG_BUFFER) this.logs.shift();
     this.emit('log', entry);
