@@ -93,16 +93,6 @@ export interface AutoFarmConfig {
    * tự thay vì lao vào ngay.
    */
   startDelayMs: number;
-  /**
-   * Trần số lệnh farm gửi mỗi vòng (tưới/nhổ cỏ/bắt sâu/bón phân/thu hoạch/cho
-   * ăn/chữa bệnh/mua, KHÔNG tính enterFarm/getInventory). Việc tồn đọng bị cắt
-   * ở đây tự trôi sang vòng sau — farm còn tồn đọng nghĩa là `want`/điều kiện
-   * vẫn đúng ở lần quét kế tiếp. Trần này tồn tại vì vòng đầu tiên sau khi bật
-   * auto (nông trại có thể đã bỏ bê lâu ngày) có thể cần hàng chục/hàng trăm
-   * lệnh liên tiếp — dồn hết vào một vòng là đúng thứ server phát hiện được
-   * qua kiểm tra tần suất và ngắt kết nối.
-   */
-  maxActionsPerCycle: number;
 }
 
 export interface AutoFarmState {
@@ -134,7 +124,6 @@ const DEFAULTS: AutoFarmConfig = {
   stepDelayMs: 700,
   intervalMs: 120_000,
   startDelayMs: 3_000,
-  maxActionsPerCycle: 20,
 };
 
 /**
@@ -283,8 +272,8 @@ export class AutoFarm extends EventEmitter {
       // this.aborted) — vòng vẫn kết thúc bình thường, phần tồn đọng tự xét
       // lại ở vòng sau vì điều kiện (isArid/hunger/health thấp/…) còn đúng
       // cho tới khi được xử lý.
+      // Đếm số lệnh đã gửi để biết cuối vòng có cần xin lại dữ liệu farm không.
       let sent = 0;
-      const overBudget = () => sent >= cfg.maxActionsPerCycle;
 
       // --- Ảnh chụp những gì vòng này NHÌN THẤY ------------------------------
       // Ghi cả khi không làm gì. `lastActions` vốn chỉ liệt kê việc ĐÃ làm, nên
@@ -380,8 +369,7 @@ export class AutoFarm extends EventEmitter {
         let spent = 0;
         for (const [id, qty] of need) {
           if (this.aborted) return;
-          if (overBudget()) break;
-          const short = qty - (have.get(id) ?? 0);
+            const short = qty - (have.get(id) ?? 0);
           if (short <= 0) continue;
           const price = this.client.items.find((i) => i.id === id)?.price;
           if (price === undefined) {
@@ -395,7 +383,7 @@ export class AutoFarm extends EventEmitter {
           }
           // num là i8 trên wire -> chia lô tối đa 100 mỗi lệnh.
           let left = Math.min(short, cfg.maxBuyPerItem);
-          while (left > 0 && !this.aborted && !overBudget()) {
+          while (left > 0 && !this.aborted) {
             const lot = Math.min(left, 20);
             this.client.farm.buyItem(id, lot, SHOP_XU);
             sent += 1;
@@ -408,15 +396,11 @@ export class AutoFarm extends EventEmitter {
         if (spent > 0) await sleep(stepDelayMs);
       }
 
-      // Thu hoạch + trồng lại: ưu tiên cao nhất (đây là mục đích chính của
-      // farm) và không phụ thuộc kho (thu hoạch không tốn gì, trồng dùng hạt
-      // đã có sẵn — không nằm trong `need`/tự mua). Đặt TRƯỚC cho ăn/chữa
-      // bệnh/chăm sóc ô: nếu không, một nông trại tồn đọng nhiều việc phụ sẽ
-      // ngốn hết trần maxActionsPerCycle trước khi chạm tới thu hoạch/trồng,
-      // dù hai việc này đã bật — vòng nào cũng vậy, không chỉ vòng đầu.
+      // Thu hoạch + trồng lại: mục đích chính của farm, và không phụ thuộc kho
+      // (thu hoạch không tốn gì, trồng dùng hạt đã có sẵn — không nằm trong
+      // `need`/tự mua).
       for (const c of farm.cells) {
         if (this.aborted) return;
-        if (overBudget()) break;
         if (harvest && isCellRipe(c)) {
           this.client.farm.harvest(idFarm, c.index);
           sent += 1;
@@ -438,8 +422,7 @@ export class AutoFarm extends EventEmitter {
       if (cfg.harvestAnimals) {
         for (const a of farm.animals) {
           if (this.aborted) return;
-          if (overBudget()) break;
-          if (a.numEggOne <= 0) continue;
+            if (a.numEggOne <= 0) continue;
           this.client.farm.harvestAnimal(idFarm, a.index);
           sent += 1;
           note(`vật nuôi ${a.index}: thu hoạch ${a.numEggOne} sản phẩm`);
@@ -462,8 +445,7 @@ export class AutoFarm extends EventEmitter {
         let noSpec = 0;
         for (const a of byIndexDesc) {
           if (this.aborted) return;
-          if (overBudget()) break;
-          if (sold >= cfg.maxSellsPerCycle) break;
+            if (sold >= cfg.maxSellsPerCycle) break;
           // Còn sản phẩm chưa lấy thì để vòng sau: thu hoạch xong mới bán.
           if (a.numEggOne > 0) continue;
 
@@ -510,10 +492,9 @@ export class AutoFarm extends EventEmitter {
       if (cfg.healAnimals) {
         for (const a of farm.animals) {
           if (this.aborted) return;
-          if (overBudget()) break;
-          let hp = a.health;
+            let hp = a.health;
           let doses = 0;
-          while (hp < cfg.minHealth && doses < 10 && !overBudget()) {
+          while (hp < cfg.minHealth && doses < 10) {
             this.client.farm.useItem(idFarm, a.index, ITEM_TONIC);
             sent += 1;
             hp += 20;
@@ -529,8 +510,7 @@ export class AutoFarm extends EventEmitter {
       if (feedAnimals) {
         for (const a of farm.animals) {
           if (this.aborted) return;
-          if (overBudget()) break;
-          if (!a.hunger) continue;
+            if (!a.hunger) continue;
           const food = foodForSpecies(a.species);
           if (food === undefined) continue;
           this.client.farm.useItem(idFarm, a.index, food);
@@ -544,7 +524,6 @@ export class AutoFarm extends EventEmitter {
       // hơn, đi cuối cùng.
       for (const c of farm.cells) {
         if (this.aborted) return;
-        if (overBudget()) break;
 
         if (c.isArid && waterItemId !== undefined) {
           this.client.farm.useItem(idFarm, c.index, waterItemId);
@@ -570,9 +549,6 @@ export class AutoFarm extends EventEmitter {
           note(`ô ${c.index}: bón phân (sức sống ${c.vitalityPer})`);
           await sleep(stepDelayMs);
         }
-      }
-      if (overBudget()) {
-        note(`đã đạt trần ${cfg.maxActionsPerCycle} lệnh/vòng — phần còn lại làm ở vòng sau`);
       }
       // Tưới nước KHÔNG được server đẩy kèm INFO_CELL, nên state cục bộ vẫn giữ
       // isArid cũ. Xin lại dữ liệu farm cuối vòng để UI phản ánh đúng thực tế.

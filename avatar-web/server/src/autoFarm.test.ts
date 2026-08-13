@@ -98,31 +98,14 @@ function manyAridCells(n: number): FarmCell[] {
   return Array.from({ length: n }, (_, i) => cell(i, { isArid: true }));
 }
 
-test('vòng đầu tiên chỉ gửi tối đa maxActionsPerCycle lệnh dù tồn đọng nhiều ô', async () => {
-  const farmState: FarmState = { idFarm: 1, cells: manyAridCells(40), animals: [], updatedAt: Date.now() };
-  const client = new FakeClient(farmState);
-  const auto = new AutoFarm(client as unknown as GameClient);
-
-  // start() gọi stop() nội bộ trước — phát 'state' {cycle:0} ngay lập tức.
-  // Chờ vòng thật (cycle > 0) hoàn tất, không phải sự kiện dọn dẹp đó.
-  const done = new Promise<void>((resolve) =>
-    auto.on('state', (s) => {
-      if (s.cycle > 0) resolve();
-    }),
-  );
-  auto.start({ waterItemId: ITEM_WATER, harvest: false, maxActionsPerCycle: 5, stepDelayMs: 300, startDelayMs: 0 });
-  await done;
-
-  const waterCalls = client.calls.filter((c) => c.startsWith(`useItem:`) && c.endsWith(`:${ITEM_WATER}`));
-  assert.equal(waterCalls.length, 5);
-  assert.equal(auto.state().lastActions.some((a) => a.includes('trần 5 lệnh/vòng')), true);
-  auto.stop(); // dọn timer 2 phút cho vòng kế tiếp — không thì test process không thoát được
-});
-
-test('không tồn đọng thì không bị trần chặn', async () => {
+test('một vòng làm hết việc tồn đọng, không còn trần lệnh', async () => {
+  // 6 ô × 4 việc (tưới, nhổ cỏ, bắt sâu, bón phân) = 24 lệnh, vượt trần mặc
+  // định cũ là 20. Ít hơn 20 lệnh thì test xanh sẵn và không chứng minh được gì.
   const farmState: FarmState = {
     idFarm: 1,
-    cells: [cell(0, { isArid: true }), cell(1)],
+    cells: Array.from({ length: 6 }, (_, i) =>
+      cell(i, { idTree: 5, time: 100, isArid: true, isGrass: true, isWorm: true, vitalityPer: 50 }),
+    ),
     animals: [],
     updatedAt: Date.now(),
   };
@@ -136,21 +119,39 @@ test('không tồn đọng thì không bị trần chặn', async () => {
       if (s.cycle > 0) resolve();
     }),
   );
-  auto.start({ waterItemId: ITEM_WATER, harvest: false, maxActionsPerCycle: 20, stepDelayMs: 300, startDelayMs: 0 });
+  auto.start({
+    harvest: false,
+    waterItemId: ITEM_WATER,
+    grassItemId: ITEM_GRASS,
+    wormItemId: 124,
+    fertilizeCells: true,
+    minVitality: 100,
+    stepDelayMs: 300,
+    startDelayMs: 0,
+  });
   await done;
-
-  const waterCalls = client.calls.filter((c) => c.startsWith('useItem:') && c.endsWith(`:${ITEM_WATER}`));
-  assert.equal(waterCalls.length, 1);
-  assert.equal(auto.state().lastActions.some((a) => a.includes('trần')), false);
+  // Dừng TRƯỚC khi assert: assert hỏng sẽ ném, và timer 2 phút của vòng kế tiếp
+  // còn sống thì test runner treo thay vì báo lỗi.
   auto.stop();
+
+  assert.equal(
+    client.calls.filter((c) => c.startsWith('useItem:')).length,
+    24,
+    'phải làm hết 24 việc trong một vòng, không bị cắt ở 20',
+  );
+  assert.equal(
+    auto.state().lastActions.some((a) => a.includes('trần')),
+    false,
+    'không còn dòng báo đạt trần lệnh',
+  );
 });
 
-test('stop() giữa vòng không bị trần lệnh ghi đè — vẫn dừng ngay, không có lần thử sau', async () => {
-  const farmState: FarmState = { idFarm: 1, cells: manyAridCells(10), animals: [], updatedAt: Date.now() };
+test('stop() giữa vòng vẫn dừng ngay, không có lần thử sau', async () => {
+  const farmState: FarmState = { idFarm: 1, cells: manyAridCells(4), animals: [], updatedAt: Date.now() };
   const client = new FakeClient(farmState);
   const auto = new AutoFarm(client as unknown as GameClient);
 
-  auto.start({ waterItemId: ITEM_WATER, harvest: false, maxActionsPerCycle: 100, stepDelayMs: 300, startDelayMs: 0 });
+  auto.start({ waterItemId: ITEM_WATER, harvest: false, stepDelayMs: 300, startDelayMs: 0 });
   // Để vòng chạy một chút (đã gửi vài lệnh) rồi dừng giữa chừng.
   await new Promise((r) => setTimeout(r, 350));
   auto.stop();
@@ -426,50 +427,3 @@ test('mỗi dòng ghi vào lastActions cũng phát ra sự kiện log', async ()
   assert.deepEqual(logs, auto.state().lastActions, 'log và lastActions phải cùng một nguồn');
 });
 
-test('thu hoạch/trồng/chữa bệnh không bị việc chăm sóc ô (nhổ cỏ) chiếm hết trần lệnh', async () => {
-  // Ô chín cần thu hoạch, ô trống cần trồng, rồi một loạt ô cần nhổ cỏ —
-  // trước fix, nhổ cỏ nằm trước thu hoạch/trồng trong vòng lặp nên chiếm hết
-  // maxActionsPerCycle, khiến thu hoạch/trồng/chữa bệnh không bao giờ chạy.
-  const farmState: FarmState = {
-    idFarm: 1,
-    cells: [
-      cell(0, { idTree: 5, time: 200, hervestPer: 20 }), // sẵn sàng thu hoạch
-      cell(1, { idTree: -1 }), // trống, cần trồng
-      // time: 100 (chưa chín) để không lẫn vào điều kiện thu hoạch.
-      ...Array.from({ length: 5 }, (_, i) => cell(2 + i, { isGrass: true, time: 100 })),
-    ],
-    animals: [animal(0, { health: 80 })], // thiếu 20 máu = 1 liều thuốc bổ
-    updatedAt: Date.now(),
-  };
-  const client = new FakeClient(farmState);
-  const auto = new AutoFarm(client as unknown as GameClient);
-
-  const done = new Promise<void>((resolve) =>
-    auto.on('state', (s) => {
-      if (s.cycle > 0) resolve();
-    }),
-  );
-  auto.start({
-    harvest: true,
-    seedId: 5,
-    healAnimals: true,
-    minHealth: 100,
-    grassItemId: ITEM_GRASS,
-    maxActionsPerCycle: 3, // đúng bằng thu hoạch(1) + trồng(1) + 1 liều thuốc bổ(1)
-    stepDelayMs: 300,
-  });
-  await done;
-
-  assert.ok(client.calls.includes('harvest:0'), 'phải thu hoạch ô 0');
-  assert.ok(client.calls.includes('plantSeed'), 'phải trồng lại ô trống');
-  assert.ok(
-    client.calls.includes(`useItem:0:${ITEM_TONIC}`),
-    'phải chữa bệnh cho vật nuôi 0',
-  );
-  assert.equal(
-    client.calls.some((c) => c.endsWith(`:${ITEM_GRASS}`)),
-    false,
-    'nhổ cỏ phải nhường chỗ cho thu hoạch/trồng/chữa bệnh khi hết trần lệnh',
-  );
-  auto.stop();
-});
