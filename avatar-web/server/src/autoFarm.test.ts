@@ -427,3 +427,54 @@ test('mỗi dòng ghi vào lastActions cũng phát ra sự kiện log', async ()
   assert.deepEqual(logs, auto.state().lastActions, 'log và lastActions phải cùng một nguồn');
 });
 
+
+test('ô không có việc vẫn tốn một nhịp nghỉ', async () => {
+  // 4 ô rỗng việc: cận dưới 4 × 300ms. Không đo cận trên để khỏi phụ thuộc máy.
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(0), cell(1), cell(2), cell(3)],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  const auto = new AutoFarm(client as unknown as GameClient);
+  const done = new Promise<void>((resolve) =>
+    auto.on('state', (s) => {
+      if (s.cycle > 0) resolve();
+    }),
+  );
+
+  const startedAt = Date.now();
+  auto.start({ harvest: false, stepDelayMs: 300, startDelayMs: 0 });
+  await done;
+  auto.stop();
+  const elapsed = Date.now() - startedAt;
+
+  assert.ok(elapsed >= 4 * 300, `vòng phải nghỉ ít nhất 4 nhịp, đo được ${elapsed}ms`);
+});
+
+test('mỗi ô đã duyệt sinh đúng một dòng log, kể cả ô không có việc', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(0, { isArid: true }), cell(1)],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  const auto = new AutoFarm(client as unknown as GameClient);
+  const logs: string[] = [];
+  auto.on('log', (line: string) => logs.push(line));
+  const done = new Promise<void>((resolve) =>
+    auto.on('state', (s) => {
+      if (s.cycle > 0) resolve();
+    }),
+  );
+  auto.start({ waterItemId: ITEM_WATER, harvest: false, stepDelayMs: 300, startDelayMs: 0 });
+  await done;
+  auto.stop();
+
+  // Đúng một dòng cho mỗi ô cũng là bằng chứng mỗi ô chỉ được chạm một lượt:
+  // hai vòng lặp ô cũ sẽ sinh hai dòng cho cùng một ô.
+  const cellLines = logs.filter((l) => l.startsWith('[cây] '));
+  assert.equal(cellLines.length, 2, `mỗi ô một dòng: ${JSON.stringify(cellLines)}`);
+  assert.ok(cellLines[0].includes('ô 0:') && cellLines[0].includes('tưới'), cellLines[0]);
+  assert.ok(cellLines[1].includes('ô 1: không có việc'), cellLines[1]);
+});

@@ -266,14 +266,14 @@ export class AutoFarm extends EventEmitter {
       const specs = new Map(
         this.client.animals.map((a) => [a.id, parseAnimalSpec(a.desc)] as const),
       );
-      const { seedId, waterItemId, grassItemId, wormItemId, harvest, feedAnimals, stepDelayMs } = cfg;
+      const { seedId, waterItemId, grassItemId, wormItemId, harvest, feedAnimals } = cfg;
 
-      // Trần lệnh/vòng: việc bị cắt ở đây KHÔNG return khỏi runCycle (khác
-      // this.aborted) — vòng vẫn kết thúc bình thường, phần tồn đọng tự xét
-      // lại ở vòng sau vì điều kiện (isArid/hunger/health thấp/…) còn đúng
-      // cho tới khi được xử lý.
       // Đếm số lệnh đã gửi để biết cuối vòng có cần xin lại dữ liệu farm không.
       let sent = 0;
+      // Nhịp nghỉ dùng chung: sau mỗi lệnh gửi đi, và sau mỗi đối tượng đã duyệt
+      // dù không gửi gì. `tick` chỉ chờ; việc dừng vòng do `this.aborted` ở đầu
+      // mỗi lượt lặp lo.
+      const tick = (): Promise<void> => sleep(cfg.stepDelayMs);
 
       // --- Ảnh chụp những gì vòng này NHÌN THẤY ------------------------------
       // Ghi cả khi không làm gì. `lastActions` vốn chỉ liệt kê việc ĐÃ làm, nên
@@ -389,30 +389,71 @@ export class AutoFarm extends EventEmitter {
             sent += 1;
             note(`mua #${id} ×${lot} (~${lot * price} xu)`);
             left -= lot;
-            await sleep(stepDelayMs);
+            await tick();
           }
           spent += cost;
         }
-        if (spent > 0) await sleep(stepDelayMs);
+        if (spent > 0) await tick();
       }
 
-      // Thu hoạch + trồng lại: mục đích chính của farm, và không phụ thuộc kho
-      // (thu hoạch không tốn gì, trồng dùng hạt đã có sẵn — không nằm trong
-      // `need`/tự mua).
+      // --- GIAI ĐOẠN CÂY ----------------------------------------------------
+      // Mỗi ô chạm đúng một lần, làm hết mọi việc của ô đó rồi mới sang ô sau.
+      // Thu hoạch và trồng đi trước vì đó là mục đích chính của farm và không
+      // phụ thuộc kho; chăm sóc ô là việc bảo trì nên xếp sau.
       for (const c of farm.cells) {
         if (this.aborted) return;
+        const seen: string[] = [];
+        const did: string[] = [];
+
         if (harvest && isCellRipe(c)) {
           this.client.farm.harvest(idFarm, c.index);
           sent += 1;
-          note(`ô ${c.index}: thu hoạch (hervestPer=${c.hervestPer})`);
-          await sleep(stepDelayMs);
+          seen.push(`chín ${c.hervestPer}%`);
+          did.push('thu hoạch');
+          await tick();
         }
         if (seedId !== undefined && c.idTree === -1) {
           this.client.farm.plantSeed(idFarm, c.index, seedId);
           sent += 1;
-          note(`ô ${c.index}: trồng #${seedId}`);
-          await sleep(stepDelayMs);
+          seen.push('trống');
+          did.push(`trồng #${seedId}`);
+          await tick();
         }
+        if (c.isArid && waterItemId !== undefined) {
+          this.client.farm.useItem(idFarm, c.index, waterItemId);
+          sent += 1;
+          seen.push('hạn');
+          did.push(`tưới #${waterItemId}`);
+          await tick();
+        }
+        if (c.isGrass && grassItemId !== undefined) {
+          this.client.farm.useItem(idFarm, c.index, grassItemId);
+          sent += 1;
+          seen.push('cỏ');
+          did.push(`nhổ cỏ #${grassItemId}`);
+          await tick();
+        }
+        if (c.isWorm && wormItemId !== undefined) {
+          this.client.farm.useItem(idFarm, c.index, wormItemId);
+          sent += 1;
+          seen.push('sâu');
+          did.push(`bắt sâu #${wormItemId}`);
+          await tick();
+        }
+        if (cfg.fertilizeCells && c.idTree !== -1 && c.vitalityPer < cfg.minVitality) {
+          this.client.farm.useItem(idFarm, c.index, ITEM_FERTILIZER);
+          sent += 1;
+          seen.push(`sức sống ${c.vitalityPer}`);
+          did.push('bón phân');
+          await tick();
+        }
+
+        note(
+          did.length > 0
+            ? `[cây] ô ${c.index}: ${seen.join(', ')} -> ${did.join(', ')}`
+            : `[cây] ô ${c.index}: không có việc`,
+        );
+        await tick();
       }
 
       // Thu hoạch sản phẩm vật nuôi (trứng/sữa): miễn phí và không phá huỷ gì
@@ -426,7 +467,7 @@ export class AutoFarm extends EventEmitter {
           this.client.farm.harvestAnimal(idFarm, a.index);
           sent += 1;
           note(`vật nuôi ${a.index}: thu hoạch ${a.numEggOne} sản phẩm`);
-          await sleep(stepDelayMs);
+          await tick();
         }
       }
 
@@ -476,7 +517,7 @@ export class AutoFarm extends EventEmitter {
           sent += 1;
           sold += 1;
           note(`vật nuôi ${a.index} (loài ${a.species}): BÁN — ${why}`);
-          await sleep(stepDelayMs);
+          await tick();
         }
         if (sold >= cfg.maxSellsPerCycle) {
           note(`đã đạt trần ${cfg.maxSellsPerCycle} con bán/vòng`);
@@ -499,7 +540,7 @@ export class AutoFarm extends EventEmitter {
             sent += 1;
             hp += 20;
             doses += 1;
-            await sleep(stepDelayMs);
+            await tick();
           }
           if (doses > 0) note(`vật nuôi ${a.index}: ${doses} liều thuốc bổ (${a.health}->~${hp})`);
         }
@@ -516,40 +557,10 @@ export class AutoFarm extends EventEmitter {
           this.client.farm.useItem(idFarm, a.index, food);
           sent += 1;
           note(`vật nuôi ${a.index}: cho ăn #${food}`);
-          await sleep(stepDelayMs);
+          await tick();
         }
       }
 
-      // Chăm sóc ô (tưới/nhổ cỏ/bắt sâu/bón phân): việc bảo trì thấp ưu tiên
-      // hơn, đi cuối cùng.
-      for (const c of farm.cells) {
-        if (this.aborted) return;
-
-        if (c.isArid && waterItemId !== undefined) {
-          this.client.farm.useItem(idFarm, c.index, waterItemId);
-          sent += 1;
-          note(`ô ${c.index}: tưới`);
-          await sleep(stepDelayMs);
-        }
-        if (c.isGrass && grassItemId !== undefined) {
-          this.client.farm.useItem(idFarm, c.index, grassItemId);
-          sent += 1;
-          note(`ô ${c.index}: nhổ cỏ`);
-          await sleep(stepDelayMs);
-        }
-        if (c.isWorm && wormItemId !== undefined) {
-          this.client.farm.useItem(idFarm, c.index, wormItemId);
-          sent += 1;
-          note(`ô ${c.index}: bắt sâu`);
-          await sleep(stepDelayMs);
-        }
-        if (cfg.fertilizeCells && c.idTree !== -1 && c.vitalityPer < cfg.minVitality) {
-          this.client.farm.useItem(idFarm, c.index, ITEM_FERTILIZER);
-          sent += 1;
-          note(`ô ${c.index}: bón phân (sức sống ${c.vitalityPer})`);
-          await sleep(stepDelayMs);
-        }
-      }
       // Tưới nước KHÔNG được server đẩy kèm INFO_CELL, nên state cục bộ vẫn giữ
       // isArid cũ. Xin lại dữ liệu farm cuối vòng để UI phản ánh đúng thực tế.
       // Điều kiện là `sent` chứ không phải `actions`: `actions` còn chứa dòng
@@ -588,7 +599,7 @@ export class AutoFarm extends EventEmitter {
   }
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** 2220 phút -> "1,5 ngày" — số ngày dễ đối chiếu với mô tả loài hơn số phút. */
 const fmtDays = (minutes: number): string => `${(minutes / (24 * 60)).toFixed(1)} ngày`;
