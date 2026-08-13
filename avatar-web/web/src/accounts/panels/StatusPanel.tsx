@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { apiPost } from '../../api.js';
-import { StatusBadge } from '../AccountsPage.js';
+import { StatusBadge } from '../AccountStatus.js';
 import type { SessionSnapshot } from '../../types.js';
 
 export function StatusPanel({
