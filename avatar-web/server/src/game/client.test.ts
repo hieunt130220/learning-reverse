@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { Message } from '../proto/message.js';
 import { MyWriter } from '../proto/writer.js';
 import { GameClient, parseTemporaryLoginRejection } from './client.js';
+import { FARM_PACKET_69_HEX } from './farmData.fixture.js';
 
 function incomingUtf(command: number, text: string): Message {
   return Message.fromData(command, new MyWriter().writeUTF(text).getData());
@@ -75,4 +76,29 @@ test('traffic của LOGIN_ACC tiếp tục ẩn body', () => {
   client.on('traffic', (entry) => traffic.push(entry));
   client.session.emit('traffic', 'tx', -33, Buffer.from('mat-khau', 'utf8'));
   assert.equal(traffic[0].hex, '<đã ẩn>');
+});
+
+test('INFO_ANIMAL cập nhật đúng con theo số slot, không theo vị trí mảng', () => {
+  const client = new GameClient();
+  client.session.emit('message', Message.fromData(69, Buffer.from(FARM_PACKET_69_HEX, 'hex')));
+
+  // Gói mẫu có 4 slot trống đầu tiên, nên con ở slot 4 nằm ở vị trí mảng 0.
+  // Đánh theo vị trí mảng là ghi nhầm sang slot 8.
+  const body = new MyWriter()
+    .writeByte(4) // slot
+    .writeByte(50)
+    .writeInt(2853)
+    .writeByte(55) // máu tụt sau khi bị bệnh
+    .writeByte(100)
+    .writeByte(0)
+    .writeBoolean(false)
+    .writeBoolean(false)
+    .writeBoolean(false)
+    .getData();
+  client.session.emit('message', Message.fromData(101, body));
+
+  const animals = client.farmState!.animals;
+  assert.equal(animals.find((a) => a.index === 4)?.health, 55);
+  assert.equal(animals.find((a) => a.index === 8)?.health, 100);
+  assert.equal(animals.length, 12);
 });

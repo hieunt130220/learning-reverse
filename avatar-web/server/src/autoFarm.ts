@@ -457,10 +457,12 @@ export class AutoFarm extends EventEmitter {
       }
 
       // --- GIAI ĐOẠN VẬT NUÔI ------------------------------------------------
-      // `index` là vị trí trong mảng `animals`: bán một con làm mọi con index cao
-      // hơn tụt xuống 1. Duyệt từ index CAO xuống THẤP thì việc bỏ phần tử phía
-      // sau không xê dịch phần tử phía trước, nên index đọc từ ảnh chụp đầu vòng
-      // luôn còn đúng — kể cả khi server để lại chỗ trống thay vì dồn mảng.
+      // `index` là số SLOT trên server, không phải vị trí trong mảng: đo trên gói
+      // 69 thật thì sau khi bán 4 con, server để lại 4 slot `-1` chứ KHÔNG dồn
+      // mảng, và slot của các con còn lại giữ nguyên. Duyệt từ index CAO xuống
+      // THẤP vì thế vẫn an toàn kể cả nếu server đổi ý và dồn mảng: bỏ phần tử
+      // phía sau không xê dịch phần tử phía trước, nên index đọc từ ảnh chụp đầu
+      // vòng luôn còn đúng.
       // Gộp cả bốn việc vào một lượt cũng sửa luôn một lỗi cũ: trước đây bán
       // chạy trước rồi chữa/cho ăn mới duyệt lại từ ảnh chụp cũ, nên sau một
       // lần bán là các lệnh sau đó trỏ nhầm con.

@@ -427,8 +427,11 @@ export class GameClient extends EventEmitter {
       case 101: {
         // INFO_ANIMAL — server đẩy khi 1 con vật đổi trạng thái (sau khi cho ăn)
         const a: FarmAnimal = decodeInfoAnimal(msg.getData());
-        if (this.farmState?.animals[a.index]) {
-          this.farmState.animals[a.index] = a;
+        // `index` là số SLOT, không phải vị trí trong mảng: slot trống bị bỏ qua
+        // lúc decode nên hai số này lệch nhau ngay khi farm có con đã bán.
+        const at = this.farmState?.animals.findIndex((x) => x.index === a.index) ?? -1;
+        if (this.farmState && at !== -1) {
+          this.farmState.animals[at] = a;
           this.emit('farm', this.farmState);
         }
         this.emit('log', `vật nuôi ${a.index} cập nhật: đói=${a.hunger} máu=${a.health}`);

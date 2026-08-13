@@ -24,6 +24,12 @@ export interface FarmCell {
 }
 
 export interface FarmAnimal {
+  /**
+   * Số SLOT trên server — tham số `index` của các lệnh bán / cho ăn / thu sản
+   * phẩm. KHÔNG phải vị trí trong mảng `animals`: slot trống bị bỏ qua lúc
+   * decode, nên hai số này lệch nhau ngay khi farm từng bán con nào đó. Tra cứu
+   * bằng `animals.find(a => a.index === slot)`, đừng `animals[slot]`.
+   */
   index: number;
   /** `Animal.species` (+0xA8) — id trong bảng vật nuôi, 50..61. */
   species: number;
@@ -89,11 +95,18 @@ export function decodeFarmData(body: Buffer): FarmState {
   // Mỗi vật nuôi 11 byte: readFarmData đọc 1 byte lưu vào Animal.species (+0xA8)
   // RỒI mới gọi readInfoAnimal (10 byte) — y hệt cách nó đọc idTree trước readInfoCell.
   // Thiếu byte species này là lý do phần đuôi gói từng bị lệch 16 byte.
+  //
+  // `nAnimal` là số SLOT chứ không phải số con: phần vật nuôi dùng ĐÚNG quy ước
+  // của ô đất — `species === -1` là slot trống, chỉ 1 byte, không có bản ghi theo
+  // sau. Server giữ chỗ trống chứ không dồn mảng sau khi bán, nên slot trống phải
+  // bị bỏ qua mà `index` vẫn giữ nguyên số slot (lệnh bán/cho ăn đánh theo slot).
   const nAnimal = r.readByte();
   for (let i = 0; i < nAnimal; i++) {
+    const species = r.readByte();
+    if (species === -1) continue;
     state.animals.push({
       index: i,
-      species: r.readUnsignedByte(),
+      species,
       bornTime: r.readInt(),       // +0x94
       health: r.readUnsignedByte(), // +0x98 (khai int, ghi byte)
       harvestPer: r.readUnsignedByte(), // +0xA9

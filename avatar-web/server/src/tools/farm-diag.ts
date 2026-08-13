@@ -137,7 +137,7 @@ if (hurt) {
   await probe(
     `useItem(idFarm, con ${hurt.index}, thuốc bổ)`,
     () => c.farm.useItem(farm.idFarm, hurt.index, ITEM_TONIC),
-    () => `health=${c.farmState!.animals[hurt.index]?.health}`,
+    () => `health=${c.farmState!.animals.find((a) => a.index === hurt.index)?.health}`,
   );
 } else {
   console.log('\n(mọi con đều đủ 100 máu — không thử được chữa bệnh)');
@@ -149,7 +149,7 @@ if (withEgg) {
   await probe(
     `harvestAnimal(idFarm, con ${withEgg.index})`,
     () => c.farm.harvestAnimal(farm.idFarm, withEgg.index),
-    () => `numEgg=${c.farmState!.animals[withEgg.index]?.numEggOne}`,
+    () => `numEgg=${c.farmState!.animals.find((a) => a.index === withEgg.index)?.numEggOne}`,
   );
 } else {
   console.log('\n(không con nào có sản phẩm để thu)');
