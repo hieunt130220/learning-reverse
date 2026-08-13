@@ -417,3 +417,29 @@ test('snapshot có đủ trường cho UI', async () => {
   }
   assert.equal(s.accountId, 7);
 });
+
+test('dòng log của auto-farm vào nhật ký phiên và ra ngoài qua onEvent', async () => {
+  const h = harness({ autoEnabled: true });
+  await h.session.start();
+
+  const line = '[cây] ô 3: hạn -> tưới #100';
+  h.autos[0].emit('log', line);
+
+  assert.equal(h.session.snapshot().logs.at(-1)?.line, line);
+  assert.ok(
+    h.events.some((e) => e.type === 'log' && (e.payload as { line: string }).line === line),
+    'phải đẩy ra ngoài qua onEvent để WebSocket thấy',
+  );
+});
+
+test('dòng log từ auto của client đã bị thay thế bị bỏ qua', async () => {
+  const h = harness({ autoEnabled: true });
+  await h.session.start();
+  const stale = h.autos[0];
+
+  h.session.stop();
+  const before = h.session.snapshot().logs.length;
+  stale.emit('log', 'dòng của phiên cũ');
+
+  assert.equal(h.session.snapshot().logs.length, before, 'epoch cũ không được ghi vào phiên mới');
+});

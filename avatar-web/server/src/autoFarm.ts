@@ -211,6 +211,12 @@ export class AutoFarm extends EventEmitter {
   private async runCycle(): Promise<void> {
     if (this.aborted) return;
     const actions: string[] = [];
+    // Một nguồn, hai đích: panel Tự động đọc `lastActions`, còn nhật ký phiên
+    // nhận sự kiện `log` để có mốc giờ thật và chạy live qua WebSocket.
+    const note = (line: string): void => {
+      actions.push(line);
+      this.emit('log', line);
+    };
 
     // Mất kết nối giữa chừng thì dừng hẳn thay vì quay vòng ném lỗi:
     // mọi lệnh sau đó đều fail, và tự đăng nhập lại là việc của người dùng
@@ -301,7 +307,7 @@ export class AutoFarm extends EventEmitter {
         }
         return false;
       }).length;
-      actions.push(
+      note(
         `[quét] ${farm.cells.length} ô: ${ripe} chín, ${emptyCells} trống, ${spent} vừa thu (time=-1) · ` +
           `${farm.animals.length} con: ${hungry} đói, ${sick} máu<${cfg.minHealth}, ` +
           `${withProduct} có sản phẩm, ${sellable} đủ lớn để bán`,
@@ -316,7 +322,7 @@ export class AutoFarm extends EventEmitter {
       if (!feedAnimals) off.push('cho ăn');
       if (!cfg.fertilizeCells) off.push('bón phân');
       if (waterItemId === undefined) off.push('tưới (chưa chọn id)');
-      if (off.length > 0) actions.push(`[tắt] ${off.join(', ')}`);
+      if (off.length > 0) note(`[tắt] ${off.join(', ')}`);
 
       // --- Đo bornTime ------------------------------------------------------
       // Dấu của delta trả lời trực tiếp: âm = đếm ngược (còn sống được bao
@@ -329,7 +335,7 @@ export class AutoFarm extends EventEmitter {
         if (prev && prev.value !== a.bornTime) {
           const delta = a.bornTime - prev.value;
           const secs = Math.round((nowMs - prev.at) / 1000);
-          actions.push(
+          note(
             `[đo] vật nuôi ${a.index} (loài ${a.species}): bornTime ${prev.value} -> ${a.bornTime} ` +
               `(${delta > 0 ? '+' : ''}${delta} sau ${secs}s)`,
           );
@@ -368,7 +374,7 @@ export class AutoFarm extends EventEmitter {
       // Đi TRƯỚC các bước dùng vật phẩm (chữa bệnh/cho ăn) để có hàng trong
       // kho trước khi dùng — không đổi vị trí bước này.
       if (cfg.autoBuy && this.client.inventory.length === 0) {
-        actions.push('bỏ qua tự mua: chưa đọc được kho');
+        note('bỏ qua tự mua: chưa đọc được kho');
       } else if (cfg.autoBuy) {
         const have = new Map(this.client.inventory.map((i) => [i.id, i.num]));
         let spent = 0;
@@ -379,12 +385,12 @@ export class AutoFarm extends EventEmitter {
           if (short <= 0) continue;
           const price = this.client.items.find((i) => i.id === id)?.price;
           if (price === undefined) {
-            actions.push(`bỏ mua #${id}: chưa biết giá`);
+            note(`bỏ mua #${id}: chưa biết giá`);
             continue;
           }
           const cost = short * price;
           if (spent + cost > cfg.buyBudgetXu) {
-            actions.push(`dừng mua #${id}: vượt trần ${cfg.buyBudgetXu} xu`);
+            note(`dừng mua #${id}: vượt trần ${cfg.buyBudgetXu} xu`);
             continue;
           }
           // num là i8 trên wire -> chia lô tối đa 100 mỗi lệnh.
@@ -393,7 +399,7 @@ export class AutoFarm extends EventEmitter {
             const lot = Math.min(left, 20);
             this.client.farm.buyItem(id, lot, SHOP_XU);
             sent += 1;
-            actions.push(`mua #${id} ×${lot} (~${lot * price} xu)`);
+            note(`mua #${id} ×${lot} (~${lot * price} xu)`);
             left -= lot;
             await sleep(stepDelayMs);
           }
@@ -414,13 +420,13 @@ export class AutoFarm extends EventEmitter {
         if (harvest && isCellRipe(c)) {
           this.client.farm.harvest(idFarm, c.index);
           sent += 1;
-          actions.push(`ô ${c.index}: thu hoạch (hervestPer=${c.hervestPer})`);
+          note(`ô ${c.index}: thu hoạch (hervestPer=${c.hervestPer})`);
           await sleep(stepDelayMs);
         }
         if (seedId !== undefined && c.idTree === -1) {
           this.client.farm.plantSeed(idFarm, c.index, seedId);
           sent += 1;
-          actions.push(`ô ${c.index}: trồng #${seedId}`);
+          note(`ô ${c.index}: trồng #${seedId}`);
           await sleep(stepDelayMs);
         }
       }
@@ -436,7 +442,7 @@ export class AutoFarm extends EventEmitter {
           if (a.numEggOne <= 0) continue;
           this.client.farm.harvestAnimal(idFarm, a.index);
           sent += 1;
-          actions.push(`vật nuôi ${a.index}: thu hoạch ${a.numEggOne} sản phẩm`);
+          note(`vật nuôi ${a.index}: thu hoạch ${a.numEggOne} sản phẩm`);
           await sleep(stepDelayMs);
         }
       }
@@ -487,14 +493,14 @@ export class AutoFarm extends EventEmitter {
           this.client.farm.sellAnimal(idFarm, a.index);
           sent += 1;
           sold += 1;
-          actions.push(`vật nuôi ${a.index} (loài ${a.species}): BÁN — ${why}`);
+          note(`vật nuôi ${a.index} (loài ${a.species}): BÁN — ${why}`);
           await sleep(stepDelayMs);
         }
         if (sold >= cfg.maxSellsPerCycle) {
-          actions.push(`đã đạt trần ${cfg.maxSellsPerCycle} con bán/vòng`);
+          note(`đã đạt trần ${cfg.maxSellsPerCycle} con bán/vòng`);
         }
         if (noSpec > 0) {
-          actions.push(`bỏ qua bán ${noSpec} con: chưa có bảng vật nuôi để biết tuổi lớn/tuổi thọ`);
+          note(`bỏ qua bán ${noSpec} con: chưa có bảng vật nuôi để biết tuổi lớn/tuổi thọ`);
         }
       }
 
@@ -514,7 +520,7 @@ export class AutoFarm extends EventEmitter {
             doses += 1;
             await sleep(stepDelayMs);
           }
-          if (doses > 0) actions.push(`vật nuôi ${a.index}: ${doses} liều thuốc bổ (${a.health}->~${hp})`);
+          if (doses > 0) note(`vật nuôi ${a.index}: ${doses} liều thuốc bổ (${a.health}->~${hp})`);
         }
       }
 
@@ -529,7 +535,7 @@ export class AutoFarm extends EventEmitter {
           if (food === undefined) continue;
           this.client.farm.useItem(idFarm, a.index, food);
           sent += 1;
-          actions.push(`vật nuôi ${a.index}: cho ăn #${food}`);
+          note(`vật nuôi ${a.index}: cho ăn #${food}`);
           await sleep(stepDelayMs);
         }
       }
@@ -543,30 +549,30 @@ export class AutoFarm extends EventEmitter {
         if (c.isArid && waterItemId !== undefined) {
           this.client.farm.useItem(idFarm, c.index, waterItemId);
           sent += 1;
-          actions.push(`ô ${c.index}: tưới`);
+          note(`ô ${c.index}: tưới`);
           await sleep(stepDelayMs);
         }
         if (c.isGrass && grassItemId !== undefined) {
           this.client.farm.useItem(idFarm, c.index, grassItemId);
           sent += 1;
-          actions.push(`ô ${c.index}: nhổ cỏ`);
+          note(`ô ${c.index}: nhổ cỏ`);
           await sleep(stepDelayMs);
         }
         if (c.isWorm && wormItemId !== undefined) {
           this.client.farm.useItem(idFarm, c.index, wormItemId);
           sent += 1;
-          actions.push(`ô ${c.index}: bắt sâu`);
+          note(`ô ${c.index}: bắt sâu`);
           await sleep(stepDelayMs);
         }
         if (cfg.fertilizeCells && c.idTree !== -1 && c.vitalityPer < cfg.minVitality) {
           this.client.farm.useItem(idFarm, c.index, ITEM_FERTILIZER);
           sent += 1;
-          actions.push(`ô ${c.index}: bón phân (sức sống ${c.vitalityPer})`);
+          note(`ô ${c.index}: bón phân (sức sống ${c.vitalityPer})`);
           await sleep(stepDelayMs);
         }
       }
       if (overBudget()) {
-        actions.push(`đã đạt trần ${cfg.maxActionsPerCycle} lệnh/vòng — phần còn lại làm ở vòng sau`);
+        note(`đã đạt trần ${cfg.maxActionsPerCycle} lệnh/vòng — phần còn lại làm ở vòng sau`);
       }
       // Tưới nước KHÔNG được server đẩy kèm INFO_CELL, nên state cục bộ vẫn giữ
       // isArid cũ. Xin lại dữ liệu farm cuối vòng để UI phản ánh đúng thực tế.

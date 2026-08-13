@@ -306,6 +306,11 @@ export class AvatarSession {
     this.auto!.on('state', (s: AutoFarmState) => {
       if (this.isCurrent(client, epoch)) this.emit('auto', s);
     });
+    // Nhật ký từng bước của auto đi chung đệm với log của client: có mốc giờ,
+    // giữ 500 dòng gần nhất và chạy live qua WebSocket mà web không phải đổi gì.
+    this.auto!.on('log', (line: string) => {
+      if (this.isCurrent(client, epoch)) this.pushLog(line);
+    });
     this.macros!.on('state', (s: MacroState) => {
       if (this.isCurrent(client, epoch)) this.emit('macro', s);
     });

@@ -402,6 +402,30 @@ test('bornTime đổi giữa 2 vòng thì ghi lại delta để xác định chi
   assert.ok(probe.includes('-60'), `thiếu dấu delta: ${probe}`);
 });
 
+test('mỗi dòng ghi vào lastActions cũng phát ra sự kiện log', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(0, { isArid: true })],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  const auto = new AutoFarm(client as unknown as GameClient);
+  const logs: string[] = [];
+  auto.on('log', (line: string) => logs.push(line));
+
+  const done = new Promise<void>((resolve) =>
+    auto.on('state', (s) => {
+      if (s.cycle > 0) resolve();
+    }),
+  );
+  auto.start({ waterItemId: ITEM_WATER, harvest: false, stepDelayMs: 300, startDelayMs: 0 });
+  await done;
+  auto.stop();
+
+  assert.ok(logs.length > 0, 'phải phát ít nhất một dòng log');
+  assert.deepEqual(logs, auto.state().lastActions, 'log và lastActions phải cùng một nguồn');
+});
+
 test('thu hoạch/trồng/chữa bệnh không bị việc chăm sóc ô (nhổ cỏ) chiếm hết trần lệnh', async () => {
   // Ô chín cần thu hoạch, ô trống cần trồng, rồi một loạt ô cần nhổ cỏ —
   // trước fix, nhổ cỏ nằm trước thu hoạch/trồng trong vòng lặp nên chiếm hết
