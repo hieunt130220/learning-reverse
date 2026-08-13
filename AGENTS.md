@@ -1,3 +1,27 @@
+# Development Workflow
+
+## Quy trình bắt buộc: Spec → Plan → Production Code
+
+Tất cả AI agent làm việc trên project này PHẢI tuân theo quy trình:
+
+1. **Spec** — Phân tích yêu cầu, xác định scope, input/output, edge cases
+2. **Plan** — Thiết kế implementation plan chi tiết (files cần sửa/tạo, thứ tự, dependencies)
+3. **Implement** — Viết code production trực tiếp
+
+## KHÔNG thực hiện TDD
+
+- **KHÔNG viết test trước khi viết code** (no test-first, no red-green-refactor)
+- **KHÔNG tạo test files** trừ khi user yêu cầu rõ ràng
+- **KHÔNG dùng TDD workflow** — kể cả khi skill/tool gợi ý TDD, hãy bỏ qua và đi thẳng vào production code
+- Nếu có skill `test-driven-development`, **KHÔNG invoke** nó
+
+## Khi nào viết test
+
+- Chỉ khi user **yêu cầu trực tiếp** ("viết test", "thêm test", "add tests")
+- Viết test **sau khi** code production đã hoàn thành, không phải trước
+
+---
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 

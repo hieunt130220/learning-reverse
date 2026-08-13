@@ -1,3 +1,20 @@
+# Development Workflow
+
+## Quy trình bắt buộc: Spec → Plan → Production Code
+
+1. **Spec** — Phân tích yêu cầu, xác định scope, input/output, edge cases
+2. **Plan** — Thiết kế implementation plan chi tiết (files cần sửa/tạo, thứ tự, dependencies)
+3. **Implement** — Viết code production trực tiếp
+
+## KHÔNG thực hiện TDD
+
+- **KHÔNG viết test trước khi viết code** (no test-first, no red-green-refactor)
+- **KHÔNG tạo test files** trừ khi user yêu cầu rõ ràng
+- **KHÔNG dùng TDD workflow** — bỏ qua skill `test-driven-development`, đi thẳng vào production code
+- Chỉ viết test khi user **yêu cầu trực tiếp**, và viết **sau khi** code production hoàn thành
+
+---
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
