@@ -28,6 +28,21 @@ const EMPTY_PROFILE: FarmProfileDto = {
 
 const EMPTY_AUTO: AutoConfigStateDto = { revision: 0, config: {} };
 
+const ALWAYS_ON_AUTO_CONFIG = {
+  harvest: true,
+  harvestAnimals: true,
+  harvestBarnAnimals: true,
+  harvestPondAnimals: true,
+  feedAnimals: true,
+  feedBarnAnimals: true,
+  feedPondAnimals: true,
+  healAnimals: true,
+  fertilizeCells: true,
+  waterItemId: 100,
+  grassItemId: 123,
+  wormItemId: 124,
+} satisfies Partial<AutoFarmConfigDto>;
+
 function sortedPlan(entries: TreeCellPlanEntry[] | undefined): TreeCellPlanEntry[] {
   return [...(entries ?? [])].sort((left, right) => left.cellIndex - right.cellIndex);
 }
@@ -151,18 +166,6 @@ export function AutoFarmPanel({
   onPlanDirtyChange,
 }: AutoFarmPanelProps) {
   const [seedId, setSeedId] = useState('');
-  // 123/124 đối chiếu khớp giữa bảng vật phẩm và kho; 100 là hằng số cứng trong
-  // FarmScr.resetAction, chưa kiểm chứng nên để trống mặc định.
-  const [waterItemId, setWaterItemId] = useState('100');
-  const [grassItemId, setGrassItemId] = useState('123');
-  const [wormItemId, setWormItemId] = useState('124');
-  const [harvest, setHarvest] = useState(true);
-  const [harvestBarnAnimals, setHarvestBarnAnimals] = useState(true);
-  const [harvestPondAnimals, setHarvestPondAnimals] = useState(true);
-  const [feedBarnAnimals, setFeedBarnAnimals] = useState(true);
-  const [feedPondAnimals, setFeedPondAnimals] = useState(true);
-  const [healAnimals, setHealAnimals] = useState(true);
-  const [fertilizeCells, setFertilizeCells] = useState(true);
   // Bán là thao tác KHÔNG lấy lại được -> mặc định tắt, người dùng phải tự bật.
   const [sellBarnAnimals, setSellBarnAnimals] = useState(false);
   const [sellPondAnimals, setSellPondAnimals] = useState(false);
@@ -201,16 +204,6 @@ export function AutoFarmPanel({
       value === undefined ? fallback : String(value)
     );
     setSeedId(optionalId(config.seedId));
-    setWaterItemId(optionalId(config.waterItemId, '100'));
-    setGrassItemId(optionalId(config.grassItemId, '123'));
-    setWormItemId(optionalId(config.wormItemId, '124'));
-    setHarvest(config.harvest ?? true);
-    setHarvestBarnAnimals(config.harvestBarnAnimals ?? config.harvestAnimals ?? true);
-    setHarvestPondAnimals(config.harvestPondAnimals ?? config.harvestAnimals ?? true);
-    setFeedBarnAnimals(config.feedBarnAnimals ?? config.feedAnimals ?? true);
-    setFeedPondAnimals(config.feedPondAnimals ?? config.feedAnimals ?? true);
-    setHealAnimals(config.healAnimals ?? true);
-    setFertilizeCells(config.fertilizeCells ?? true);
     setSellBarnAnimals(config.sellBarnAnimals ?? config.sellAnimals ?? false);
     setSellPondAnimals(config.sellPondAnimals ?? config.sellAnimals ?? false);
     setSellBarnSpeciesStr(config.sellBarnSpecies?.join(', ') ?? '50, 51, 52, 55');
@@ -279,45 +272,9 @@ export function AutoFarmPanel({
       .map((part) => Number(part.trim()))
       .filter((id) => Number.isFinite(id));
 
-  const currentConfig = useMemo((): Partial<AutoFarmConfigDto> => ({
-    seedId: num(seedId),
-    waterItemId: num(waterItemId),
-    grassItemId: num(grassItemId),
-    wormItemId: num(wormItemId),
-    harvest,
-    harvestAnimals: harvestBarnAnimals || harvestPondAnimals,
-    harvestBarnAnimals,
-    harvestPondAnimals,
-    feedAnimals: feedBarnAnimals || feedPondAnimals,
-    feedBarnAnimals,
-    feedPondAnimals,
-    healAnimals,
-    fertilizeCells,
-    sellAnimals: sellBarnAnimals || sellPondAnimals,
-    sellBarnAnimals,
-    sellPondAnimals,
-    sellBarnSpecies: idList(sellBarnSpeciesStr),
-    sellPondSpecies: idList(sellPondSpeciesStr),
-    sellWhenGrownSpecies: [...idList(sellBarnSpeciesStr), ...idList(sellPondSpeciesStr)],
-    maxSellsPerCycle,
-    autoBuy,
-    buyBudgetXu,
-    intervalMs: intervalSec * 1000,
-    stepDelayMs,
-    treeCellPlan: sortedPlan(draftPlan),
-    barnAnimalPlan: sortedAnimalPlan(draftBarnPlan),
-    pondAnimalPlan: sortedAnimalPlan(draftPondPlan),
-  }), [
-    seedId, waterItemId, grassItemId, wormItemId, harvest,
-    harvestBarnAnimals, harvestPondAnimals, feedBarnAnimals, feedPondAnimals,
-    healAnimals, fertilizeCells, sellBarnAnimals, sellPondAnimals,
-    sellBarnSpeciesStr, sellPondSpeciesStr, maxSellsPerCycle, autoBuy,
-    buyBudgetXu, intervalSec, stepDelayMs, draftPlan, draftBarnPlan, draftPondPlan,
-  ]);
-
   // Chỉ so sánh các phần UI cho phép sửa: kế hoạch cây + vật nuôi (chuồng/hồ).
   // Các field không có control (minGrowthToSell, startDelayMs…) luôn khác nhau
-  // giữa stored và currentConfig — so cả object là vỡ.
+  // giữa stored và payload runtime — so cả object là vỡ.
   const dirty = useMemo(
     () => planKey(draftPlan) !== planKey(storedState.config.treeCellPlan)
       || animalPlanKey(draftBarnPlan) !== animalPlanKey(storedState.config.barnAnimalPlan)
@@ -362,18 +319,7 @@ export function AutoFarmPanel({
     try {
       await apiPost(`/api/accounts/${expectedAccountId}/auto/start`, {
         seedId: num(seedId),
-        waterItemId: num(waterItemId),
-        grassItemId: num(grassItemId),
-        wormItemId: num(wormItemId),
-        harvest,
-        harvestAnimals: harvestBarnAnimals || harvestPondAnimals,
-        harvestBarnAnimals,
-        harvestPondAnimals,
-        feedAnimals: feedBarnAnimals || feedPondAnimals,
-        feedBarnAnimals,
-        feedPondAnimals,
-        healAnimals,
-        fertilizeCells,
+        ...ALWAYS_ON_AUTO_CONFIG,
         sellAnimals: sellBarnAnimals || sellPondAnimals,
         sellBarnAnimals,
         sellPondAnimals,
@@ -455,6 +401,7 @@ export function AutoFarmPanel({
         expectedRevision: storedState.revision,
         config: {
           ...storedState.config,
+          ...ALWAYS_ON_AUTO_CONFIG,
           treeCellPlan: sortedPlan(draftPlan),
           barnAnimalPlan: sortedAnimalPlan(draftBarnPlan),
           pondAnimalPlan: sortedAnimalPlan(draftPondPlan),
@@ -547,66 +494,16 @@ export function AutoFarmPanel({
     <section className="card">
       <h2>Tự động chăm sóc</h2>
       <p className="hint">
-        Mỗi chu kỳ xin lại dữ liệu farm rồi hành động theo trạng thái thật của từng ô. Ô nào để trống
-        thì việc đó bị tắt. <b>100</b> (tưới) và <b>123</b> (nhổ cỏ) đã kiểm chứng bằng gói thật;{' '}
-        <b>124</b> (bắt sâu) mới suy từ tên vật phẩm, chưa thử được.
+        Mỗi chu kỳ xin lại dữ liệu farm rồi hành động theo trạng thái thật của từng ô và slot.
+        Chăm sóc cơ bản, thu hoạch và cho vật nuôi ăn luôn được bật; kế hoạch bên dưới quyết định
+        việc trồng hoặc nuôi.
       </p>
       <p className="hint">
         Bật ở đây là ghi vào cơ sở dữ liệu: server tự bật lại tài khoản này sau khi khởi động lại,
         không cần mở trình duyệt.
       </p>
-      {/* KHỐI 1: CÂY TRỒNG */}
-      <div className="setting-section">
-        <h3>🌱 Cây trồng</h3>
-        <div className="row">
-          <label className="inline">
-            id hạt trồng lại
-            <input value={seedId} onChange={(event) => setSeedId(event.target.value)} placeholder="tắt" />
-          </label>
-          <label className="inline">
-            id tưới nước
-            <input value={waterItemId} onChange={(event) => setWaterItemId(event.target.value)} placeholder="tắt" />
-          </label>
-        </div>
-        <div className="row">
-          <label className="inline">
-            id thuốc cỏ
-            <input value={grassItemId} onChange={(event) => setGrassItemId(event.target.value)} placeholder="tắt" />
-          </label>
-          <label className="inline">
-            id thuốc sâu
-            <input value={wormItemId} onChange={(event) => setWormItemId(event.target.value)} placeholder="tắt" />
-          </label>
-        </div>
-        <div className="row">
-          <label className="inline">
-            <input type="checkbox" checked={harvest} onChange={(event) => setHarvest(event.target.checked)} style={{ width: 'auto' }} />
-            thu hoạch ô đã chín
-          </label>
-          <label className="inline">
-            <input type="checkbox" checked={fertilizeCells} onChange={(event) => setFertilizeCells(event.target.checked)} style={{ width: 'auto' }} />
-            bón phân khi sức sống &lt; 100
-          </label>
-        </div>
-      </div>
-
-      {/* KHỐI 2: VẬT NUÔI CHUỒNG */}
       <div className="setting-section">
         <h3>🐓 Vật nuôi chuồng (Gà, Vịt, Bò, Heo, Cừu, Trâu, Dê, Thỏ...)</h3>
-        <div className="row">
-          <label className="inline">
-            <input type="checkbox" checked={harvestBarnAnimals} onChange={(event) => setHarvestBarnAnimals(event.target.checked)} style={{ width: 'auto' }} />
-            thu hoạch sản phẩm chuồng (trứng/sữa/lông)
-          </label>
-          <label className="inline">
-            <input type="checkbox" checked={feedBarnAnimals} onChange={(event) => setFeedBarnAnimals(event.target.checked)} style={{ width: 'auto' }} />
-            cho vật nuôi chuồng ăn (thức ăn Gia cầm/Gia súc)
-          </label>
-          <label className="inline">
-            <input type="checkbox" checked={healAnimals} onChange={(event) => setHealAnimals(event.target.checked)} style={{ width: 'auto' }} />
-            thuốc bổ khi máu &lt; 100
-          </label>
-        </div>
         <div className="row">
           <label className="inline">
             <input type="checkbox" checked={sellBarnAnimals} onChange={(event) => setSellBarnAnimals(event.target.checked)} style={{ width: 'auto' }} />
@@ -634,18 +531,9 @@ export function AutoFarmPanel({
         />
       </div>
 
-      {/* KHỐI 3: VẬT NUÔI HỒ */}
       <div className="setting-section">
         <h3>🐟 Vật nuôi hồ (Cá chép, Rùa)</h3>
         <div className="row">
-          <label className="inline">
-            <input type="checkbox" checked={harvestPondAnimals} onChange={(event) => setHarvestPondAnimals(event.target.checked)} style={{ width: 'auto' }} />
-            thu hoạch sản phẩm hồ
-          </label>
-          <label className="inline">
-            <input type="checkbox" checked={feedPondAnimals} onChange={(event) => setFeedPondAnimals(event.target.checked)} style={{ width: 'auto' }} />
-            cho cá/rùa ăn (thức ăn Thủy sản)
-          </label>
           <label className="inline">
             <input type="checkbox" checked={sellPondAnimals} onChange={(event) => setSellPondAnimals(event.target.checked)} style={{ width: 'auto' }} />
             bán cá/rùa khi lớn

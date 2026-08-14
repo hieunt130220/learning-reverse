@@ -37,17 +37,16 @@ export interface AutoFarmConfig {
   seedId?: number;
   /** Kế hoạch trồng riêng cho từng ô; không có entry thì dùng `seedId`. */
   treeCellPlan?: TreeCellPlanEntry[];
-  /** id vật phẩm tưới nước. Bỏ trống = không tưới. */
+  /** ID vật phẩm tưới nước cố định (#100). */
   waterItemId?: number;
-  /** id vật phẩm nhổ cỏ. */
+  /** ID vật phẩm nhổ cỏ cố định (#123). */
   grassItemId?: number;
-  /** id vật phẩm bắt sâu. */
+  /** ID vật phẩm bắt sâu cố định (#124). */
   wormItemId?: number;
-  /** Có thu hoạch ô đã chín không. */
+  /** Luôn thu hoạch ô đã chín. */
   harvest: boolean;
   /**
-   * Thu hoạch sản phẩm vật nuôi (trứng/sữa) khi `numEggOne > 0`. Miễn phí và
-   * không phá huỷ gì nên mặc định bật, cùng nhóm với `harvest`.
+   * Luôn thu hoạch sản phẩm vật nuôi (trứng/sữa) khi `numEggOne > 0`.
    */
   harvestAnimals: boolean;
   harvestBarnAnimals?: boolean;
@@ -87,14 +86,14 @@ export interface AutoFarmConfig {
    * điều kiện bị hiểu sai thì trần này chặn thiệt hại lại ở vài con.
    */
   maxSellsPerCycle: number;
-  /** Cho vật nuôi đang đói ăn (thức ăn chọn theo loài). */
+  /** Luôn cho vật nuôi đang đói ăn (thức ăn chọn theo loài). */
   feedAnimals: boolean;
   feedBarnAnimals?: boolean;
   feedPondAnimals?: boolean;
-  /** Dùng Thuốc bổ (#122) cho vật nuôi có máu dưới `minHealth`. Mỗi liều +20. */
+  /** Luôn dùng Thuốc bổ (#122) cho vật nuôi có máu dưới `minHealth`. Mỗi liều +20. */
   healAnimals: boolean;
   minHealth: number;
-  /** Dùng Phân bón siêu cấp (#112) cho ô có sức sống dưới `minVitality`. */
+  /** Luôn dùng Phân bón siêu cấp (#112) cho ô có sức sống dưới `minVitality`. */
   fertilizeCells: boolean;
   minVitality: number;
   /**
@@ -162,19 +161,30 @@ export interface AutoFarmOptions {
   catalogTimeout?: (signal: AbortSignal) => Promise<void>;
 }
 
-const DEFAULTS: AutoFarmConfig = {
+const ALWAYS_ON_CONFIG = {
   harvest: true,
   harvestAnimals: true,
+  harvestBarnAnimals: true,
+  harvestPondAnimals: true,
+  feedAnimals: true,
+  feedBarnAnimals: true,
+  feedPondAnimals: true,
+  healAnimals: true,
+  fertilizeCells: true,
+  waterItemId: 100,
+  grassItemId: 123,
+  wormItemId: 124,
+} as const satisfies Partial<AutoFarmConfig>;
+
+const DEFAULTS: AutoFarmConfig = {
+  ...ALWAYS_ON_CONFIG,
   sellAnimals: false,
   sellWhenGrownSpecies: SPECIES_SELL_WHEN_GROWN,
   sellNearDeathSpecies: SPECIES_SELL_NEAR_DEATH,
   minGrowthToSell: GROWN_PERCENT,
   nearDeathRatio: NEAR_DEATH_RATIO,
   maxSellsPerCycle: 0,
-  feedAnimals: false,
-  healAnimals: false,
   minHealth: 100,
-  fertilizeCells: false,
   minVitality: 100,
   autoBuy: false,
   buyBudgetXu: 5_000,
@@ -189,8 +199,8 @@ const DEFAULTS: AutoFarmConfig = {
  * định theo trạng thái thật của từng ô (`isArid`/`isGrass`/`isWorm`/`time`),
  * chứ không phát lệnh mù.
  *
- * Cố ý CHỈ làm những việc được bật rõ ràng trong config — mặc định không trồng
- * và không dùng vật phẩm, để không tiêu tốn tài nguyên ngoài ý muốn.
+ * Cố ý chỉ trồng theo `seedId`/`treeCellPlan`; các thao tác chăm sóc cơ bản dùng
+ * policy luôn bật, còn bán và tự mua vẫn phải được bật rõ ràng trong config.
  */
 export class AutoFarm extends EventEmitter {
   private timer?: NodeJS.Timeout;
@@ -853,6 +863,7 @@ function makeConfig(input: Partial<AutoFarmConfig>): AutoFarmConfig {
   const cfg: AutoFarmConfig = {
     ...DEFAULTS,
     ...input,
+    ...ALWAYS_ON_CONFIG,
     sellWhenGrownSpecies: speciesList(input.sellWhenGrownSpecies, SPECIES_SELL_WHEN_GROWN),
     sellNearDeathSpecies: speciesList(input.sellNearDeathSpecies, SPECIES_SELL_NEAR_DEATH),
     treeCellPlan: validateTreeCellPlan(input.treeCellPlan),
