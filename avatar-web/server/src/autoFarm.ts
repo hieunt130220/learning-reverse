@@ -558,16 +558,13 @@ export class AutoFarm extends EventEmitter {
               ?? `loài ${entry.speciesId}`;
             this.client.farm.buyAnimal(entry.speciesId, SHOP_XU);
             sent += 1;
-            await tick();
-            // Xin lại farm để đếm con — mua thật thì số con phải tăng.
             const ref = new Promise<void>((resolve) => {
-              const t = setTimeout(resolve, 3000);
+              const t = setTimeout(resolve, 500);
               this.client.once('farm', () => {
                 clearTimeout(t);
                 resolve();
               });
             });
-            this.client.enterFarm();
             await ref;
             const after = this.client.farmState?.animals.length ?? before;
             if (after > before) {
