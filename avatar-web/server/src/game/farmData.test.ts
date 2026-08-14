@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { classifyFarmSlots, decodeFarmData, isCellRipe } from './farmData.js';
+import { classifyFarmSlots, decodeFarmData, isCellRipe, decodeAllTreeInfo } from './farmData.js';
 import { FARM_PACKET_69_HEX } from './farmData.fixture.js';
 
 const packet = Buffer.from(FARM_PACKET_69_HEX, 'hex');
@@ -127,6 +127,27 @@ test('classifyFarmSlots: chưa có con ao nào thì mặc định 4 slot ao đ�
   classifyFarmSlots(state);
   assert.deepEqual(state.pondAnimalSlots, [0, 1, 2, 3]);
   assert.deepEqual(state.barnAnimalSlots, [4, 5, 6, 7, 8, 9, 10, 11]);
+});
+
+test('decodeAllTreeInfo rút đúng thông tin cây trồng mở rộng', () => {
+  const str = Buffer.from('Dưa Leo', 'utf8');
+  const buf = Buffer.alloc(8000);
+  buf.writeUInt16BE(0, 0); // 0 cây xu
+
+  const duaLeoPos = 5500;
+  buf.writeUInt8(43, duaLeoPos - 3);
+  buf.writeUInt16BE(str.length, duaLeoPos - 2);
+  str.copy(buf, duaLeoPos);
+  const attrStart = duaLeoPos + str.length;
+  buf.writeInt16BE(2, attrStart); // s(0) = 2 giờ lớn
+  buf.writeInt16BE(10, attrStart + 2); // s(1) = 10
+  buf.writeInt16BE(50, attrStart + 10);
+
+  const trees = decodeAllTreeInfo(buf);
+  const duaLeo = trees.find((t) => t.name === 'Dưa Leo');
+  assert.ok(duaLeo);
+  assert.equal(duaLeo.growMinutes, 2);
+  assert.equal(duaLeo.category, 'premium');
 });
 
 test('chưa có bảng cây thì không đoán bừa, chỉ tin hervestPer', () => {

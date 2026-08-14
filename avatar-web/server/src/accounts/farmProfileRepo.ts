@@ -1,4 +1,5 @@
 import type { Db } from '../db/index.js';
+import { DEFAULT_SEED_CATALOG } from './defaultSeedCatalog.js';
 
 export interface CachedSeed {
   id: number;
@@ -37,7 +38,7 @@ const EMPTY_PROFILE: FarmProfile = {
   cellIndices: [],
   barnAnimalSlots: [],
   pondAnimalSlots: [],
-  seedCatalog: [],
+  seedCatalog: DEFAULT_SEED_CATALOG,
   cellsObservedAt: null,
   seedsObservedAt: null,
   updatedAt: null,
@@ -177,8 +178,10 @@ export function updateAnimalSlots(
 }
 
 function decodeSeedCatalog(raw: string): CachedSeed[] {
+  if (!raw || raw === '[]') return DEFAULT_SEED_CATALOG;
   const value: unknown = JSON.parse(raw);
   if (!Array.isArray(value)) throw new Error('seed_catalog_json không phải mảng');
+  if (value.length === 0) return DEFAULT_SEED_CATALOG;
   const seeds: CachedSeed[] = [];
   for (const item of value) {
     if (typeof item !== 'object' || item === null || Array.isArray(item)) {
