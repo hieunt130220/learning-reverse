@@ -375,6 +375,10 @@ export class AvatarSession {
       this.pushLog(
         `server yêu cầu chờ ${Math.ceil(rejection.retryAfterMs / 1000)}s trước khi đăng nhập lại`,
       );
+      // Một số lỗi tạm thời chỉ là thông báo (-40), server không đóng socket.
+      // Đóng client ở đây để phát `idle` và đi chung nhánh scheduleRetry; nếu
+      // giữ socket ở `logging-in`, nút Kết nối sẽ gọi vào client cũ rồi no-op.
+      client.logout();
     });
 
     this.auto!.on('state', (s: AutoFarmState) => {

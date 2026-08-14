@@ -18,6 +18,9 @@ export function StatusPanel({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const online = snap?.status === 'online';
+  const connecting = snap?.status === 'connecting'
+    || snap?.status === 'handshaking'
+    || snap?.status === 'logging-in';
 
   async function toggle() {
     setBusy(true);
@@ -42,8 +45,8 @@ export function StatusPanel({
         {snap?.money !== undefined && <span className="chip">{snap.money} xu</span>}
       </div>
       <div className="row">
-        <button onClick={() => void toggle()} disabled={busy}>
-          {online ? 'Ngắt' : 'Kết nối'}
+        <button onClick={() => void toggle()} disabled={busy || connecting}>
+          {online ? 'Ngắt' : connecting ? 'Đang kết nối…' : 'Kết nối'}
         </button>
         <button
           className="ghost"
