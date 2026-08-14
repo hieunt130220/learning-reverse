@@ -73,7 +73,7 @@ class FakeSession {
 }
 
 function seedProfile(db: ReturnType<typeof newTestDb>, id: number): void {
-  updateFarmCells(db, id, 3, [2, 4], 100);
+  updateFarmCells(db, id, 3, [2, 4], [], [], 100);
   updateSeedCatalog(db, id, [
     { id: 6, name: 'Lúa', growMinutes: 5, value: 10 },
     { id: 8, name: 'Ngô', growMinutes: 8, value: 12 },

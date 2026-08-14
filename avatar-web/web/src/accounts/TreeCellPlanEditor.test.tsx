@@ -187,8 +187,7 @@ describe('TreeCellPlanEditor', () => {
     expect(screen.getByText(/catalog hạt chưa có trong cache/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^◇ Mặc định$/ })).toBeEnabled();
     expect(screen.getByRole('button', { name: /Không trồng/ })).toBeEnabled();
-    // Cache trống vẫn có default catalog — kiểm tra hạt KHÔNG có trong default (11) bị ẩn.
-    expect(screen.queryByRole('button', { name: /Cây khế/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Hoa hồng/ })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Không trồng/ }));
     await user.click(screen.getByRole('button', { name: /Ô 21/ }));
@@ -199,7 +198,7 @@ describe('TreeCellPlanEditor', () => {
     expect(onChange).toHaveBeenLastCalledWith([]);
   });
 
-  test('đổi sang profile không có catalog vẫn giữ palette default của tài khoản trước', async () => {
+  test('đổi sang profile không có catalog không giữ palette hạt của tài khoản trước', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
     const entries: TreeCellPlanEntry[] = [{ cellIndex: 2, action: 'skip' }];
@@ -227,8 +226,7 @@ describe('TreeCellPlanEditor', () => {
     );
     await user.click(screen.getByRole('button', { name: /Ô 2/ }));
 
-    // Default catalog vẫn cho phép chọn Hoa hồng — kế hoạch ghi hạt #6.
-    expect(onChange).toHaveBeenLastCalledWith([{ cellIndex: 2, action: 'seed', seedId: 6 }]);
+    expect(onChange).toHaveBeenLastCalledWith([]);
   });
 
   test('cache đầy đủ hiện timestamp cache, cảnh báo entry hỏng và tóm tắt kế hoạch', () => {
