@@ -20,5 +20,15 @@ export function openDb(file: string): Db {
   db.pragma('foreign_keys = ON');
   db.pragma('journal_mode = WAL');
   db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
+  const addColumn = (sql: string): void => {
+    try {
+      db.exec(sql);
+    } catch {
+      // Cột đã tồn tại
+    }
+  };
+  addColumn("ALTER TABLE avatar_farm_profile_cache ADD COLUMN barn_animal_slots_json TEXT NOT NULL DEFAULT '[]'");
+  addColumn("ALTER TABLE avatar_farm_profile_cache ADD COLUMN pond_animal_slots_json TEXT NOT NULL DEFAULT '[]'");
+  addColumn("ALTER TABLE avatar_farm_profile_cache ADD COLUMN animal_slots_json TEXT NOT NULL DEFAULT '[]'");
   return db;
 }

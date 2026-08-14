@@ -1,6 +1,6 @@
-import type { AutoFarmConfig, TreeCellPlanEntry } from '../autoFarm.js';
+import type { AnimalPlanEntry, AutoFarmConfig, TreeCellPlanEntry } from '../autoFarm.js';
 
-export type { TreeCellPlanEntry } from '../autoFarm.js';
+export type { AnimalPlanEntry, TreeCellPlanEntry } from '../autoFarm.js';
 
 export interface StoredAutoConfigState {
   revision: number;
@@ -73,6 +73,36 @@ function treeCellPlan(value: unknown): TreeCellPlanEntry[] {
   return entries;
 }
 
+function animalPlan(value: unknown): AnimalPlanEntry[] {
+  if (!Array.isArray(value)) throw new Error('animalPlan phải là mảng');
+
+  const entries = value.map((raw) => {
+    const entry = record(raw, 'mỗi kế hoạch vật nuôi');
+    const slotIndex = nonNegativeInteger(entry.slotIndex, 'slotIndex');
+    if (entry.action === 'skip') {
+      if (Object.keys(entry).some((key) => key !== 'slotIndex' && key !== 'action')) {
+        throw new Error(`kế hoạch slot ${slotIndex} không hợp lệ`);
+      }
+      return { slotIndex, action: 'skip' } as const;
+    }
+    if (entry.action === 'breed') {
+      if (Object.keys(entry).some((key) => key !== 'slotIndex' && key !== 'action' && key !== 'speciesId')) {
+        throw new Error(`kế hoạch slot ${slotIndex} không hợp lệ`);
+      }
+      return { slotIndex, action: 'breed', speciesId: nonNegativeInteger(entry.speciesId, 'speciesId') } as const;
+    }
+    throw new Error(`action của slot ${slotIndex} không hợp lệ`);
+  });
+
+  entries.sort((left, right) => left.slotIndex - right.slotIndex);
+  for (let index = 1; index < entries.length; index += 1) {
+    if (entries[index - 1].slotIndex === entries[index].slotIndex) {
+      throw new Error(`slot ${entries[index].slotIndex} bị lặp`);
+    }
+  }
+  return entries;
+}
+
 const parsers: Record<ConfigKey, ConfigParser> = {
   harvest: (value, key) => {
     if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
@@ -82,11 +112,35 @@ const parsers: Record<ConfigKey, ConfigParser> = {
     if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
     return value;
   },
+  harvestBarnAnimals: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
+  harvestPondAnimals: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
   sellAnimals: (value, key) => {
     if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
     return value;
   },
+  sellBarnAnimals: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
+  sellPondAnimals: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
   feedAnimals: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
+  feedBarnAnimals: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
+  feedPondAnimals: (value, key) => {
     if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
     return value;
   },
@@ -108,6 +162,8 @@ const parsers: Record<ConfigKey, ConfigParser> = {
   wormItemId: nonNegativeInteger,
   sellWhenGrownSpecies: speciesList,
   sellNearDeathSpecies: speciesList,
+  sellBarnSpecies: speciesList,
+  sellPondSpecies: speciesList,
   minGrowthToSell: finiteNumber,
   nearDeathRatio: finiteNumber,
   maxSellsPerCycle: finiteNumber,
@@ -119,6 +175,8 @@ const parsers: Record<ConfigKey, ConfigParser> = {
   intervalMs: finiteNumber,
   startDelayMs: finiteNumber,
   treeCellPlan: treeCellPlan,
+  barnAnimalPlan: animalPlan,
+  pondAnimalPlan: animalPlan,
 };
 
 function isConfigKey(key: string): key is ConfigKey {

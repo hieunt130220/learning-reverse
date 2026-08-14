@@ -10,6 +10,10 @@ export interface CachedSeed {
 export interface FarmProfile {
   farmId: number | null;
   cellIndices: number[];
+  /** Slot chuồng (index từ 4 trở lên trong mảng vật nuôi). */
+  barnAnimalSlots: number[];
+  /** Slot ao (4 slot đầu 0–3). */
+  pondAnimalSlots: number[];
   seedCatalog: CachedSeed[];
   cellsObservedAt: number | null;
   seedsObservedAt: number | null;
@@ -19,6 +23,9 @@ export interface FarmProfile {
 interface FarmProfileRow {
   farm_id: number | null;
   cell_indices_json: string;
+  animal_slots_json: string;
+  barn_animal_slots_json: string;
+  pond_animal_slots_json: string;
   seed_catalog_json: string;
   cells_observed_at: number | null;
   seeds_observed_at: number | null;
@@ -28,6 +35,8 @@ interface FarmProfileRow {
 const EMPTY_PROFILE: FarmProfile = {
   farmId: null,
   cellIndices: [],
+  barnAnimalSlots: [],
+  pondAnimalSlots: [],
   seedCatalog: [],
   cellsObservedAt: null,
   seedsObservedAt: null,
@@ -39,6 +48,32 @@ function normalizedCellIndices(cellIndices: number[]): number[] {
     throw new Error('cell index phải là số nguyên không âm');
   }
   return [...new Set(cellIndices)].sort((left, right) => left - right);
+}
+
+function normalizedAnimalSlots(animalSlots: number[]): number[] {
+  if (animalSlots.some((index) => !Number.isInteger(index) || index < 0)) {
+    throw new Error('animal slot index phải là số nguyên không âm');
+  }
+  return [...new Set(animalSlots)].sort((left, right) => left - right);
+}
+
+/**
+ * Tách mảng slot đầy đủ ra hai nửa ao/chuồng bằng ranh giới đã biết. Ranh giới
+ * chỉ xác định được khi có dữ liệu con thật (loài ao), nên khi chưa biết thì
+ * lùi về mặc định 4 slot ao đầu — khớp quy ước đang dùng trong `classifyFarmSlots`.
+ */
+function splitAnimalSlots(
+  allSlots: number[],
+  pondCount: number | undefined,
+  knownPondCount: boolean,
+): { barnAnimalSlots: number[]; pondAnimalSlots: number[] } {
+  const pond = knownPondCount
+    ? Math.max(0, Math.min(pondCount ?? 4, allSlots.length))
+    : Math.min(4, allSlots.length);
+  return {
+    pondAnimalSlots: allSlots.slice(0, pond),
+    barnAnimalSlots: allSlots.slice(pond),
+  };
 }
 
 function normalizedSeedCatalog(seeds: CachedSeed[]): CachedSeed[] {
@@ -67,6 +102,78 @@ function decodeCells(raw: string): number[] {
     cells.push(item);
   }
   return normalizedCellIndices(cells);
+}
+
+function decodeAnimalSlots(raw: string): number[] {
+  if (!raw) return [];
+  const value: unknown = JSON.parse(raw);
+  if (!Array.isArray(value)) throw new Error('animal_slots_json không phải mảng');
+  const slots: number[] = [];
+  for (const item of value) {
+    if (typeof item !== 'number') throw new Error('animal_slots_json chứa giá trị không hợp lệ');
+    slots.push(item);
+  }
+  return normalizedAnimalSlots(slots);
+}
+
+function decodeBarnAnimalSlots(raw: string): number[] {
+  if (!raw) return [];
+  const value: unknown = JSON.parse(raw);
+  if (!Array.isArray(value)) throw new Error('barn_animal_slots_json không phải mảng');
+  const slots: number[] = [];
+  for (const item of value) {
+    if (typeof item !== 'number') throw new Error('barn_animal_slots_json chứa giá trị không hợp lệ');
+    slots.push(item);
+  }
+  return normalizedAnimalSlots(slots);
+}
+
+function decodePondAnimalSlots(raw: string): number[] {
+  if (!raw) return [];
+  const value: unknown = JSON.parse(raw);
+  if (!Array.isArray(value)) throw new Error('pond_animal_slots_json không phải mảng');
+  const slots: number[] = [];
+  for (const item of value) {
+    if (typeof item !== 'number') throw new Error('pond_animal_slots_json chứa giá trị không hợp lệ');
+    slots.push(item);
+  }
+  return normalizedAnimalSlots(slots);
+}
+
+/**
+ * Lưu mảng slot vật nuôi ĐẦY ĐỦ (cả slot trống lẫn đã nuôi, theo thứ tự server
+ * trả trong gói 69) — nguồn duy nhất suy ra ranh giới ao/chuồng khi chưa có
+ * bằng chứng loài. Hai cột ao/chuồng cũ vẫn được ghi để migrate dần.
+ */
+export function updateAnimalSlots(
+  db: Db,
+  accountId: number,
+  allSlots: number[],
+  barnAnimalSlots: number[] = [],
+  pondAnimalSlots: number[] = [],
+  observedAt = Date.now(),
+): FarmProfile {
+  const normalizedAll = normalizedAnimalSlots(allSlots);
+  const normalizedBarn = normalizedAnimalSlots(barnAnimalSlots);
+  const normalizedPond = normalizedAnimalSlots(pondAnimalSlots);
+  db.prepare(
+    `INSERT INTO avatar_farm_profile_cache
+       (account_id, animal_slots_json, barn_animal_slots_json, pond_animal_slots_json,
+        updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(account_id) DO UPDATE SET
+       animal_slots_json = excluded.animal_slots_json,
+       barn_animal_slots_json = excluded.barn_animal_slots_json,
+       pond_animal_slots_json = excluded.pond_animal_slots_json,
+       updated_at = excluded.updated_at`,
+  ).run(
+    accountId,
+    JSON.stringify(normalizedAll),
+    JSON.stringify(normalizedBarn),
+    JSON.stringify(normalizedPond),
+    observedAt,
+  );
+  return getFarmProfile(db, accountId);
 }
 
 function decodeSeedCatalog(raw: string): CachedSeed[] {
@@ -99,8 +206,9 @@ function decodeSeedCatalog(raw: string): CachedSeed[] {
 export function getFarmProfile(db: Db, accountId: number): FarmProfile {
   const row = db
     .prepare<[number], FarmProfileRow>(
-      `SELECT farm_id, cell_indices_json, seed_catalog_json,
-              cells_observed_at, seeds_observed_at, updated_at
+      `SELECT farm_id, cell_indices_json, animal_slots_json, barn_animal_slots_json,
+              pond_animal_slots_json, seed_catalog_json, cells_observed_at, seeds_observed_at,
+              updated_at
          FROM avatar_farm_profile_cache
         WHERE account_id = ?`,
     )
@@ -109,12 +217,26 @@ export function getFarmProfile(db: Db, accountId: number): FarmProfile {
     return {
       ...EMPTY_PROFILE,
       cellIndices: [],
+      barnAnimalSlots: [],
+      pondAnimalSlots: [],
       seedCatalog: [],
     };
   }
+  const allSlots = decodeAnimalSlots(row.animal_slots_json);
+  const barnSlots = decodeBarnAnimalSlots(row.barn_animal_slots_json);
+  const pondSlots = decodePondAnimalSlots(row.pond_animal_slots_json);
+  // Cột ao/chuồng cũ đã được ghi rõ ràng (khác mặc định) thì tin nó, kể cả khi
+  // ao trống — `animal_slots_json` chỉ là nguồn dự phòng cho lần ghi đầu tiên.
+  const barnKnown = row.barn_animal_slots_json !== '' && row.barn_animal_slots_json !== '[]';
+  const pondKnown = row.pond_animal_slots_json !== '' && row.pond_animal_slots_json !== '[]';
+  const split = barnKnown || pondKnown
+    ? { barnAnimalSlots: barnSlots, pondAnimalSlots: pondSlots }
+    : splitAnimalSlots(allSlots, pondSlots.length, false);
   return {
     farmId: row.farm_id,
     cellIndices: decodeCells(row.cell_indices_json),
+    barnAnimalSlots: split.barnAnimalSlots,
+    pondAnimalSlots: split.pondAnimalSlots,
     seedCatalog: decodeSeedCatalog(row.seed_catalog_json),
     cellsObservedAt: row.cells_observed_at,
     seedsObservedAt: row.seeds_observed_at,
@@ -127,19 +249,34 @@ export function updateFarmCells(
   accountId: number,
   farmId: number,
   cellIndices: number[],
+  barnAnimalSlots: number[] = [],
+  pondAnimalSlots: number[] = [],
   observedAt = Date.now(),
 ): FarmProfile {
-  const normalized = normalizedCellIndices(cellIndices);
+  const normalizedCells = normalizedCellIndices(cellIndices);
+  const normalizedBarn = normalizedAnimalSlots(barnAnimalSlots);
+  const normalizedPond = normalizedAnimalSlots(pondAnimalSlots);
   db.prepare(
     `INSERT INTO avatar_farm_profile_cache
-       (account_id, farm_id, cell_indices_json, cells_observed_at, updated_at)
-     VALUES (?, ?, ?, ?, ?)
+       (account_id, farm_id, cell_indices_json, barn_animal_slots_json, pond_animal_slots_json,
+        cells_observed_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(account_id) DO UPDATE SET
        farm_id = excluded.farm_id,
        cell_indices_json = excluded.cell_indices_json,
+       barn_animal_slots_json = excluded.barn_animal_slots_json,
+       pond_animal_slots_json = excluded.pond_animal_slots_json,
        cells_observed_at = excluded.cells_observed_at,
        updated_at = excluded.updated_at`,
-  ).run(accountId, farmId, JSON.stringify(normalized), observedAt, observedAt);
+  ).run(
+    accountId,
+    farmId,
+    JSON.stringify(normalizedCells),
+    JSON.stringify(normalizedBarn),
+    JSON.stringify(normalizedPond),
+    observedAt,
+    observedAt,
+  );
   return getFarmProfile(db, accountId);
 }
 

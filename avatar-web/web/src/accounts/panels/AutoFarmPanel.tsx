@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ApiError, apiGet, apiPost, apiPut } from '../../api.js';
 import type {
+  AnimalPlanEntry,
   AutoConfigResponse,
   AutoConfigStateDto,
   AutoFarmConfigDto,
@@ -10,11 +11,15 @@ import type {
   ItemInfo,
   TreeCellPlanEntry,
 } from '../../types.js';
+import { BARN_ANIMAL_CATALOG, DEFAULT_ANIMAL_SLOTS, POND_ANIMAL_CATALOG } from '../animalPlan.js';
+import { AnimalPlanEditor } from '../AnimalPlanEditor.js';
 import { TreeCellPlanEditor } from '../TreeCellPlanEditor.js';
 
 const EMPTY_PROFILE: FarmProfileDto = {
   farmId: null,
   cellIndices: [],
+  barnAnimalSlots: [],
+  pondAnimalSlots: [],
   seedCatalog: [],
   cellsObservedAt: null,
   seedsObservedAt: null,
@@ -31,16 +36,26 @@ function planKey(entries: TreeCellPlanEntry[] | undefined): string {
   return JSON.stringify(sortedPlan(entries));
 }
 
+function sortedAnimalPlan(entries: AnimalPlanEntry[] | undefined): AnimalPlanEntry[] {
+  return [...(entries ?? [])].sort((left, right) => left.slotIndex - right.slotIndex);
+}
+
+function animalPlanKey(entries: AnimalPlanEntry[] | undefined): string {
+  return JSON.stringify(sortedAnimalPlan(entries));
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 const AUTO_CONFIG_KEYS = new Set([
   'seedId', 'waterItemId', 'grassItemId', 'wormItemId', 'harvest', 'harvestAnimals',
-  'sellAnimals', 'sellWhenGrownSpecies', 'sellNearDeathSpecies', 'minGrowthToSell',
-  'nearDeathRatio', 'maxSellsPerCycle', 'feedAnimals', 'healAnimals', 'minHealth',
-  'fertilizeCells', 'minVitality', 'autoBuy', 'buyBudgetXu', 'maxBuyPerItem',
-  'stepDelayMs', 'intervalMs', 'startDelayMs', 'treeCellPlan',
+  'harvestBarnAnimals', 'harvestPondAnimals', 'sellAnimals', 'sellBarnAnimals', 'sellPondAnimals',
+  'sellWhenGrownSpecies', 'sellNearDeathSpecies', 'sellBarnSpecies', 'sellPondSpecies',
+  'minGrowthToSell', 'nearDeathRatio', 'maxSellsPerCycle', 'feedAnimals', 'feedBarnAnimals',
+  'feedPondAnimals', 'healAnimals', 'minHealth', 'fertilizeCells', 'minVitality', 'autoBuy',
+  'buyBudgetXu', 'maxBuyPerItem', 'stepDelayMs', 'intervalMs', 'startDelayMs', 'treeCellPlan',
+  'barnAnimalPlan', 'pondAnimalPlan',
 ]);
 
 function isFiniteNumber(value: unknown): value is number {
@@ -66,6 +81,20 @@ function isTreePlan(value: unknown): value is TreeCellPlanEntry[] {
   });
 }
 
+function isAnimalPlan(value: unknown): value is AnimalPlanEntry[] {
+  return Array.isArray(value) && value.every((entry) => {
+    if (!isRecord(entry)
+      || typeof entry.slotIndex !== 'number'
+      || !Number.isInteger(entry.slotIndex)
+      || entry.slotIndex < 0) return false;
+    if (entry.action === 'skip') return true;
+    return entry.action === 'breed'
+      && typeof entry.speciesId === 'number'
+      && Number.isInteger(entry.speciesId)
+      && entry.speciesId >= 0;
+  });
+}
+
 function isAutoConfig(value: unknown): value is Partial<AutoFarmConfigDto> {
   if (!isRecord(value) || Object.keys(value).some((key) => !AUTO_CONFIG_KEYS.has(key))) return false;
   const optionalNumberKeys = [
@@ -74,14 +103,20 @@ function isAutoConfig(value: unknown): value is Partial<AutoFarmConfigDto> {
     'maxBuyPerItem', 'stepDelayMs', 'intervalMs', 'startDelayMs',
   ];
   const optionalBooleanKeys = [
-    'harvest', 'harvestAnimals', 'sellAnimals', 'feedAnimals', 'healAnimals',
-    'fertilizeCells', 'autoBuy',
+    'harvest', 'harvestAnimals', 'harvestBarnAnimals', 'harvestPondAnimals',
+    'sellAnimals', 'sellBarnAnimals', 'sellPondAnimals',
+    'feedAnimals', 'feedBarnAnimals', 'feedPondAnimals',
+    'healAnimals', 'fertilizeCells', 'autoBuy',
   ];
   return optionalNumberKeys.every((key) => value[key] === undefined || isFiniteNumber(value[key]))
     && optionalBooleanKeys.every((key) => value[key] === undefined || typeof value[key] === 'boolean')
     && (value.sellWhenGrownSpecies === undefined || isIntegerArray(value.sellWhenGrownSpecies))
     && (value.sellNearDeathSpecies === undefined || isIntegerArray(value.sellNearDeathSpecies))
-    && (value.treeCellPlan === undefined || isTreePlan(value.treeCellPlan));
+    && (value.sellBarnSpecies === undefined || isIntegerArray(value.sellBarnSpecies))
+    && (value.sellPondSpecies === undefined || isIntegerArray(value.sellPondSpecies))
+    && (value.treeCellPlan === undefined || isTreePlan(value.treeCellPlan))
+    && (value.barnAnimalPlan === undefined || isAnimalPlan(value.barnAnimalPlan))
+    && (value.pondAnimalPlan === undefined || isAnimalPlan(value.pondAnimalPlan));
 }
 
 function isAutoConfigState(value: unknown): value is AutoConfigStateDto {
@@ -122,15 +157,19 @@ export function AutoFarmPanel({
   const [grassItemId, setGrassItemId] = useState('123');
   const [wormItemId, setWormItemId] = useState('124');
   const [harvest, setHarvest] = useState(true);
-  const [harvestAnimals, setHarvestAnimals] = useState(true);
-  const [feedAnimals, setFeedAnimals] = useState(true);
+  const [harvestBarnAnimals, setHarvestBarnAnimals] = useState(true);
+  const [harvestPondAnimals, setHarvestPondAnimals] = useState(true);
+  const [feedBarnAnimals, setFeedBarnAnimals] = useState(true);
+  const [feedPondAnimals, setFeedPondAnimals] = useState(true);
   const [healAnimals, setHealAnimals] = useState(true);
   const [fertilizeCells, setFertilizeCells] = useState(true);
   // Bán là thao tác KHÔNG lấy lại được -> mặc định tắt, người dùng phải tự bật.
-  const [sellAnimals, setSellAnimals] = useState(false);
-  // Heo 52 / Cá chép 54 / Rùa 59 — loài không có sản phẩm, nuôi lớn rồi bán.
-  const [sellWhenGrown, setSellWhenGrown] = useState('52, 54, 59');
-  const [maxSellsPerCycle, setMaxSellsPerCycle] = useState(3);
+  const [sellBarnAnimals, setSellBarnAnimals] = useState(false);
+  const [sellPondAnimals, setSellPondAnimals] = useState(false);
+  // Chuồng: Gà 50, Bò 51, Heo 52, Vịt 55 / Hồ: Cá chép 54, Rùa 59
+  const [sellBarnSpeciesStr, setSellBarnSpeciesStr] = useState('50, 51, 52, 55');
+  const [sellPondSpeciesStr, setSellPondSpeciesStr] = useState('54, 59');
+  const [maxSellsPerCycle, setMaxSellsPerCycle] = useState(0);
   const [autoBuy, setAutoBuy] = useState(false);
   const [buyBudgetXu, setBuyBudgetXu] = useState(5000);
   const [intervalSec, setIntervalSec] = useState(120);
@@ -138,6 +177,8 @@ export function AutoFarmPanel({
 
   const [storedState, setStoredState] = useState<AutoConfigStateDto>(EMPTY_AUTO);
   const [draftPlan, setDraftPlan] = useState<TreeCellPlanEntry[]>([]);
+  const [draftBarnPlan, setDraftBarnPlan] = useState<AnimalPlanEntry[]>([]);
+  const [draftPondPlan, setDraftPondPlan] = useState<AnimalPlanEntry[]>([]);
   const [profile, setProfile] = useState<FarmProfileDto>(EMPTY_PROFILE);
   const [configReady, setConfigReady] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -164,13 +205,17 @@ export function AutoFarmPanel({
     setGrassItemId(optionalId(config.grassItemId, '123'));
     setWormItemId(optionalId(config.wormItemId, '124'));
     setHarvest(config.harvest ?? true);
-    setHarvestAnimals(config.harvestAnimals ?? true);
-    setFeedAnimals(config.feedAnimals ?? true);
+    setHarvestBarnAnimals(config.harvestBarnAnimals ?? config.harvestAnimals ?? true);
+    setHarvestPondAnimals(config.harvestPondAnimals ?? config.harvestAnimals ?? true);
+    setFeedBarnAnimals(config.feedBarnAnimals ?? config.feedAnimals ?? true);
+    setFeedPondAnimals(config.feedPondAnimals ?? config.feedAnimals ?? true);
     setHealAnimals(config.healAnimals ?? true);
     setFertilizeCells(config.fertilizeCells ?? true);
-    setSellAnimals(config.sellAnimals ?? false);
-    setSellWhenGrown(config.sellWhenGrownSpecies?.join(', ') ?? '52, 54, 59');
-    setMaxSellsPerCycle(config.maxSellsPerCycle ?? 3);
+    setSellBarnAnimals(config.sellBarnAnimals ?? config.sellAnimals ?? false);
+    setSellPondAnimals(config.sellPondAnimals ?? config.sellAnimals ?? false);
+    setSellBarnSpeciesStr(config.sellBarnSpecies?.join(', ') ?? '50, 51, 52, 55');
+    setSellPondSpeciesStr(config.sellPondSpecies?.join(', ') ?? '54, 59');
+    setMaxSellsPerCycle(config.maxSellsPerCycle ?? 0);
     setAutoBuy(config.autoBuy ?? false);
     setBuyBudgetXu(config.buyBudgetXu ?? 5000);
     setIntervalSec((config.intervalMs ?? 120_000) / 1000);
@@ -203,6 +248,8 @@ export function AutoFarmPanel({
       if (!active || requestGeneration.current !== generation) return;
       setStoredState({ revision: state.revision, config: state.config });
       setDraftPlan(sortedPlan(state.config.treeCellPlan));
+      setDraftBarnPlan(sortedAnimalPlan(state.config.barnAnimalPlan));
+      setDraftPondPlan(sortedAnimalPlan(state.config.pondAnimalPlan));
       hydrateForm(state.config);
       setConfigReady(true);
     }).catch((cause: unknown) => {
@@ -224,17 +271,6 @@ export function AutoFarmPanel({
     };
   }, [accountId, hydrateForm]);
 
-  const dirty = useMemo(
-    () => planKey(draftPlan) !== planKey(storedState.config.treeCellPlan),
-    [draftPlan, storedState.config.treeCellPlan],
-  );
-  const planDirtyRef = useRef(dirty);
-  planDirtyRef.current = dirty;
-
-  useEffect(() => {
-    onPlanDirtyChange?.(dirty);
-  }, [dirty, onPlanDirtyChange]);
-
   const num = (value: string) => (value.trim() === '' ? undefined : Number(value));
   /** "52, 54, 59" -> [52, 54, 59]. Bỏ phần rác thay vì gửi NaN lên server. */
   const idList = (value: string) =>
@@ -242,6 +278,58 @@ export function AutoFarmPanel({
       .split(',')
       .map((part) => Number(part.trim()))
       .filter((id) => Number.isFinite(id));
+
+  const currentConfig = useMemo((): Partial<AutoFarmConfigDto> => ({
+    seedId: num(seedId),
+    waterItemId: num(waterItemId),
+    grassItemId: num(grassItemId),
+    wormItemId: num(wormItemId),
+    harvest,
+    harvestAnimals: harvestBarnAnimals || harvestPondAnimals,
+    harvestBarnAnimals,
+    harvestPondAnimals,
+    feedAnimals: feedBarnAnimals || feedPondAnimals,
+    feedBarnAnimals,
+    feedPondAnimals,
+    healAnimals,
+    fertilizeCells,
+    sellAnimals: sellBarnAnimals || sellPondAnimals,
+    sellBarnAnimals,
+    sellPondAnimals,
+    sellBarnSpecies: idList(sellBarnSpeciesStr),
+    sellPondSpecies: idList(sellPondSpeciesStr),
+    sellWhenGrownSpecies: [...idList(sellBarnSpeciesStr), ...idList(sellPondSpeciesStr)],
+    maxSellsPerCycle,
+    autoBuy,
+    buyBudgetXu,
+    intervalMs: intervalSec * 1000,
+    stepDelayMs,
+    treeCellPlan: sortedPlan(draftPlan),
+    barnAnimalPlan: sortedAnimalPlan(draftBarnPlan),
+    pondAnimalPlan: sortedAnimalPlan(draftPondPlan),
+  }), [
+    seedId, waterItemId, grassItemId, wormItemId, harvest,
+    harvestBarnAnimals, harvestPondAnimals, feedBarnAnimals, feedPondAnimals,
+    healAnimals, fertilizeCells, sellBarnAnimals, sellPondAnimals,
+    sellBarnSpeciesStr, sellPondSpeciesStr, maxSellsPerCycle, autoBuy,
+    buyBudgetXu, intervalSec, stepDelayMs, draftPlan, draftBarnPlan, draftPondPlan,
+  ]);
+
+  // Chỉ so sánh các phần UI cho phép sửa: kế hoạch cây + vật nuôi (chuồng/hồ).
+  // Các field không có control (minGrowthToSell, startDelayMs…) luôn khác nhau
+  // giữa stored và currentConfig — so cả object là vỡ.
+  const dirty = useMemo(
+    () => planKey(draftPlan) !== planKey(storedState.config.treeCellPlan)
+      || animalPlanKey(draftBarnPlan) !== animalPlanKey(storedState.config.barnAnimalPlan)
+      || animalPlanKey(draftPondPlan) !== animalPlanKey(storedState.config.pondAnimalPlan),
+    [draftPlan, draftBarnPlan, draftPondPlan, storedState.config],
+  );
+  const planDirtyRef = useRef(dirty);
+  planDirtyRef.current = dirty;
+
+  useEffect(() => {
+    onPlanDirtyChange?.(dirty);
+  }, [dirty, onPlanDirtyChange]);
 
   async function reloadStoredConfig(
     expectedGeneration: number,
@@ -257,7 +345,11 @@ export function AutoFarmPanel({
     setStoredState({ revision: latest.revision, config: latest.config });
     // Quyết định ở đúng lúc áp response: người dùng có thể tô plan sau POST hoặc
     // trong khi GET revision mới còn đang chờ.
-    if (!planDirtyRef.current) setDraftPlan(sortedPlan(latest.config.treeCellPlan));
+    if (!planDirtyRef.current) {
+      setDraftPlan(sortedPlan(latest.config.treeCellPlan));
+      setDraftBarnPlan(sortedAnimalPlan(latest.config.barnAnimalPlan));
+      setDraftPondPlan(sortedAnimalPlan(latest.config.pondAnimalPlan));
+    }
     hydrateForm(latest.config);
   }
 
@@ -274,12 +366,20 @@ export function AutoFarmPanel({
         grassItemId: num(grassItemId),
         wormItemId: num(wormItemId),
         harvest,
-        harvestAnimals,
-        feedAnimals,
+        harvestAnimals: harvestBarnAnimals || harvestPondAnimals,
+        harvestBarnAnimals,
+        harvestPondAnimals,
+        feedAnimals: feedBarnAnimals || feedPondAnimals,
+        feedBarnAnimals,
+        feedPondAnimals,
         healAnimals,
         fertilizeCells,
-        sellAnimals,
-        sellWhenGrownSpecies: idList(sellWhenGrown),
+        sellAnimals: sellBarnAnimals || sellPondAnimals,
+        sellBarnAnimals,
+        sellPondAnimals,
+        sellBarnSpecies: idList(sellBarnSpeciesStr),
+        sellPondSpecies: idList(sellPondSpeciesStr),
+        sellWhenGrownSpecies: [...idList(sellBarnSpeciesStr), ...idList(sellPondSpeciesStr)],
         maxSellsPerCycle,
         autoBuy,
         buyBudgetXu,
@@ -353,11 +453,35 @@ export function AutoFarmPanel({
     try {
       const saved = await apiPut<AutoConfigResponse>(`/api/accounts/${accountId}/auto/config`, {
         expectedRevision: storedState.revision,
-        config: { ...storedState.config, treeCellPlan: sortedPlan(draftPlan) },
+        config: {
+          ...storedState.config,
+          treeCellPlan: sortedPlan(draftPlan),
+          barnAnimalPlan: sortedAnimalPlan(draftBarnPlan),
+          pondAnimalPlan: sortedAnimalPlan(draftPondPlan),
+        },
       });
       if (requestGeneration.current !== generation) return;
-      setStoredState({ revision: saved.revision, config: saved.config });
-      setDraftPlan(sortedPlan(saved.config.treeCellPlan));
+      // `saved.config` có thể thiếu barn/pondAnimalPlan (server bỏ key rỗng) —
+      // ghi nhớ cả bản vừa gửi để dirty so sánh khớp.
+      const nextTreePlan = sortedPlan(saved.config.treeCellPlan);
+      const nextBarnPlan = Array.isArray(saved.config.barnAnimalPlan)
+        ? sortedAnimalPlan(saved.config.barnAnimalPlan)
+        : sortedAnimalPlan(draftBarnPlan);
+      const nextPondPlan = Array.isArray(saved.config.pondAnimalPlan)
+        ? sortedAnimalPlan(saved.config.pondAnimalPlan)
+        : sortedAnimalPlan(draftPondPlan);
+      setDraftPlan(nextTreePlan);
+      setDraftBarnPlan(nextBarnPlan);
+      setDraftPondPlan(nextPondPlan);
+      setStoredState({
+        revision: saved.revision,
+        config: {
+          ...saved.config,
+          treeCellPlan: nextTreePlan,
+          barnAnimalPlan: nextBarnPlan,
+          pondAnimalPlan: nextPondPlan,
+        },
+      });
       setPlanNotice(saved.application === 'next-cycle'
         ? 'Đã lưu kế hoạch; cấu hình sẽ áp dụng từ vòng kế tiếp.'
         : 'Đã lưu kế hoạch; cấu hình sẽ áp dụng ở lần bật tiếp theo.');
@@ -402,11 +526,22 @@ export function AutoFarmPanel({
     if (conflict === null) return;
     setStoredState(conflict);
     setDraftPlan(sortedPlan(conflict.config.treeCellPlan));
+    setDraftBarnPlan(sortedAnimalPlan(conflict.config.barnAnimalPlan));
+    setDraftPondPlan(sortedAnimalPlan(conflict.config.pondAnimalPlan));
     hydrateForm(conflict.config);
     setConflict(null);
     setPlanError('');
     setPlanNotice('Đã tải bản cấu hình mới nhất từ máy chủ.');
   }
+
+  const barnAnimalSlots = useMemo(
+    () => (profile.barnAnimalSlots?.length > 0 ? profile.barnAnimalSlots : DEFAULT_ANIMAL_SLOTS),
+    [profile.barnAnimalSlots],
+  );
+  const pondAnimalSlots = useMemo(
+    () => (profile.pondAnimalSlots?.length > 0 ? profile.pondAnimalSlots : [0, 1, 2, 3]),
+    [profile.pondAnimalSlots],
+  );
 
   return (
     <section className="card">
@@ -420,72 +555,128 @@ export function AutoFarmPanel({
         Bật ở đây là ghi vào cơ sở dữ liệu: server tự bật lại tài khoản này sau khi khởi động lại,
         không cần mở trình duyệt.
       </p>
-      <div className="row">
-        <label className="inline">
-          id hạt trồng lại
-          <input value={seedId} onChange={(event) => setSeedId(event.target.value)} placeholder="tắt" />
-        </label>
-        <label className="inline">
-          id tưới nước
-          <input value={waterItemId} onChange={(event) => setWaterItemId(event.target.value)} placeholder="tắt" />
-        </label>
+      {/* KHỐI 1: CÂY TRỒNG */}
+      <div className="setting-section">
+        <h3>🌱 Cây trồng</h3>
+        <div className="row">
+          <label className="inline">
+            id hạt trồng lại
+            <input value={seedId} onChange={(event) => setSeedId(event.target.value)} placeholder="tắt" />
+          </label>
+          <label className="inline">
+            id tưới nước
+            <input value={waterItemId} onChange={(event) => setWaterItemId(event.target.value)} placeholder="tắt" />
+          </label>
+        </div>
+        <div className="row">
+          <label className="inline">
+            id thuốc cỏ
+            <input value={grassItemId} onChange={(event) => setGrassItemId(event.target.value)} placeholder="tắt" />
+          </label>
+          <label className="inline">
+            id thuốc sâu
+            <input value={wormItemId} onChange={(event) => setWormItemId(event.target.value)} placeholder="tắt" />
+          </label>
+        </div>
+        <div className="row">
+          <label className="inline">
+            <input type="checkbox" checked={harvest} onChange={(event) => setHarvest(event.target.checked)} style={{ width: 'auto' }} />
+            thu hoạch ô đã chín
+          </label>
+          <label className="inline">
+            <input type="checkbox" checked={fertilizeCells} onChange={(event) => setFertilizeCells(event.target.checked)} style={{ width: 'auto' }} />
+            bón phân khi sức sống &lt; 100
+          </label>
+        </div>
       </div>
-      <div className="row">
-        <label className="inline">
-          id thuốc cỏ
-          <input value={grassItemId} onChange={(event) => setGrassItemId(event.target.value)} placeholder="tắt" />
-        </label>
-        <label className="inline">
-          id thuốc sâu
-          <input value={wormItemId} onChange={(event) => setWormItemId(event.target.value)} placeholder="tắt" />
-        </label>
+
+      {/* KHỐI 2: VẬT NUÔI CHUỒNG */}
+      <div className="setting-section">
+        <h3>🐓 Vật nuôi chuồng (Gà, Vịt, Bò, Heo, Cừu, Trâu, Dê, Thỏ...)</h3>
+        <div className="row">
+          <label className="inline">
+            <input type="checkbox" checked={harvestBarnAnimals} onChange={(event) => setHarvestBarnAnimals(event.target.checked)} style={{ width: 'auto' }} />
+            thu hoạch sản phẩm chuồng (trứng/sữa/lông)
+          </label>
+          <label className="inline">
+            <input type="checkbox" checked={feedBarnAnimals} onChange={(event) => setFeedBarnAnimals(event.target.checked)} style={{ width: 'auto' }} />
+            cho vật nuôi chuồng ăn (thức ăn Gia cầm/Gia súc)
+          </label>
+          <label className="inline">
+            <input type="checkbox" checked={healAnimals} onChange={(event) => setHealAnimals(event.target.checked)} style={{ width: 'auto' }} />
+            thuốc bổ khi máu &lt; 100
+          </label>
+        </div>
+        <div className="row">
+          <label className="inline">
+            <input type="checkbox" checked={sellBarnAnimals} onChange={(event) => setSellBarnAnimals(event.target.checked)} style={{ width: 'auto' }} />
+            bán vật nuôi chuồng khi lớn
+          </label>
+          <label className="inline">
+            loài bán chuồng
+            <input value={sellBarnSpeciesStr} onChange={(event) => setSellBarnSpeciesStr(event.target.value)} placeholder="không bán" disabled={!sellBarnAnimals} />
+          </label>
+        </div>
+        <AnimalPlanEditor
+          title="Kế hoạch vật nuôi chuồng theo slot"
+          catalog={BARN_ANIMAL_CATALOG}
+          slotIndices={barnAnimalSlots}
+          observedAt={profile.cellsObservedAt}
+          hasCache={(profile.barnAnimalSlots?.length ?? 0) > 0}
+          entries={draftBarnPlan}
+          disabled={!configReady || saving}
+          onChange={(entries) => {
+            setDraftBarnPlan(sortedAnimalPlan(entries));
+            setPlanNotice('');
+            setPlanError('');
+            setConflict(null);
+          }}
+        />
       </div>
-      <div className="row">
-        <label className="inline">
-          <input type="checkbox" checked={harvest} onChange={(event) => setHarvest(event.target.checked)} style={{ width: 'auto' }} />
-          thu hoạch ô đã chín
-        </label>
-        <label className="inline">
-          <input type="checkbox" checked={feedAnimals} onChange={(event) => setFeedAnimals(event.target.checked)} style={{ width: 'auto' }} />
-          cho vật nuôi ăn
-        </label>
-        <label className="inline">
-          <input type="checkbox" checked={healAnimals} onChange={(event) => setHealAnimals(event.target.checked)} style={{ width: 'auto' }} />
-          thuốc bổ khi máu &lt; 100
-        </label>
-        <label className="inline">
-          <input type="checkbox" checked={fertilizeCells} onChange={(event) => setFertilizeCells(event.target.checked)} style={{ width: 'auto' }} />
-          bón phân khi sức sống &lt; 100
-        </label>
-        <label className="inline">
-          <input type="checkbox" checked={harvestAnimals} onChange={(event) => setHarvestAnimals(event.target.checked)} style={{ width: 'auto' }} />
-          thu hoạch sản phẩm vật nuôi
-        </label>
+
+      {/* KHỐI 3: VẬT NUÔI HỒ */}
+      <div className="setting-section">
+        <h3>🐟 Vật nuôi hồ (Cá chép, Rùa)</h3>
+        <div className="row">
+          <label className="inline">
+            <input type="checkbox" checked={harvestPondAnimals} onChange={(event) => setHarvestPondAnimals(event.target.checked)} style={{ width: 'auto' }} />
+            thu hoạch sản phẩm hồ
+          </label>
+          <label className="inline">
+            <input type="checkbox" checked={feedPondAnimals} onChange={(event) => setFeedPondAnimals(event.target.checked)} style={{ width: 'auto' }} />
+            cho cá/rùa ăn (thức ăn Thủy sản)
+          </label>
+          <label className="inline">
+            <input type="checkbox" checked={sellPondAnimals} onChange={(event) => setSellPondAnimals(event.target.checked)} style={{ width: 'auto' }} />
+            bán cá/rùa khi lớn
+          </label>
+          <label className="inline">
+            loài bán hồ
+            <input value={sellPondSpeciesStr} onChange={(event) => setSellPondSpeciesStr(event.target.value)} placeholder="54, 59" disabled={!sellPondAnimals} />
+          </label>
+        </div>
+        <AnimalPlanEditor
+          title="Kế hoạch vật nuôi hồ theo slot"
+          catalog={POND_ANIMAL_CATALOG}
+          slotIndices={pondAnimalSlots}
+          observedAt={profile.cellsObservedAt}
+          hasCache={(profile.pondAnimalSlots?.length ?? 0) > 0}
+          entries={draftPondPlan}
+          disabled={!configReady || saving}
+          onChange={(entries) => {
+            setDraftPondPlan(sortedAnimalPlan(entries));
+            setPlanNotice('');
+            setPlanError('');
+            setConflict(null);
+          }}
+        />
       </div>
-      <div className="row">
+
+      <div className="row" style={{ marginTop: 12 }}>
         <label className="inline">
-          <input type="checkbox" checked={sellAnimals} onChange={(event) => setSellAnimals(event.target.checked)} style={{ width: 'auto' }} />
-          bán vật nuôi khi đã lớn
+          trần bán/vòng (0 = không giới hạn)
+          <input type="number" value={maxSellsPerCycle} onChange={(event) => setMaxSellsPerCycle(Number(event.target.value))} />
         </label>
-        <label className="inline">
-          loài bán khi lớn
-          <input value={sellWhenGrown} onChange={(event) => setSellWhenGrown(event.target.value)} placeholder="không bán" disabled={!sellAnimals} />
-        </label>
-        <label className="inline">
-          trần bán/vòng
-          <input type="number" value={maxSellsPerCycle} onChange={(event) => setMaxSellsPerCycle(Number(event.target.value))} disabled={!sellAnimals} />
-        </label>
-      </div>
-      {sellAnimals && (
-        <p className="hint" style={{ color: '#d9a441' }}>
-          ⚠ Bán vật nuôi là <b>không lấy lại được</b>. Chỉ bán con thuộc danh sách loài ở trên và đã
-          lớn 100%; con còn sản phẩm chưa thu thì để lại vòng sau. Loài <b>có</b> sản phẩm (Gà 50, Bò
-          51, Vịt 55) chưa bán theo tuổi thọ vì chưa biết <code>bornTime</code> đếm lên hay đếm
-          xuống — mỗi vòng auto ghi một dòng <code>[đo]</code> vào nhật ký khi giá trị này đổi, đủ
-          vài vòng là xác định được.
-        </p>
-      )}
-      <div className="row">
         <label className="inline">
           <input type="checkbox" checked={autoBuy} onChange={(event) => setAutoBuy(event.target.checked)} style={{ width: 'auto' }} />
           tự mua khi thiếu (chỉ bằng xu)

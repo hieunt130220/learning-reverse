@@ -3,7 +3,9 @@
 Table base VA=0x14e35d8, 53 entry i32 (index 0..52 = command 51..103), target = base + entry.
 Với mỗi target, disasm vài lệnh để lấy lời gọi named đầu tiên (handler)."""
 import struct, json
-from capstone import Cs, CS_ARCH_ARM64, CS_MODE_ARM
+import capstone
+from capstone import Cs, CS_MODE_ARM
+CS_ARCH_ARM64 = capstone.CS_ARCH_AARCH64
 
 WS = "/Users/devios/learning-reverse/avatar-re"
 SO = f"{WS}/apk_extracted/lib/arm64-v8a/libil2cpp.so"

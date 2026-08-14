@@ -76,6 +76,8 @@ function validateProfile(config: Partial<AutoFarmConfig>, profile: AutoConfigPro
   }
 
   const knownCells = new Set(profile.cellIndices);
+  // Chỉ tin seed catalog đồng bộ được từ cửa hàng (gói 76) — không còn bảng
+  // tĩnh fallback nên seed ngoài catalog là seed không tồn tại.
   const knownSeeds = new Set(profile.seedIds);
   const invalidCellIndices = [...new Set(
     plan.filter((entry) => !knownCells.has(entry.cellIndex)).map((entry) => entry.cellIndex),

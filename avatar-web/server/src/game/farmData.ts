@@ -39,15 +39,21 @@ export interface FarmAnimal {
   numEggOne: number;
   /** Đang đói — cần cho ăn. */
   hunger: boolean;
-  /** Hai cờ ở `Base` +0x20/+0x21, chưa rõ tên. */
-  flag20: boolean;
-  flag21: boolean;
+  /** `Base` +0x20 — bệnh cúm. Chữa bằng Thuốc cúm (#120). */
+  hasFlu: boolean;
+  /** `Base` +0x21 — bệnh tiêu chảy. Chữa bằng Thuốc tiêu chảy (#121). */
+  hasDiarrhea: boolean;
 }
 
 export interface FarmState {
   idFarm: number;
   cells: FarmCell[];
   animals: FarmAnimal[];
+  animalSlots: number[];
+  /** Các slot AO — loài ao (54 Cá chép / 59 Rùa) là tín hiệu để nhận diện. */
+  pondAnimalSlots: number[];
+  /** Các slot CHUỒNG còn lại. */
+  barnAnimalSlots: number[];
   /** Byte đuôi chưa map hết — giữ lại để soi khi cần. */
   tailHex?: string;
   updatedAt: number;
@@ -56,7 +62,15 @@ export interface FarmState {
 export function decodeFarmData(body: Buffer): FarmState {
   const r = new MyReader(body);
   const idFarm = r.readInt();
-  const state: FarmState = { idFarm, cells: [], animals: [], updatedAt: Date.now() };
+  const state: FarmState = {
+    idFarm,
+    cells: [],
+    animals: [],
+    animalSlots: [],
+    pondAnimalSlots: [],
+    barnAnimalSlots: [],
+    updatedAt: Date.now(),
+  };
 
   // idFarm == -1 => không có dữ liệu, nhảy thẳng xuống phần đuôi.
   if (idFarm === -1) {
@@ -101,6 +115,7 @@ export function decodeFarmData(body: Buffer): FarmState {
   // sau. Server giữ chỗ trống chứ không dồn mảng sau khi bán, nên slot trống phải
   // bị bỏ qua mà `index` vẫn giữ nguyên số slot (lệnh bán/cho ăn đánh theo slot).
   const nAnimal = r.readByte();
+  state.animalSlots = Array.from({ length: Math.max(0, nAnimal) }, (_, i) => i);
   for (let i = 0; i < nAnimal; i++) {
     const species = r.readByte();
     if (species === -1) continue;
@@ -112,8 +127,8 @@ export function decodeFarmData(body: Buffer): FarmState {
       harvestPer: r.readUnsignedByte(), // +0xA9
       numEggOne: r.readUnsignedByte(),  // +0xB8 (khai int, ghi byte)
       hunger: r.readBoolean(),      // +0x9D
-      flag20: r.readBoolean(),
-      flag21: r.readBoolean(),
+      hasFlu: r.readBoolean(),
+      hasDiarrhea: r.readBoolean(),
     });
   }
 
@@ -133,8 +148,44 @@ export function decodeFarmData(body: Buffer): FarmState {
     // dữ liệu lạ: bỏ qua, phần ô/vật nuôi ở trên đã đọc xong
   }
   state.tailHex = r.rest().toString('hex');
-
+  classifyFarmSlots(state);
   return state;
+}
+
+/**
+ * Chia `animalSlots` thành ao / chuồng — KHÔNG dùng hằng số vị trí cứng:
+ * ao có thể mở tối đa 10 slot, chuồng 20 slot, nên số slot ao không cố định 4.
+ *
+ * Quy ước đã quan sát: các slot AO đứng ĐẦU mảng vật nuôi (gói 69 fixture khớp:
+ * 4 con Rùa vừa bán nằm ở slot 0–3). Khi mở thêm slot ao, server đếm tiếp từ vị
+ * trí hiện tại (theo xác nhận người chơi). Vậy:
+ *
+ * - Nếu có ít nhất 1 con AO trong `animals` → vị trí ao = 0..(max index con ao).
+ * - Nếu CHƯA có con ao nào (cả ao trống, chỉ toàn slot -1 ở đầu) → rơi về mặc
+ *   định 4 slot ao đầu, vì chưa có tín hiệu nào khác.
+ *
+ * Slot trống (không có bản ghi) không tự nói nó thuộc ao hay chuồng; chỉ có
+ * species của con đang nuôi mới là bằng chứng. Dữ liệu con càng nhiều thì ranh
+ * giới suy ra càng chính xác.
+ */
+export function classifyFarmSlots(state: FarmState): void {
+  const slotCount = state.animalSlots.length;
+  const pondIndices = state.animals
+    .filter((a) => isPondSpecies(a.species))
+    .map((a) => a.index);
+  const maxPondIndex = pondIndices.length > 0 ? Math.max(...pondIndices) : -1;
+
+  let pondCount: number;
+  if (maxPondIndex >= 0) {
+    // Có con ao thật đang nuôi — ranh giới là sau slot ao cao nhất.
+    pondCount = Math.min(maxPondIndex + 1, slotCount);
+  } else {
+    // Chưa có con ao nào (ao trống) — mặc định 4 slot ao đầu, khớp farm hiện tại.
+    pondCount = Math.min(4, slotCount);
+  }
+
+  state.pondAnimalSlots = state.animalSlots.slice(0, pondCount);
+  state.barnAnimalSlots = state.animalSlots.slice(pondCount);
 }
 
 export interface InventoryItem {
@@ -214,8 +265,8 @@ export function decodeInfoAnimal(body: Buffer): FarmAnimal {
     harvestPer: r.readUnsignedByte(),
     numEggOne: r.readUnsignedByte(),
     hunger: r.readBoolean(),
-    flag20: r.readBoolean(),
-    flag21: r.readBoolean(),
+    hasFlu: r.readBoolean(),
+    hasDiarrhea: r.readBoolean(),
   };
 }
 
@@ -334,7 +385,8 @@ export interface ItemInfo {
  * Rút bảng vật phẩm ra khỏi gói cmd 76.
  *
  * Gói này gồm nhiều khối (cây / vật nuôi / vật phẩm / món ăn) với layout khác
- * nhau, chưa map hết. Thay vì parse tuần tự, quét theo mẫu bản ghi vật phẩm:
+ * nhau, chưa map hết. Thay vì parse tuần tự, quét theo mẫu bản ghi vật phẩm
+ * (`id` đọc i16 — một số món vượt 255, xem dưới):
  *
  *   `i16 id, i16 icon, i16 type, utf name, i16 ?, i16 0xFFFF`
  *
@@ -355,6 +407,8 @@ export function decodeItemCatalog(body: Buffer): ItemInfo[] {
       // (vd "( Nho", "/01") vì mẫu 6 byte + utf + FFFF không đủ chặt.
       const letters = [...name].filter((ch) => /\p{L}/u.test(ch)).length;
       if (name.trim() && !name.includes('�') && letters >= name.length / 2) {
+        // `id` đọc i16 vì một số món vượt 255 (đo thật: thức ăn #116–119,
+        // thuốc #120–124) — đọc i8 là lệch mọi byte phía sau.
         items.push({ id: u16(q), icon: u16(q + 2), type: u16(q + 4), name, price: u16(end) });
         q = end + 4;
         continue;
@@ -380,6 +434,10 @@ export const ITEM_GRASS = 123;
 export const ITEM_WORM = 124;
 /** Thuốc bổ — kiểm chứng: máu vật nuôi 76 -> 96 (+20 mỗi liều). */
 export const ITEM_TONIC = 122;
+/** Thuốc cúm — chữa bệnh cúm (`hasFlu`), giá 10 xu. */
+export const ITEM_FLU_CURE = 120;
+/** Thuốc tiêu chảy — chữa bệnh tiêu chảy (`hasDiarrhea`), giá 10 xu. */
+export const ITEM_DIARRHEA_CURE = 121;
 /** Phân bón siêu cấp — kiểm chứng: sức sống ô 73 -> 100. */
 export const ITEM_FERTILIZER = 112;
 
@@ -493,6 +551,19 @@ export function parseAnimalSpec(desc: string): AnimalSpec {
  * Chó 53 và Mèo 57 là thú tiện ích (giữ nhà / hỗ trợ trộm), không bán.
  */
 export const SPECIES_SELL_WHEN_GROWN = [52, 54, 59];
+
+/** Vật nuôi hồ: Cá chép 54, Rùa 59 */
+export const POND_SPECIES = [54, 59];
+/** Vật nuôi chuồng: Gà 50, Bò 51, Heo 52, Chó 53, Vịt 55, Cừu 56, Mèo 57, Trâu 58, Dê 60, Thỏ 61 */
+export const BARN_SPECIES = [50, 51, 52, 53, 55, 56, 57, 58, 60, 61];
+
+export function isPondSpecies(species: number): boolean {
+  return POND_SPECIES.includes(species);
+}
+
+export function isBarnSpecies(species: number): boolean {
+  return !isPondSpecies(species);
+}
 
 /**
  * Loài CÓ sản phẩm thu nhiều lần — giữ lại để thu, chỉ bán khi gần hết đời.

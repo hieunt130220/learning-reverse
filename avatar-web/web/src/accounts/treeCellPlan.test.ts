@@ -13,6 +13,8 @@ const profile = (
 ): FarmProfileDto => ({
   farmId: 12,
   cellIndices,
+  barnAnimalSlots: [],
+  pondAnimalSlots: [],
   seedCatalog: seedIds.map((id) => ({
     id,
     name: `Hạt ${id}`,
@@ -104,9 +106,14 @@ describe('invalidTreePlanEntries', () => {
     ]);
   });
 
-  test('catalog trống chỉ làm seed override không hợp lệ, không làm skip sai', () => {
+  test('catalog rỗng thì mọi hạt đều không hợp lệ, chỉ skip là hợp lệ', () => {
+    // Không còn default catalog tĩnh: catalog rỗng nghĩa là CHƯA ĐỒNG BỘ được
+    // cửa hàng, không được phép lưu hạt nào. (Server route cũng chặn seed-entry
+    // khi profile.seedIds rỗng.)
     expect(invalidTreePlanEntries(profile([2, 7], []), [
       { cellIndex: 2, action: 'skip' },
+    ])).toEqual([]);
+    expect(invalidTreePlanEntries(profile([2, 7], []), [
       { cellIndex: 7, action: 'seed', seedId: 6 },
     ])).toEqual([{ cellIndex: 7, action: 'seed', seedId: 6 }]);
   });

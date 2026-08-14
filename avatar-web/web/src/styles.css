@@ -475,6 +475,20 @@ button.ghost {
 .dashboard-empty { text-align: center; }
 
 /* --- kế hoạch cây theo ô --- */
+.setting-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.setting-section h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--accent);
+}
+
 .tree-plan-editor {
   min-width: 0;
   margin-top: 16px;

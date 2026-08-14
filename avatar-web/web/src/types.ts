@@ -27,6 +27,8 @@ export interface FarmAnimal {
   harvestPer: number;
   numEggOne: number;
   hunger: boolean;
+  hasFlu: boolean;
+  hasDiarrhea: boolean;
 }
 
 export interface AnimalInfo {
@@ -39,6 +41,9 @@ export interface FarmState {
   idFarm: number;
   cells: FarmCell[];
   animals: FarmAnimal[];
+  animalSlots: number[];
+  pondAnimalSlots: number[];
+  barnAnimalSlots: number[];
   updatedAt: number;
 }
 
@@ -135,6 +140,10 @@ export type TreeCellPlanEntry =
   | { cellIndex: number; action: 'seed'; seedId: number }
   | { cellIndex: number; action: 'skip' };
 
+export type AnimalPlanEntry =
+  | { slotIndex: number; action: 'breed'; speciesId: number }
+  | { slotIndex: number; action: 'skip' };
+
 export interface AutoFarmConfigDto {
   seedId?: number;
   waterItemId?: number;
@@ -142,13 +151,21 @@ export interface AutoFarmConfigDto {
   wormItemId?: number;
   harvest: boolean;
   harvestAnimals: boolean;
+  harvestBarnAnimals?: boolean;
+  harvestPondAnimals?: boolean;
   sellAnimals: boolean;
+  sellBarnAnimals?: boolean;
+  sellPondAnimals?: boolean;
   sellWhenGrownSpecies: number[];
   sellNearDeathSpecies: number[];
+  sellBarnSpecies?: number[];
+  sellPondSpecies?: number[];
   minGrowthToSell: number;
   nearDeathRatio: number;
   maxSellsPerCycle: number;
   feedAnimals: boolean;
+  feedBarnAnimals?: boolean;
+  feedPondAnimals?: boolean;
   healAnimals: boolean;
   minHealth: number;
   fertilizeCells: boolean;
@@ -160,6 +177,8 @@ export interface AutoFarmConfigDto {
   intervalMs: number;
   startDelayMs: number;
   treeCellPlan: TreeCellPlanEntry[];
+  barnAnimalPlan?: AnimalPlanEntry[];
+  pondAnimalPlan?: AnimalPlanEntry[];
 }
 
 export interface CachedSeedDto {
@@ -181,6 +200,8 @@ export interface AutoConfigResponse extends AutoConfigStateDto {
 export interface FarmProfileDto {
   farmId: number | null;
   cellIndices: number[];
+  barnAnimalSlots: number[];
+  pondAnimalSlots: number[];
   seedCatalog: CachedSeedDto[];
   cellsObservedAt: number | null;
   seedsObservedAt: number | null;

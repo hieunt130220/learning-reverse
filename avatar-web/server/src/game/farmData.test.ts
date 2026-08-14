@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { decodeFarmData, isCellRipe } from './farmData.js';
+import { classifyFarmSlots, decodeFarmData, isCellRipe } from './farmData.js';
 import { FARM_PACKET_69_HEX } from './farmData.fixture.js';
 
 const packet = Buffer.from(FARM_PACKET_69_HEX, 'hex');
@@ -12,6 +12,12 @@ test('slot vật nuôi trống chỉ chiếm 1 byte sentinel, không có bản g
   // Gói khai 16 SLOT, nhưng 4 slot đầu là -1 (4 con Rùa vừa bán) nên chỉ còn
   // 12 con thật. Người dùng xác nhận trong game: đúng 12 con.
   assert.equal(farm.animals.length, 12);
+  assert.equal(farm.animalSlots.length, 16);
+  assert.deepEqual(farm.animalSlots, Array.from({ length: 16 }, (_, i) => i));
+  // Gói này: 12 con Gà (#50) đều ở slot 4–15, không con ao nào → mặc định 4 slot
+  // ao đầu (0–3) theo quy ước, 12 slot chuồng còn lại (4–15).
+  assert.deepEqual(farm.pondAnimalSlots, [0, 1, 2, 3]);
+  assert.deepEqual(farm.barnAnimalSlots, [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
 });
 
 test('vật nuôi giữ số slot làm index, không dồn mảng sau khi bán', () => {
@@ -36,9 +42,9 @@ test('đọc đúng trường của vật nuôi sau slot trống', () => {
     farm.animals.every((a) => !a.hunger),
     true,
   );
-  // Cờ bệnh: 7 con f20, 10 con f21 (người dùng xác nhận có con đang bệnh).
-  assert.equal(farm.animals.filter((a) => a.flag20).length, 3);
-  assert.equal(farm.animals.filter((a) => a.flag21).length, 7);
+  // Cờ bệnh: 3 con cúm, 7 con tiêu chảy (người dùng xác nhận có con đang bệnh).
+  assert.equal(farm.animals.filter((a) => a.hasFlu).length, 3);
+  assert.equal(farm.animals.filter((a) => a.hasDiarrhea).length, 7);
 });
 
 test('sau vật nuôi, phần đuôi khớp đúng nCell byte level rồi hết gói', () => {
@@ -94,6 +100,33 @@ test('ô trống hoặc vừa thu xong thì không chín dù thời gian lớn',
   };
   assert.equal(isCellRipe({ ...grown, idTree: -1, time: 9999 }, LUA_GROW_HOURS), false);
   assert.equal(isCellRipe({ ...grown, idTree: 6, time: -1 }, LUA_GROW_HOURS), false);
+});
+
+test('classifyFarmSlots: có con ao thật thì ranh giới là sau slot ao cao nhất', () => {
+  // 20 slot, ao mở lên 5 slot: con ao (Rùa #59) ở slot 4 (slot 5 mới, chưa nuôi).
+  const state = {
+    animalSlots: Array.from({ length: 20 }, (_, i) => i),
+    animals: [
+      { index: 4, species: 59 },
+      { index: 7, species: 50 },
+    ],
+  } as unknown as Parameters<typeof classifyFarmSlots>[0];
+  classifyFarmSlots(state);
+  assert.deepEqual(state.pondAnimalSlots, [0, 1, 2, 3, 4]);
+  assert.deepEqual(state.barnAnimalSlots, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+});
+
+test('classifyFarmSlots: chưa có con ao nào thì mặc định 4 slot ao đầu', () => {
+  const state = {
+    animalSlots: Array.from({ length: 12 }, (_, i) => i),
+    animals: [
+      { index: 4, species: 50 },
+      { index: 5, species: 50 },
+    ],
+  } as unknown as Parameters<typeof classifyFarmSlots>[0];
+  classifyFarmSlots(state);
+  assert.deepEqual(state.pondAnimalSlots, [0, 1, 2, 3]);
+  assert.deepEqual(state.barnAnimalSlots, [4, 5, 6, 7, 8, 9, 10, 11]);
 });
 
 test('chưa có bảng cây thì không đoán bừa, chỉ tin hervestPer', () => {

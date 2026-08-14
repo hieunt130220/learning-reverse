@@ -49,6 +49,8 @@ export function invalidTreePlanEntries(
   entries: TreeCellPlanEntry[],
 ): TreeCellPlanEntry[] {
   const knownCells = new Set(profile.cellIndices);
+  // Catalog lấy từ cache seedCatalog — nguồn là bảng cây thật trong cửa hàng
+  // (gói 76), không còn fallback tĩnh nữa.
   const knownSeeds = new Set(profile.seedCatalog.map((seed) => seed.id));
   return entries.filter((entry) => (
     !knownCells.has(entry.cellIndex)

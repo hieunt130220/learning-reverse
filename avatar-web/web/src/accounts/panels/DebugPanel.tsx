@@ -221,11 +221,13 @@ function RawPanel({ accountId }: { accountId: number }) {
 
 function TrafficPanel({ traffic }: { traffic: TrafficEntry[] }) {
   const [filter, setFilter] = useState('');
-  const endRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'nearest' });
-  }, [traffic.length]);
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [traffic.length, filter]);
 
   const rows = filter
     ? traffic.filter((e) => e.name.toLowerCase().includes(filter.toLowerCase()) || String(e.cmd) === filter)
@@ -235,7 +237,7 @@ function TrafficPanel({ traffic }: { traffic: TrafficEntry[] }) {
     <section className="card">
       <h2>Gói tin</h2>
       <input placeholder="lọc theo tên opcode hoặc cmd" value={filter} onChange={(e) => setFilter(e.target.value)} />
-      <div className="log traffic">
+      <div ref={containerRef} className="log traffic">
         {rows.map((e, i) => (
           <div key={i} className={e.dir}>
             <span className="ts">{new Date(e.t).toLocaleTimeString()}</span>{' '}
@@ -244,7 +246,6 @@ function TrafficPanel({ traffic }: { traffic: TrafficEntry[] }) {
             {e.hex && <div className="hex">{e.hex}</div>}
           </div>
         ))}
-        <div ref={endRef} />
       </div>
     </section>
   );

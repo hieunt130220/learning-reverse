@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 
 import { AutoFarm, type AutoFarmOptions } from './autoFarm.js';
-import { ITEM_GRASS, ITEM_TONIC, ITEM_WATER } from './game/farmData.js';
+import { ITEM_DIARRHEA_CURE, ITEM_FLU_CURE, ITEM_GRASS, ITEM_TONIC, ITEM_WATER } from './game/farmData.js';
 import type { FarmAnimal, FarmCell, FarmState, TreeInfo } from './game/farmData.js';
 
 function cell(index: number, overrides: Partial<FarmCell> = {}): FarmCell {
@@ -29,8 +29,8 @@ function animal(index: number, overrides: Partial<FarmAnimal> = {}): FarmAnimal 
     harvestPer: 0,
     numEggOne: 0,
     hunger: false,
-    flag20: false,
-    flag21: false,
+    hasFlu: false,
+    hasDiarrhea: false,
     ...overrides,
   };
 }
@@ -66,6 +66,18 @@ class FakeClient extends EventEmitter {
   ];
   readonly calls: string[] = [];
   onPlantSeed?: (cellIndex: number, seedId: number) => void;
+  /**
+   * Mô phỏng server cấp con mới sau BUY_ANIMAL: gắn species của con mua vào
+   * slot trống nhỏ nhất và phát gói 69. Bật để test "mua thành công"; tắt để
+   * test "server từ chối" (số con không tăng).
+   */
+  honorBuyAnimal = true;
+  private nextAnimalSlot = (): number => {
+    const occupied = new Set(this.farmState.animals.map((a) => a.index));
+    let slot = 0;
+    while (occupied.has(slot)) slot += 1;
+    return slot;
+  };
 
   readonly farm = {
     getInventory: (): void => {
@@ -98,6 +110,16 @@ class FakeClient extends EventEmitter {
     },
     sellAnimal: (idFarm: number, iddb: number): void => {
       this.calls.push(`sellAnimal:${iddb}`);
+    },
+    buyAnimal: (idAnimal: number, typeBuy: number): void => {
+      this.calls.push(`buyAnimal:${idAnimal}:${typeBuy}`);
+      if (this.honorBuyAnimal) {
+        const slot = this.nextAnimalSlot();
+        this.farmState.animals.push(
+          animal(slot, { species: idAnimal, bornTime: 0 }),
+        );
+        queueMicrotask(() => this.emit('farm', this.farmState));
+      }
     },
   };
 
@@ -535,6 +557,102 @@ test('trần maxSellsPerCycle chặn số con bán mỗi vòng', async () => {
   assert.equal(client.calls.filter((c) => c.startsWith('sellAnimal:')).length, 2);
 });
 
+test('mua hết vật nuôi theo kế hoạch trong 1 vòng, ao trước chuồng sau', async () => {
+  // Ao: slot 0 (Rùa 59) đang có, slot 1 trống -> mua Cá chép 54.
+  // Chuồng: slot 2, 3 trống -> mua Gà 50 rồi Vịt 55. Tất cả trong 1 vòng.
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [animal(0, { species: 59 })],
+    updatedAt: Date.now(),
+  });
+  const auto = await runOneCycle(client, {
+    harvest: false,
+    pondAnimalPlan: [
+      { slotIndex: 0, action: 'breed', speciesId: 59 },
+      { slotIndex: 1, action: 'breed', speciesId: 54 },
+    ],
+    barnAnimalPlan: [
+      { slotIndex: 2, action: 'breed', speciesId: 50 },
+      { slotIndex: 3, action: 'breed', speciesId: 55 },
+    ],
+  });
+
+  assert.deepEqual(
+    client.calls.filter((c) => c.startsWith('buyAnimal:')),
+    ['buyAnimal:54:1', 'buyAnimal:50:1', 'buyAnimal:55:1'],
+    'ao trước (54), chuồng sau theo thứ tự slot (50, 55), đều bằng xu',
+  );
+  const log = auto.state().lastActions;
+  assert.ok(log.some((l) => l.includes('mua vật nuôi ao slot 1:')), log.join(' | '));
+  assert.ok(log.some((l) => l.includes('mua vật nuôi chuồng slot 2:')), log.join(' | '));
+  assert.ok(log.some((l) => l.includes('mua vật nuôi chuồng slot 3:')), log.join(' | '));
+});
+
+test('server từ chối mua thì dừng ngay, sang task tiếp theo', async () => {
+  // honorBuyAnimal = false: số con không tăng sau lệnh mua -> server từ chối.
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [animal(0, { species: 50 })],
+    updatedAt: Date.now(),
+  });
+  client.honorBuyAnimal = false;
+  const auto = await runOneCycle(client, {
+    harvest: false,
+    barnAnimalPlan: [
+      { slotIndex: 1, action: 'breed', speciesId: 52 },
+      { slotIndex: 2, action: 'breed', speciesId: 55 },
+    ],
+  });
+
+  assert.deepEqual(
+    client.calls.filter((c) => c.startsWith('buyAnimal:')),
+    ['buyAnimal:52:1'],
+    'chỉ gửi 1 lệnh mua, từ chối thì không mua tiếp',
+  );
+  assert.ok(
+    auto.state().lastActions.some((l) => l.includes('dừng mua vật nuôi chuồng')),
+    'phải ghi rõ dừng vì server từ chối',
+  );
+});
+
+test('kế hoạch vật nuôi không mua khi mọi slot kế hoạch đã có con', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [animal(0, { species: 50 }), animal(1, { species: 52 })],
+    updatedAt: Date.now(),
+  });
+  await runOneCycle(client, {
+    harvest: false,
+    barnAnimalPlan: [
+      { slotIndex: 0, action: 'breed', speciesId: 50 },
+      { slotIndex: 1, action: 'breed', speciesId: 52 },
+    ],
+  });
+
+  assert.equal(client.calls.some((c) => c.startsWith('buyAnimal:')), false);
+});
+
+test('slot skip trong kế hoạch vật nuôi không bị mua', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  await runOneCycle(client, {
+    harvest: false,
+    barnAnimalPlan: [
+      { slotIndex: 0, action: 'skip' },
+    ],
+  });
+
+  // Slot 0 là skip -> không được mua gì cả.
+  assert.equal(client.calls.some((c) => c.startsWith('buyAnimal:')), false);
+});
+
 test('bornTime đổi giữa 2 vòng thì ghi lại delta để xác định chiều đếm', async () => {
   const farmState: FarmState = {
     idFarm: 1,
@@ -737,6 +855,20 @@ test('thu ô đủ thời gian lớn dù hervestPer = 0', async () => {
     client.calls.filter((c) => c.startsWith('harvest:')),
     ['harvest:41', 'harvest:45'],
   );
+});
+
+test('chữa bệnh cúm và tiêu chảy cho vật nuôi', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [animal(0, { species: 50, hasFlu: true }), animal(1, { species: 50, hasDiarrhea: true })],
+    updatedAt: Date.now(),
+  });
+  await runOneCycle(client, { healAnimals: true });
+
+  const useItems = client.calls.filter((c) => c.startsWith('useItem:'));
+  assert.ok(useItems.includes(`useItem:0:${ITEM_FLU_CURE}`), 'phải gửi thuốc cúm cho con bị cúm');
+  assert.ok(useItems.includes(`useItem:1:${ITEM_DIARRHEA_CURE}`), 'phải gửi thuốc tiêu chảy cho con bị tiêu chảy');
 });
 
 test('bật thu hoạch thì phải xin bảng cây, không có nó là không biết ô nào chín', async () => {

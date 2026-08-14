@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { Message } from '../proto/message.js';
 import { CMD_GET_KEY, Session } from '../proto/session.js';
 import {
+  classifyFarmSlots,
   decodeFarmData,
   decodeAnimalCatalog,
   decodeInfoAnimal,
@@ -456,24 +457,39 @@ export class GameClient extends EventEmitter {
         break;
       }
       case 76: {
-        // GET_TREE_INFO — bảng cây trồng
+        // GET_TREE_INFO — bảng cây trồng. Gói ~13 KB đựng CẢ ba bảng: cây,
+        // vật phẩm, vật nuôi. Chỉ decode những khối nào cần: cây là khối đầu
+        // (thiết yếu cho thu hoạch/trồng), còn hai khối sau nằm sâu trong đuôi
+        // chưa map hết nên decode lỗi không được chặn cây — server tự đẩy trả
+        // về một lần cho mọi khối.
+        const body = msg.getData();
+        this.trees = decodeTreeInfo(body).trees;
+        this.emit('log', `bảng cây: ${this.trees.map((t) => `#${t.id} ${t.name}`).join(', ')}`);
         try {
-          this.trees = decodeTreeInfo(msg.getData()).trees;
-          this.items = decodeItemCatalog(msg.getData());
-          this.animals = decodeAnimalCatalog(msg.getData());
-          this.emit('log', `bảng cây: ${this.trees.map((t) => `#${t.id} ${t.name}`).join(', ')}`);
+          this.items = decodeItemCatalog(body);
           this.emit('log', `bảng vật phẩm: ${this.items.map((i) => `#${i.id} ${i.name}`).join(', ')}`);
-          this.emit('log', `bảng vật nuôi: ${this.animals.map((a) => `#${a.id} ${a.name}`).join(', ')}`);
-          this.emit('trees', { trees: this.trees, items: this.items, animals: this.animals });
         } catch (err) {
-          this.emit('log', `giải mã bảng cây lỗi: ${(err as Error).message}`);
+          this.emit('log', `giải mã bảng vật phẩm lỗi: ${(err as Error).message}`);
         }
+        try {
+          this.animals = decodeAnimalCatalog(body);
+          this.emit('log', `bảng vật nuôi: ${this.animals.map((a) => `#${a.id} ${a.name}`).join(', ')}`);
+        } catch (err) {
+          this.emit('log', `giải mã bảng vật nuôi lỗi: ${(err as Error).message}`);
+        }
+        this.emit('trees', { trees: this.trees, items: this.items, animals: this.animals });
         break;
       }
       case 69: // JOIN — toàn bộ dữ liệu farm
       case 61: // cùng payload readFarmData
         try {
           this.farmState = decodeFarmData(msg.getData());
+          // INFO_ANIMAL (cmd 101) chỉ có index mà không có species-ngữ-cảnh —
+          // nếu gói 101 về trước gói 69 thì vùng phân loại (đã lưu trong farmState)
+          // chưa có để chia ao/chuồng.
+          if (this.farmState.animals.length > 0) {
+            classifyFarmSlots(this.farmState);
+          }
           const n = this.farmState.cells.filter((c) => c.idTree !== -1).length;
           // In kèm idFarm và playerId: lệnh farm gửi đi lấy idFarm làm tham số
           // đầu, nhưng client thật gọi `doUsingItem(playerId, …)`. Hai số này

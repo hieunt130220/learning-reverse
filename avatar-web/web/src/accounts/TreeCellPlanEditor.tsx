@@ -67,17 +67,20 @@ export function TreeCellPlanEditor({
     };
   }, []);
 
+  // Catalog hạt lấy từ cache seedCatalog — nguồn là bảng cây thật trong cửa
+  // hàng (gói 76), không còn fallback tĩnh nữa.
   const seeds = useMemo(
     () => [...profile.seedCatalog].sort(
       (left, right) => left.name.localeCompare(right.name, 'vi') || left.id - right.id,
     ),
     [profile.seedCatalog],
   );
+
   useEffect(() => {
-    if (paint.kind === 'seed' && !profile.seedCatalog.some((seed) => seed.id === paint.seedId)) {
+    if (paint.kind === 'seed' && !seeds.some((seed) => seed.id === paint.seedId)) {
       setPaint({ kind: 'default' });
     }
-  }, [paint, profile.seedCatalog]);
+  }, [paint, seeds]);
   const entriesByCell = useMemo(
     () => new Map(entries.map((entry) => [entry.cellIndex, entry])),
     [entries],
@@ -103,8 +106,8 @@ export function TreeCellPlanEditor({
     [entries, profile.cellIndices],
   );
   const seedById = useMemo(
-    () => new Map(profile.seedCatalog.map((seed) => [seed.id, seed])),
-    [profile.seedCatalog],
+    () => new Map(seeds.map((seed) => [seed.id, seed])),
+    [seeds],
   );
 
   const hasCells = profile.cellIndices.length > 0;

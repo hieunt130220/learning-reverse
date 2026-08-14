@@ -78,7 +78,7 @@ for (const a of farm.animals) {
   console.log(
     `con ${String(a.index).padStart(2)}  species=${a.species} bornTime=${String(a.bornTime).padStart(8)} ` +
       `health=${String(a.health).padStart(3)} harvestPer=${String(a.harvestPer).padStart(3)} ` +
-      `numEgg=${a.numEggOne} hunger=${+a.hunger} f20=${+a.flag20} f21=${+a.flag21}`,
+      `numEgg=${a.numEggOne} hunger=${+a.hunger} flu=${+a.hasFlu} diarrhea=${+a.hasDiarrhea}`,
   );
 }
 

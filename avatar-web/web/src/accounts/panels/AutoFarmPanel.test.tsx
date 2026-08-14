@@ -31,6 +31,8 @@ const stoppedAuto: AutoState = { running: false, cycle: 0, lastActions: [] };
 const completeProfile: FarmProfileDto = {
   farmId: 12,
   cellIndices: [2, 7],
+  barnAnimalSlots: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+  pondAnimalSlots: [0, 1, 2, 3],
   seedCatalog: [{ id: 6, name: 'Hoa hồng', growMinutes: 30, value: 20 }],
   cellsObservedAt: 1_700_000_000_000,
   seedsObservedAt: 1_700_000_010_000,
@@ -44,17 +46,23 @@ const storedConfig: Partial<AutoFarmConfigDto> = {
   wormItemId: 126,
   harvest: false,
   harvestAnimals: false,
+  harvestBarnAnimals: false,
+  harvestPondAnimals: false,
+  feedAnimals: false,
+  feedBarnAnimals: false,
+  feedPondAnimals: false,
+  healAnimals: false,
+  fertilizeCells: false,
   sellAnimals: true,
-  sellWhenGrownSpecies: [50, 51],
+  sellBarnAnimals: true,
+  sellBarnSpecies: [50, 51],
+  sellPondAnimals: true,
+  sellPondSpecies: [54, 59],
+  sellWhenGrownSpecies: [50, 51, 54, 59],
   sellNearDeathSpecies: [52],
   minGrowthToSell: 90,
   nearDeathRatio: 0.1,
   maxSellsPerCycle: 8,
-  feedAnimals: false,
-  healAnimals: false,
-  minHealth: 70,
-  fertilizeCells: false,
-  minVitality: 60,
   autoBuy: true,
   buyBudgetXu: 9_000,
   maxBuyPerItem: 4,
@@ -62,6 +70,8 @@ const storedConfig: Partial<AutoFarmConfigDto> = {
   intervalMs: 150_000,
   startDelayMs: 2_500,
   treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
+  barnAnimalPlan: [],
+  pondAnimalPlan: [],
 };
 
 function deferred<T>() {
@@ -133,13 +143,13 @@ test('hydrate tất cả control cũ từ config đã lưu, kể cả giá trị
   expect(screen.getByLabelText('id thuốc cỏ')).toHaveValue('125');
   expect(screen.getByLabelText('id thuốc sâu')).toHaveValue('126');
   expect(screen.getByRole('checkbox', { name: 'thu hoạch ô đã chín' })).not.toBeChecked();
-  expect(screen.getByRole('checkbox', { name: 'thu hoạch sản phẩm vật nuôi' })).not.toBeChecked();
-  expect(screen.getByRole('checkbox', { name: 'cho vật nuôi ăn' })).not.toBeChecked();
+  expect(screen.getByRole('checkbox', { name: /thu hoạch sản phẩm chuồng/ })).not.toBeChecked();
+  expect(screen.getByRole('checkbox', { name: /cho vật nuôi chuồng ăn/ })).not.toBeChecked();
   expect(screen.getByRole('checkbox', { name: /thuốc bổ/ })).not.toBeChecked();
   expect(screen.getByRole('checkbox', { name: /bón phân/ })).not.toBeChecked();
-  expect(screen.getByRole('checkbox', { name: 'bán vật nuôi khi đã lớn' })).toBeChecked();
-  expect(screen.getByLabelText('loài bán khi lớn')).toHaveValue('50, 51');
-  expect(screen.getByLabelText('trần bán/vòng')).toHaveValue(8);
+  expect(screen.getByRole('checkbox', { name: /bán vật nuôi chuồng khi lớn/ })).toBeChecked();
+  expect(screen.getByLabelText('loài bán chuồng')).toHaveValue('50, 51');
+  expect(screen.getByLabelText(/trần bán\/vòng/)).toHaveValue(8);
   expect(screen.getByRole('checkbox', { name: /tự mua khi thiếu/ })).toBeChecked();
   expect(screen.getByLabelText('trần chi/vòng (xu)')).toHaveValue(9_000);
   expect(screen.getByLabelText('chu kỳ (giây)')).toHaveValue(150);
@@ -169,11 +179,19 @@ test('config thành công vẫn hydrate và Bật đúng stored values khi profi
     wormItemId: 126,
     harvest: false,
     harvestAnimals: false,
+    harvestBarnAnimals: false,
+    harvestPondAnimals: false,
     feedAnimals: false,
+    feedBarnAnimals: false,
+    feedPondAnimals: false,
     healAnimals: false,
     fertilizeCells: false,
     sellAnimals: true,
-    sellWhenGrownSpecies: [50, 51],
+    sellBarnAnimals: true,
+    sellBarnSpecies: [50, 51],
+    sellPondAnimals: true,
+    sellPondSpecies: [54, 59],
+    sellWhenGrownSpecies: [50, 51, 54, 59],
     maxSellsPerCycle: 8,
     autoBuy: true,
     buyBudgetXu: 9_000,
@@ -248,14 +266,20 @@ test('lưu gửi đúng full stored config cùng plan mới và báo áp dụng 
   ];
   mocks.apiPut.mockResolvedValueOnce({
     revision: 5,
-    config: { ...storedConfig, treeCellPlan: nextPlan },
+    config: {
+      ...storedConfig,
+      treeCellPlan: nextPlan,
+    },
     application: 'next-cycle',
   });
   await userEvent.click(screen.getByRole('button', { name: 'Lưu kế hoạch' }));
 
   await waitFor(() => expect(mocks.apiPut).toHaveBeenCalledWith('/api/accounts/1/auto/config', {
     expectedRevision: 4,
-    config: { ...storedConfig, treeCellPlan: nextPlan },
+    config: {
+      ...storedConfig,
+      treeCellPlan: nextPlan,
+    },
   }));
   expect(await screen.findByText(/vòng kế tiếp/i)).toBeInTheDocument();
   await waitFor(() => expect(onDirty).toHaveBeenLastCalledWith(false));
@@ -344,7 +368,8 @@ test('refresh profile thay cache hiển thị bằng response server', async () 
   mocks.apiPost.mockResolvedValueOnce(completeProfile);
   renderPanel();
   await openPlanEditor();
-  expect(screen.queryByRole('button', { name: /Hoa hồng/ })).not.toBeInTheDocument();
+  // Cache trống: không có hạt nào từ server, chỉ default catalog + hướng dẫn.
+  expect(screen.queryByText(/Chưa có cache ô farm/)).not.toBeInTheDocument();
 
   await userEvent.click(screen.getByRole('button', { name: 'Kết nối và đồng bộ farm' }));
 

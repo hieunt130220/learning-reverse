@@ -29,6 +29,8 @@ export interface SessionManagerDeps {
 interface FarmProfileEvent {
   idFarm: number;
   cells: Array<{ index: number }>;
+  barnAnimalSlots?: number[];
+  pondAnimalSlots?: number[];
   updatedAt?: number;
 }
 
@@ -42,6 +44,14 @@ function farmProfileEvent(payload: unknown): FarmProfileEvent | null {
   }
   const idFarm = payload.idFarm;
   const cells = payload.cells;
+  const slotList = (key: string): number[] | undefined => {
+    const value = (payload as Record<string, unknown>)[key];
+    return Array.isArray(value)
+      ? value.filter((item): item is number => typeof item === 'number' && Number.isInteger(item))
+      : undefined;
+  };
+  const barnAnimalSlots = slotList('barnAnimalSlots');
+  const pondAnimalSlots = slotList('pondAnimalSlots');
   const updatedAt = 'updatedAt' in payload ? payload.updatedAt : undefined;
   if (
     typeof idFarm !== 'number'
@@ -58,7 +68,7 @@ function farmProfileEvent(payload: unknown): FarmProfileEvent | null {
   ) {
     return null;
   }
-  return { idFarm, cells, updatedAt };
+  return { idFarm, cells, barnAnimalSlots, pondAnimalSlots, updatedAt };
 }
 
 function treesProfileEvent(payload: unknown): TreesProfileEvent | null {
@@ -207,6 +217,8 @@ export class SessionManager {
                 accountId,
                 farm.idFarm,
                 farm.cells.map((cell) => cell.index),
+                farm.barnAnimalSlots ?? [],
+                farm.pondAnimalSlots ?? [],
                 farm.updatedAt,
               );
             } catch {

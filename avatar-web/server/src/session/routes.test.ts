@@ -449,6 +449,8 @@ test('GET profile trả cache typed và refresh offline/timeout/online đúng co
   assert.deepEqual((await server.fetch(`/api/accounts/${id}/farm/profile`)).body, {
     farmId: null,
     cellIndices: [],
+    barnAnimalSlots: [],
+    pondAnimalSlots: [],
     seedCatalog: [],
     cellsObservedAt: null,
     seedsObservedAt: null,

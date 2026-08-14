@@ -2,7 +2,9 @@ import { EventEmitter } from 'node:events';
 
 import {
   GROWN_PERCENT,
+  ITEM_DIARRHEA_CURE,
   ITEM_FERTILIZER,
+  ITEM_FLU_CURE,
   ITEM_TONIC,
   NEAR_DEATH_RATIO,
   SHOP_XU,
@@ -26,6 +28,10 @@ export type TreeCellPlanEntry =
   | { cellIndex: number; action: 'seed'; seedId: number }
   | { cellIndex: number; action: 'skip' };
 
+export type AnimalPlanEntry =
+  | { slotIndex: number; action: 'breed'; speciesId: number }
+  | { slotIndex: number; action: 'skip' };
+
 export interface AutoFarmConfig {
   /** Hạt để trồng lại ô trống. Bỏ trống = không trồng. */
   seedId?: number;
@@ -44,11 +50,15 @@ export interface AutoFarmConfig {
    * không phá huỷ gì nên mặc định bật, cùng nhóm với `harvest`.
    */
   harvestAnimals: boolean;
+  harvestBarnAnimals?: boolean;
+  harvestPondAnimals?: boolean;
   /**
    * Bán vật nuôi. **Mặc định TẮT vì bán là KHÔNG LẤY LẠI ĐƯỢC** — phải bật rõ
    * ràng. Xem `sellWhenGrownSpecies` / `sellNearDeathSpecies`.
    */
   sellAnimals: boolean;
+  sellBarnAnimals?: boolean;
+  sellPondAnimals?: boolean;
   /**
    * Loài bán ngay khi lớn — loài không có sản phẩm để thu, giữ lại chỉ tốn
    * thức ăn. Mặc định Heo 52 / Cá chép 54 / Rùa 59.
@@ -63,6 +73,8 @@ export interface AutoFarmConfig {
    * ("Thời gian sống: 7 ngày"). Bán khi `bornTime >= tuổi thọ × nearDeathRatio`.
    */
   sellNearDeathSpecies: number[];
+  sellBarnSpecies?: number[];
+  sellPondSpecies?: number[];
   /** `harvestPer` tối thiểu để coi là đã lớn, dùng cho `sellWhenGrownSpecies`. */
   minGrowthToSell: number;
   /**
@@ -77,6 +89,8 @@ export interface AutoFarmConfig {
   maxSellsPerCycle: number;
   /** Cho vật nuôi đang đói ăn (thức ăn chọn theo loài). */
   feedAnimals: boolean;
+  feedBarnAnimals?: boolean;
+  feedPondAnimals?: boolean;
   /** Dùng Thuốc bổ (#122) cho vật nuôi có máu dưới `minHealth`. Mỗi liều +20. */
   healAnimals: boolean;
   minHealth: number;
@@ -106,6 +120,8 @@ export interface AutoFarmConfig {
    * tự thay vì lao vào ngay.
    */
   startDelayMs: number;
+  barnAnimalPlan?: AnimalPlanEntry[];
+  pondAnimalPlan?: AnimalPlanEntry[];
 }
 
 export interface AutoFarmState {
@@ -133,9 +149,11 @@ export interface AutoFarmClient {
     useItem(idFarm: number, index: number, idItem: number): void;
     harvest(idFarm: number, index: number): void;
     buyItem(id: number, num: number, typeShop: number): void;
+    buyAnimal(idAnimal: number, typeBuy: number): void;
     plantSeed(idFarm: number, cellIndex: number, seedId: number): void;
     harvestAnimal(idFarm: number, index: number): void;
     sellAnimal(idFarm: number, index: number): void;
+    buyAnimal(idAnimal: number, typeBuy: number): void;
   };
 }
 
@@ -152,7 +170,7 @@ const DEFAULTS: AutoFarmConfig = {
   sellNearDeathSpecies: SPECIES_SELL_NEAR_DEATH,
   minGrowthToSell: GROWN_PERCENT,
   nearDeathRatio: NEAR_DEATH_RATIO,
-  maxSellsPerCycle: 3,
+  maxSellsPerCycle: 0,
   feedAnimals: false,
   healAnimals: false,
   minHealth: 100,
@@ -237,12 +255,55 @@ export class AutoFarm extends EventEmitter {
     this.emit('state', this.state());
   }
 
+  /**
+   * Xin bảng cây (gói 76) nếu một trong ba bảng con (cây/vật phẩm/vật nuôi) còn
+   * thiếu, rồi chờ cho tới khi có gói trả lời hoặc hết thời gian.
+   *
+   * Gói 76 ~13 KB đựng CẢ ba bảng, nên chỉ cần xin một lần là đủ cho mọi thứ:
+   * giá vật phẩm (auto-buy), thời gian lớn của cây (thu hoạch/trồng), và `desc`
+   * vật nuôi (bán). Đo trên server thật: server KHÔNG tự đẩy gói 76 sau
+   * GET_HANDLER farm — phải gọi `getTreeInfo` thủ công.
+   *
+   * @returns true nếu hết thời gian chờ mà vẫn chưa có catalog.
+   */
+  private async fetchTreeCatalog(
+    needed: boolean,
+    note: (line: string) => void,
+  ): Promise<boolean> {
+    if (!needed) return false;
+    if (this.client.trees.length > 0
+      && this.client.items.length > 0
+      && this.client.animals.length > 0) {
+      return false;
+    }
+    let received = false;
+    let onTrees = (): void => {};
+    const timeout = new AbortController();
+    const catalogEvent = new Promise<void>((resolve) => {
+      onTrees = (): void => {
+        received = true;
+        resolve();
+      };
+      this.client.once('trees', onTrees);
+    });
+    // PHẢI gọi SAU enterFarm: server chỉ định tuyến lệnh farm sau GET_HANDLER,
+    // gọi trước thì gói 76 rơi vào hư không.
+    note('chờ catalog cây…');
+    this.client.farm.getTreeInfo();
+    await Promise.race([catalogEvent, this.catalogTimeout(timeout.signal)]);
+    timeout.abort();
+    if (!received) this.client.removeListener('trees', onTrees);
+    return !received;
+  }
+
   private async runCycle(): Promise<void> {
     if (this.pendingConfig) {
       this.activeConfig = this.pendingConfig;
       this.pendingConfig = undefined;
     }
     const cfg = this.activeConfig;
+    if (cfg.barnAnimalPlan?.length === 0) cfg.barnAnimalPlan = undefined;
+    if (cfg.pondAnimalPlan?.length === 0) cfg.pondAnimalPlan = undefined;
     if (this.aborted) return;
     const actions: string[] = [];
     // Một nguồn, hai đích: panel Tự động đọc `lastActions`, còn nhật ký phiên
@@ -297,40 +358,13 @@ export class AutoFarm extends EventEmitter {
       // Thu hoạch cũng cần bảng cây: điều kiện chín là `time >= growHours × 60`,
       // không có bảng thì không biết ô nào đã đủ tuổi và auto sẽ bỏ qua hết.
       const needTreeCatalog = plantingConfigured || cfg.harvest;
-      let treeCatalogTimedOut = false;
-      if (needTreeCatalog && this.client.trees.length === 0) {
-        let received = false;
-        let onTrees = (): void => {};
-        const timeout = new AbortController();
-        const catalogEvent = new Promise<void>((resolve) => {
-          onTrees = (): void => {
-            received = true;
-            resolve();
-          };
-          this.client.once('trees', onTrees);
-        });
-        this.client.farm.getTreeInfo();
-        await Promise.race([catalogEvent, this.catalogTimeout(timeout.signal)]);
-        timeout.abort();
-        treeCatalogTimedOut = !received;
-        if (treeCatalogTimedOut) this.client.removeListener('trees', onTrees);
-      }
-
-      // Bảng vật nuôi: `desc` chứa "Thời gian lớn : N ngày" và "Thời gian sống:
-      // N ngày" — hai số quyết định khi nào bán. Chỉ xin khi còn thiếu (bảng
-      // tĩnh, gói ~13 KB). PHẢI gọi SAU enterFarm: server chỉ định tuyến lệnh
-      // farm sau GET_HANDLER, gọi trước thì gói 76 rơi vào hư không.
-      if (cfg.sellAnimals && this.client.animals.length === 0) {
-        const cat = new Promise<void>((resolve) => {
-          const t = setTimeout(resolve, 5000);
-          this.client.once('trees', () => {
-            clearTimeout(t);
-            resolve();
-          });
-        });
-        this.client.farm.getTreeInfo();
-        await cat;
-      }
+      // Luôn xin lại catalog mỗi vòng: một gói 76 (~13 KB) là nguồn CẢ ba bảng
+      // cây + vật phẩm + vật nuôi. Chỉ xin khi thiếu — nếu đã có (kể cả từ vòng
+      // trước) thì không tốn thêm gói nào.
+      const treeCatalogTimedOut = await this.fetchTreeCatalog(
+        needTreeCatalog || cfg.sellAnimals || cfg.autoBuy,
+        note,
+      );
       const specs = new Map(
         this.client.animals.map((a) => [a.id, parseAnimalSpec(a.desc)] as const),
       );
@@ -359,6 +393,8 @@ export class AutoFarm extends EventEmitter {
       const emptyCells = farm.cells.filter((c) => c.idTree === -1).length;
       const spent = farm.cells.filter(isCellSpent).length;
       const sick = farm.animals.filter((a) => a.health < cfg.minHealth).length;
+      const fluCount = farm.animals.filter((a) => a.hasFlu).length;
+      const diarrheaCount = farm.animals.filter((a) => a.hasDiarrhea).length;
       const hungry = farm.animals.filter((a) => a.hunger).length;
       const withProduct = farm.animals.filter((a) => a.numEggOne > 0).length;
       const sellable = farm.animals.filter((a) => {
@@ -375,6 +411,7 @@ export class AutoFarm extends EventEmitter {
       note(
         `[quét] ${farm.cells.length} ô: ${ripe} chín, ${emptyCells} trống, ${spent} vừa thu (time=-1) · ` +
           `${farm.animals.length} con: ${hungry} đói, ${sick} máu<${cfg.minHealth}, ` +
+          `${fluCount} cúm, ${diarrheaCount} tiêu chảy, ` +
           `${withProduct} có sản phẩm, ${sellable} đủ lớn để bán`,
       );
       // Việc bị tắt bằng config trông hệt như việc bị lỗi — nói thẳng ra.
@@ -424,6 +461,11 @@ export class AutoFarm extends EventEmitter {
         for (const a of farm.animals) {
           // Mỗi liều Thuốc bổ +20 máu (đo được 76 -> 96).
           if (a.health < cfg.minHealth) want(ITEM_TONIC, Math.ceil((cfg.minHealth - a.health) / 20));
+          // Thuốc cúm / tiêu chảy (#120 / #121): dùng cả 2 loại khi phát hiện vật nuôi bị bệnh.
+          if (a.hasFlu || a.hasDiarrhea) {
+            want(ITEM_FLU_CURE);
+            want(ITEM_DIARRHEA_CURE);
+          }
         }
       }
       if (cfg.fertilizeCells) {
@@ -473,6 +515,83 @@ export class AutoFarm extends EventEmitter {
         if (spent > 0) await tick();
       }
 
+      // --- MUA VẬT NUÔI THEO KẾ HOẠCH --------------------------------------
+      // Slot trống không có bản ghi trong `farm.animals` — muốn biết slot nào
+      // trống phải đối chiếu với danh sách slot (farm.animalSlots) chứ không
+      // phải duyệt animals.
+      //
+      // Tín hiệu "mua thất bại": server KHÔNG có gói xác nhận riêng cho BUY_ANIMAL
+      // (cmd 51 RX chỉ chạy onBuyItem cập nhật kho, và dialog -40 dùng chung cho
+      // cả thành công lẫn thất bại). Cách đáng tin duy nhất là xin lại gói 69 sau
+      // mỗi lệnh mua và đếm con: số con không tăng = server từ chối (hết slot /
+      // hết tiền). Gặp từ chối thì DỪNG mua tiếp, sang task sau.
+      //
+      // Thứ tự: AO trước (slot nhỏ, đứng đầu mảng), CHUỒNG sau.
+      if (cfg.pondAnimalPlan || cfg.barnAnimalPlan) {
+        const pondBySlot = new Map(
+          (cfg.pondAnimalPlan ?? [])
+            .filter((e): e is AnimalPlanEntry & { action: 'breed' } => e.action === 'breed')
+            .map((e) => [e.slotIndex, e]),
+        );
+        const barnBySlot = new Map(
+          (cfg.barnAnimalPlan ?? [])
+            .filter((e): e is AnimalPlanEntry & { action: 'breed' } => e.action === 'breed')
+            .map((e) => [e.slotIndex, e]),
+        );
+        const planGroups: Array<[string, Map<number, AnimalPlanEntry>]> = [
+          ['ao', pondBySlot],
+          ['chuồng', barnBySlot],
+        ];
+        const occupied = new Set(farm.animals.map((a) => a.index));
+        let boughtThisRound = 0;
+        for (const [groupName, bySlot] of planGroups) {
+          if (bySlot.size === 0) continue;
+          const targets = [...bySlot.keys()]
+            .sort((a, b) => a - b)
+            .filter((slot) => Number.isInteger(slot) && slot >= 0 && !occupied.has(slot));
+          for (const slot of targets) {
+            if (this.aborted) return;
+            const entry = bySlot.get(slot);
+            if (entry === undefined || entry.action !== 'breed') continue;
+            const before = farm.animals.length;
+            const speciesName = this.client.animals.find((x) => x.id === entry.speciesId)?.name
+              ?? `loài ${entry.speciesId}`;
+            this.client.farm.buyAnimal(entry.speciesId, SHOP_XU);
+            sent += 1;
+            await tick();
+            // Xin lại farm để đếm con — mua thật thì số con phải tăng.
+            const ref = new Promise<void>((resolve) => {
+              const t = setTimeout(resolve, 3000);
+              this.client.once('farm', () => {
+                clearTimeout(t);
+                resolve();
+              });
+            });
+            this.client.enterFarm();
+            await ref;
+            const after = this.client.farmState?.animals.length ?? before;
+            if (after > before) {
+              boughtThisRound += 1;
+              note(`mua vật nuôi ${groupName} slot ${slot}: ${speciesName} (#${entry.speciesId})`);
+              occupied.add(slot);
+              // Slot mới server cấp nằm ở ĐẦU mảng — thêm nó vào occupied để
+              // các slot kế tiếp đã mua không bị trùng.
+              const added = this.client.farmState?.animals.filter(
+                (a) => !farm.animals.some((x) => x.index === a.index),
+              ) ?? [];
+              for (const a of added) occupied.add(a.index);
+            } else {
+              note(`dừng mua vật nuôi ${groupName}: server từ chối sau slot ${slot} — sang task kế`);
+              break;
+            }
+          }
+          if (this.aborted) return;
+        }
+        if (boughtThisRound === 0) {
+          note('không còn slot trống theo kế hoạch vật nuôi');
+        }
+      }
+
       // --- GIAI ĐOẠN CÂY ----------------------------------------------------
       // Mỗi ô chạm đúng một lần, làm hết mọi việc của ô đó rồi mới sang ô sau.
       // Thu hoạch và trồng đi trước vì đó là mục đích chính của farm và không
@@ -487,6 +606,7 @@ export class AutoFarm extends EventEmitter {
 
         if (harvest && cellRipe(c)) {
           this.client.farm.harvest(idFarm, c.index);
+          c.idTree = -1;
           sent += 1;
           // `hervestPer` thường là 0 kể cả trên ô chín, nên nói theo thời gian
           // lớn — số đó mới là căn cứ thật để quyết định thu.
@@ -564,19 +684,27 @@ export class AutoFarm extends EventEmitter {
       // chạy trước rồi chữa/cho ăn mới duyệt lại từ ảnh chụp cũ, nên sau một
       // lần bán là các lệnh sau đó trỏ nhầm con.
       const byIndexDesc = [...farm.animals].sort((x, y) => y.index - x.index);
+      const inventoryMap = new Map(this.client.inventory.map((i) => [i.id, i.num]));
       let sold = 0;
       let noSpec = 0;
 
       for (const a of byIndexDesc) {
         if (this.aborted) return;
         const name = this.client.animals.find((x) => x.id === a.species)?.name ?? `loài ${a.species}`;
+        const isPond = [54, 59].includes(a.species);
+        const allowHarvest = isPond ? (cfg.harvestPondAnimals ?? cfg.harvestAnimals) : (cfg.harvestBarnAnimals ?? cfg.harvestAnimals);
+        const allowFeed = isPond ? (cfg.feedPondAnimals ?? cfg.feedAnimals) : (cfg.feedBarnAnimals ?? cfg.feedAnimals);
+        const allowSell = isPond ? (cfg.sellPondAnimals ?? cfg.sellAnimals) : (cfg.sellBarnAnimals ?? cfg.sellAnimals);
+        const sellSpeciesList = isPond
+          ? (cfg.sellPondSpecies ?? cfg.sellWhenGrownSpecies)
+          : (cfg.sellBarnSpecies ?? cfg.sellWhenGrownSpecies);
         const seen: string[] = [];
         const did: string[] = [];
 
         // Thu sản phẩm (trứng/sữa): miễn phí và không phá huỷ gì. `numEggOne > 0`
         // = đang có sản phẩm chờ lấy — căn cứ: con Rùa (loài không có sản phẩm)
         // đo được `numEggOne = 0` dù `harvestPer` đã 100.
-        if (cfg.harvestAnimals && a.numEggOne > 0) {
+        if (allowHarvest && a.numEggOne > 0) {
           this.client.farm.harvestAnimal(idFarm, a.index);
           sent += 1;
           seen.push(`${a.numEggOne} sản phẩm`);
@@ -585,12 +713,12 @@ export class AutoFarm extends EventEmitter {
         }
 
         // Bán KHÔNG ĐẢO NGƯỢC ĐƯỢC: mặc định tắt, và khi bật vẫn chặn nhiều lớp
-        // (chỉ đúng loài trong danh sách, phải đủ lớn, còn sản phẩm thì để lại,
-        // và trần `maxSellsPerCycle` mỗi vòng). Xét TRƯỚC chữa/cho ăn để không
-        // đổ thuốc và thức ăn vào con sắp bán.
+        // (chỉ đúng loài trong danh sách, phải đủ lớn, còn sản phẩm thì để lại).
+        // Bỏ giới hạn trần số lượng con bán 1 vòng (hoặc maxSellsPerCycle <= 0 coi như không giới hạn).
         let didSell = false;
-        if (cfg.sellAnimals && sold < cfg.maxSellsPerCycle && a.numEggOne <= 0) {
-          const whenGrown = cfg.sellWhenGrownSpecies.includes(a.species);
+        const unconstrainedSell = cfg.maxSellsPerCycle <= 0 || !Number.isFinite(cfg.maxSellsPerCycle);
+        if (allowSell && (unconstrainedSell || sold < cfg.maxSellsPerCycle) && a.numEggOne <= 0) {
+          const whenGrown = sellSpeciesList.includes(a.species) || cfg.sellWhenGrownSpecies.includes(a.species);
           const nearDeath = cfg.sellNearDeathSpecies.includes(a.species);
           if (whenGrown || nearDeath) {
             // Thông số lấy từ mô tả trong bảng vật nuôi. Không có bảng thì KHÔNG
@@ -635,9 +763,23 @@ export class AutoFarm extends EventEmitter {
             seen.push(`máu ${a.health}`);
             did.push(`${doses} liều thuốc bổ (->~${hp})`);
           }
+          // Thuốc cúm (#120) / tiêu chảy (#121): gửi cả 2 thuốc để đảm bảo chữa dứt điểm bệnh.
+          if (cfg.healAnimals && (a.hasFlu || a.hasDiarrhea)) {
+            const hasFluCure = (inventoryMap.get(ITEM_FLU_CURE) ?? 0) > 0;
+            const hasDiarrheaCure = (inventoryMap.get(ITEM_DIARRHEA_CURE) ?? 0) > 0;
+            this.client.farm.useItem(idFarm, a.index, ITEM_FLU_CURE);
+            this.client.farm.useItem(idFarm, a.index, ITEM_DIARRHEA_CURE);
+            sent += 2;
+            seen.push(a.hasFlu && a.hasDiarrhea ? 'cúm + tiêu chảy' : a.hasFlu ? 'cúm' : 'tiêu chảy');
+            did.push('chữa bệnh (#120 & #121)');
+            if (!hasFluCure || !hasDiarrheaCure) {
+              did.push('(lưu ý: cần bật Tự mua xu hoặc mua sẵn thuốc #120,#121 trong kho)');
+            }
+            await tick();
+          }
           // Thức ăn chọn theo loài. Kiểm chứng: useItem(farm, 0, 116) làm
           // hunger true -> false.
-          if (feedAnimals && a.hunger) {
+          if (allowFeed && a.hunger) {
             const food = foodForSpecies(a.species);
             if (food !== undefined) {
               this.client.farm.useItem(idFarm, a.index, food);
