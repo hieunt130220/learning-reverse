@@ -427,7 +427,13 @@ export class AutoFarm extends EventEmitter {
           return s.growMinutes !== undefined && a.bornTime >= s.growMinutes;
         }
         if (cfg.sellNearDeathSpecies.includes(a.species)) {
-          return s.lifeMinutes !== undefined && a.bornTime >= s.lifeMinutes * cfg.nearDeathRatio;
+          if (s.lifeMinutes === undefined) return false;
+          const remainingMinutes = s.lifeMinutes - a.bornTime;
+          const cycle = s.productCycleMinutes ?? 360;
+          if (a.numEggOne > 0) {
+            return remainingMinutes - cycle <= 60;
+          }
+          return remainingMinutes <= 60;
         }
         return false;
       }).length;
@@ -730,7 +736,8 @@ export class AutoFarm extends EventEmitter {
         // Thu sản phẩm (trứng/sữa): miễn phí và không phá huỷ gì. `numEggOne > 0`
         // = đang có sản phẩm chờ lấy — căn cứ: con Rùa (loài không có sản phẩm)
         // đo được `numEggOne = 0` dù `harvestPer` đã 100.
-        if (allowHarvest && a.numEggOne > 0) {
+        const hadProduct = allowHarvest && a.numEggOne > 0;
+        if (hadProduct) {
           this.client.farm.harvestAnimal(idFarm, a.index);
           sent += 1;
           seen.push(`${a.numEggOne} sản phẩm`);
@@ -740,11 +747,11 @@ export class AutoFarm extends EventEmitter {
         }
 
         // Bán KHÔNG ĐẢO NGƯỢC ĐƯỢC: mặc định tắt, và khi bật vẫn chặn nhiều lớp
-        // (chỉ đúng loài trong danh sách, phải đủ lớn, còn sản phẩm thì để lại).
+        // (chỉ đúng loài trong danh sách, phải đủ lớn, hoặc không kịp đợt sản phẩm tiếp theo).
         // Bỏ giới hạn trần số lượng con bán 1 vòng (hoặc maxSellsPerCycle <= 0 coi như không giới hạn).
         let didSell = false;
         const unconstrainedSell = cfg.maxSellsPerCycle <= 0 || !Number.isFinite(cfg.maxSellsPerCycle);
-        if (allowSell && (unconstrainedSell || sold < cfg.maxSellsPerCycle) && a.numEggOne <= 0) {
+        if (allowSell && (unconstrainedSell || sold < cfg.maxSellsPerCycle)) {
           const whenGrown = sellSpeciesList.includes(a.species) || cfg.sellWhenGrownSpecies.includes(a.species);
           const nearDeath = cfg.sellNearDeathSpecies.includes(a.species);
           if (whenGrown || nearDeath) {
@@ -755,12 +762,21 @@ export class AutoFarm extends EventEmitter {
               noSpec += 1;
             } else {
               let why: string | undefined;
-              if (whenGrown && spec.growMinutes !== undefined && a.bornTime >= spec.growMinutes) {
+              if (whenGrown && spec.growMinutes !== undefined && a.bornTime >= spec.growMinutes && a.numEggOne <= 0) {
                 why = `đã lớn (${fmtDays(a.bornTime)}/${fmtDays(spec.growMinutes)} tuổi lớn)`;
               } else if (nearDeath && spec.lifeMinutes !== undefined) {
-                const limit = spec.lifeMinutes * cfg.nearDeathRatio;
-                if (a.bornTime >= limit) {
-                  why = `gần hết đời (${fmtDays(a.bornTime)}/${fmtDays(spec.lifeMinutes)} tuổi thọ)`;
+                const remainingMinutes = spec.lifeMinutes - a.bornTime;
+                const cycle = spec.productCycleMinutes ?? 360;
+                if (hadProduct) {
+                  // Vừa thu sản phẩm xong: kiểm tra có kịp đợt sản phẩm kế tiếp (cách >= 1h an toàn) không
+                  if (remainingMinutes - cycle <= 60) {
+                    why = `vừa thu xong, không kịp đợt kế tiếp (còn sống ${fmtDays(Math.max(0, remainingMinutes))} / chu kỳ ${(cycle / 60).toFixed(0)}h)`;
+                  }
+                } else if (a.numEggOne <= 0) {
+                  // Đang không có sản phẩm: bán nếu còn sống <= 1h
+                  if (remainingMinutes <= 60) {
+                    why = `sắp chết dưới 1h (còn sống ${Math.max(0, remainingMinutes)} phút)`;
+                  }
                 }
               }
               if (why) {

@@ -517,25 +517,56 @@ test('bán loài không sản phẩm khi đã quá tuổi lớn, giữ con chưa
   );
 });
 
-test('loài có sản phẩm chỉ bán khi đã sống quá nearDeathRatio của tuổi thọ', async () => {
-  // Gà: tuổi thọ 7 ngày = 10080 phút; ngưỡng 0,9 -> 9072 phút.
+test('loài có sản phẩm vừa thu xong: bán nếu không kịp đợt kế tiếp, giữ nếu kịp', async () => {
+  // Gà: tuổi thọ 7 ngày = 10080 phút, chu kỳ 6h = 360 phút.
+  // Con 0: bornTime = 9700 (còn 380p sống). 380 - 360 = 20 <= 60 -> không kịp đợt kế tiếp, BÁN.
+  // Con 1: bornTime = 9000 (còn 1080p sống). 1080 - 360 = 720 > 60 -> kịp đợt kế tiếp, GIỮ.
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
     animals: [
-      animal(0, { species: 50, bornTime: 2220 }), // 1,5 ngày — còn lâu, giữ
-      animal(1, { species: 50, bornTime: 9500 }), // 6,6 ngày — gần hết đời, bán
+      animal(0, { species: 50, bornTime: 9700, numEggOne: 20 }),
+      animal(1, { species: 50, bornTime: 9000, numEggOne: 20 }),
     ],
     updatedAt: Date.now(),
   });
-  const auto = await runOneCycle(client, { harvest: false, sellAnimals: true });
+  const auto = await runOneCycle(client, { harvest: false, sellAnimals: true, harvestAnimals: true });
+
+  assert.ok(client.calls.includes('harvestAnimal:0'), 'phải thu con 0');
+  assert.ok(client.calls.includes('harvestAnimal:1'), 'phải thu con 1');
+  assert.deepEqual(
+    client.calls.filter((c) => c.startsWith('sellAnimal:')),
+    ['sellAnimal:0'],
+    'chỉ bán con 0 vì con 0 không kịp đợt kế tiếp',
+  );
+  assert.ok(
+    auto.state().lastActions.some((a) => a.includes('không kịp đợt kế tiếp')),
+    'phải ghi rõ lý do bán',
+  );
+});
+
+test('loài có sản phẩm đang không có sản phẩm: bán nếu sắp chết dưới 1h, giữ nếu còn trên 1h', async () => {
+  // Gà: tuổi thọ 7 ngày = 10080 phút.
+  // Con 0: bornTime = 10040 (còn 40p <= 60p) -> BÁN.
+  // Con 1: bornTime = 9500 (còn 580p > 60p) -> GIỮ để chờ đợt trứng kế tiếp.
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [
+      animal(0, { species: 50, bornTime: 10040, numEggOne: 0 }),
+      animal(1, { species: 50, bornTime: 9500, numEggOne: 0 }),
+    ],
+    updatedAt: Date.now(),
+  });
+  const auto = await runOneCycle(client, { harvest: false, sellAnimals: true, harvestAnimals: true });
 
   assert.deepEqual(
     client.calls.filter((c) => c.startsWith('sellAnimal:')),
-    ['sellAnimal:1'],
+    ['sellAnimal:0'],
+    'chỉ bán con 0 vì còn sống dưới 1h',
   );
   assert.ok(
-    auto.state().lastActions.some((a) => a.includes('gần hết đời')),
+    auto.state().lastActions.some((a) => a.includes('sắp chết dưới 1h')),
     'phải ghi rõ lý do bán',
   );
 });
