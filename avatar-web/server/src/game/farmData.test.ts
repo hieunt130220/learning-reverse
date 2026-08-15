@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { classifyFarmSlots, decodeFarmData, isCellRipe, decodeAllTreeInfo } from './farmData.js';
+import { classifyFarmSlots, decodeFarmData, isCellRipe, decodeAllTreeInfo, parseAnimalSpec } from './farmData.js';
 import { FARM_PACKET_69_HEX } from './farmData.fixture.js';
 
 const packet = Buffer.from(FARM_PACKET_69_HEX, 'hex');
@@ -159,3 +159,28 @@ test('chưa có bảng cây thì không đoán bừa, chỉ tin hervestPer', () 
   assert.equal(isCellRipe({ ...base, time: 9999, hervestPer: 0 }, undefined), false);
   assert.equal(isCellRipe({ ...base, time: 10, hervestPer: 20 }, undefined), true);
 });
+
+test('parseAnimalSpec: parse đúng chu kỳ sản phẩm từ desc', () => {
+  const gaDesc = 'Thời gian lớn : 1 ngày - Bán : 950 xu - Sản phẩm : 20 trứng gà sau mỗi 6 giờ - Thời gian sống: 7 ngày';
+  const gaSpec = parseAnimalSpec(gaDesc);
+  assert.equal(gaSpec.growMinutes, 1440);
+  assert.equal(gaSpec.lifeMinutes, 10080);
+  assert.equal(gaSpec.productCycleMinutes, 360);
+  assert.equal(gaSpec.hasProduct, true);
+
+  const deDesc = 'Thời gian lớn : 1 ngày - Bán : 1200 xu - Sản phẩm : 40 sữa sau mỗi 4 giờ - Thời gian sống: 10 ngày';
+  const deSpec = parseAnimalSpec(deDesc);
+  assert.equal(deSpec.productCycleMinutes, 240);
+  assert.equal(deSpec.hasProduct, true);
+
+  const cuuDesc = 'Thời gian lớn : 2 ngày - Bán : 1500 xu - Sản phẩm : 20 lông sau mỗi 12 giờ - Thời gian sống: 10 ngày';
+  const cuuSpec = parseAnimalSpec(cuuDesc);
+  assert.equal(cuuSpec.productCycleMinutes, 720);
+  assert.equal(cuuSpec.hasProduct, true);
+
+  const heoDesc = 'Thời gian lớn : 2 ngày - Bán : 800 xu - Không  có sản phẩm - Thời gian sống: 20 ngày';
+  const heoSpec = parseAnimalSpec(heoDesc);
+  assert.equal(heoSpec.productCycleMinutes, undefined);
+  assert.equal(heoSpec.hasProduct, false);
+});
+

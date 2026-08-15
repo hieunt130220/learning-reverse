@@ -629,6 +629,8 @@ export interface AnimalSpec {
   growMinutes?: number;
   /** Phút sống được — `Thời gian sống: N ngày`. */
   lifeMinutes?: number;
+  /** Chu kỳ ra sản phẩm (phút), ví dụ: 6h -> 360 phút. */
+  productCycleMinutes?: number;
   /** Có sản phẩm thu nhiều lần (trứng/sữa/lông) không. */
   hasProduct: boolean;
 }
@@ -650,9 +652,11 @@ const DAY_MINUTES = 24 * 60;
 export function parseAnimalSpec(desc: string): AnimalSpec {
   const grow = /Thời gian lớn\s*:?\s*(\d+)\s*ngày/i.exec(desc);
   const life = /Thời gian sống\s*:?\s*(\d+)\s*ngày/i.exec(desc);
+  const cycle = /(?:sau\s+mỗi|mỗi)\s+(\d+)\s*giờ/i.exec(desc);
   return {
     growMinutes: grow ? Number(grow[1]) * DAY_MINUTES : undefined,
     lifeMinutes: life ? Number(life[1]) * DAY_MINUTES : undefined,
+    productCycleMinutes: cycle ? Number(cycle[1]) * 60 : undefined,
     hasProduct: /Sản phẩm\s*:/i.test(desc) && !/Không\s+có\s+sản phẩm/i.test(desc),
   };
 }
