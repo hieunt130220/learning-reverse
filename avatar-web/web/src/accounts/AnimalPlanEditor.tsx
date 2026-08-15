@@ -13,8 +13,6 @@ export interface AnimalPlanEditorProps {
   title: string;
   catalog: AnimalSpeciesInfo[];
   slotIndices?: number[];
-  observedAt?: number | null;
-  hasCache?: boolean;
   entries: AnimalPlanEntry[];
   disabled: boolean;
   onChange(entries: AnimalPlanEntry[]): void;
@@ -41,16 +39,10 @@ function entryKey(entry: AnimalPlanEntry | undefined): string {
   return entry.action === 'breed' ? `breed:${entry.speciesId}` : 'skip';
 }
 
-function cachedTime(value: number | null | undefined): string {
-  return !value ? 'chưa có' : new Date(value).toLocaleString('vi-VN');
-}
-
 export function AnimalPlanEditor({
   title,
   catalog,
   slotIndices = DEFAULT_ANIMAL_SLOTS,
-  observedAt,
-  hasCache = true,
   entries,
   disabled,
   onChange,
@@ -119,15 +111,6 @@ export function AnimalPlanEditor({
   return (
     <details className="tree-plan-editor" open>
       <summary className="tree-plan-heading">{title}</summary>
-      <p className="tree-plan-cache-note">
-        Dữ liệu cache, không phải trực tiếp · Cache slot vật nuôi: {cachedTime(observedAt)}
-      </p>
-
-      {!hasCache && (
-        <p className="tree-plan-guidance">
-          Chưa có cache slot vật nuôi (đang dùng {slotIndices.length} slot mặc định). Hãy kết nối tài khoản và đồng bộ farm.
-        </p>
-      )}
 
       <div className="tree-plan-palette" aria-label="Chọn loài để tô" style={{ marginTop: 10 }}>
         <button

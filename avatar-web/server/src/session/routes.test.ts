@@ -353,7 +353,7 @@ test('PUT config khi chưa có session trả application next-start', async () =
   db.close();
 });
 
-test('plan thiếu profile hoặc catalog bị từ chối mà không mutate', async () => {
+test('plan thiếu profile hoặc seed ngoài catalog bị từ chối mà không mutate', async () => {
   const cases = [
     {
       prepare: (_db: ReturnType<typeof newTestDb>, _id: number) => {},
@@ -363,9 +363,9 @@ test('plan thiếu profile hoặc catalog bị từ chối mà không mutate', a
     },
     {
       prepare: (db: ReturnType<typeof newTestDb>, id: number) => updateFarmCells(db, id, 3, [2]),
-      config: { treeCellPlan: [{ cellIndex: 2, action: 'seed', seedId: 6 }] },
-      status: 409,
-      code: 'seed-catalog-required',
+      config: { treeCellPlan: [{ cellIndex: 2, action: 'seed', seedId: 9999 }] },
+      status: 400,
+      code: 'invalid-tree-cell-plan',
     },
   ];
   for (const item of cases) {

@@ -79,26 +79,56 @@ class FakeClient extends EventEmitter {
     return slot;
   };
 
+  /** Bật để giả lập server không trả lời echo của lệnh farm. */
+  silent = false;
+  /** Phát echo của lệnh farm trong microtask, giống server trả lời gần như ngay. */
+  private echo(cmd: number): void {
+    if (this.silent) return;
+    queueMicrotask(() => this.emit('message', { command: cmd }));
+  }
+
+  waitForReply(cmd: number, timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      let onReply: (msg: { command: number }) => void;
+      const timer = setTimeout(() => {
+        this.removeListener('message', onReply);
+        resolve(false);
+      }, timeoutMs);
+      onReply = (msg: { command: number }): void => {
+        if (msg.command !== cmd) return;
+        clearTimeout(timer);
+        resolve(true);
+      };
+      this.on('message', onReply);
+    });
+  }
+
   readonly farm = {
     getInventory: (): void => {
       this.calls.push('getInventory');
+      this.echo(70);
       queueMicrotask(() => this.emit('inventory', this.inventory));
     },
     useItem: (idFarm: number, index: number, idItem: number): void => {
       this.calls.push(`useItem:${index}:${idItem}`);
+      this.echo(65);
     },
     harvest: (idFarm: number, index: number): void => {
       this.calls.push(`harvest:${index}`);
+      this.echo(64);
     },
     buyItem: (id: number, num: number, typeShop: number): void => {
       this.calls.push(`buy:${id}x${num}`);
+      this.echo(68);
     },
     plantSeed: (idFarm: number, cellIndex: number, seedId: number): void => {
       this.calls.push(`plantSeed:${cellIndex}:${seedId}`);
+      this.echo(66);
       this.onPlantSeed?.(cellIndex, seedId);
     },
     getTreeInfo: (): void => {
       this.calls.push('getTreeInfo');
+      this.echo(76);
       queueMicrotask(() => this.emit('trees', {
         trees: this.trees,
         items: this.items,
@@ -107,12 +137,15 @@ class FakeClient extends EventEmitter {
     },
     harvestAnimal: (idFarm: number, index: number): void => {
       this.calls.push(`harvestAnimal:${index}`);
+      this.echo(54);
     },
     sellAnimal: (idFarm: number, iddb: number): void => {
       this.calls.push(`sellAnimal:${iddb}`);
+      this.echo(53);
     },
     buyAnimal: (idAnimal: number, typeBuy: number): void => {
       this.calls.push(`buyAnimal:${idAnimal}:${typeBuy}`);
+      this.echo(51);
       if (this.honorBuyAnimal) {
         const slot = this.nextAnimalSlot();
         this.farmState.animals.push(
@@ -545,16 +578,44 @@ test('không bán con còn sản phẩm chưa thu — để vòng sau thu xong m
   );
 });
 
-test('trần maxSellsPerCycle chặn số con bán mỗi vòng', async () => {
+test('không giới hạn trần bán: bán hết con đủ lớn trong một vòng', async () => {
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
     animals: Array.from({ length: 6 }, (_, i) => animal(i, { species: 59, bornTime: 99999 })),
     updatedAt: Date.now(),
   });
-  await runOneCycle(client, { harvest: false, sellAnimals: true, maxSellsPerCycle: 2 });
+  await runOneCycle(client, { harvest: false, sellAnimals: true });
 
-  assert.equal(client.calls.filter((c) => c.startsWith('sellAnimal:')).length, 2);
+  assert.equal(client.calls.filter((c) => c.startsWith('sellAnimal:')).length, 6);
+});
+
+test('server im lặng không treo vòng: lệnh chưa có xác nhận vẫn đi tiếp', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(2, { idTree: -1 })],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  client.silent = true;
+  client.trees = [tree(5)];
+  client.inventory = [{ id: 5, num: 1 }];
+
+  const auto = new AutoFarm(client, { commandTimeoutMs: 50 });
+  const done = new Promise<void>((resolve) =>
+    auto.on('state', (s) => {
+      if (s.cycle > 0) resolve();
+    }),
+  );
+  auto.start({ seedId: 5, harvest: false, stepDelayMs: 300, startDelayMs: 0 });
+  await done;
+  auto.stop();
+
+  assert.ok(client.calls.includes('plantSeed:2:5'), 'lệnh vẫn được gửi');
+  assert.ok(
+    auto.state().lastActions.some((line) => line.includes('server im lặng')),
+    'phải ghi chú server im lặng thay vì treo',
+  );
 });
 
 test('mua hết vật nuôi theo kế hoạch trong 1 vòng, ao trước chuồng sau', async () => {

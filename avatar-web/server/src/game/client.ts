@@ -137,10 +137,15 @@ export class GameClient extends EventEmitter {
 
   private device: DeviceProfile = { ...DEFAULT_DEVICE };
   private keepAliveTimer?: NodeJS.Timeout;
+  /** Đóng socket khi server không gửi gói nào trong `silenceTimeoutMs`. */
+  private silenceTimer?: NodeJS.Timeout;
+  private lastRxAt = 0;
+  private readonly silenceTimeoutMs: number;
   readonly traffic: TrafficEntry[] = [];
 
-  constructor() {
+  constructor(options: { silenceTimeoutMs?: number } = {}) {
     super();
+    this.silenceTimeoutMs = options.silenceTimeoutMs ?? 120_000;
     this.session.on('traffic', (dir, cmd, body) => {
       const entry: TrafficEntry = {
         t: Date.now(),
@@ -160,6 +165,7 @@ export class GameClient extends EventEmitter {
     this.session.on('message', (msg) => this.onMessage(msg));
     this.session.on('closed', (info) => {
       this.stopKeepAlive();
+      this.stopSilenceWatchdog();
       const statusAtClose = this.status;
       const idleMs = info.lastDataAt === undefined ? undefined : info.closedAt - info.lastDataAt;
       const error = info.error
@@ -178,6 +184,51 @@ export class GameClient extends EventEmitter {
       this.setStatus('error');
       this.emit('log', `lỗi: ${err.message}`);
     });
+    this.startSilenceWatchdog();
+  }
+
+  /**
+   * Chờ phản hồi của lệnh farm vừa gửi (gói `cmd` bất kỳ). Resolve `true` nếu
+   * có gói về trong hạn, `false` nếu server im lặng tới khi hết giờ — vòng auto
+   * luôn phải tiếp tục dù chưa nhận được xác nhận.
+   */
+  waitForReply(cmd: number, timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      let onReply: (msg: Message) => void;
+      const timer = setTimeout(() => {
+        this.session.removeListener('message', onReply);
+        resolve(false);
+      }, timeoutMs);
+      onReply = (msg: Message): void => {
+        if (msg.command !== cmd) return;
+        clearTimeout(timer);
+        resolve(true);
+      };
+      this.session.on('message', onReply);
+    });
+  }
+
+  /**
+   * Game server đôi khi ngừng trả lời mà socket vẫn mở (status 'online'), khiến
+   * auto cứ bắn lệnh vào khoảng không. Watchdog đóng socket sau
+   * `silenceTimeoutMs` không nhận được gói nào để tầng phiên tự kết nối lại.
+   */
+  private startSilenceWatchdog(): void {
+    if (this.silenceTimeoutMs <= 0 || this.silenceTimer) return;
+    const check = (): void => {
+      if (this.status !== 'online' || this.lastRxAt === 0) return;
+      const idleMs = Date.now() - this.lastRxAt;
+      if (idleMs <= this.silenceTimeoutMs) return;
+      this.emit('log', `server im lặng ${Math.round(idleMs / 1000)}s — đóng socket để kết nối lại`);
+      this.session.close();
+    };
+    this.silenceTimer = setInterval(check, Math.min(10_000, this.silenceTimeoutMs));
+    this.silenceTimer.unref?.();
+  }
+
+  private stopSilenceWatchdog(): void {
+    if (this.silenceTimer) clearInterval(this.silenceTimer);
+    this.silenceTimer = undefined;
   }
 
   private setStatus(s: ClientStatus): void {
@@ -227,6 +278,7 @@ export class GameClient extends EventEmitter {
 
   logout(): void {
     this.stopKeepAlive();
+    this.stopSilenceWatchdog();
     this.session.close();
     this.setStatus('idle');
   }
@@ -347,6 +399,7 @@ export class GameClient extends EventEmitter {
   }
 
   private onMessage(msg: Message): void {
+    this.lastRxAt = Date.now();
     this.lastPacket.set(msg.command, msg.getData().toString('hex'));
     switch (msg.command) {
       case -34: {

@@ -11,6 +11,7 @@ import {
   setAutoEnabled,
 } from '../accounts/repo.js';
 import { getFarmProfile } from '../accounts/farmProfileRepo.js';
+import { DEFAULT_SEED_CATALOG } from '../accounts/defaultSeedCatalog.js';
 import type { AvatarSession, AvatarSessionOptions } from './avatarSession.js';
 import { BOOTSTRAP_STAGGER_MS, SessionManager } from './manager.js';
 
@@ -227,7 +228,7 @@ test('manager ghi cache trước khi broadcast farm và trees', async () => {
       profile: {
         farmId: 12,
         cellIndices: [2, 7],
-        seedCatalog: [],
+        seedCatalog: DEFAULT_SEED_CATALOG,
       },
     },
     {

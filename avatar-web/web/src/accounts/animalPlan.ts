@@ -29,6 +29,13 @@ export const POND_ANIMAL_CATALOG: AnimalSpeciesInfo[] = [
   { id: 59, name: 'Rùa', icon: '🐢' },
 ];
 
+// So slot luon co dinh, khong lay tu server va khong can cache.
+export const BARN_SLOT_COUNT = 20;
+export const POND_SLOT_COUNT = 10;
+
+export const DEFAULT_BARN_ANIMAL_SLOTS = Array.from({ length: BARN_SLOT_COUNT }, (_, i) => i);
+export const DEFAULT_POND_ANIMAL_SLOTS = Array.from({ length: POND_SLOT_COUNT }, (_, i) => i);
+
 export const DEFAULT_ANIMAL_SLOTS = [0, 1, 2, 3, 4, 5, 6, 7];
 
 export function applyAnimalPaint(

@@ -102,3 +102,15 @@ test('INFO_ANIMAL cập nhật đúng con theo số slot, không theo vị trí 
   assert.equal(animals.find((a) => a.index === 8)?.health, 100);
   assert.equal(animals.length, 12);
 });
+
+test('waitForReply true khi gói cmd về trong hạn', async () => {
+  const client = new GameClient();
+  const pending = client.waitForReply(65, 500);
+  client.session.emit('message', Message.fromData(65, Buffer.from([0, 0, 0])));
+  assert.equal(await pending, true);
+});
+
+test('waitForReply false khi server im lặng hết thời gian', async () => {
+  const client = new GameClient();
+  assert.equal(await client.waitForReply(66, 30), false);
+});

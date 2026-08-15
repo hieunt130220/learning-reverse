@@ -141,6 +141,8 @@ export interface AutoFarmClient {
   animals: AnimalInfo[];
   once(eventName: string | symbol, listener: () => void): this;
   removeListener(eventName: string | symbol, listener: () => void): this;
+  /** Chờ gói phản hồi `cmd` của lệnh vừa gửi; true = có gói, false = hết giờ. */
+  waitForReply(cmd: number, timeoutMs: number): Promise<boolean>;
   enterFarm(): void;
   farm: {
     getInventory(): void;
@@ -159,6 +161,8 @@ export interface AutoFarmClient {
 export interface AutoFarmOptions {
   sleep?: (ms: number) => Promise<void>;
   catalogTimeout?: (signal: AbortSignal) => Promise<void>;
+  /** Chờ phản hồi tối đa cho mỗi lệnh farm; hết giờ thì bỏ qua, không treo vòng. */
+  commandTimeoutMs?: number;
 }
 
 const ALWAYS_ON_CONFIG = {
@@ -200,7 +204,7 @@ const DEFAULTS: AutoFarmConfig = {
  * chứ không phát lệnh mù.
  *
  * Cố ý chỉ trồng theo `seedId`/`treeCellPlan`; các thao tác chăm sóc cơ bản dùng
- * policy luôn bật, còn bán và tự mua vẫn phải được bật rõ ràng trong config.
+ * policy luôn bật, còn bán vẫn phải được bật rõ ràng trong config (tự mua luôn bật, trần bán/chi không giới hạn).
  */
 export class AutoFarm extends EventEmitter {
   private timer?: NodeJS.Timeout;
@@ -209,6 +213,7 @@ export class AutoFarm extends EventEmitter {
   private pendingConfig?: AutoFarmConfig;
   private readonly wait: (ms: number) => Promise<void>;
   private readonly catalogTimeout: (signal: AbortSignal) => Promise<void>;
+  private readonly commandTimeoutMs: number;
   private cycle = 0;
   private lastRun?: number;
   private lastError?: string;
@@ -226,6 +231,7 @@ export class AutoFarm extends EventEmitter {
     super();
     this.wait = options.sleep ?? sleep;
     this.catalogTimeout = options.catalogTimeout ?? waitForCatalogTimeout;
+    this.commandTimeoutMs = options.commandTimeoutMs ?? 2_500;
   }
 
   state(): AutoFarmState {
@@ -386,6 +392,13 @@ export class AutoFarm extends EventEmitter {
       // dù không gửi gì. `tick` chỉ chờ; việc dừng vòng do `this.aborted` ở đầu
       // mỗi lượt lặp lo.
       const tick = (): Promise<void> => this.wait(cfg.stepDelayMs);
+
+      // Chờ xác nhận của từng lệnh (giới hạn `commandTimeoutMs`): server im lặng
+      // không được phép treo vòng — ghi chú rồi vẫn đi tiếp.
+      const confirm = async (cmd: number, label: string): Promise<void> => {
+        const ok = await this.client.waitForReply(cmd, this.commandTimeoutMs);
+        if (!ok) note(`server im lặng — chưa nhận xác nhận: ${label}`);
+      };
 
       // --- Ảnh chụp những gì vòng này NHÌN THẤY ------------------------------
       // Ghi cả khi không làm gì. `lastActions` vốn chỉ liệt kê việc ĐÃ làm, nên
@@ -620,6 +633,7 @@ export class AutoFarm extends EventEmitter {
           const need = growHours.get(c.idTree);
           seen.push(need === undefined ? `chín ${c.hervestPer}%` : `đủ tuổi ${c.time}/${need * 60} phút`);
           did.push('thu hoạch');
+          await confirm(64, `thu hoạch ô ${c.index}`);
           await tick();
         }
         if (c.idTree === -1) {
@@ -640,6 +654,7 @@ export class AutoFarm extends EventEmitter {
             sent += 1;
             seen.push('trống');
             did.push(`trồng #${plannedSeedId}`);
+            await confirm(66, `trồng #${plannedSeedId} ô ${c.index}`);
             await tick();
           }
         }
@@ -648,6 +663,7 @@ export class AutoFarm extends EventEmitter {
           sent += 1;
           seen.push('hạn');
           did.push(`tưới #${waterItemId}`);
+          await confirm(65, `tưới #${waterItemId} ô ${c.index}`);
           await tick();
         }
         if (c.isGrass && grassItemId !== undefined) {
@@ -655,6 +671,7 @@ export class AutoFarm extends EventEmitter {
           sent += 1;
           seen.push('cỏ');
           did.push(`nhổ cỏ #${grassItemId}`);
+          await confirm(65, `nhổ cỏ #${grassItemId} ô ${c.index}`);
           await tick();
         }
         if (c.isWorm && wormItemId !== undefined) {
@@ -662,6 +679,7 @@ export class AutoFarm extends EventEmitter {
           sent += 1;
           seen.push('sâu');
           did.push(`bắt sâu #${wormItemId}`);
+          await confirm(65, `bắt sâu #${wormItemId} ô ${c.index}`);
           await tick();
         }
         if (cfg.fertilizeCells && c.idTree !== -1 && c.vitalityPer < cfg.minVitality) {
@@ -669,6 +687,7 @@ export class AutoFarm extends EventEmitter {
           sent += 1;
           seen.push(`sức sống ${c.vitalityPer}`);
           did.push('bón phân');
+          await confirm(65, `bón phân ô ${c.index}`);
           await tick();
         }
 
@@ -716,6 +735,7 @@ export class AutoFarm extends EventEmitter {
           sent += 1;
           seen.push(`${a.numEggOne} sản phẩm`);
           did.push('thu sản phẩm');
+          await confirm(54, `thu sản phẩm ${name} slot ${a.index}`);
           await tick();
         }
 
@@ -749,6 +769,7 @@ export class AutoFarm extends EventEmitter {
                 sold += 1;
                 didSell = true;
                 did.push(`BÁN — ${why}`);
+                await confirm(53, `bán ${name} slot ${a.index}`);
                 await tick();
               }
             }
@@ -765,6 +786,7 @@ export class AutoFarm extends EventEmitter {
               sent += 1;
               hp += 20;
               doses += 1;
+              await confirm(65, `thuốc bổ slot ${a.index}`);
               await tick();
             }
             seen.push(`máu ${a.health}`);
@@ -782,6 +804,7 @@ export class AutoFarm extends EventEmitter {
             if (!hasFluCure || !hasDiarrheaCure) {
               did.push('(lưu ý: cần bật Tự mua xu hoặc mua sẵn thuốc #120,#121 trong kho)');
             }
+            await confirm(65, `chữa bệnh slot ${a.index}`);
             await tick();
           }
           // Thức ăn chọn theo loài. Kiểm chứng: useItem(farm, 0, 116) làm
@@ -793,6 +816,7 @@ export class AutoFarm extends EventEmitter {
               sent += 1;
               seen.push('đói');
               did.push(`cho ăn #${food}`);
+              await confirm(65, `cho ăn #${food} slot ${a.index}`);
               await tick();
             }
           }
@@ -864,6 +888,10 @@ function makeConfig(input: Partial<AutoFarmConfig>): AutoFarmConfig {
     ...DEFAULTS,
     ...input,
     ...ALWAYS_ON_CONFIG,
+    // Tran ban/chi khong gioi han va luon tu mua khi thieu (bo setup tren UI).
+    autoBuy: true,
+    buyBudgetXu: Number.MAX_SAFE_INTEGER,
+    maxSellsPerCycle: 0,
     sellWhenGrownSpecies: speciesList(input.sellWhenGrownSpecies, SPECIES_SELL_WHEN_GROWN),
     sellNearDeathSpecies: speciesList(input.sellNearDeathSpecies, SPECIES_SELL_NEAR_DEATH),
     treeCellPlan: validateTreeCellPlan(input.treeCellPlan),

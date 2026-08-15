@@ -11,7 +11,7 @@ import type {
   ItemInfo,
   TreeCellPlanEntry,
 } from '../../types.js';
-import { BARN_ANIMAL_CATALOG, DEFAULT_ANIMAL_SLOTS, POND_ANIMAL_CATALOG } from '../animalPlan.js';
+import { BARN_ANIMAL_CATALOG, DEFAULT_BARN_ANIMAL_SLOTS, DEFAULT_POND_ANIMAL_SLOTS, POND_ANIMAL_CATALOG } from '../animalPlan.js';
 import { AnimalPlanEditor } from '../AnimalPlanEditor.js';
 import { TreeCellPlanEditor } from '../TreeCellPlanEditor.js';
 
@@ -41,6 +41,13 @@ const ALWAYS_ON_AUTO_CONFIG = {
   waterItemId: 100,
   grassItemId: 123,
   wormItemId: 124,
+} satisfies Partial<AutoFarmConfigDto>;
+
+const FIXED_AUTO_CONFIG = {
+  maxSellsPerCycle: 0,
+  autoBuy: true,
+  buyBudgetXu: Number.MAX_SAFE_INTEGER,
+  stepDelayMs: 700,
 } satisfies Partial<AutoFarmConfigDto>;
 
 function sortedPlan(entries: TreeCellPlanEntry[] | undefined): TreeCellPlanEntry[] {
@@ -172,11 +179,7 @@ export function AutoFarmPanel({
   // Chuồng: Gà 50, Bò 51, Heo 52, Vịt 55 / Hồ: Cá chép 54, Rùa 59
   const [sellBarnSpeciesStr, setSellBarnSpeciesStr] = useState('50, 51, 52, 55');
   const [sellPondSpeciesStr, setSellPondSpeciesStr] = useState('54, 59');
-  const [maxSellsPerCycle, setMaxSellsPerCycle] = useState(0);
-  const [autoBuy, setAutoBuy] = useState(false);
-  const [buyBudgetXu, setBuyBudgetXu] = useState(5000);
   const [intervalSec, setIntervalSec] = useState(120);
-  const [stepDelayMs, setStepDelayMs] = useState(700);
 
   const [storedState, setStoredState] = useState<AutoConfigStateDto>(EMPTY_AUTO);
   const [draftPlan, setDraftPlan] = useState<TreeCellPlanEntry[]>([]);
@@ -208,11 +211,7 @@ export function AutoFarmPanel({
     setSellPondAnimals(config.sellPondAnimals ?? config.sellAnimals ?? false);
     setSellBarnSpeciesStr(config.sellBarnSpecies?.join(', ') ?? '50, 51, 52, 55');
     setSellPondSpeciesStr(config.sellPondSpecies?.join(', ') ?? '54, 59');
-    setMaxSellsPerCycle(config.maxSellsPerCycle ?? 0);
-    setAutoBuy(config.autoBuy ?? false);
-    setBuyBudgetXu(config.buyBudgetXu ?? 5000);
     setIntervalSec((config.intervalMs ?? 120_000) / 1000);
-    setStepDelayMs(config.stepDelayMs ?? 700);
   }, []);
 
   useEffect(() => {
@@ -326,11 +325,8 @@ export function AutoFarmPanel({
         sellBarnSpecies: idList(sellBarnSpeciesStr),
         sellPondSpecies: idList(sellPondSpeciesStr),
         sellWhenGrownSpecies: [...idList(sellBarnSpeciesStr), ...idList(sellPondSpeciesStr)],
-        maxSellsPerCycle,
-        autoBuy,
-        buyBudgetXu,
+        ...FIXED_AUTO_CONFIG,
         intervalMs: intervalSec * 1000,
-        stepDelayMs,
       });
       // Legacy start có body làm revision tăng ở server. Tải lại revision nhưng
       // không đụng vào draft kế hoạch chưa lưu của người dùng.
@@ -402,6 +398,7 @@ export function AutoFarmPanel({
         config: {
           ...storedState.config,
           ...ALWAYS_ON_AUTO_CONFIG,
+          ...FIXED_AUTO_CONFIG,
           treeCellPlan: sortedPlan(draftPlan),
           barnAnimalPlan: sortedAnimalPlan(draftBarnPlan),
           pondAnimalPlan: sortedAnimalPlan(draftPondPlan),
@@ -481,14 +478,8 @@ export function AutoFarmPanel({
     setPlanNotice('Đã tải bản cấu hình mới nhất từ máy chủ.');
   }
 
-  const barnAnimalSlots = useMemo(
-    () => (profile.barnAnimalSlots?.length > 0 ? profile.barnAnimalSlots : DEFAULT_ANIMAL_SLOTS),
-    [profile.barnAnimalSlots],
-  );
-  const pondAnimalSlots = useMemo(
-    () => (profile.pondAnimalSlots?.length > 0 ? profile.pondAnimalSlots : [0, 1, 2, 3]),
-    [profile.pondAnimalSlots],
-  );
+  const barnAnimalSlots = DEFAULT_BARN_ANIMAL_SLOTS;
+  const pondAnimalSlots = DEFAULT_POND_ANIMAL_SLOTS;
 
   return (
     <section className="card">
@@ -518,8 +509,6 @@ export function AutoFarmPanel({
           title="Kế hoạch vật nuôi chuồng theo slot"
           catalog={BARN_ANIMAL_CATALOG}
           slotIndices={barnAnimalSlots}
-          observedAt={profile.cellsObservedAt}
-          hasCache={(profile.barnAnimalSlots?.length ?? 0) > 0}
           entries={draftBarnPlan}
           disabled={!configReady || saving}
           onChange={(entries) => {
@@ -547,8 +536,6 @@ export function AutoFarmPanel({
           title="Kế hoạch vật nuôi hồ theo slot"
           catalog={POND_ANIMAL_CATALOG}
           slotIndices={pondAnimalSlots}
-          observedAt={profile.cellsObservedAt}
-          hasCache={(profile.pondAnimalSlots?.length ?? 0) > 0}
           entries={draftPondPlan}
           disabled={!configReady || saving}
           onChange={(entries) => {
@@ -562,24 +549,8 @@ export function AutoFarmPanel({
 
       <div className="row" style={{ marginTop: 12 }}>
         <label className="inline">
-          trần bán/vòng (0 = không giới hạn)
-          <input type="number" value={maxSellsPerCycle} onChange={(event) => setMaxSellsPerCycle(Number(event.target.value))} />
-        </label>
-        <label className="inline">
-          <input type="checkbox" checked={autoBuy} onChange={(event) => setAutoBuy(event.target.checked)} style={{ width: 'auto' }} />
-          tự mua khi thiếu (chỉ bằng xu)
-        </label>
-        <label className="inline">
-          trần chi/vòng (xu)
-          <input type="number" value={buyBudgetXu} onChange={(event) => setBuyBudgetXu(Number(event.target.value))} />
-        </label>
-        <label className="inline">
           chu kỳ (giây)
           <input type="number" value={intervalSec} onChange={(event) => setIntervalSec(Number(event.target.value))} />
-        </label>
-        <label className="inline">
-          nghỉ giữa lệnh (ms)
-          <input type="number" value={stepDelayMs} onChange={(event) => setStepDelayMs(Number(event.target.value))} />
         </label>
       </div>
 
