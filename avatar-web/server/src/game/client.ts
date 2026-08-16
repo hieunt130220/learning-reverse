@@ -436,6 +436,7 @@ export class GameClient extends EventEmitter {
       case -40: { // hộp thoại thông báo chung của server (lỗi login, giục update…)
         const reason = safeUtf(msg);
         this.emit('log', `server: ${reason}`);
+        this.emit('dialog', reason);
         const rejection = parseTemporaryLoginRejection(reason);
         if (rejection) this.emit('temporary-rejection', rejection);
         break;

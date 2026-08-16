@@ -11,6 +11,26 @@ export class ApiError extends Error {
 /** Đường dẫn được phép trả 401 mà không đá về /login (chính là lúc dò xem đã đăng nhập chưa). */
 const SILENT_401 = new Set(['/api/auth/me']);
 
+/**
+ * Parse JSON từ body. Proxy/reverse proxy lỗi (502, 404…) trả HTML, và `/api`
+ * rơi vào fallback SPA cũng trả `index.html` — đừng để `JSON.parse` ném ra
+ * SyntaxError "Unexpected token '<'" mù mịt trong UI.
+ */
+function parseBody(res: Response, text: string): any | null {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+    const message = isJson
+      ? `server trả về JSON hỏng (${res.status})`
+      : res.ok
+        ? 'server trả về HTML thay vì JSON — kiểm tra cấu hình proxy /api'
+        : `server trả về ${res.status} — backend đang tắt hoặc proxy lỗi`;
+    throw new ApiError(res.status, message, text);
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -21,7 +41,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  const data = parseBody(res, text);
 
   if (res.status === 401 && !SILENT_401.has(path)) {
     // Phiên hết hạn khi tab đang mở: đá về đăng nhập thay vì để UI trống trơn.

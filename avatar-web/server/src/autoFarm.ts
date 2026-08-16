@@ -549,11 +549,11 @@ export class AutoFarm extends EventEmitter {
       // trống phải đối chiếu với danh sách slot (farm.animalSlots) chứ không
       // phải duyệt animals.
       //
-      // Tín hiệu "mua thất bại": server KHÔNG có gói xác nhận riêng cho BUY_ANIMAL
-      // (cmd 51 RX chỉ chạy onBuyItem cập nhật kho, và dialog -40 dùng chung cho
-      // cả thành công lẫn thất bại). Cách đáng tin duy nhất là xin lại gói 69 sau
-      // mỗi lệnh mua và đếm con: số con không tăng = server từ chối (hết slot /
-      // hết tiền). Gặp từ chối thì DỪNG mua tiếp, sang task sau.
+      // Phản hồi từ server:
+      // - Mua THÀNH CÔNG: server gửi gói -3 (UPDATE_MONEY) với delta < 0 (trừ tiền).
+      // - Mua THẤT BẠI / HẾT CHỖ / HẾT TIỀN: server gửi gói -40 (dialog) báo lỗi
+      //   (ví dụ "Bạn không thể mua thêm vì nông trại đã hết chỗ.") hoặc timeout
+      //   mà không trừ tiền. Khi bị từ chối thì dừng mua nhóm đó và sang task kế.
       //
       // Thứ tự: AO trước (slot nhỏ, đứng đầu mảng), CHUỒNG sau.
       if (cfg.pondAnimalPlan || cfg.barnAnimalPlan) {
@@ -582,32 +582,87 @@ export class AutoFarm extends EventEmitter {
             if (this.aborted) return;
             const entry = bySlot.get(slot);
             if (entry === undefined || entry.action !== 'breed') continue;
-            const before = farm.animals.length;
             const speciesName = this.client.animals.find((x) => x.id === entry.speciesId)?.name
               ?? `loài ${entry.speciesId}`;
+
+            // Lắng nghe phản hồi: tiền trừ (thành công) hoặc dialog -40 / timeout (thất bại).
+            const buyResultPromise = new Promise<{ ok: boolean; reason?: string }>((resolve) => {
+              let settled = false;
+              let timer: NodeJS.Timeout | undefined;
+              let onMoney: ((m: any) => void) | undefined;
+              let onDialog: ((reason: string) => void) | undefined;
+              let onFarm: (() => void) | undefined;
+
+              const cleanup = () => {
+                if (timer) clearTimeout(timer);
+                if (onMoney) this.client.removeListener('money', onMoney);
+                if (onDialog) this.client.removeListener('dialog', onDialog);
+                if (onFarm) this.client.removeListener('farm', onFarm);
+              };
+
+              const finish = (result: { ok: boolean; reason?: string }) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(result);
+              };
+
+              timer = setTimeout(() => {
+                finish({ ok: false, reason: 'hết thời gian chờ phản hồi mua vật nuôi' });
+              }, 2000);
+
+              onMoney = (m: any) => {
+                if (m && typeof m.delta === 'number' && m.delta < 0) {
+                  finish({ ok: true });
+                }
+              };
+
+              onFarm = () => {
+                const currentCount = this.client.farmState?.animals.length ?? 0;
+                if (currentCount > farm.animals.length) {
+                  finish({ ok: true });
+                }
+              };
+
+              onDialog = (reason: string) => {
+                finish({ ok: false, reason });
+              };
+
+              this.client.once('money', onMoney);
+              this.client.once('dialog', onDialog);
+              this.client.once('farm', onFarm);
+            });
+
             this.client.farm.buyAnimal(entry.speciesId, SHOP_XU);
             sent += 1;
-            const ref = new Promise<void>((resolve) => {
-              const t = setTimeout(resolve, 500);
-              this.client.once('farm', () => {
-                clearTimeout(t);
-                resolve();
-              });
-            });
-            await ref;
-            const after = this.client.farmState?.animals.length ?? before;
-            if (after > before) {
+
+            const buyResult = await buyResultPromise;
+            if (buyResult.ok) {
               boughtThisRound += 1;
               note(`mua vật nuôi ${groupName} slot ${slot}: ${speciesName} (#${entry.speciesId})`);
               occupied.add(slot);
-              // Slot mới server cấp nằm ở ĐẦU mảng — thêm nó vào occupied để
-              // các slot kế tiếp đã mua không bị trùng.
+              // Cập nhật danh sách vật nuôi cục bộ để các vòng / slot sau nhận diện đúng
+              if (!farm.animals.some((a) => a.index === slot)) {
+                farm.animals.push({
+                  index: slot,
+                  species: entry.speciesId,
+                  bornTime: 0,
+                  health: 100,
+                  harvestPer: 0,
+                  numEggOne: 0,
+                  hunger: false,
+                  hasFlu: false,
+                  hasDiarrhea: false,
+                });
+              }
               const added = this.client.farmState?.animals.filter(
                 (a) => !farm.animals.some((x) => x.index === a.index),
               ) ?? [];
               for (const a of added) occupied.add(a.index);
+              await tick();
             } else {
-              note(`dừng mua vật nuôi ${groupName}: server từ chối sau slot ${slot} — sang task kế`);
+              const detail = buyResult.reason ? ` (${buyResult.reason})` : '';
+              note(`dừng mua vật nuôi ${groupName}: server từ chối sau slot ${slot}${detail} — sang task kế`);
               break;
             }
           }

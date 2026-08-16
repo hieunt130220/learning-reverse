@@ -151,7 +151,14 @@ class FakeClient extends EventEmitter {
         this.farmState.animals.push(
           animal(slot, { species: idAnimal, bornTime: 0 }),
         );
-        queueMicrotask(() => this.emit('farm', this.farmState));
+        queueMicrotask(() => {
+          this.emit('money', { delta: -2000, type: 1, balance: 10000 });
+          this.emit('farm', this.farmState);
+        });
+      } else {
+        queueMicrotask(() => {
+          this.emit('dialog', 'Bạn không thể mua thêm vì nông trại đã hết chỗ.');
+        });
       }
     },
   };
