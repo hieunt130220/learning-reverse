@@ -253,7 +253,7 @@ test('update config khi auto dừng giữ cho lần start kế tiếp', async ()
   assert.deepEqual(h.autos[0].lastCfg, { seedId: 7 });
 });
 
-test('refresh bỏ qua trees sớm và payload lỗi, chỉ nhận catalog đúng sau farm', async () => {
+test('refresh hoàn thành ngay khi nhận sự kiện farm và cleanup listener', async () => {
   const h = harness();
   await h.session.start();
 
@@ -263,25 +263,15 @@ test('refresh bỏ qua trees sớm và payload lỗi, chỉ nhận catalog đún
     completed = true;
   });
   assert.deepEqual(h.clients[0].calls, ['enterFarm']);
-  h.clients[0].emit('trees', { trees: [], items: [], animals: [] });
-  await flush();
   assert.equal(completed, false);
-  assert.equal(h.clients[0].listenerCount('trees'), 2);
+  assert.equal(h.clients[0].listenerCount('farm'), 2);
 
   h.clients[0].emit('farm', { idFarm: 1, cells: [], animals: [], updatedAt: 1 });
-  assert.deepEqual(h.clients[0].calls, ['enterFarm', 'getTreeInfo']);
-  h.clients[0].emit('farm', { idFarm: 1, cells: [], animals: [], updatedAt: 2 });
-  assert.deepEqual(h.clients[0].calls, ['enterFarm', 'getTreeInfo']);
-  h.clients[0].emit('trees', { trees: [] });
-  await flush();
-  assert.equal(completed, false);
-  assert.equal(h.clients[0].listenerCount('trees'), 2);
-
-  h.clients[0].emit('trees', { trees: [], items: [], animals: [] });
   await refresh;
 
+  assert.equal(completed, true);
+  assert.deepEqual(h.clients[0].calls, ['enterFarm']);
   assert.equal(h.clients[0].listenerCount('farm'), 1);
-  assert.equal(h.clients[0].listenerCount('trees'), 1);
   assert.equal(h.pendingTimers().length, 0);
 });
 
@@ -293,29 +283,11 @@ test('refresh quá hạn dùng timer tiêm và chỉ cleanup listener riêng', a
   assert.equal(h.pendingTimers().length, 1);
   assert.equal(h.pendingTimers()[0].delay, 321);
   assert.equal(h.clients[0].listenerCount('farm'), 2);
-  assert.equal(h.clients[0].listenerCount('trees'), 2);
   h.fireTimer();
 
   await assert.rejects(refresh, /quá hạn đồng bộ farm/);
   assert.equal(h.clients[0].listenerCount('farm'), 1);
-  assert.equal(h.clients[0].listenerCount('trees'), 1);
   assert.deepEqual(h.clients[0].calls, ['enterFarm']);
-});
-
-test('refresh reject ngay và cleanup khi lệnh getTreeInfo ném', async () => {
-  const h = harness({}, { treeInfoError: new Error('không gửi được catalog') });
-  await h.session.start();
-
-  const refresh = h.session.refreshFarmProfile(1_000);
-  assert.doesNotThrow(() => {
-    h.clients[0].emit('farm', { idFarm: 1, cells: [], animals: [], updatedAt: 1 });
-  });
-  await assert.rejects(refresh, /không gửi được catalog/);
-
-  assert.deepEqual(h.clients[0].calls, ['enterFarm', 'getTreeInfo']);
-  assert.equal(h.pendingTimers().length, 0);
-  assert.equal(h.clients[0].listenerCount('farm'), 1);
-  assert.equal(h.clients[0].listenerCount('trees'), 1);
 });
 
 test('refresh yêu cầu client online', async () => {

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 
+import { DEFAULT_SEED_CATALOG } from './accounts/defaultSeedCatalog.js';
 import {
   GROWN_PERCENT,
   ITEM_DIARRHEA_CURE,
@@ -371,14 +372,13 @@ export class AutoFarm extends EventEmitter {
 
       const plantingConfigured = cfg.seedId !== undefined
         || cfg.treeCellPlan?.some((entry) => entry.action === 'seed') === true;
-      // Thu hoạch cũng cần bảng cây: điều kiện chín là `time >= growHours × 60`,
-      // không có bảng thì không biết ô nào đã đủ tuổi và auto sẽ bỏ qua hết.
-      const needTreeCatalog = plantingConfigured || cfg.harvest;
-      // Luôn xin lại catalog mỗi vòng: một gói 76 (~13 KB) là nguồn CẢ ba bảng
-      // cây + vật phẩm + vật nuôi. Chỉ xin khi thiếu — nếu đã có (kể cả từ vòng
-      // trước) thì không tốn thêm gói nào.
+      // Thu hoạch cần bảng cây: điều kiện chín là `time >= growHours × 60`.
+      // Với DEFAULT_SEED_CATALOG, các cây mặc định luôn có sẵn thông tin thời gian lớn.
+      // fetchTreeCatalog chỉ cần nếu bật bán vật nuôi hoặc mua vật phẩm tự động.
+      const needTreeCatalog = cfg.sellAnimals || cfg.autoBuy;
+      // Chỉ xin khi thiếu vật phẩm/vật nuôi — nếu đã có thì không tốn thêm gói nào.
       const treeCatalogTimedOut = await this.fetchTreeCatalog(
-        needTreeCatalog || cfg.sellAnimals || cfg.autoBuy,
+        needTreeCatalog,
         note,
       );
       const specs = new Map(
@@ -404,10 +404,12 @@ export class AutoFarm extends EventEmitter {
       // Ghi cả khi không làm gì. `lastActions` vốn chỉ liệt kê việc ĐÃ làm, nên
       // "không có gì để làm" và "có việc nhưng lệnh bị server bỏ qua" đều hiện
       // ra y hệt nhau: một danh sách rỗng. Hai dòng dưới tách bạch hai ca đó.
-      // Giờ để lớn theo loại cây, lấy từ bảng cây (gói 76). `TreeInfo.growMinutes`
-      // bị đặt sai tên: đơn vị là GIỜ. Không có bảng thì `undefined` và
-      // `isCellRipe` lùi về tín hiệu `hervestPer`, không đoán mò.
-      const growHours = new Map(this.client.trees.map((t) => [t.id, t.growMinutes]));
+      // Giờ để lớn theo loại cây, lấy từ bảng cây (gói 76) kết hợp DEFAULT_SEED_CATALOG.
+      // `TreeInfo.growMinutes` bị đặt sai tên: đơn vị là GIỜ.
+      const growHours = new Map<number, number>([
+        ...DEFAULT_SEED_CATALOG.map((s) => [s.id, s.growMinutes] as const),
+        ...this.client.trees.map((t) => [t.id, t.growMinutes] as const),
+      ]);
       const cellRipe = (c: FarmCell): boolean => isCellRipe(c, growHours.get(c.idTree));
 
       // KHÔNG viết `filter(isCellRipe)`: filter truyền cả chỉ số mảng vào tham số
@@ -679,7 +681,10 @@ export class AutoFarm extends EventEmitter {
       // phụ thuộc kho; chăm sóc ô là việc bảo trì nên xếp sau.
       const planByCell = new Map(cfg.treeCellPlan?.map((entry) => [entry.cellIndex, entry]));
       const seedInventory = new Map(this.client.inventory.map((item) => [item.id, item.num]));
-      const knownSeeds = new Set(this.client.trees.map((tree) => tree.id));
+      const knownSeeds = new Set<number>([
+        ...DEFAULT_SEED_CATALOG.map((s) => s.id),
+        ...this.client.trees.map((tree) => tree.id),
+      ]);
       for (const c of farm.cells) {
         if (this.aborted) return;
         const seen: string[] = [];

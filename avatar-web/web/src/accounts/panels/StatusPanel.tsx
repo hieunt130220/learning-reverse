@@ -49,13 +49,6 @@ export function StatusPanel({
         <button onClick={() => void toggle()} disabled={busy || connecting}>
           {online ? 'Ngắt' : connecting ? 'Đang kết nối…' : 'Kết nối'}
         </button>
-        <button
-          className="ghost"
-          onClick={() => void apiPost(`/api/accounts/${accountId}/enter-farm`)}
-          disabled={!online}
-        >
-          Vào nông trại / làm mới
-        </button>
       </div>
       {farmSync?.status === 'syncing' && (
         <p className="hint">Đang tự động đồng bộ dữ liệu nông trại…</p>

@@ -146,10 +146,8 @@ describe('TreeCellPlanEditor', () => {
     }
   });
 
-  test('không có cache ô thì khóa editor và nút đồng bộ vẫn hoạt động', async () => {
-    const onRefresh = vi.fn();
+  test('không có cache ô thì khóa editor', async () => {
     const onChange = vi.fn();
-    const user = userEvent.setup();
     render(
       <TreeCellPlanEditor
         profile={{
@@ -164,9 +162,7 @@ describe('TreeCellPlanEditor', () => {
         }}
         entries={[]}
         disabled={false}
-        refreshing={false}
         onChange={onChange}
-        onRefresh={onRefresh}
       />,
     );
 
@@ -174,8 +170,6 @@ describe('TreeCellPlanEditor', () => {
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Mặc định/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Không trồng/ })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: /Kết nối và đồng bộ farm/ }));
-    expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -229,7 +223,7 @@ describe('TreeCellPlanEditor', () => {
     expect(onChange).toHaveBeenLastCalledWith([]);
   });
 
-  test('cache đầy đủ hiện timestamp cache, cảnh báo entry hỏng và tóm tắt kế hoạch', () => {
+  test('cảnh báo entry hỏng và tóm tắt kế hoạch', () => {
     render(
       <ControlledEditor
         farmProfile={profile([2, 7, 19])}
@@ -241,9 +235,6 @@ describe('TreeCellPlanEditor', () => {
       />,
     );
 
-    expect(screen.getByText(/Dữ liệu cache, không phải trực tiếp/i)).toBeInTheDocument();
-    expect(screen.getByText(/Cache ô:/i)).toBeInTheDocument();
-    expect(screen.getByText(/Cache hạt:/i)).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent(/2 mục kế hoạch không khớp cache/i);
     expect(screen.getByRole('button', { name: /Ô 2/ })).toHaveClass('tree-plan-cell--invalid');
     expect(screen.getByText(/Ô 99.*không có trong cache/i)).toHaveClass(

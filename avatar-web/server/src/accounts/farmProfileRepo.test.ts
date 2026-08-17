@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { createUser } from '../auth/users.js';
 import { newTestDb, TEST_KEY } from '../test-helpers.js';
+import { DEFAULT_SEED_CATALOG } from './defaultSeedCatalog.js';
 import { createAccount } from './repo.js';
 import {
   deleteFarmProfile,
@@ -24,14 +25,14 @@ function setupAccount() {
   return { db, account };
 }
 
-test('profile chưa được cache trả object rỗng có kiểu ổn định', () => {
+test('profile chưa được cache trả object rỗng có kiểu ổn định và seedCatalog mặc định', () => {
   const { db, account } = setupAccount();
   assert.deepEqual(getFarmProfile(db, account.id), {
     farmId: null,
     cellIndices: [],
     barnAnimalSlots: [],
     pondAnimalSlots: [],
-    seedCatalog: [],
+    seedCatalog: DEFAULT_SEED_CATALOG,
     cellsObservedAt: null,
     seedsObservedAt: null,
     updatedAt: null,
@@ -39,7 +40,7 @@ test('profile chưa được cache trả object rỗng có kiểu ổn định',
   db.close();
 });
 
-test('cell và catalog upsert từng phần không xóa nhau', () => {
+test('cell và catalog upsert từng phần không xóa nhau và seedCatalog luôn là DEFAULT_SEED_CATALOG', () => {
   const { db, account } = setupAccount();
   updateFarmCells(db, account.id, 12, [7, 2, 7], [4, 5], [0, 1], 100);
   updateSeedCatalog(db, account.id, [
@@ -51,7 +52,7 @@ test('cell và catalog upsert từng phần không xóa nhau', () => {
     cellIndices: [2, 7],
     barnAnimalSlots: [4, 5],
     pondAnimalSlots: [0, 1],
-    seedCatalog: [{ id: 6, name: 'Hoa hồng', growMinutes: 5, value: 10 }],
+    seedCatalog: DEFAULT_SEED_CATALOG,
     cellsObservedAt: 100,
     seedsObservedAt: 200,
     updatedAt: 200,
@@ -59,20 +60,14 @@ test('cell và catalog upsert từng phần không xóa nhau', () => {
   db.close();
 });
 
-test('catalog unique theo id và sắp tên theo locale rồi id', () => {
+test('updateSeedCatalog vẫn ghi nhận seedsObservedAt và getFarmProfile giữ DEFAULT_SEED_CATALOG', () => {
   const { db, account } = setupAccount();
   updateSeedCatalog(db, account.id, [
     { id: 9, name: 'Sen', growMinutes: 8, value: 20 },
-    { id: 7, name: 'Hồng', growMinutes: 4, value: 12 },
-    { id: 6, name: 'Hồng', growMinutes: 5, value: 10 },
-    { id: 9, name: 'Cúc', growMinutes: 3, value: 8 },
   ], 50);
 
-  assert.deepEqual(getFarmProfile(db, account.id).seedCatalog, [
-    { id: 9, name: 'Cúc', growMinutes: 3, value: 8 },
-    { id: 6, name: 'Hồng', growMinutes: 5, value: 10 },
-    { id: 7, name: 'Hồng', growMinutes: 4, value: 12 },
-  ]);
+  assert.deepEqual(getFarmProfile(db, account.id).seedCatalog, DEFAULT_SEED_CATALOG);
+  assert.equal(getFarmProfile(db, account.id).seedsObservedAt, 50);
   db.close();
 });
 

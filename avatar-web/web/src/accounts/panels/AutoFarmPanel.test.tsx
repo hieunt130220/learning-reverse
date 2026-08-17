@@ -207,23 +207,6 @@ test('config thành công vẫn hydrate và Bật đúng stored values khi profi
   }));
 });
 
-test('refresh thành công xoá lỗi profile GET ban đầu', async () => {
-  mocks.apiGet.mockImplementation((path: string) => {
-    if (path.endsWith('/auto/config')) return Promise.resolve({ revision: 4, config: storedConfig });
-    if (path.endsWith('/farm/profile')) return Promise.reject(new Error('profile ban đầu lỗi'));
-    throw new Error(`GET ngoài dự kiến: ${path}`);
-  });
-  mocks.apiPost.mockResolvedValueOnce(completeProfile);
-  renderPanel();
-
-  expect(await screen.findByText(/Không tải được farm profile.*profile ban đầu lỗi/i)).toBeInTheDocument();
-  await openPlanEditor();
-  await userEvent.click(screen.getByRole('button', { name: 'Kết nối và đồng bộ farm' }));
-
-  expect(await screen.findByRole('button', { name: /Hoa hồng/ })).toBeInTheDocument();
-  expect(screen.queryByText(/profile ban đầu lỗi/i)).not.toBeInTheDocument();
-});
-
 test('config pending khóa Bật dù profile đã xong và không gửi hard-coded defaults', async () => {
   const pendingConfig = deferred<AutoConfigResponse>();
   mocks.apiGet.mockImplementation((path: string) => {
@@ -371,20 +354,6 @@ test('400 invalid plan hiện đúng cell/seed sai và không xoá draft', async
   expect(await screen.findByText(/99/)).toBeInTheDocument();
   expect(screen.getByText(/77/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Ô 7.*Không trồng/i })).toBeInTheDocument();
-});
-
-test('refresh profile thay cache hiển thị bằng response server', async () => {
-  installGets({ revision: 0, config: {} }, { ...completeProfile, seedCatalog: [] });
-  mocks.apiPost.mockResolvedValueOnce(completeProfile);
-  renderPanel();
-  await openPlanEditor();
-  // Cache trống: không có hạt nào từ server, chỉ default catalog + hướng dẫn.
-  expect(screen.queryByText(/Chưa có cache ô farm/)).not.toBeInTheDocument();
-
-  await userEvent.click(screen.getByRole('button', { name: 'Kết nối và đồng bộ farm' }));
-
-  expect(await screen.findByRole('button', { name: /Hoa hồng/ })).toBeInTheDocument();
-  expect(mocks.apiPost).toHaveBeenCalledWith('/api/accounts/1/farm/profile/refresh');
 });
 
 test('Bật gửi legacy form patch không kèm plan; Tắt không gửi config', async () => {
@@ -588,12 +557,7 @@ test('đổi account reset trạng thái save pending; response cũ không làm 
   expect(screen.getByRole('button', { name: /Ô 2.*Mặc định/i })).toBeInTheDocument();
 });
 
-test('đổi account reset trạng thái refresh pending; profile cũ không ghi đè profile mới', async () => {
-  const oldRefresh = deferred<FarmProfileDto>();
-  mocks.apiPost.mockImplementation((path: string) => {
-    if (path === '/api/accounts/1/farm/profile/refresh') return oldRefresh.promise;
-    return Promise.resolve({});
-  });
+test('đổi account reset form và hiển thị profile mới', async () => {
   mocks.apiGet.mockImplementation((path: string) => {
     if (path === '/api/accounts/1/auto/config') return Promise.resolve({ revision: 1, config: {} });
     if (path === '/api/accounts/1/farm/profile') return Promise.resolve(profileWithSeed(11, 'Hạt cũ'));
@@ -603,16 +567,8 @@ test('đổi account reset trạng thái refresh pending; profile cũ không ghi
   });
   const view = renderPanel({ accountId: 1 });
   await openPlanEditor();
-  await userEvent.click(screen.getByRole('button', { name: 'Kết nối và đồng bộ farm' }));
-  expect(screen.getByRole('button', { name: 'Đang đồng bộ…' })).toBeDisabled();
 
   view.rerender(<AutoFarmPanel accountId={2} auto={stoppedAuto} items={[]} />);
   expect(await screen.findByRole('button', { name: /Hạt mới/ })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Kết nối và đồng bộ farm' })).toBeEnabled();
-
-  oldRefresh.resolve(profileWithSeed(11, 'Hạt cũ'));
-  await oldRefresh.promise;
-  await Promise.resolve();
-  expect(screen.getByRole('button', { name: /Hạt mới/ })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Hạt cũ/ })).not.toBeInTheDocument();
 });

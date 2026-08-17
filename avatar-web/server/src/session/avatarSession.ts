@@ -78,17 +78,6 @@ const EMPTY_AUTO: AutoFarmState = { running: false, cycle: 0, lastActions: [] };
 const EMPTY_MACRO: MacroState = { running: false, cycle: 0 };
 const EMPTY_FARM_SYNC: FarmSyncState = { status: 'idle' };
 
-function isTreesPayload(payload: unknown): boolean {
-  return typeof payload === 'object'
-    && payload !== null
-    && 'trees' in payload
-    && Array.isArray(payload.trees)
-    && 'items' in payload
-    && Array.isArray(payload.items)
-    && 'animals' in payload
-    && Array.isArray(payload.animals);
-}
-
 /**
  * Một tài khoản avatar đang sống trên server: giữ `GameClient` + `AutoFarm` +
  * `MacroRunner`, đệm log/traffic trong RAM, và tự kết nối lại khi rớt.
@@ -207,7 +196,6 @@ export class AvatarSession {
     if (client.status !== 'online') throw new Error('phiên chưa online');
     const epoch = this.connectionEpoch;
     let timeout: NodeJS.Timeout | undefined;
-    let waitingForCatalog = false;
     let rejectRefresh: ((reason: Error) => void) | undefined;
     let resolveRefresh: (() => void) | undefined;
     const clearTimeoutFn = realTimer ? clearTimeout : this.clearTimeoutFn;
@@ -229,23 +217,9 @@ export class AvatarSession {
         rejectRefresh?.(new Error('phiên đã thay đổi khi đồng bộ farm'));
         return;
       }
-      waitingForCatalog = true;
-      try {
-        client.farm.getTreeInfo();
-      } catch (error) {
-        rejectRefresh?.(error instanceof Error ? error : new Error(String(error)));
-      }
-    };
-    const onTrees = (payload: unknown): void => {
-      if (!waitingForCatalog || !isTreesPayload(payload)) return;
-      if (!this.isCurrent(client, epoch)) {
-        rejectRefresh?.(new Error('phiên đã thay đổi khi đồng bộ farm'));
-        return;
-      }
       resolveRefresh?.();
     };
     client.once('farm', onFarm);
-    client.on('trees', onTrees);
 
     try {
       client.enterFarm();
@@ -253,7 +227,6 @@ export class AvatarSession {
     } finally {
       if (timeout) clearTimeoutFn(timeout);
       client.removeListener('farm', onFarm);
-      client.removeListener('trees', onTrees);
     }
   }
 

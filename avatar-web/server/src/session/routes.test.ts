@@ -5,6 +5,7 @@ import express from 'express';
 import { newTestDb, startTestServer, TEST_KEY } from '../test-helpers.js';
 import { authRouter } from '../auth/routes.js';
 import { accountsRouter } from '../accounts/routes.js';
+import { DEFAULT_SEED_CATALOG } from '../accounts/defaultSeedCatalog.js';
 import { getFarmProfile, updateFarmCells, updateSeedCatalog } from '../accounts/farmProfileRepo.js';
 import { getAccountById, getAutoConfig, saveAutoConfig } from '../accounts/repo.js';
 import type { AvatarSession, AvatarSessionOptions } from './avatarSession.js';
@@ -415,7 +416,7 @@ test('plan lệch profile trả danh sách lỗi chính xác cho PUT và legacy 
   const invalidConfig = {
     treeCellPlan: [
       { cellIndex: 4, action: 'seed', seedId: 8 },
-      { cellIndex: 9, action: 'seed', seedId: 7 },
+      { cellIndex: 9, action: 'seed', seedId: 999 },
       { cellIndex: 10, action: 'skip' },
     ],
   };
@@ -432,7 +433,7 @@ test('plan lệch profile trả danh sách lỗi chính xác cho PUT và legacy 
     assert.equal(response.status, 400);
     assert.equal(response.body.code, 'invalid-tree-cell-plan');
     assert.deepEqual(response.body.invalidCellIndices, [9, 10]);
-    assert.deepEqual(response.body.invalidSeedIds, [7]);
+    assert.deepEqual(response.body.invalidSeedIds, [999]);
     assert.deepEqual(getAutoConfig(db, getAccountById(db, id)!.userId, id), {
       revision: 0,
       config: {},
@@ -451,7 +452,7 @@ test('GET profile trả cache typed và refresh offline/timeout/online đúng co
     cellIndices: [],
     barnAnimalSlots: [],
     pondAnimalSlots: [],
-    seedCatalog: [],
+    seedCatalog: DEFAULT_SEED_CATALOG,
     cellsObservedAt: null,
     seedsObservedAt: null,
     updatedAt: null,
@@ -476,9 +477,7 @@ test('GET profile trả cache typed và refresh offline/timeout/online đúng co
   assert.equal(refreshed.status, 200);
   assert.deepEqual(refreshed.body, getFarmProfile(db, id));
   assert.deepEqual(refreshed.body.cellIndices, [2]);
-  assert.deepEqual(refreshed.body.seedCatalog, [
-    { id: 6, name: 'Lúa', growMinutes: 5, value: 10 },
-  ]);
+  assert.deepEqual(refreshed.body.seedCatalog, DEFAULT_SEED_CATALOG);
   await server.close();
   db.close();
 });

@@ -558,14 +558,12 @@ export function AutoFarmPanel({
         profile={profile}
         entries={draftPlan}
         disabled={!configReady || saving}
-        refreshing={refreshing}
         onChange={(entries) => {
           setDraftPlan(sortedPlan(entries));
           setPlanNotice('');
           setPlanError('');
           setConflict(null);
         }}
-        onRefresh={() => void refreshProfile()}
       />
       <div className="row tree-plan-save-row">
         <button type="button" onClick={() => void savePlan()} disabled={!configReady || saving || !dirty}>

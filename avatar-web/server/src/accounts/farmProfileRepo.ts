@@ -222,7 +222,7 @@ export function getFarmProfile(db: Db, accountId: number): FarmProfile {
       cellIndices: [],
       barnAnimalSlots: [],
       pondAnimalSlots: [],
-      seedCatalog: [],
+      seedCatalog: DEFAULT_SEED_CATALOG,
     };
   }
   const allSlots = decodeAnimalSlots(row.animal_slots_json);
@@ -240,7 +240,7 @@ export function getFarmProfile(db: Db, accountId: number): FarmProfile {
     cellIndices: decodeCells(row.cell_indices_json),
     barnAnimalSlots: split.barnAnimalSlots,
     pondAnimalSlots: split.pondAnimalSlots,
-    seedCatalog: decodeSeedCatalog(row.seed_catalog_json),
+    seedCatalog: DEFAULT_SEED_CATALOG,
     cellsObservedAt: row.cells_observed_at,
     seedsObservedAt: row.seeds_observed_at,
     updatedAt: row.updated_at,

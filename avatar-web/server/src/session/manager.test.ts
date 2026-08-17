@@ -180,7 +180,7 @@ test('permanent failure chỉ tắt cờ, giữ config envelope', async () => {
   db.close();
 });
 
-test('manager ghi cache trước khi broadcast farm và trees', async () => {
+test('manager ghi cache trước khi broadcast farm và không ghi đè catalog khi nhận trees', async () => {
   const observed: unknown[] = [];
   const { db, manager, made, newAccount } = setup(
     20,
@@ -237,7 +237,7 @@ test('manager ghi cache trước khi broadcast farm và trees', async () => {
       profile: {
         farmId: 12,
         cellIndices: [2, 7],
-        seedCatalog: [{ id: 6, name: 'Lúa', growMinutes: 48, value: 20 }],
+        seedCatalog: DEFAULT_SEED_CATALOG,
       },
     },
   ]);

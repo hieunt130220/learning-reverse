@@ -79,7 +79,7 @@ function FarmSection({
           {care} cần chăm
         </p>
       ) : (
-        <p className="hint">Bấm "Vào nông trại / làm mới" ở khung Trạng thái sau khi đã kết nối.</p>
+        <p className="hint">Chưa có dữ liệu nông trại. Hãy kết nối tài khoản.</p>
       )}
 
       {inventory.length > 0 && (

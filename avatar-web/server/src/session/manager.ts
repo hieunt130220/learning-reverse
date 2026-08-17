@@ -1,9 +1,5 @@
 import { getAccountById, listAutoEnabled, readGamePass, setAutoEnabled } from '../accounts/repo.js';
-import {
-  updateFarmCells,
-  updateSeedCatalog,
-  type CachedSeed,
-} from '../accounts/farmProfileRepo.js';
+import { updateFarmCells } from '../accounts/farmProfileRepo.js';
 import type { AutoFarmConfig } from '../autoFarm.js';
 import type { Db } from '../db/index.js';
 import type { DeviceProfile } from '../game/client.js';
@@ -32,10 +28,6 @@ interface FarmProfileEvent {
   barnAnimalSlots?: number[];
   pondAnimalSlots?: number[];
   updatedAt?: number;
-}
-
-interface TreesProfileEvent {
-  trees: CachedSeed[];
 }
 
 function farmProfileEvent(payload: unknown): FarmProfileEvent | null {
@@ -69,39 +61,6 @@ function farmProfileEvent(payload: unknown): FarmProfileEvent | null {
     return null;
   }
   return { idFarm, cells, barnAnimalSlots, pondAnimalSlots, updatedAt };
-}
-
-function treesProfileEvent(payload: unknown): TreesProfileEvent | null {
-  if (typeof payload !== 'object' || payload === null || !('trees' in payload) || !Array.isArray(payload.trees)) {
-    return null;
-  }
-  const trees: CachedSeed[] = [];
-  for (const tree of payload.trees) {
-    if (
-      typeof tree !== 'object'
-      || tree === null
-      || !('id' in tree)
-      || !('name' in tree)
-      || !('growMinutes' in tree)
-      || !('value' in tree)
-      || typeof tree.id !== 'number'
-      || !Number.isInteger(tree.id)
-      || typeof tree.name !== 'string'
-      || typeof tree.growMinutes !== 'number'
-      || !Number.isFinite(tree.growMinutes)
-      || typeof tree.value !== 'number'
-      || !Number.isFinite(tree.value)
-    ) {
-      return null;
-    }
-    trees.push({
-      id: tree.id,
-      name: tree.name,
-      growMinutes: tree.growMinutes,
-      value: tree.value,
-    });
-  }
-  return { trees };
 }
 
 /**
@@ -221,15 +180,6 @@ export class SessionManager {
                 farm.pondAnimalSlots ?? [],
                 farm.updatedAt,
               );
-            } catch {
-              return;
-            }
-          }
-        } else if (type === 'trees') {
-          const catalog = treesProfileEvent(payload);
-          if (catalog) {
-            try {
-              updateSeedCatalog(db, accountId, catalog.trees);
             } catch {
               return;
             }

@@ -349,49 +349,46 @@ test('seed ngoài catalog bị bỏ qua và ghi rõ ô cùng id hạt', async ()
   assert.ok(auto.state().lastActions.some((line) => line.includes('ô 2') && line.includes('hạt #99') && line.includes('catalog')));
 });
 
-test('catalog rỗng được tải đúng một lần rồi mới trồng', async () => {
+test('nhận diện hạt và giờ lớn từ DEFAULT_SEED_CATALOG khi client.trees rỗng', async () => {
   const client = new FakeClient({
     idFarm: 1,
-    cells: [cell(4, { idTree: -1 })],
+    cells: [
+      cell(2, { idTree: -1 }),
+      cell(41, { idTree: 6, time: 3000 }), // Lúa (48h = 2880 phút) -> chín tại time 3000
+    ],
     animals: [],
     updatedAt: 0,
   });
-  client.inventory = [{ id: 5, num: 1 }];
-  client.farm.getTreeInfo = (): void => {
-    client.calls.push('getTreeInfo');
-    client.trees = [tree(5)];
-    queueMicrotask(() => client.emit('trees', {
-      trees: client.trees,
-      items: client.items,
-      animals: client.animals,
-    }));
-  };
+  client.trees = [];
+  client.inventory = [{ id: 5, num: 2 }]; // Hoa Hồng (seed 5)
 
-  await runOneCycle(client, { seedId: 5, harvest: false });
+  await runOneCycle(client, {
+    seedId: 5,
+    harvest: true,
+  });
 
-  assert.equal(client.calls.filter((call) => call === 'getTreeInfo').length, 1);
-  assert.ok(client.calls.includes('plantSeed:4:5'));
+  assert.ok(client.calls.includes('harvest:41'), 'phải thu hoạch lúa ô 41 theo giờ lớn từ DEFAULT_SEED_CATALOG');
+  assert.ok(client.calls.includes('plantSeed:2:5'), 'phải trồng hoa hồng ô 2 từ DEFAULT_SEED_CATALOG');
 });
 
-test('catalog timeout không trồng mù', async () => {
+test('catalog timeout khi bật bán vật nuôi thì ghi nhận timeout', async () => {
   const client = new FakeClient({
     idFarm: 1,
-    cells: [cell(4, { idTree: -1 })],
-    animals: [],
+    cells: [],
+    animals: [animal(0, { species: 50, bornTime: 1000 })],
     updatedAt: 0,
   });
-  client.inventory = [{ id: 5, num: 1 }];
+  client.animals = [];
   client.farm.getTreeInfo = (): void => {
     client.calls.push('getTreeInfo');
   };
 
   const auto = await runOneCycle(
     client,
-    { seedId: 5, harvest: false },
+    { sellAnimals: true, harvest: false },
     { catalogTimeout: () => Promise.resolve() },
   );
 
-  assert.equal(client.calls.some((call) => call.startsWith('plantSeed:')), false);
   assert.ok(auto.state().lastActions.some((line) => line.includes('hết thời gian') && line.includes('catalog')));
 });
 
@@ -970,23 +967,16 @@ test('chữa bệnh cúm và tiêu chảy cho vật nuôi', async () => {
   assert.ok(useItems.includes(`useItem:1:${ITEM_DIARRHEA_CURE}`), 'phải gửi thuốc tiêu chảy cho con bị tiêu chảy');
 });
 
-test('bật thu hoạch thì phải xin bảng cây, không có nó là không biết ô nào chín', async () => {
+test('thu hoạch tự động hoạt động với thời gian lớn từ DEFAULT_SEED_CATALOG', async () => {
   const client = new FakeClient({
     idFarm: 1,
     cells: [cell(41, { idTree: 6, time: 3335 })],
     animals: [],
     updatedAt: Date.now(),
   });
-  // Bảng cây chỉ có sau khi auto gọi getTreeInfo — giống lần chạy thật đầu tiên.
   client.trees = [];
-  client.farm.getTreeInfo = (): void => {
-    client.calls.push('getTreeInfo');
-    client.trees = [{ ...tree(6), name: 'Lúa', growMinutes: 48 }];
-    queueMicrotask(() => client.emit('trees', { trees: client.trees, items: [], animals: [] }));
-  };
 
   await runOneCycle(client, { harvest: true });
 
-  assert.ok(client.calls.includes('getTreeInfo'), 'phải xin bảng cây khi bật thu hoạch');
-  assert.ok(client.calls.includes('harvest:41'), 'ô 41 đủ tuổi phải được thu');
+  assert.ok(client.calls.includes('harvest:41'), 'ô 41 đủ tuổi phải được thu theo DEFAULT_SEED_CATALOG');
 });

@@ -12,9 +12,9 @@ export interface TreeCellPlanEditorProps {
   profile: FarmProfileDto;
   entries: TreeCellPlanEntry[];
   disabled: boolean;
-  refreshing: boolean;
+  refreshing?: boolean;
   onChange(entries: TreeCellPlanEntry[]): void;
-  onRefresh(): void;
+  onRefresh?(): void;
 }
 
 function sameEntries(left: TreeCellPlanEntry[], right: TreeCellPlanEntry[]): boolean {
@@ -138,14 +138,10 @@ export function TreeCellPlanEditor({
   return (
     <details className="tree-plan-editor">
       <summary className="tree-plan-heading">Kế hoạch cây theo ô</summary>
-      <p className="tree-plan-cache-note">
-        Dữ liệu cache, không phải trực tiếp · Cache ô: {cachedTime(profile.cellsObservedAt)} · Cache
-        hạt: {cachedTime(profile.seedsObservedAt)}
-      </p>
 
       {!hasCells && (
         <p className="tree-plan-guidance">
-          Chưa có cache ô farm. Hãy kết nối tài khoản và đồng bộ farm trước khi lập kế hoạch.
+          Chưa có cache ô farm. Hãy kết nối tài khoản trước khi lập kế hoạch.
         </p>
       )}
       {hasCells && profile.seedCatalog.length === 0 && (
@@ -154,17 +150,6 @@ export function TreeCellPlanEditor({
           hạt cũ tiếp tục hiển thị bằng id.
         </p>
       )}
-
-      <div className="tree-plan-toolbar">
-        <button
-          type="button"
-          className="tree-plan-refresh"
-          disabled={disabled || refreshing}
-          onClick={onRefresh}
-        >
-          {refreshing ? 'Đang đồng bộ…' : 'Kết nối và đồng bộ farm'}
-        </button>
-      </div>
 
       <div className="tree-plan-palette" aria-label="Chọn trạng thái để tô">
         <button
