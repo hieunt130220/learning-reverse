@@ -232,6 +232,36 @@ test('autoEnabled = false thì không tự bật', async () => {
   assert.equal(h.session.snapshot().auto.running, false);
 });
 
+test('auto hoàn tất vòng thì ngắt game, chờ interval rồi đăng nhập lại', async () => {
+  const h = harness({ autoConfig: { intervalMs: 321 } });
+  await h.session.startAuto({ intervalMs: 321 });
+
+  assert.equal(h.clients.length, 1);
+  assert.equal(h.autos[0].startCount, 1);
+  h.autos[0].emit('cycle-complete');
+
+  assert.equal(h.clients[0].logoutCount, 1);
+  assert.equal(h.pendingTimers().length, 1);
+  assert.equal(h.pendingTimers()[0].delay, 321);
+  assert.equal(h.session.snapshot().desiredConnected, true);
+
+  h.fireTimer();
+  await flush();
+  assert.equal(h.clients.length, 2);
+  assert.equal(h.autos[1].startCount, 1);
+});
+
+test('tắt auto trong lúc chờ thì hủy vòng đăng nhập kế tiếp', async () => {
+  const h = harness({ autoConfig: { intervalMs: 321 } });
+  await h.session.startAuto({ intervalMs: 321 });
+  h.autos[0].emit('cycle-complete');
+  assert.equal(h.pendingTimers().length, 1);
+
+  h.session.stopAuto();
+  assert.equal(h.pendingTimers().length, 0);
+  await flush();
+  assert.equal(h.clients.length, 1);
+});
 test('update config khi auto chạy queue cho vòng kế tiếp, không start lại', async () => {
   const h = harness({ autoEnabled: true, autoConfig: { seedId: 5 } });
   await h.session.start();

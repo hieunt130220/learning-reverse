@@ -164,6 +164,8 @@ export interface AutoFarmOptions {
   catalogTimeout?: (signal: AbortSignal) => Promise<void>;
   /** Chờ phản hồi tối đa cho mỗi lệnh farm; hết giờ thì bỏ qua, không treo vòng. */
   commandTimeoutMs?: number;
+  /** Session tự quyết định thời điểm đăng nhập cho vòng kế tiếp. */
+  continuous?: boolean;
 }
 
 const ALWAYS_ON_CONFIG = {
@@ -181,6 +183,8 @@ const ALWAYS_ON_CONFIG = {
   wormItemId: 124,
 } as const satisfies Partial<AutoFarmConfig>;
 
+export const DEFAULT_AUTO_INTERVAL_MS = 300_000;
+
 const DEFAULTS: AutoFarmConfig = {
   ...ALWAYS_ON_CONFIG,
   sellAnimals: false,
@@ -195,7 +199,7 @@ const DEFAULTS: AutoFarmConfig = {
   buyBudgetXu: 5_000,
   maxBuyPerItem: 50,
   stepDelayMs: 700,
-  intervalMs: 300_000,
+  intervalMs: DEFAULT_AUTO_INTERVAL_MS,
   startDelayMs: 3_000,
 };
 
@@ -215,6 +219,7 @@ export class AutoFarm extends EventEmitter {
   private readonly wait: (ms: number) => Promise<void>;
   private readonly catalogTimeout: (signal: AbortSignal) => Promise<void>;
   private readonly commandTimeoutMs: number;
+  private readonly continuous: boolean;
   private cycle = 0;
   private lastRun?: number;
   private lastError?: string;
@@ -233,6 +238,7 @@ export class AutoFarm extends EventEmitter {
     this.wait = options.sleep ?? sleep;
     this.catalogTimeout = options.catalogTimeout ?? waitForCatalogTimeout;
     this.commandTimeoutMs = options.commandTimeoutMs ?? 2_500;
+    this.continuous = options.continuous ?? true;
   }
 
   state(): AutoFarmState {
@@ -942,7 +948,8 @@ export class AutoFarm extends EventEmitter {
     this.lastActions = actions;
     this.emit('state', this.state());
 
-    if (!this.aborted) {
+    this.emit('cycle-complete', this.state());
+    if (!this.aborted && this.continuous) {
       this.timer = setTimeout(() => void this.runCycle(), cfg.intervalMs);
     }
   }

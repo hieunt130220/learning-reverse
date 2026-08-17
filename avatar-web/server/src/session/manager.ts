@@ -97,6 +97,10 @@ export class SessionManager {
     await this.getOrCreate(accountId).start();
   }
 
+  async startAuto(accountId: number, cfg: Partial<AutoFarmConfig>): Promise<void> {
+    await this.getOrCreate(accountId).startAuto(cfg);
+  }
+
   disconnect(accountId: number): void {
     this.sessions.get(accountId)?.stop();
   }

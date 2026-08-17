@@ -15,24 +15,35 @@ export function StatusPanel({
   gameUser: string;
   onChanged: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const online = snap?.status === 'online';
-  const connecting = snap?.status === 'connecting'
-    || snap?.status === 'handshaking'
-    || snap?.status === 'logging-in';
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoErr, setAutoErr] = useState('');
   const farmSync = snap?.farmSync;
+  const auto = snap?.auto ?? { running: false, cycle: 0, lastActions: [] };
+  const autoActive = auto.running || snap?.desiredConnected === true;
 
-  async function toggle() {
-    setBusy(true);
-    setErr('');
+  async function startAuto() {
+    setAutoBusy(true);
+    setAutoErr('');
     try {
-      await apiPost(`/api/accounts/${accountId}/${online ? 'disconnect' : 'connect'}`);
+      await apiPost(`/api/accounts/${accountId}/auto/start`, {});
       onChanged();
     } catch (e) {
-      setErr((e as Error).message);
+      setAutoErr((e as Error).message);
     } finally {
-      setBusy(false);
+      setAutoBusy(false);
+    }
+  }
+
+  async function stopAuto() {
+    setAutoBusy(true);
+    setAutoErr('');
+    try {
+      await apiPost(`/api/accounts/${accountId}/auto/stop`);
+      onChanged();
+    } catch (e) {
+      setAutoErr((e as Error).message);
+    } finally {
+      setAutoBusy(false);
     }
   }
 
@@ -46,10 +57,22 @@ export function StatusPanel({
         {snap?.money !== undefined && <span className="chip">{snap.money} xu</span>}
       </div>
       <div className="row">
-        <button onClick={() => void toggle()} disabled={busy || connecting}>
-          {online ? 'Ngắt' : connecting ? 'Đang kết nối…' : 'Kết nối'}
+        <button onClick={() => void startAuto()} disabled={autoActive || autoBusy}>
+          {autoBusy && !autoActive ? 'Đang bật…' : 'Bật auto'}
         </button>
+        <button className="ghost" onClick={() => void stopAuto()} disabled={!autoActive || autoBusy}>
+          {autoBusy && autoActive ? 'Đang tắt…' : 'Tắt auto'}
+        </button>
+        <span className="hint">
+          {auto.running
+            ? `auto đang chạy — vòng ${auto.cycle}`
+            : autoActive
+              ? 'auto đang chờ vòng tiếp theo'
+              : 'auto đang tắt'}
+          {auto.lastRun ? ` · lần cuối ${new Date(auto.lastRun).toLocaleTimeString()}` : ''}
+        </span>
       </div>
+      {(autoErr || auto.lastError) && <p className="err">{autoErr || auto.lastError}</p>}
       {farmSync?.status === 'syncing' && (
         <p className="hint">Đang tự động đồng bộ dữ liệu nông trại…</p>
       )}
@@ -67,7 +90,7 @@ export function StatusPanel({
           thử kết nối lại lần {snap.retries} lúc {new Date(snap.nextRetryAt).toLocaleTimeString()}
         </p>
       )}
-      {(err || snap?.lastError) && <p className="err">{err || snap?.lastError}</p>}
+      {snap?.lastError && <p className="err">{snap.lastError}</p>}
     </section>
   );
 }

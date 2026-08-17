@@ -149,14 +149,15 @@ test('auto/start ghi DB trước rồi mới áp vào phiên', async () => {
   db.close();
 });
 
-test('auto/start khi chưa kết nối vẫn ghi được ý muốn vào DB', async () => {
-  const { db, server, id } = await setup();
+test('auto/start khi chưa kết nối tự tạo session và đăng nhập', async () => {
+  const { db, server, made, id } = await setup();
   const r = await server.fetch(`/api/accounts/${id}/auto/start`, {
     method: 'POST',
     json: { harvest: true },
   });
-  assert.equal(r.status, 409);
+  assert.equal(r.status, 200);
   assert.equal(getAccountById(db, id)!.autoEnabled, true);
+  assert.deepEqual(made[0].calls.map((call) => call.name), ['startAuto']);
   await server.close();
   db.close();
 });

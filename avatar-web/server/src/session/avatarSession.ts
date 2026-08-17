@@ -1,4 +1,4 @@
-import { AutoFarm, type AutoFarmConfig, type AutoFarmState } from '../autoFarm.js';
+import { AutoFarm, DEFAULT_AUTO_INTERVAL_MS, type AutoFarmConfig, type AutoFarmState } from '../autoFarm.js';
 import {
   GameClient,
   type ClientStatus,
@@ -96,6 +96,8 @@ export class AvatarSession {
   private connectionEpoch = 0;
   private onlineEpoch?: number;
   private retryAfter?: { epoch: number; notBefore: number };
+  private autoCycleTimer?: NodeJS.Timeout;
+  private autoStartEpoch?: number;
   /** Đã nhận LOGIN_FAIL: không thử lại nữa dù rớt kết nối. */
   private permanentlyFailed = false;
   private lastAutoConfig: Partial<AutoFarmConfig> = {};
@@ -140,16 +142,24 @@ export class AvatarSession {
   stop(): void {
     this.wanted = false;
     this.cancelRetry();
+    this.cancelAutoCycleTimer();
     this.cancelAutoSyncKickoff();
     this.teardown();
     this.emit('status', 'idle');
   }
 
-  startAuto(cfg: Partial<AutoFarmConfig>): void {
-    this.requireClient();
+  async startAuto(cfg: Partial<AutoFarmConfig>): Promise<void> {
+    this.cancelAutoCycleTimer();
     this.wantAuto = true;
     this.lastAutoConfig = cfg;
-    this.auto!.start(cfg);
+    const wasOnline = this.status === 'online';
+    this.autoStartEpoch = undefined;
+    await this.start();
+    this.wantAuto = true;
+    const currentStatus: string = this.status;
+    if (wasOnline || (currentStatus === 'online' && this.autoStartEpoch !== this.connectionEpoch)) {
+      this.tryStartAuto();
+    }
   }
 
   updateAutoConfig(cfg: Partial<AutoFarmConfig>): 'next-cycle' | 'next-start' {
@@ -163,7 +173,9 @@ export class AvatarSession {
 
   stopAuto(): void {
     this.wantAuto = false;
+    this.cancelAutoCycleTimer();
     this.auto?.stop();
+    this.stop();
   }
 
   startMacro(macro: Macro): void {
@@ -290,7 +302,9 @@ export class AvatarSession {
     const client = this.opts.createClient ? this.opts.createClient() : new GameClient();
     this.client = client;
     this.retryAfter = undefined;
-    this.auto = this.opts.createAutoFarm ? this.opts.createAutoFarm(client) : new AutoFarm(client);
+    this.auto = this.opts.createAutoFarm
+      ? this.opts.createAutoFarm(client)
+      : new AutoFarm(client, { continuous: false });
     this.macros = this.opts.createMacroRunner
       ? this.opts.createMacroRunner(client)
       : new MacroRunner(client);
@@ -382,6 +396,9 @@ export class AvatarSession {
     this.auto!.on('log', (line: string) => {
       if (this.isCurrent(client, epoch)) this.pushLog(line);
     });
+    this.auto!.on('cycle-complete', () => {
+      if (this.isCurrent(client, epoch)) this.onAutoCycleComplete(epoch);
+    });
     this.macros!.on('state', (s: MacroState) => {
       if (this.isCurrent(client, epoch)) this.emit('macro', s);
     });
@@ -398,7 +415,10 @@ export class AvatarSession {
       this.autoSyncKickoff = undefined;
       void this.syncFarmAfterOnline(client, epoch);
     });
-    if (this.wantAuto) this.tryStartAuto();
+    if (this.wantAuto) {
+      this.autoStartEpoch = epoch;
+      this.tryStartAuto();
+    }
   }
 
   private cancelAutoSyncKickoff(): void {
@@ -443,6 +463,44 @@ export class AvatarSession {
     }
   }
 
+  private onAutoCycleComplete(epoch: number): void {
+    if (epoch !== this.connectionEpoch || !this.wantAuto || this.status !== 'online') return;
+    const rawInterval = this.lastAutoConfig.intervalMs;
+    const intervalMs = typeof rawInterval === 'number' && Number.isFinite(rawInterval)
+      ? Math.max(0, rawInterval)
+      : DEFAULT_AUTO_INTERVAL_MS;
+    this.auto?.stop();
+    this.scheduleAutoCycle(intervalMs);
+    this.cancelAutoSyncKickoff();
+    this.teardown();
+    this.emit('status', 'idle');
+  }
+
+  private scheduleAutoCycle(delayMs: number): void {
+    this.cancelAutoCycleTimer();
+    this.autoCycleTimer = this.setTimeoutFn(() => {
+      this.autoCycleTimer = undefined;
+      if (!this.wantAuto || this.permanentlyFailed) return;
+      const keepAuto = this.wantAuto;
+      this.autoStartEpoch = undefined;
+      void this.start().then(() => {
+        if (!keepAuto || this.permanentlyFailed) return;
+        this.wantAuto = true;
+        if (this.status === 'online' && this.autoStartEpoch !== this.connectionEpoch) {
+          this.tryStartAuto();
+        }
+      }).catch((err: Error) => {
+        this.pushLog('đăng nhập cho vòng auto kế tiếp lỗi: ' + err.message);
+        this.scheduleRetry(this.connectionEpoch);
+      });
+    }, delayMs);
+  }
+
+  private cancelAutoCycleTimer(): void {
+    if (this.autoCycleTimer) this.clearTimeoutFn(this.autoCycleTimer);
+    this.autoCycleTimer = undefined;
+  }
+
   private failPermanently(reason: string): void {
     this.permanentlyFailed = true;
     this.wanted = false;
@@ -460,7 +518,7 @@ export class AvatarSession {
     this.cancelAutoSyncKickoff();
     this.auto?.stop();
     this.macros?.stop();
-    if (!this.wanted || this.permanentlyFailed || epoch !== this.connectionEpoch) return;
+    if (this.autoCycleTimer || !this.wanted || this.permanentlyFailed || epoch !== this.connectionEpoch) return;
     this.scheduleRetry(epoch);
   }
 

@@ -199,7 +199,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     }
   });
 
-  router.post('/:id/auto/start', owned, (req, res) => {
+  router.post('/:id/auto/start', owned, async (req, res) => {
     const id = accountId(req);
     let patch: Partial<AutoFarmConfig>;
     try {
@@ -234,7 +234,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
         cfg = result.state.config;
       }
       // DB là nguồn sự thật: commit ý muốn trước khi chạm runtime.
-      sessions.require(id).startAuto(cfg);
+      await sessions.startAuto(id, cfg);
       res.json(sessions.snapshot(id));
     } catch (err) {
       if (err instanceof AutoConfigProfileError) configFail(res, err);

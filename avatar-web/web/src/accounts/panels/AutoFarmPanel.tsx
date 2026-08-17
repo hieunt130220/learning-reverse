@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { ApiError, apiGet, apiPost, apiPut } from '../../api.js';
+import { ApiError, apiGet, apiPut } from '../../api.js';
 import type {
   AnimalPlanEntry,
   AutoConfigResponse,
   AutoConfigStateDto,
   AutoFarmConfigDto,
-  AutoState,
   FarmProfileDto,
   TreeCellPlanEntry,
 } from '../../types.js';
@@ -161,13 +160,11 @@ function errorMessage(cause: unknown): string {
 
 export interface AutoFarmPanelProps {
   accountId: number;
-  auto: AutoState;
   onPlanDirtyChange?(dirty: boolean): void;
 }
 
 export function AutoFarmPanel({
   accountId,
-  auto,
   onPlanDirtyChange,
 }: AutoFarmPanelProps) {
   const [seedId, setSeedId] = useState('');
@@ -186,10 +183,6 @@ export function AutoFarmPanel({
   const [configReady, setConfigReady] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const [stopping, setStopping] = useState(false);
-  const [err, setErr] = useState('');
   const [configError, setConfigError] = useState('');
   const [profileError, setProfileError] = useState('');
   const [planNotice, setPlanNotice] = useState('');
@@ -216,14 +209,10 @@ export function AutoFarmPanel({
     setConfigReady(false);
     setProfileLoading(true);
     setSaving(false);
-    setRefreshing(false);
-    setStarting(false);
-    setStopping(false);
     setStoredState(EMPTY_AUTO);
     setDraftPlan([]);
     setProfile(EMPTY_PROFILE);
     hydrateForm({});
-    setErr('');
     setConfigError('');
     setProfileError('');
     setPlanNotice('');
@@ -282,104 +271,6 @@ export function AutoFarmPanel({
   useEffect(() => {
     onPlanDirtyChange?.(dirty);
   }, [dirty, onPlanDirtyChange]);
-
-  async function reloadStoredConfig(
-    expectedGeneration: number,
-    expectedAccountId: number,
-  ) {
-    if (requestGeneration.current !== expectedGeneration
-      || currentAccountId.current !== expectedAccountId) return;
-    const latest = await apiGet<AutoConfigResponse>(
-      `/api/accounts/${expectedAccountId}/auto/config`,
-    );
-    if (requestGeneration.current !== expectedGeneration
-      || currentAccountId.current !== expectedAccountId) return;
-    setStoredState({ revision: latest.revision, config: latest.config });
-    // Quyết định ở đúng lúc áp response: người dùng có thể tô plan sau POST hoặc
-    // trong khi GET revision mới còn đang chờ.
-    if (!planDirtyRef.current) {
-      setDraftPlan(sortedPlan(latest.config.treeCellPlan));
-      setDraftBarnPlan(sortedAnimalPlan(latest.config.barnAnimalPlan));
-      setDraftPondPlan(sortedAnimalPlan(latest.config.pondAnimalPlan));
-    }
-    hydrateForm(latest.config);
-  }
-
-  async function start() {
-    if (!configReady || starting) return;
-    const generation = requestGeneration.current;
-    const expectedAccountId = accountId;
-    setStarting(true);
-    setErr('');
-    try {
-      await apiPost(`/api/accounts/${expectedAccountId}/auto/start`, {
-        seedId: num(seedId),
-        ...ALWAYS_ON_AUTO_CONFIG,
-        sellAnimals: sellBarnAnimals || sellPondAnimals,
-        sellBarnAnimals,
-        sellPondAnimals,
-        sellBarnSpecies: idList(sellBarnSpeciesStr),
-        sellPondSpecies: idList(sellPondSpeciesStr),
-        sellWhenGrownSpecies: [...idList(sellBarnSpeciesStr), ...idList(sellPondSpeciesStr)],
-        ...FIXED_AUTO_CONFIG,
-      });
-      // Legacy start có body làm revision tăng ở server. Tải lại revision nhưng
-      // không đụng vào draft kế hoạch chưa lưu của người dùng.
-      try {
-        await reloadStoredConfig(generation, expectedAccountId);
-      } catch (cause) {
-        if (requestGeneration.current !== generation
-          || currentAccountId.current !== expectedAccountId) return;
-        setErr(`Đã bật auto nhưng chưa tải lại được cấu hình: ${errorMessage(cause)}`);
-      }
-    } catch (cause) {
-      if (requestGeneration.current !== generation
-        || currentAccountId.current !== expectedAccountId) return;
-      setErr(errorMessage(cause));
-    } finally {
-      if (requestGeneration.current === generation
-        && currentAccountId.current === expectedAccountId) setStarting(false);
-    }
-  }
-
-  async function stop() {
-    if (stopping) return;
-    const generation = requestGeneration.current;
-    const expectedAccountId = accountId;
-    setStopping(true);
-    setErr('');
-    try {
-      await apiPost(`/api/accounts/${expectedAccountId}/auto/stop`);
-    } catch (cause) {
-      if (requestGeneration.current !== generation
-        || currentAccountId.current !== expectedAccountId) return;
-      setErr(errorMessage(cause));
-    } finally {
-      if (requestGeneration.current === generation
-        && currentAccountId.current === expectedAccountId) setStopping(false);
-    }
-  }
-
-  async function refreshProfile() {
-    const generation = requestGeneration.current;
-    setRefreshing(true);
-    setPlanError('');
-    setProfileError('');
-    try {
-      const refreshed = await apiPost<FarmProfileDto>(
-        `/api/accounts/${accountId}/farm/profile/refresh`,
-      );
-      if (requestGeneration.current !== generation) return;
-      setProfile(refreshed);
-      setProfileError('');
-      setPlanNotice('Đã cập nhật cache farm và catalog hạt.');
-    } catch (cause) {
-      if (requestGeneration.current !== generation) return;
-      setPlanError(errorMessage(cause));
-    } finally {
-      if (requestGeneration.current === generation) setRefreshing(false);
-    }
-  }
 
   async function savePlan() {
     const generation = requestGeneration.current;
@@ -485,9 +376,10 @@ export function AutoFarmPanel({
         việc trồng hoặc nuôi.
       </p>
       <p className="hint">
-        Bật ở đây là ghi vào cơ sở dữ liệu: server tự bật lại tài khoản này sau khi khởi động lại,
-        không cần mở trình duyệt.
+        Bật/tắt tự động ở phần Trạng thái bên trên. Lưu kế hoạch ở đây là ghi vào cơ sở dữ liệu:
+        server tự động chạy theo cấu hình đã lưu.
       </p>
+
       <div className="setting-section">
         <h3>🌱 Cây trồng</h3>
         <TreeCellPlanEditor
@@ -571,20 +463,6 @@ export function AutoFarmPanel({
       {configError && <p className="err">{configError}</p>}
       {profileError && <p className="err">{profileError}</p>}
       {profileLoading && <p className="hint">đang tải farm profile…</p>}
-
-      <div className="row">
-        <button onClick={() => void start()} disabled={auto.running || !configReady || starting}>
-          {starting ? 'Đang bật…' : 'Bật'}
-        </button>
-        <button className="ghost" onClick={() => void stop()} disabled={!auto.running || stopping}>
-          {stopping ? 'Đang tắt…' : 'Tắt'}
-        </button>
-        <span className="hint">
-          {auto.running ? `đang chạy — vòng ${auto.cycle}` : 'đang tắt'}
-          {auto.lastRun ? ` · lần cuối ${new Date(auto.lastRun).toLocaleTimeString()}` : ''}
-        </span>
-      </div>
-      {(err || auto.lastError) && <p className="err">{err || auto.lastError}</p>}
     </section>
   );
 }

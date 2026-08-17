@@ -86,7 +86,7 @@ test('/accounts/:id giữ dashboard phía sau và mở drawer đúng account', a
   renderRoute('/accounts/1');
   expect(await screen.findByRole('dialog', { name: 'Vận hành Farm chính' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Tài khoản avatar' })).toBeInTheDocument();
-  expect(mocks.subscribeAccounts).toHaveBeenCalledWith([1]);
+  await waitFor(() => expect(mocks.subscribeAccounts).toHaveBeenCalledWith([1]));
 });
 
 test('Escape đóng drawer về /accounts và cleanup subscription', async () => {

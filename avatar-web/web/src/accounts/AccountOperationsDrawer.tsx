@@ -84,7 +84,6 @@ function LoadedOperations({
       <StatusPanel accountId={account.id} snap={snapshot} gameUser={account.gameUser} onChanged={() => void reload()} />
       <AutoFarmPanel
         accountId={account.id}
-        auto={snapshot?.auto ?? { running: false, cycle: 0, lastActions: [] }}
         onPlanDirtyChange={onPlanDirtyChange}
       />
       <AssetsPanel accountId={account.id} farm={snapshot?.farm ?? null} inventory={snapshot?.inventory ?? []} trees={snapshot?.trees ?? []} animals={snapshot?.animals ?? []} />
