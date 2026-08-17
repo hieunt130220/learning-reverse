@@ -94,6 +94,7 @@ const fixedConfig = {
   autoBuy: true,
   buyBudgetXu: Number.MAX_SAFE_INTEGER,
   stepDelayMs: 700,
+  intervalMs: 300_000,
 };
 
 function deferred<T>() {
@@ -134,7 +135,6 @@ function renderPanel(props: { accountId?: number; auto?: AutoState; onDirty?: (d
     <AutoFarmPanel
       accountId={props.accountId ?? 1}
       auto={props.auto ?? stoppedAuto}
-      items={[]}
       onPlanDirtyChange={props.onDirty}
     />,
   );
@@ -164,9 +164,9 @@ test('hydrate các control còn lại từ config đã lưu; control đã bỏ k
   expect(screen.getByLabelText('loài bán chuồng')).toHaveValue('50, 51');
   expect(screen.getByRole('checkbox', { name: /bán cá\/rùa khi lớn/ })).toBeChecked();
   expect(screen.getByLabelText('loài bán hồ')).toHaveValue('54, 59');
-  expect(screen.getByLabelText('chu kỳ (giây)')).toHaveValue(150);
 
   // Các setup đã bỏ theo yêu cầu: không còn control nào trong UI.
+  expect(screen.queryByLabelText('chu kỳ (giây)')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('id hạt trồng lại')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('id tưới nước')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('id thuốc cỏ')).not.toBeInTheDocument();
@@ -203,7 +203,6 @@ test('config thành công vẫn hydrate và Bật đúng stored values khi profi
     sellPondSpecies: [54, 59],
     sellWhenGrownSpecies: [50, 51, 54, 59],
     ...fixedConfig,
-    intervalMs: 150_000,
   }));
 });
 
@@ -366,7 +365,7 @@ test('Bật gửi legacy form patch không kèm plan; Tắt không gửi config'
   ));
 
   mocks.apiPost.mockClear();
-  view.rerender(<AutoFarmPanel accountId={1} auto={{ ...stoppedAuto, running: true }} items={[]} />);
+  view.rerender(<AutoFarmPanel accountId={1} auto={{ ...stoppedAuto, running: true }} />);
   await userEvent.click(screen.getByRole('button', { name: 'Tắt' }));
   expect(mocks.apiPost).toHaveBeenCalledWith('/api/accounts/1/auto/stop');
 });
@@ -379,19 +378,20 @@ test('response muộn của account cũ không ghi đè account mới', async ()
   mocks.apiGet.mockImplementation((path: string) => {
     if (path === '/api/accounts/1/auto/config') return oldConfig;
     if (path === '/api/accounts/1/farm/profile') return oldProfile;
-    if (path === '/api/accounts/2/auto/config') return Promise.resolve({ revision: 2, config: { seedId: 22, intervalMs: 22_000 } });
-    if (path === '/api/accounts/2/farm/profile') return Promise.resolve(completeProfile);
+    if (path === '/api/accounts/2/auto/config') return Promise.resolve({ revision: 2, config: { seedId: 22 } });
+    if (path === '/api/accounts/2/farm/profile') return Promise.resolve(profileWithSeed(22, 'Hạt mới'));
     throw new Error(`GET ngoài dự kiến: ${path}`);
   });
   const view = renderPanel({ accountId: 1 });
-  view.rerender(<AutoFarmPanel accountId={2} auto={stoppedAuto} items={[]} />);
-  await waitFor(() => expect(screen.getByLabelText('chu kỳ (giây)')).toHaveValue(22));
+  view.rerender(<AutoFarmPanel accountId={2} auto={stoppedAuto} />);
+  expect(await screen.findByRole('button', { name: /Hạt mới/ })).toBeInTheDocument();
 
-  resolveOldConfig({ revision: 1, config: { seedId: 11, intervalMs: 11_000 } });
-  resolveOldProfile(completeProfile);
+  resolveOldConfig({ revision: 1, config: { seedId: 11 } });
+  resolveOldProfile(profileWithSeed(11, 'Hạt cũ'));
   await Promise.all([oldConfig, oldProfile]);
 
-  await waitFor(() => expect(screen.getByLabelText('chu kỳ (giây)')).toHaveValue(22));
+  expect(screen.getByRole('button', { name: /Hạt mới/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Hạt cũ/ })).not.toBeInTheDocument();
 });
 
 test('đổi account khi start đang chờ không GET account cũ dưới generation mới hoặc ghi lỗi lên account mới', async () => {
@@ -401,22 +401,23 @@ test('đổi account khi start đang chờ không GET account cũ dưới genera
     return Promise.resolve({});
   });
   mocks.apiGet.mockImplementation((path: string) => {
-    if (path === '/api/accounts/1/auto/config') return Promise.resolve({ revision: 1, config: { seedId: 11, intervalMs: 11_000 } });
+    if (path === '/api/accounts/1/auto/config') return Promise.resolve({ revision: 1, config: { seedId: 11 } });
     if (path === '/api/accounts/1/farm/profile') return Promise.resolve(profileWithSeed(11, 'Hạt cũ'));
-    if (path === '/api/accounts/2/auto/config') return Promise.resolve({ revision: 2, config: { seedId: 22, intervalMs: 22_000 } });
+    if (path === '/api/accounts/2/auto/config') return Promise.resolve({ revision: 2, config: { seedId: 22 } });
     if (path === '/api/accounts/2/farm/profile') return Promise.resolve(profileWithSeed(22, 'Hạt mới'));
     throw new Error(`GET ngoài dự kiến: ${path}`);
   });
   const view = renderPanel({ accountId: 1 });
-  await waitFor(() => expect(screen.getByLabelText('chu kỳ (giây)')).toHaveValue(11));
+  await openPlanEditor();
+  await waitFor(() => expect(screen.getByRole('button', { name: /Hạt cũ/ })).toBeInTheDocument());
   await userEvent.click(screen.getByRole('button', { name: 'Bật' }));
   await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
     '/api/accounts/1/auto/start',
     expect.objectContaining({ seedId: 11 }),
   ));
 
-  view.rerender(<AutoFarmPanel accountId={2} auto={stoppedAuto} items={[]} />);
-  await waitFor(() => expect(screen.getByLabelText('chu kỳ (giây)')).toHaveValue(22));
+  view.rerender(<AutoFarmPanel accountId={2} auto={stoppedAuto} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: /Hạt mới/ })).toBeInTheDocument());
   expect(screen.getByRole('button', { name: 'Bật' })).toBeEnabled();
   expect(screen.queryByRole('button', { name: 'Đang bật…' })).not.toBeInTheDocument();
   oldStart.resolve({});
@@ -424,7 +425,7 @@ test('đổi account khi start đang chờ không GET account cũ dưới genera
   await Promise.resolve();
 
   expect(mocks.apiGet.mock.calls.filter(([path]) => path === '/api/accounts/1/auto/config')).toHaveLength(1);
-  expect(screen.getByLabelText('chu kỳ (giây)')).toHaveValue(22);
+  expect(screen.getByRole('button', { name: /Hạt mới/ })).toBeInTheDocument();
   expect(screen.queryByText(/Đã bật auto nhưng/i)).not.toBeInTheDocument();
 });
 
@@ -510,25 +511,26 @@ test('đổi account bỏ qua lỗi stop muộn của account cũ', async () => 
     return Promise.resolve({});
   });
   mocks.apiGet.mockImplementation((path: string) => {
-    if (path === '/api/accounts/1/auto/config') return Promise.resolve({ revision: 1, config: { seedId: 11, intervalMs: 11_000 } });
+    if (path === '/api/accounts/1/auto/config') return Promise.resolve({ revision: 1, config: { seedId: 11 } });
     if (path === '/api/accounts/1/farm/profile') return Promise.resolve(profileWithSeed(11, 'Hạt cũ'));
-    if (path === '/api/accounts/2/auto/config') return Promise.resolve({ revision: 2, config: { seedId: 22, intervalMs: 22_000 } });
+    if (path === '/api/accounts/2/auto/config') return Promise.resolve({ revision: 2, config: { seedId: 22 } });
     if (path === '/api/accounts/2/farm/profile') return Promise.resolve(profileWithSeed(22, 'Hạt mới'));
     throw new Error(`GET ngoài dự kiến: ${path}`);
   });
   const runningAuto: AutoState = { ...stoppedAuto, running: true };
   const view = renderPanel({ accountId: 1, auto: runningAuto });
-  await waitFor(() => expect(screen.getByLabelText('chu kỳ (giây)')).toHaveValue(11));
+  await openPlanEditor();
+  await waitFor(() => expect(screen.getByRole('button', { name: /Hạt cũ/ })).toBeInTheDocument());
   await userEvent.click(screen.getByRole('button', { name: 'Tắt' }));
 
-  view.rerender(<AutoFarmPanel accountId={2} auto={runningAuto} items={[]} />);
-  await waitFor(() => expect(screen.getByLabelText('chu kỳ (giây)')).toHaveValue(22));
+  view.rerender(<AutoFarmPanel accountId={2} auto={runningAuto} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: /Hạt mới/ })).toBeInTheDocument());
   oldStop.reject(new Error('stop account cũ lỗi'));
   await oldStop.promise.catch(() => undefined);
   await Promise.resolve();
 
   expect(screen.queryByText('stop account cũ lỗi')).not.toBeInTheDocument();
-  expect(screen.getByLabelText('chu kỳ (giây)')).toHaveValue(22);
+  expect(screen.getByRole('button', { name: /Hạt mới/ })).toBeInTheDocument();
 });
 
 test('đổi account reset trạng thái save pending; response cũ không làm bẩn account mới', async () => {
@@ -546,7 +548,7 @@ test('đổi account reset trạng thái save pending; response cũ không làm 
   await userEvent.click(screen.getByRole('button', { name: 'Lưu kế hoạch' }));
   expect(screen.getByRole('button', { name: 'Đang lưu…' })).toBeDisabled();
 
-  view.rerender(<AutoFarmPanel accountId={2} auto={stoppedAuto} items={[]} />);
+  view.rerender(<AutoFarmPanel accountId={2} auto={stoppedAuto} />);
   await waitFor(() => expect(screen.getByRole('button', { name: 'Bật' })).toBeEnabled());
   expect(screen.queryByRole('button', { name: 'Đang lưu…' })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Lưu kế hoạch' })).toBeDisabled();
@@ -568,7 +570,7 @@ test('đổi account reset form và hiển thị profile mới', async () => {
   const view = renderPanel({ accountId: 1 });
   await openPlanEditor();
 
-  view.rerender(<AutoFarmPanel accountId={2} auto={stoppedAuto} items={[]} />);
+  view.rerender(<AutoFarmPanel accountId={2} auto={stoppedAuto} />);
   expect(await screen.findByRole('button', { name: /Hạt mới/ })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Hạt cũ/ })).not.toBeInTheDocument();
 });

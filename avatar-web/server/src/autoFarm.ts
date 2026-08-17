@@ -195,7 +195,7 @@ const DEFAULTS: AutoFarmConfig = {
   buyBudgetXu: 5_000,
   maxBuyPerItem: 50,
   stepDelayMs: 700,
-  intervalMs: 120_000,
+  intervalMs: 300_000,
   startDelayMs: 3_000,
 };
 
@@ -913,13 +913,9 @@ export class AutoFarm extends EventEmitter {
         note(`bỏ qua bán ${noSpec} con: chưa có bảng vật nuôi để biết tuổi lớn/tuổi thọ`);
       }
 
-      // TẠM — THÍ NGHIỆM CHẨN ĐOÁN, KHÔNG COMMIT.
-      // Nghi vấn: `enterFarm()` (GET_HANDLER 10) gọi lần thứ hai trong một phiên
-      // làm server đóng kết nối. Hai phiên đo được đều chết 0–7ms sau khi server
-      // trả lời lần enterFarm thứ hai. Tắt bước làm mới cuối vòng để xem điểm
-      // chết có dời sang lần enterFarm đầu vòng 2 hay không.
-      const REFRESH_AT_END = false;
-      if (REFRESH_AT_END && sent > 0 && !this.aborted) {
+      // Nếu trong chu kỳ có phát sinh lệnh làm thay đổi farm, làm mới lại farm
+      // ở cuối chu kỳ để snapshot phản ánh chính xác trạng thái mới nhất.
+      if (sent > 0 && !this.aborted) {
         const refreshed = new Promise<void>((resolve) => {
           const t = setTimeout(resolve, 5000);
           this.client.once('farm', () => {

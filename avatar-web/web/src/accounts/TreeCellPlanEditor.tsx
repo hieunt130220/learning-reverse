@@ -136,7 +136,7 @@ export function TreeCellPlanEditor({
   };
 
   return (
-    <details className="tree-plan-editor">
+    <details className="tree-plan-editor" open>
       <summary className="tree-plan-heading">Kế hoạch cây theo ô</summary>
 
       {!hasCells && (

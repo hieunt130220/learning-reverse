@@ -8,7 +8,6 @@ import type {
   AutoFarmConfigDto,
   AutoState,
   FarmProfileDto,
-  ItemInfo,
   TreeCellPlanEntry,
 } from '../../types.js';
 import { BARN_ANIMAL_CATALOG, DEFAULT_BARN_ANIMAL_SLOTS, DEFAULT_POND_ANIMAL_SLOTS, POND_ANIMAL_CATALOG } from '../animalPlan.js';
@@ -48,6 +47,7 @@ const FIXED_AUTO_CONFIG = {
   autoBuy: true,
   buyBudgetXu: Number.MAX_SAFE_INTEGER,
   stepDelayMs: 700,
+  intervalMs: 300_000,
 } satisfies Partial<AutoFarmConfigDto>;
 
 function sortedPlan(entries: TreeCellPlanEntry[] | undefined): TreeCellPlanEntry[] {
@@ -162,14 +162,12 @@ function errorMessage(cause: unknown): string {
 export interface AutoFarmPanelProps {
   accountId: number;
   auto: AutoState;
-  items: ItemInfo[];
   onPlanDirtyChange?(dirty: boolean): void;
 }
 
 export function AutoFarmPanel({
   accountId,
   auto,
-  items,
   onPlanDirtyChange,
 }: AutoFarmPanelProps) {
   const [seedId, setSeedId] = useState('');
@@ -179,7 +177,6 @@ export function AutoFarmPanel({
   // Chuồng: Gà 50, Bò 51, Heo 52, Vịt 55 / Hồ: Cá chép 54, Rùa 59
   const [sellBarnSpeciesStr, setSellBarnSpeciesStr] = useState('50, 51, 52, 55');
   const [sellPondSpeciesStr, setSellPondSpeciesStr] = useState('54, 59');
-  const [intervalSec, setIntervalSec] = useState(120);
 
   const [storedState, setStoredState] = useState<AutoConfigStateDto>(EMPTY_AUTO);
   const [draftPlan, setDraftPlan] = useState<TreeCellPlanEntry[]>([]);
@@ -211,7 +208,6 @@ export function AutoFarmPanel({
     setSellPondAnimals(config.sellPondAnimals ?? config.sellAnimals ?? false);
     setSellBarnSpeciesStr(config.sellBarnSpecies?.join(', ') ?? '50, 51, 52, 55');
     setSellPondSpeciesStr(config.sellPondSpecies?.join(', ') ?? '54, 59');
-    setIntervalSec((config.intervalMs ?? 120_000) / 1000);
   }, []);
 
   useEffect(() => {
@@ -326,7 +322,6 @@ export function AutoFarmPanel({
         sellPondSpecies: idList(sellPondSpeciesStr),
         sellWhenGrownSpecies: [...idList(sellBarnSpeciesStr), ...idList(sellPondSpeciesStr)],
         ...FIXED_AUTO_CONFIG,
-        intervalMs: intervalSec * 1000,
       });
       // Legacy start có body làm revision tăng ở server. Tải lại revision nhưng
       // không đụng vào draft kế hoạch chưa lưu của người dùng.
@@ -494,6 +489,21 @@ export function AutoFarmPanel({
         không cần mở trình duyệt.
       </p>
       <div className="setting-section">
+        <h3>🌱 Cây trồng</h3>
+        <TreeCellPlanEditor
+          profile={profile}
+          entries={draftPlan}
+          disabled={!configReady || saving}
+          onChange={(entries) => {
+            setDraftPlan(sortedPlan(entries));
+            setPlanNotice('');
+            setPlanError('');
+            setConflict(null);
+          }}
+        />
+      </div>
+
+      <div className="setting-section">
         <h3>🐓 Vật nuôi chuồng (Gà, Vịt, Bò, Heo, Cừu, Trâu, Dê, Thỏ...)</h3>
         <div className="row">
           <label className="inline">
@@ -547,24 +557,6 @@ export function AutoFarmPanel({
         />
       </div>
 
-      <div className="row" style={{ marginTop: 12 }}>
-        <label className="inline">
-          chu kỳ (giây)
-          <input type="number" value={intervalSec} onChange={(event) => setIntervalSec(Number(event.target.value))} />
-        </label>
-      </div>
-
-      <TreeCellPlanEditor
-        profile={profile}
-        entries={draftPlan}
-        disabled={!configReady || saving}
-        onChange={(entries) => {
-          setDraftPlan(sortedPlan(entries));
-          setPlanNotice('');
-          setPlanError('');
-          setConflict(null);
-        }}
-      />
       <div className="row tree-plan-save-row">
         <button type="button" onClick={() => void savePlan()} disabled={!configReady || saving || !dirty}>
           {saving ? 'Đang lưu…' : 'Lưu kế hoạch'}
@@ -592,14 +584,6 @@ export function AutoFarmPanel({
           {auto.lastRun ? ` · lần cuối ${new Date(auto.lastRun).toLocaleTimeString()}` : ''}
         </span>
       </div>
-      {auto.lastActions.length > 0 && (
-        <div className="log" style={{ maxHeight: 120 }}>
-          {auto.lastActions.map((action, index) => <div key={index}>{action}</div>)}
-        </div>
-      )}
-      {items.length > 0 && (
-        <p className="hint">vật phẩm: {items.map((item) => `${item.name} ${item.price}xu`).join(' · ')}</p>
-      )}
       {(err || auto.lastError) && <p className="err">{err || auto.lastError}</p>}
     </section>
   );

@@ -117,3 +117,25 @@ test('waitForReply false khi server im lặng hết thời gian', async () => {
   const client = new GameClient();
   assert.equal(await client.waitForReply(66, 30), false);
 });
+
+test('enterFarm lần đầu gửi GET_HANDLER 10, các lần sau gửi doJoinFarm cmd 69', () => {
+  const client = new GameClient();
+  client.playerId = 1005161;
+  const sentCmds: number[] = [];
+  client.session.send = (m: Message) => {
+    sentCmds.push(m.command);
+  };
+
+  client.enterFarm();
+  assert.deepEqual(sentCmds, [-1]);
+
+  client.enterFarm();
+  assert.deepEqual(sentCmds, [-1, 69]);
+
+  client.enterFarm(9999);
+  assert.deepEqual(sentCmds, [-1, 69, 69]);
+
+  client.logout();
+  client.enterFarm();
+  assert.deepEqual(sentCmds, [-1, 69, 69, -1]);
+});

@@ -276,8 +276,6 @@ export class AvatarSession {
 
   private pushLog(line: string): void {
     const entry = { t: Date.now(), line };
-    // TẠM — CHẨN ĐOÁN RỚT KẾT NỐI. XOÁ SAU KHI XONG, KHÔNG COMMIT.
-    console.log(`[#${this.opts.accountId}] ${new Date(entry.t).toISOString().slice(11, 23)} ${line}`);
     this.logs.push(entry);
     if (this.logs.length > LOG_BUFFER) this.logs.shift();
     this.emit('log', entry);

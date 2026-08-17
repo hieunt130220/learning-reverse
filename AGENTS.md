@@ -25,7 +25,7 @@ Tất cả AI agent làm việc trên project này PHẢI tuân theo quy trình:
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **learning-reverse** (2565 symbols, 6449 relationships, 218 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **learning-reverse** (2558 symbols, 6416 relationships, 218 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

@@ -136,6 +136,7 @@ export class GameClient extends EventEmitter {
   readonly lastPacket = new Map<number, string>();
 
   private device: DeviceProfile = { ...DEFAULT_DEVICE };
+  private inFarm = false;
   private keepAliveTimer?: NodeJS.Timeout;
   /** Đóng socket khi server không gửi gói nào trong `silenceTimeoutMs`. */
   private silenceTimer?: NodeJS.Timeout;
@@ -164,6 +165,7 @@ export class GameClient extends EventEmitter {
 
     this.session.on('message', (msg) => this.onMessage(msg));
     this.session.on('closed', (info) => {
+      this.inFarm = false;
       this.stopKeepAlive();
       this.stopSilenceWatchdog();
       const statusAtClose = this.status;
@@ -277,6 +279,7 @@ export class GameClient extends EventEmitter {
   }
 
   logout(): void {
+    this.inFarm = false;
     this.stopKeepAlive();
     this.stopSilenceWatchdog();
     this.session.close();
@@ -354,14 +357,23 @@ export class GameClient extends EventEmitter {
   }
 
   /**
-   * Vào nông trại. Không phải cứ gửi `doJoinFarm` là được: server chỉ định
-   * tuyến lệnh farm sau khi client xin handler farm bằng `GET_HANDLER (-1)`.
-   * Sau lệnh này server tự đẩy về gói 69 chứa toàn bộ dữ liệu farm.
+   * Vào nông trại.
+   * - Lần đầu tiên trong phiên: xin handler farm bằng `GET_HANDLER (-1) + i8 10`.
+   *   Server chuyển context sang farm và tự đẩy về gói 69.
+   * - Các lần sau trong cùng phiên (làm mới dữ liệu farm / chu kỳ auto): gửi
+   *   `doJoinFarm` (cmd 69) để cập nhật dữ liệu mà không gọi lại GET_HANDLER 10
+   *   (server coi việc xin lại handler khi đang ở trong farm là bất thường và đóng TCP socket).
    */
-  enterFarm(): void {
-    const m = Message.create(-1);
-    m.writer!.writeByte(HANDLER_FARM);
-    this.session.send(m);
+  enterFarm(idFarm?: number): void {
+    if (!this.inFarm) {
+      this.inFarm = true;
+      const m = Message.create(-1);
+      m.writer!.writeByte(HANDLER_FARM);
+      this.session.send(m);
+    } else {
+      const targetId = idFarm ?? this.farmState?.idFarm ?? this.playerId ?? 0;
+      this.farm.joinFarm(targetId);
+    }
   }
 
   /** Gửi gói tự do — dùng để dò các opcode chưa chốt từ UI. */

@@ -85,7 +85,6 @@ function LoadedOperations({
       <AutoFarmPanel
         accountId={account.id}
         auto={snapshot?.auto ?? { running: false, cycle: 0, lastActions: [] }}
-        items={snapshot?.items ?? []}
         onPlanDirtyChange={onPlanDirtyChange}
       />
       <AssetsPanel accountId={account.id} farm={snapshot?.farm ?? null} inventory={snapshot?.inventory ?? []} trees={snapshot?.trees ?? []} animals={snapshot?.animals ?? []} />
