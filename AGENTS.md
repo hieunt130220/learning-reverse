@@ -2,11 +2,69 @@
 
 ## Quy trình bắt buộc: Spec → Plan → Production Code
 
-Tất cả AI agent làm việc trên project này PHẢI tuân theo quy trình:
+Tất cả AI agent làm việc trên project này PHẢI tuân thủ nghiêm ngặt quy trình 3 bước theo chuẩn **Superpowers**:
 
-1. **Spec** — Phân tích yêu cầu, xác định scope, input/output, edge cases
-2. **Plan** — Thiết kế implementation plan chi tiết (files cần sửa/tạo, thứ tự, dependencies)
-3. **Implement** — Viết code production trực tiếp
+### 1. Bước 1: Tạo Spec (Design Document)
+- **Bắt buộc tạo file**: `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+- **Nội dung chuẩn Superpowers**:
+  - **Mục tiêu & Bối cảnh**: Vấn đề cần giải quyết, lý do thay đổi.
+  - **Phạm vi (Scope)**: Xác định rõ ranh giới in-scope và out-of-scope, input/output, edge cases.
+  - **Thiết kế kiến trúc & Giải pháp kỹ thuật**:
+    - Danh sách files/modules liên quan và vai trò từng file.
+    - Interfaces, data contracts, flow xử lý, diagram (nếu cần).
+  - **Verification Plan**: Cách thức kiểm tra thủ công hoặc automated sau khi code xong.
+- **User Review Gate**: Trình bày thiết kế và chờ user duyệt (approve) file Spec trước khi chuyển sang bước viết Plan.
+
+### 2. Bước 2: Tạo Plan (Implementation Plan)
+- **Bắt buộc tạo file**: `docs/superpowers/plans/YYYY-MM-DD-<topic>.md`
+- **Cấu trúc chuẩn Superpowers**:
+  - **Header bắt buộc**:
+    ```markdown
+    # [Feature Name] Implementation Plan
+
+    > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+    **Goal:** [Mô tả mục tiêu trong 1 câu]
+
+    **Architecture:** [Mô tả hướng tiếp cận trong 2-3 câu]
+
+    **Tech Stack:** [Các công nghệ / thư viện chính]
+
+    **Spec:** `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+
+    ## Global Constraints
+    [Các ràng buộc toàn cục từ spec: phiên bản, convention, platform, safety guards...]
+    ```
+  - **Phân rã Tasks chi tiết (Bite-sized Tasks)**:
+    - Cấu trúc từng task:
+      ```markdown
+      ### Task N: [Tên Component/Tính năng]
+
+      **Files:**
+      - Create: `đường/dẫn/tới/file_moi.ts`
+      - Modify: `đường/dẫn/tới/file_hien_tai.ts:12-45`
+      - Test: `đường/dẫn/tới/file.test.ts` (chỉ khi user yêu cầu viết test)
+
+      **Interfaces:**
+      - Consumes: [Hàm/type/dữ liệu cần dùng từ các task trước]
+      - Produces: [Hàm/type/dữ liệu cung cấp cho các task sau]
+
+      - [ ] **Step 1: [Hành động cụ thể]**
+      [Code snippet hoặc nội dung chi tiết cần viết/sửa]
+
+      - [ ] **Step 2: [Kiểm tra/Verify]**
+      Run: `lệnh kiểm tra nếu có`
+      Expected: `kết quả mong đợi`
+
+      - [ ] **Step 3: Commit**
+      `git commit -m "feat/fix: ..."`
+      ```
+    - **Nguyên tắc No Placeholders**: Không dùng `TODO`, `TBD`, `implement later`, không mô tả mơ hồ không có code/hướng dẫn cụ thể.
+- **User Review Gate**: Trình bày file Plan và chờ user duyệt trước khi thực thi code.
+
+### 3. Bước 3: Implement (Thực thi Production Code)
+- Thực thi theo từng task trong plan, tích chọn checkbox `- [x]` sau mỗi bước.
+- Tuân thủ quy tắc GitNexus (`gitnexus_impact` trước khi sửa, `gitnexus_detect_changes` trước khi commit).
 
 ## KHÔNG thực hiện TDD
 
@@ -25,7 +83,7 @@ Tất cả AI agent làm việc trên project này PHẢI tuân theo quy trình:
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **learning-reverse** (2558 symbols, 6416 relationships, 218 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **learning-reverse** (2559 symbols, 6424 relationships, 218 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

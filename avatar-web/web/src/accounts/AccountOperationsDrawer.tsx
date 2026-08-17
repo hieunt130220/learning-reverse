@@ -7,6 +7,7 @@ import { useAccountRuntime } from './useAccountRuntime.js';
 import { useDialogFocus } from './useDialogFocus.js';
 import { AssetsPanel } from './panels/AssetsPanel.js';
 import { AutoFarmPanel } from './panels/AutoFarmPanel.js';
+import { CookingPanel } from './panels/CookingPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
 import { StatusPanel } from './panels/StatusPanel.js';
 
@@ -85,6 +86,12 @@ function LoadedOperations({
       <AutoFarmPanel
         accountId={account.id}
         onPlanDirtyChange={onPlanDirtyChange}
+      />
+      <CookingPanel
+        accountId={account.id}
+        cooking={snapshot?.cooking}
+        foods={snapshot?.foods}
+        inventory={snapshot?.inventory ?? []}
       />
       <AssetsPanel accountId={account.id} farm={snapshot?.farm ?? null} inventory={snapshot?.inventory ?? []} trees={snapshot?.trees ?? []} animals={snapshot?.animals ?? []} />
       <LogPanel logs={snapshot?.logs ?? []} />

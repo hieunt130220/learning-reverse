@@ -81,6 +81,44 @@ export interface MacroState {
   lastError?: string;
 }
 
+export interface FoodMaterial {
+  itemId: number;
+  count: number;
+}
+
+export interface FoodRecipe {
+  id: number;
+  name: string;
+  productID: number;
+  cookTimeMinutes: number;
+  level: number;
+  materials: FoodMaterial[];
+}
+
+export interface ItemCooking {
+  slot: number;
+  idFood: number;
+  time: number;
+  remainTime: number;
+  isDone: boolean;
+}
+
+export interface SlotMission {
+  idFood: number;
+  numCook: number;
+  numNeed: number;
+  isDone: boolean;
+}
+
+export interface CookingState {
+  numSlot: number;
+  slots: ItemCooking[];
+  missions: SlotMission[];
+  isUnlocked: boolean;
+  isReadyToOpen: boolean;
+  updatedAt: number;
+}
+
 export interface LogLine {
   t: number;
   line: string;
@@ -109,6 +147,8 @@ export interface SessionSnapshot {
   playerId?: number;
   money?: number;
   farm?: FarmState;
+  cooking?: CookingState;
+  foods?: FoodRecipe[];
   farmSync?: FarmSyncState;
   auto: AutoState;
   macro: MacroState;
@@ -187,6 +227,10 @@ export interface AutoFarmConfigDto {
   treeCellPlan: TreeCellPlanEntry[];
   barnAnimalPlan?: AnimalPlanEntry[];
   pondAnimalPlan?: AnimalPlanEntry[];
+  autoCook?: boolean;
+  autoHarvestCook?: boolean;
+  prioritizeCookingMissions?: boolean;
+  defaultRecipeId?: number;
 }
 
 export interface CachedSeedDto {

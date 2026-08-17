@@ -37,6 +37,8 @@ export function reduceAccountRuntime(
         items: message.payload.items ?? [],
         animals: message.payload.animals ?? [],
       };
+    case 'cooking':
+      return { ...current, cooking: message.payload };
     case 'log':
       return { ...current, logs: [...current.logs.slice(-499), message.payload] };
     case 'traffic':

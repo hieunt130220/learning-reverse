@@ -7,13 +7,18 @@ import {
   classifyFarmSlots,
   decodeFarmData,
   decodeAnimalCatalog,
+  decodeCookingPacket,
+  decodeFoodCatalog,
   decodeInfoAnimal,
   decodeMoney,
   decodeInfoCell,
   decodeInventory,
   decodeItemCatalog,
   decodeTreeInfo,
+  DEFAULT_FOOD_CATALOG,
+  type CookingState,
   type FarmState,
+  type FoodRecipe,
   type InventoryItem,
   type AnimalInfo,
   type FarmAnimal,
@@ -126,6 +131,10 @@ export class GameClient extends EventEmitter {
   items: ItemInfo[] = [];
   /** Bảng vật nuôi (id 50..61) từ cùng gói 76. */
   animals: AnimalInfo[] = [];
+  /** Danh mục công thức món ăn nấu trong bếp. */
+  foods: FoodRecipe[] = [...DEFAULT_FOOD_CATALOG];
+  /** Trạng thái bếp nấu ăn (cmd 91). */
+  cookingState?: CookingState;
   /** Số dư xu, cập nhật từ gói UPDATE_MONEY (-3). */
   money?: number;
   /**
@@ -546,13 +555,55 @@ export class GameClient extends EventEmitter {
         } catch (err) {
           this.emit('log', `giải mã bảng vật nuôi lỗi: ${(err as Error).message}`);
         }
+        try {
+          const foods = decodeFoodCatalog(body);
+          if (foods && foods.length > 0) {
+            this.foods = foods;
+            this.emit('log', `bảng món ăn (${foods.length} món): ${foods.map((f) => `#${f.id} ${f.name}`).join(', ')}`);
+          }
+        } catch (err) {
+          this.emit('log', `giải mã bảng món ăn lỗi: ${(err as Error).message}`);
+        }
         this.emit('trees', { trees: this.trees, items: this.items, animals: this.animals });
+        break;
+      }
+      case 91: {
+        // COOKING container (sub-type 0..5)
+        try {
+          const res = decodeCookingPacket(msg.getData(), this.cookingState);
+          if (res) {
+            this.cookingState = res.state;
+            this.emit('cooking', this.cookingState);
+            this.emit(
+              'log',
+              `bếp (${res.type}): ${res.state.numSlot} ô · ${res.state.slots.filter((s) => s.idFood !== -1).length} ô đang nấu · ${res.state.slots.filter((s) => s.isDone).length} ô chín`,
+            );
+          }
+        } catch (err) {
+          this.emit('log', `giải mã bếp lỗi: ${(err as Error).message}`);
+        }
+        break;
+      }
+      case 92: {
+        // HARVEST_COOK / FLY
+        this.emit('log', `thu hoạch món ăn thành công`);
+        // Làm mới lại trạng thái kho và bếp sau khi thu hoạch
+        this.farm.getInventory();
+        this.farm.getCook(0);
+        break;
+      }
+      case 93: {
+        // NAU_NHANH
+        this.emit('log', `nấu nhanh thành công`);
+        this.farm.getCook(0);
         break;
       }
       case 69: // JOIN — toàn bộ dữ liệu farm
       case 61: // cùng payload readFarmData
         try {
           this.farmState = decodeFarmData(msg.getData());
+          // Tự động lấy thông tin bếp khi vào farm
+          this.farm.getCook(0);
           // INFO_ANIMAL (cmd 101) chỉ có index mà không có species-ngữ-cảnh —
           // nếu gói 101 về trước gói 69 thì vùng phân loại (đã lưu trong farmState)
           // chưa có để chia ao/chuồng.

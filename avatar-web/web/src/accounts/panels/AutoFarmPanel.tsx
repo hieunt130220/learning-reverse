@@ -174,6 +174,10 @@ export function AutoFarmPanel({
   // Chuồng: Gà 50, Bò 51, Heo 52, Vịt 55 / Hồ: Cá chép 54, Rùa 59
   const [sellBarnSpeciesStr, setSellBarnSpeciesStr] = useState('50, 51, 52, 55');
   const [sellPondSpeciesStr, setSellPondSpeciesStr] = useState('54, 59');
+  const [autoCook, setAutoCook] = useState(false);
+  const [autoHarvestCook, setAutoHarvestCook] = useState(false);
+  const [prioritizeCookingMissions, setPrioritizeCookingMissions] = useState(false);
+  const [defaultRecipeId, setDefaultRecipeId] = useState('0');
 
   const [storedState, setStoredState] = useState<AutoConfigStateDto>(EMPTY_AUTO);
   const [draftPlan, setDraftPlan] = useState<TreeCellPlanEntry[]>([]);
@@ -201,6 +205,10 @@ export function AutoFarmPanel({
     setSellPondAnimals(config.sellPondAnimals ?? config.sellAnimals ?? false);
     setSellBarnSpeciesStr(config.sellBarnSpecies?.join(', ') ?? '50, 51, 52, 55');
     setSellPondSpeciesStr(config.sellPondSpecies?.join(', ') ?? '54, 59');
+    setAutoCook(config.autoCook ?? false);
+    setAutoHarvestCook(config.autoHarvestCook ?? false);
+    setPrioritizeCookingMissions(config.prioritizeCookingMissions ?? false);
+    setDefaultRecipeId(optionalId(config.defaultRecipeId, '0'));
   }, []);
 
   useEffect(() => {
@@ -256,14 +264,16 @@ export function AutoFarmPanel({
       .map((part) => Number(part.trim()))
       .filter((id) => Number.isFinite(id));
 
-  // Chỉ so sánh các phần UI cho phép sửa: kế hoạch cây + vật nuôi (chuồng/hồ).
-  // Các field không có control (minGrowthToSell, startDelayMs…) luôn khác nhau
-  // giữa stored và payload runtime — so cả object là vỡ.
+  // Chỉ so sánh các phần UI cho phép sửa: kế hoạch cây + vật nuôi (chuồng/hồ) + bếp nấu.
   const dirty = useMemo(
     () => planKey(draftPlan) !== planKey(storedState.config.treeCellPlan)
       || animalPlanKey(draftBarnPlan) !== animalPlanKey(storedState.config.barnAnimalPlan)
-      || animalPlanKey(draftPondPlan) !== animalPlanKey(storedState.config.pondAnimalPlan),
-    [draftPlan, draftBarnPlan, draftPondPlan, storedState.config],
+      || animalPlanKey(draftPondPlan) !== animalPlanKey(storedState.config.pondAnimalPlan)
+      || autoCook !== (storedState.config.autoCook ?? false)
+      || autoHarvestCook !== (storedState.config.autoHarvestCook ?? false)
+      || prioritizeCookingMissions !== (storedState.config.prioritizeCookingMissions ?? false)
+      || num(defaultRecipeId) !== storedState.config.defaultRecipeId,
+    [draftPlan, draftBarnPlan, draftPondPlan, autoCook, autoHarvestCook, prioritizeCookingMissions, defaultRecipeId, storedState.config],
   );
   const planDirtyRef = useRef(dirty);
   planDirtyRef.current = dirty;
@@ -288,6 +298,10 @@ export function AutoFarmPanel({
           treeCellPlan: sortedPlan(draftPlan),
           barnAnimalPlan: sortedAnimalPlan(draftBarnPlan),
           pondAnimalPlan: sortedAnimalPlan(draftPondPlan),
+          autoCook,
+          autoHarvestCook,
+          prioritizeCookingMissions,
+          defaultRecipeId: num(defaultRecipeId),
         },
       });
       if (requestGeneration.current !== generation) return;
@@ -447,6 +461,51 @@ export function AutoFarmPanel({
             setConflict(null);
           }}
         />
+      </div>
+
+      <div className="setting-section">
+        <h3>🍳 Bếp nấu ăn tự động</h3>
+        <div className="row" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <label className="inline">
+            <input
+              type="checkbox"
+              checked={autoHarvestCook}
+              onChange={(event) => setAutoHarvestCook(event.target.checked)}
+              style={{ width: 'auto' }}
+            />
+            Tự động thu hoạch món chín khi xong
+          </label>
+          <label className="inline">
+            <input
+              type="checkbox"
+              checked={autoCook}
+              onChange={(event) => setAutoCook(event.target.checked)}
+              style={{ width: 'auto' }}
+            />
+            Tự động nấu món khi có ô trống (nếu đủ nguyên liệu)
+          </label>
+          <label className="inline" style={{ marginLeft: '1.25rem' }}>
+            <input
+              type="checkbox"
+              checked={prioritizeCookingMissions}
+              onChange={(event) => setPrioritizeCookingMissions(event.target.checked)}
+              disabled={!autoCook}
+              style={{ width: 'auto' }}
+            />
+            Ưu tiên nấu các món theo tiến độ nhiệm vụ mở ô Master
+          </label>
+          <label className="inline" style={{ marginLeft: '1.25rem' }}>
+            ID món nấu mặc định (khi không theo nhiệm vụ):
+            <input
+              type="number"
+              value={defaultRecipeId}
+              onChange={(event) => setDefaultRecipeId(event.target.value)}
+              placeholder="0 (Thức ăn gia súc)"
+              disabled={!autoCook}
+              style={{ width: '80px', marginLeft: '0.5rem' }}
+            />
+          </label>
+        </div>
       </div>
 
       <div className="row tree-plan-save-row">

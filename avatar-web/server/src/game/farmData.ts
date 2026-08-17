@@ -711,3 +711,334 @@ export function foodForSpecies(species: number): number | undefined {
   if ([51, 52, 56, 58, 60, 61].includes(species)) return FOOD.GIA_SUC;
   return undefined;
 }
+
+// ============================================================================
+// BẾP NẤU ĂN (COOKING / RECIPES)
+// ============================================================================
+
+export interface FoodMaterial {
+  itemId: number;
+  count: number;
+}
+
+export interface FoodRecipe {
+  id: number;
+  name: string;
+  productID: number;
+  cookTimeMinutes: number;
+  level: number;
+  materials: FoodMaterial[];
+}
+
+export interface ItemCooking {
+  slot: number;
+  idFood: number;
+  time: number;
+  remainTime: number;
+  isDone: boolean;
+}
+
+export interface SlotMission {
+  idFood: number;
+  numCook: number;
+  numNeed: number;
+  isDone: boolean;
+}
+
+export interface CookingState {
+  numSlot: number;
+  slots: ItemCooking[];
+  missions: SlotMission[];
+  isUnlocked: boolean;
+  isReadyToOpen: boolean;
+  updatedAt: number;
+}
+
+/** Catalog món ăn mặc định trong game Avatar */
+export const DEFAULT_FOOD_CATALOG: FoodRecipe[] = [
+  {
+    id: 0,
+    name: 'Thức ăn gia súc',
+    productID: 118,
+    cookTimeMinutes: 30,
+    level: 1,
+    materials: [
+      { itemId: 7, count: 5 }, // Lúa mì / ngô / lúa
+      { itemId: 9, count: 5 }, // Cà rốt
+    ],
+  },
+  {
+    id: 1,
+    name: 'Thức ăn gia cầm',
+    productID: 117,
+    cookTimeMinutes: 30,
+    level: 1,
+    materials: [
+      { itemId: 7, count: 5 },
+      { itemId: 8, count: 5 },
+    ],
+  },
+  {
+    id: 2,
+    name: 'Thức ăn thủy sản',
+    productID: 116,
+    cookTimeMinutes: 45,
+    level: 1,
+    materials: [
+      { itemId: 7, count: 5 },
+      { itemId: 10, count: 5 },
+    ],
+  },
+  {
+    id: 3,
+    name: 'Thức ăn cho chó',
+    productID: 119,
+    cookTimeMinutes: 60,
+    level: 2,
+    materials: [
+      { itemId: 50, count: 2 }, // Thịt gà/trứng
+      { itemId: 7, count: 5 },
+    ],
+  },
+  {
+    id: 4,
+    name: 'Trứng ốp la',
+    productID: 130,
+    cookTimeMinutes: 60,
+    level: 2,
+    materials: [
+      { itemId: 50, count: 10 }, // Trứng gà
+    ],
+  },
+  {
+    id: 5,
+    name: 'Sữa tươi thanh trùng',
+    productID: 131,
+    cookTimeMinutes: 120,
+    level: 3,
+    materials: [
+      { itemId: 51, count: 10 }, // Sữa bò
+    ],
+  },
+  {
+    id: 6,
+    name: 'Cá kho tộ',
+    productID: 132,
+    cookTimeMinutes: 180,
+    level: 3,
+    materials: [
+      { itemId: 54, count: 2 }, // Cá chép
+      { itemId: 12, count: 10 }, // Ớt / Gia vị
+    ],
+  },
+  {
+    id: 7,
+    name: 'Bánh mì bơ sữa',
+    productID: 133,
+    cookTimeMinutes: 240,
+    level: 4,
+    materials: [
+      { itemId: 7, count: 20 },
+      { itemId: 51, count: 10 },
+      { itemId: 50, count: 5 },
+    ],
+  },
+];
+
+/**
+ * Giải mã gói tin phản hồi của Bếp (Cmd 91).
+ * Có 6 sub-type (0..5):
+ * - sub 0: snapshot toàn bộ bếp (numSlot, slots, missions, unlock status)
+ * - sub 1: bắt đầu nấu thành công (slot, idFood, time)
+ * - sub 2: món ăn nấu xong (slot, idFood)
+ * - sub 3: mở thêm ô bếp (numSlot)
+ * - sub 4: cập nhật trạng thái ô chín (status, slot, idFood)
+ * - sub 5: mở ô master thành công
+ */
+export function decodeCookingPacket(
+  body: Buffer,
+  currentState?: CookingState,
+): { type: 'snapshot' | 'cook' | 'done' | 'slot_count' | 'master_unlocked'; state: CookingState } | undefined {
+  if (body.length === 0) return undefined;
+  const r = new MyReader(body);
+  const sub = r.readByte();
+  const baseState: CookingState = currentState
+    ? { ...currentState, slots: [...currentState.slots], missions: [...currentState.missions] }
+    : {
+        numSlot: 0,
+        slots: [],
+        missions: [],
+        isUnlocked: false,
+        isReadyToOpen: false,
+        updatedAt: Date.now(),
+      };
+
+  if (sub === 0) {
+    const numSlot = r.readByte();
+    const slots: ItemCooking[] = [];
+    for (let i = 0; i < numSlot; i++) {
+      const idFood = r.readShort();
+      let remainTime = 0;
+      if (idFood !== -1) {
+        remainTime = r.readInt();
+      }
+      slots.push({
+        slot: i,
+        idFood,
+        time: remainTime,
+        remainTime,
+        isDone: idFood !== -1 && remainTime <= 0,
+      });
+    }
+
+    const numMission = r.available() > 0 ? r.readByte() : 0;
+    const missions: SlotMission[] = [];
+    for (let i = 0; i < numMission; i++) {
+      const idFood = r.readShort();
+      const numCook = r.readInt();
+      const numNeed = r.readInt();
+      missions.push({
+        idFood,
+        numCook,
+        numNeed,
+        isDone: numCook >= numNeed,
+      });
+    }
+
+    const isUnlocked = r.available() > 0 ? r.readBoolean() : baseState.isUnlocked;
+    const isReadyToOpen = r.available() > 0 ? r.readBoolean() : baseState.isReadyToOpen;
+
+    const state: CookingState = {
+      numSlot,
+      slots,
+      missions,
+      isUnlocked,
+      isReadyToOpen,
+      updatedAt: Date.now(),
+    };
+    return { type: 'snapshot', state };
+  }
+
+  if (sub === 1) {
+    const slot = r.readByte();
+    const idFood = r.readShort();
+    const time = r.readInt();
+    const item: ItemCooking = {
+      slot,
+      idFood,
+      time,
+      remainTime: time,
+      isDone: time <= 0,
+    };
+    const idx = baseState.slots.findIndex((s) => s.slot === slot);
+    if (idx >= 0) {
+      baseState.slots[idx] = item;
+    } else {
+      baseState.slots.push(item);
+    }
+    baseState.updatedAt = Date.now();
+    return { type: 'cook', state: baseState };
+  }
+
+  if (sub === 2) {
+    const slot = r.readByte();
+    const idFood = r.readShort();
+    const item = baseState.slots.find((s) => s.slot === slot);
+    if (item) {
+      item.idFood = idFood;
+      item.isDone = true;
+      item.remainTime = 0;
+    }
+    baseState.updatedAt = Date.now();
+    return { type: 'done', state: baseState };
+  }
+
+  if (sub === 3) {
+    const numSlot = r.readByte();
+    baseState.numSlot = numSlot;
+    baseState.updatedAt = Date.now();
+    return { type: 'slot_count', state: baseState };
+  }
+
+  if (sub === 4) {
+    const status = r.readByte();
+    if (status === 1 && r.available() >= 3) {
+      const slot = r.readByte();
+      const idFood = r.readShort();
+      const item = baseState.slots.find((s) => s.slot === slot);
+      if (item) {
+        item.idFood = idFood;
+        item.isDone = true;
+        item.remainTime = 0;
+      }
+    }
+    baseState.updatedAt = Date.now();
+    return { type: 'done', state: baseState };
+  }
+
+  if (sub === 5) {
+    baseState.isUnlocked = true;
+    baseState.updatedAt = Date.now();
+    return { type: 'master_unlocked', state: baseState };
+  }
+
+  return undefined;
+}
+
+/**
+ * Trích xuất Food Recipe Catalog từ gói Cmd 76 (sau bảng Cây và Động vật).
+ * Nếu gói không có hoặc không đủ byte, trả về undefined.
+ */
+export function decodeFoodCatalog(body: Buffer): FoodRecipe[] | undefined {
+  try {
+    const r = new MyReader(body);
+    const nTree = r.readShort();
+    for (let i = 0; i < nTree; i++) {
+      r.readUnsignedByte();
+      r.readUTF();
+      r.readBytes(30);
+    }
+    const nMisc = r.readShort();
+    r.readBytes(nMisc * 6);
+
+    const nAnimal = r.readShort();
+    for (let i = 0; i < nAnimal; i++) {
+      r.readUnsignedByte();
+      r.readUTF();
+      r.readUTF();
+      if (r.available() >= 62) r.readBytes(62);
+    }
+
+    if (r.available() < 2) return undefined;
+    const nFood = r.readShort();
+    if (nFood <= 0 || nFood > 100) return undefined;
+
+    const listFood: FoodRecipe[] = [];
+    for (let i = 0; i < nFood; i++) {
+      const id = r.readShort();
+      const name = r.readUTF();
+      const productID = r.readShort();
+      const cookTimeMinutes = r.readShort();
+      const numMaterials = r.readShort();
+      const materials: FoodMaterial[] = [];
+      for (let j = 0; j < numMaterials; j++) {
+        const itemId = r.readShort();
+        const count = r.readShort();
+        materials.push({ itemId, count });
+      }
+      const level = r.readByte();
+      listFood.push({
+        id,
+        name,
+        productID,
+        cookTimeMinutes,
+        level,
+        materials,
+      });
+    }
+    return listFood.length > 0 ? listFood : undefined;
+  } catch {
+    return undefined;
+  }
+}
+

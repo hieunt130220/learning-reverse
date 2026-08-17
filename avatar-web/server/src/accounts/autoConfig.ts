@@ -177,6 +177,19 @@ const parsers: Record<ConfigKey, ConfigParser> = {
   treeCellPlan: treeCellPlan,
   barnAnimalPlan: animalPlan,
   pondAnimalPlan: animalPlan,
+  autoCook: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
+  autoHarvestCook: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
+  prioritizeCookingMissions: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
+  defaultRecipeId: nonNegativeInteger,
 };
 
 function isConfigKey(key: string): key is ConfigKey {

@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 
 import { DEFAULT_SEED_CATALOG } from './accounts/defaultSeedCatalog.js';
 import {
+  DEFAULT_FOOD_CATALOG,
   GROWN_PERCENT,
   ITEM_DIARRHEA_CURE,
   ITEM_FERTILIZER,
@@ -15,6 +16,8 @@ import {
   isCellRipe,
   parseAnimalSpec,
   isCellSpent,
+  type CookingState,
+  type FoodRecipe,
 } from './game/farmData.js';
 import type {
   AnimalInfo,
@@ -122,6 +125,16 @@ export interface AutoFarmConfig {
   startDelayMs: number;
   barnAnimalPlan?: AnimalPlanEntry[];
   pondAnimalPlan?: AnimalPlanEntry[];
+
+  // ---- Cấu hình Bếp nấu ăn (Cooking) --------------------------------------
+  /** Tự động nấu ăn khi có ô bếp trống. */
+  autoCook?: boolean;
+  /** Tự động thu hoạch món ăn khi nấu chín. */
+  autoHarvestCook?: boolean;
+  /** Ưu tiên nấu các món theo tiến độ nhiệm vụ mở ô cuối. */
+  prioritizeCookingMissions?: boolean;
+  /** ID món ăn mặc định khi nấu tự động (0: Thức ăn gia súc, 1: Gia cầm...). */
+  defaultRecipeId?: number;
 }
 
 export interface AutoFarmState {
@@ -136,7 +149,10 @@ export interface AutoFarmState {
 export interface AutoFarmClient {
   status: string;
   farmState?: FarmState;
+  cookingState?: CookingState;
+  foods?: FoodRecipe[];
   inventory: InventoryItem[];
+  produce?: InventoryItem[];
   items: ItemInfo[];
   trees: TreeInfo[];
   animals: AnimalInfo[];
@@ -148,6 +164,9 @@ export interface AutoFarmClient {
   farm: {
     getInventory(): void;
     getTreeInfo(): void;
+    getCook(step: number): void;
+    cook(num: number, id: number): void;
+    harvestCook(id: number): void;
     useItem(idFarm: number, index: number, idItem: number): void;
     harvest(idFarm: number, index: number): void;
     buyItem(id: number, num: number, typeShop: number): void;
@@ -155,7 +174,6 @@ export interface AutoFarmClient {
     plantSeed(idFarm: number, cellIndex: number, seedId: number): void;
     harvestAnimal(idFarm: number, index: number): void;
     sellAnimal(idFarm: number, index: number): void;
-    buyAnimal(idAnimal: number, typeBuy: number): void;
   };
 }
 
@@ -917,6 +935,105 @@ export class AutoFarm extends EventEmitter {
       }
       if (noSpec > 0) {
         note(`bỏ qua bán ${noSpec} con: chưa có bảng vật nuôi để biết tuổi lớn/tuổi thọ`);
+      }
+
+      // ----------------------------------------------------------------------
+      // GIAI ĐOẠN: BẾP NẤU ĂN (COOKING PHASE)
+      // ----------------------------------------------------------------------
+      if ((cfg.autoHarvestCook || cfg.autoCook) && !this.aborted) {
+        // Xin dữ liệu bếp mới nhất nếu chưa có
+        this.client.farm.getCook(0);
+        await confirm(91, 'lấy thông tin bếp');
+        await tick();
+
+        const cookState = this.client.cookingState;
+        if (cookState && cookState.slots.length > 0) {
+          // 1. Tự động thu hoạch món chín
+          if (cfg.autoHarvestCook) {
+            for (const slot of cookState.slots) {
+              if (this.aborted) break;
+              if (slot.idFood !== -1 && (slot.isDone || slot.remainTime <= 0)) {
+                this.client.farm.harvestCook(slot.slot);
+                sent += 1;
+                actions.push(`[bếp] thu hoạch món #${slot.idFood} ở ô ${slot.slot}`);
+                slot.idFood = -1;
+                slot.isDone = false;
+                slot.remainTime = 0;
+                await confirm(92, `thu hoạch món ô ${slot.slot}`);
+                await tick();
+              }
+            }
+          }
+
+          // 2. Tự động nấu ăn cho các ô trống
+          if (cfg.autoCook) {
+            const foodCatalog: FoodRecipe[] = this.client.foods && this.client.foods.length > 0
+              ? this.client.foods
+              : DEFAULT_FOOD_CATALOG;
+
+            // Tổng hợp kho nguyên liệu hiện có (inventory + produce)
+            const availableMaterials = new Map<number, number>();
+            for (const item of [...this.client.inventory, ...(this.client.produce ?? [])]) {
+              availableMaterials.set(item.id, (availableMaterials.get(item.id) ?? 0) + item.num);
+            }
+
+            for (const slot of cookState.slots) {
+              if (this.aborted) break;
+              if (slot.idFood !== -1) continue; // ô đang nấu, bỏ qua
+
+              // Xác định món cần nấu theo thứ tự ưu tiên
+              let targetRecipe: FoodRecipe | undefined;
+
+              // Ưu tiên 1: Nhiệm vụ mở ô bếp Master chưa hoàn thành
+              if (cfg.prioritizeCookingMissions && cookState.missions.length > 0) {
+                const pendingMission = cookState.missions.find((m) => !m.isDone && m.numCook < m.numNeed);
+                if (pendingMission) {
+                  targetRecipe = foodCatalog.find((f) => f.id === pendingMission.idFood);
+                }
+              }
+
+              // Ưu tiên 2: Món mặc định theo config
+              if (!targetRecipe && cfg.defaultRecipeId !== undefined) {
+                targetRecipe = foodCatalog.find((f) => f.id === cfg.defaultRecipeId);
+              }
+
+              // Mặc định fallback: Món đầu tiên trong catalog (Thức ăn gia súc)
+              if (!targetRecipe && foodCatalog.length > 0) {
+                targetRecipe = foodCatalog[0];
+              }
+
+              if (targetRecipe) {
+                // Kiểm tra xem có đủ nguyên liệu không
+                let canCook = true;
+                for (const mat of targetRecipe.materials) {
+                  const currentAmount = availableMaterials.get(mat.itemId) ?? 0;
+                  if (currentAmount < mat.count) {
+                    canCook = false;
+                    break;
+                  }
+                }
+
+                if (canCook) {
+                  // Trừ nguyên liệu ảo để ô tiếp theo không tranh chấp
+                  for (const mat of targetRecipe.materials) {
+                    availableMaterials.set(mat.itemId, (availableMaterials.get(mat.itemId) ?? 0) - mat.count);
+                  }
+
+                  this.client.farm.cook(slot.slot, targetRecipe.id);
+                  sent += 1;
+                  actions.push(`[bếp] nấu món "${targetRecipe.name}" ở ô ${slot.slot}`);
+                  slot.idFood = targetRecipe.id;
+                  slot.isDone = false;
+                  slot.remainTime = targetRecipe.cookTimeMinutes * 60;
+                  await confirm(91, `nấu món ô ${slot.slot}`);
+                  await tick();
+                } else {
+                  actions.push(`[bếp] ô ${slot.slot} thiếu nguyên liệu để nấu "${targetRecipe.name}"`);
+                }
+              }
+            }
+          }
+        }
       }
 
       // Nếu trong chu kỳ có phát sinh lệnh làm thay đổi farm, làm mới lại farm

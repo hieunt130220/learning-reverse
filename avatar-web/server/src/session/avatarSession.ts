@@ -44,6 +44,8 @@ export interface AvatarSessionSnapshot {
   playerId?: number;
   money?: number;
   farm?: unknown;
+  cooking?: unknown;
+  foods?: unknown[];
   farmSync: FarmSyncState;
   auto: AutoFarmState;
   macro: MacroState;
@@ -255,6 +257,8 @@ export class AvatarSession {
       playerId: c?.playerId,
       money: c?.money,
       farm: c?.farmState,
+      cooking: c?.cookingState,
+      foods: c?.foods ?? [],
       farmSync: this.farmSync,
       auto: this.auto?.state() ?? EMPTY_AUTO,
       macro: this.macros?.state() ?? EMPTY_MACRO,
@@ -367,6 +371,9 @@ export class AvatarSession {
     });
     client.on('money', (m: unknown) => {
       if (this.isCurrent(client, epoch)) this.emit('money', m);
+    });
+    client.on('cooking', (cook: unknown) => {
+      if (this.isCurrent(client, epoch)) this.emit('cooking', cook);
     });
 
     client.on('message', (msg: { command: number }) => {
