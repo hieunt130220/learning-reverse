@@ -200,11 +200,23 @@ test('start đăng nhập với thông tin lấy từ loadCredentials', async ()
   assert.equal(h.session.status, 'online');
 });
 
-test('start hai lần không tạo client thứ hai', async () => {
+test('start khi đã có client online thì không tạo client thứ hai', async () => {
   const h = harness();
   await h.session.start();
   await h.session.start();
   assert.equal(h.clients.length, 1);
+});
+
+test('start khi client cũ idle hoặc lỗi thì dọn client cũ và kết nối lại ngay', async () => {
+  const h = harness({}, { autoOnline: false });
+  await h.session.start();
+  assert.equal(h.clients.length, 1);
+  h.clients[0].drop(); // status -> idle
+  assert.equal(h.session.status, 'idle');
+
+  // Gọi start lại: phải hủy retry cũ và connect ngay
+  await h.session.start();
+  assert.equal(h.clients.length, 2);
 });
 
 test('autoEnabled = true thì bật AutoFarm sau khi online', async () => {

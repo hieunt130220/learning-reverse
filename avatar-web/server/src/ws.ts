@@ -13,7 +13,7 @@ import type { SessionManager } from './session/manager.js';
  * Mọi sự kiện khác là nặng (traffic, log, farm, inventory…) và chỉ tới client
  * đang mở trang chi tiết của đúng tài khoản đó.
  */
-export const LIGHT_EVENTS = new Set(['status', 'auto', 'auto-disabled']);
+export const LIGHT_EVENTS = new Set(['status', 'auto', 'auto-disabled', 'farm-sync']);
 
 export interface WsHub {
   broadcast(userId: number, accountId: number, type: string, payload: unknown): void;

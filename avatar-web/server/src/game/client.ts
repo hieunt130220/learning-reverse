@@ -76,7 +76,7 @@ export interface TemporaryLoginRejection {
 const MIN_LOGIN_RETRY_MS = 10_000;
 
 export function parseTemporaryLoginRejection(text: string): TemporaryLoginRejection | null {
-  const isThrottle = /đăng nhập quá nhanh|đăng nhập lại sau\s+\d+\s*s/i.test(text);
+  const isThrottle = /đang đăng nhập|đăng nhập quá nhanh|đăng nhập lại sau\s+\d+\s*s|quá tải/i.test(text);
   if (!isThrottle) return null;
   const seconds = text.match(/sau\s+(\d+)\s*s/i)?.[1];
   return {
@@ -437,6 +437,9 @@ export class GameClient extends EventEmitter {
         const reason = safeUtf(msg);
         this.emit('log', `server: ${reason}`);
         this.emit('dialog', reason);
+        if (this.status === 'logging-in' || this.status === 'connecting' || this.status === 'handshaking') {
+          this.lastError = reason;
+        }
         const rejection = parseTemporaryLoginRejection(reason);
         if (rejection) this.emit('temporary-rejection', rejection);
         break;

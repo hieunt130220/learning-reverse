@@ -29,6 +29,14 @@ export interface LogLine {
   line: string;
 }
 
+export type FarmSyncStatus = 'idle' | 'syncing' | 'success' | 'error';
+export interface FarmSyncState {
+  status: FarmSyncStatus;
+  startedAt?: number;
+  completedAt?: number;
+  error?: string;
+}
+
 export interface AvatarSessionSnapshot {
   accountId: number;
   status: ClientStatus;
@@ -36,6 +44,7 @@ export interface AvatarSessionSnapshot {
   playerId?: number;
   money?: number;
   farm?: unknown;
+  farmSync: FarmSyncState;
   auto: AutoFarmState;
   macro: MacroState;
   inventory: unknown[];
@@ -67,6 +76,7 @@ export interface AvatarSessionOptions {
 
 const EMPTY_AUTO: AutoFarmState = { running: false, cycle: 0, lastActions: [] };
 const EMPTY_MACRO: MacroState = { running: false, cycle: 0 };
+const EMPTY_FARM_SYNC: FarmSyncState = { status: 'idle' };
 
 function isTreesPayload(payload: unknown): boolean {
   return typeof payload === 'object'
@@ -101,6 +111,8 @@ export class AvatarSession {
   private permanentlyFailed = false;
   private lastAutoConfig: Partial<AutoFarmConfig> = {};
   private wantAuto = false;
+  private farmSync: FarmSyncState = EMPTY_FARM_SYNC;
+  private autoSyncKickoff?: NodeJS.Immediate;
 
   private readonly logs: LogLine[] = [];
   private readonly traffic: TrafficEntry[] = [];
@@ -128,13 +140,18 @@ export class AvatarSession {
   async start(): Promise<void> {
     this.wanted = true;
     this.permanentlyFailed = false;
-    if (this.client) return;
+    if (this.client && this.client.status === 'online') return;
+    if (this.client) {
+      this.cancelRetry();
+      this.teardown();
+    }
     await this.connect();
   }
 
   stop(): void {
     this.wanted = false;
     this.cancelRetry();
+    this.cancelAutoSyncKickoff();
     this.teardown();
     this.emit('status', 'idle');
   }
@@ -184,7 +201,8 @@ export class AvatarSession {
     this.requireClient().enterFarm();
   }
 
-  async refreshFarmProfile(timeoutMs = 10_000): Promise<void> {
+  async refreshFarmProfile(timeoutMs = 10_000, realTimer = false): Promise<void> {
+    this.cancelAutoSyncKickoff();
     const client = this.requireClient();
     if (client.status !== 'online') throw new Error('phiên chưa online');
     const epoch = this.connectionEpoch;
@@ -192,16 +210,19 @@ export class AvatarSession {
     let waitingForCatalog = false;
     let rejectRefresh: ((reason: Error) => void) | undefined;
     let resolveRefresh: (() => void) | undefined;
+    const clearTimeoutFn = realTimer ? clearTimeout : this.clearTimeoutFn;
     const completed = new Promise<void>((resolve, reject) => {
       resolveRefresh = resolve;
       rejectRefresh = reject;
-      timeout = this.setTimeoutFn(() => {
+      const setTimeoutFn = realTimer ? setTimeout : this.setTimeoutFn;
+      timeout = setTimeoutFn(() => {
         reject(new Error(
           this.isCurrent(client, epoch)
             ? 'quá hạn đồng bộ farm'
             : 'phiên đã thay đổi khi đồng bộ farm',
         ));
       }, timeoutMs);
+      if (realTimer) (timeout as NodeJS.Timeout).unref?.();
     });
     const onFarm = (): void => {
       if (!this.isCurrent(client, epoch)) {
@@ -230,7 +251,7 @@ export class AvatarSession {
       client.enterFarm();
       await completed;
     } finally {
-      if (timeout) this.clearTimeoutFn(timeout);
+      if (timeout) clearTimeoutFn(timeout);
       client.removeListener('farm', onFarm);
       client.removeListener('trees', onTrees);
     }
@@ -249,6 +270,7 @@ export class AvatarSession {
       playerId: c?.playerId,
       money: c?.money,
       farm: c?.farmState,
+      farmSync: this.farmSync,
       auto: this.auto?.state() ?? EMPTY_AUTO,
       macro: this.macros?.state() ?? EMPTY_MACRO,
       inventory: c?.inventory ?? [],
@@ -400,7 +422,46 @@ export class AvatarSession {
     this.cancelRetry();
     this.retries = 0;
     this.retryAfter = undefined;
+    this.cancelAutoSyncKickoff();
+    this.autoSyncKickoff = setImmediate(() => {
+      this.autoSyncKickoff = undefined;
+      void this.syncFarmAfterOnline(client, epoch);
+    });
     if (this.wantAuto) this.tryStartAuto();
+  }
+
+  private cancelAutoSyncKickoff(): void {
+    if (!this.autoSyncKickoff) return;
+    clearImmediate(this.autoSyncKickoff);
+    this.autoSyncKickoff = undefined;
+  }
+
+  private async syncFarmAfterOnline(client: GameClient, epoch: number): Promise<void> {
+    const startedAt = this.now();
+    this.farmSync = { status: 'syncing', startedAt };
+    this.emit('farm-sync', this.farmSync);
+    try {
+      await this.refreshFarmProfile(10_000, true);
+      if (!this.isCurrent(client, epoch) || client.status !== 'online') return;
+      this.farmSync = {
+        status: 'success',
+        startedAt,
+        completedAt: this.now(),
+      };
+      this.emit('farm-sync', this.farmSync);
+      this.pushLog('đã tự động đồng bộ dữ liệu nông trại');
+    } catch (err) {
+      if (!this.isCurrent(client, epoch) || client.status !== 'online') return;
+      const message = err instanceof Error ? err.message : String(err);
+      this.farmSync = {
+        status: 'error',
+        startedAt,
+        completedAt: this.now(),
+        error: message,
+      };
+      this.emit('farm-sync', this.farmSync);
+      this.pushLog("tự động đồng bộ farm lỗi: " + message);
+    }
   }
 
   private tryStartAuto(): void {
@@ -425,6 +486,7 @@ export class AvatarSession {
   }
 
   private onDisconnected(epoch: number): void {
+    this.cancelAutoSyncKickoff();
     this.auto?.stop();
     this.macros?.stop();
     if (!this.wanted || this.permanentlyFailed || epoch !== this.connectionEpoch) return;
@@ -465,6 +527,7 @@ export class AvatarSession {
   }
 
   private teardown(): void {
+    this.cancelAutoSyncKickoff();
     this.connectionEpoch += 1;
     this.auto?.stop();
     this.macros?.stop();

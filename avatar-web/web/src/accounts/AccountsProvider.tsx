@@ -47,13 +47,17 @@ export function AccountsProvider() {
           void reload();
           return;
         }
-        if (message.type !== 'status' && message.type !== 'auto') return;
+        if (message.type !== 'status' && message.type !== 'auto' && message.type !== 'farm-sync') return;
         setAccounts((current) =>
           current.map((account) => {
             if (account.id !== message.accountId || !account.runtime) return account;
-            return message.type === 'status'
-              ? { ...account, runtime: { ...account.runtime, status: message.payload } }
-              : { ...account, runtime: { ...account.runtime, auto: message.payload } };
+            if (message.type === 'status') {
+              return { ...account, runtime: { ...account.runtime, status: message.payload } };
+            }
+            if (message.type === 'auto') {
+              return { ...account, runtime: { ...account.runtime, auto: message.payload } };
+            }
+            return { ...account, runtime: { ...account.runtime, farmSync: message.payload } };
           }),
         );
       }),

@@ -85,6 +85,13 @@ export interface LogLine {
   t: number;
   line: string;
 }
+export type FarmSyncStatus = 'idle' | 'syncing' | 'success' | 'error';
+export interface FarmSyncState {
+  status: FarmSyncStatus;
+  startedAt?: number;
+  completedAt?: number;
+  error?: string;
+}
 
 export type ClientStatus =
   | 'idle'
@@ -102,6 +109,7 @@ export interface SessionSnapshot {
   playerId?: number;
   money?: number;
   farm?: FarmState;
+  farmSync?: FarmSyncState;
   auto: AutoState;
   macro: MacroState;
   inventory: InventoryItem[];

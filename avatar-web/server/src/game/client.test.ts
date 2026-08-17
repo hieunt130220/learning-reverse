@@ -20,12 +20,15 @@ test('parse số giây từ thông báo đăng nhập lại', () => {
   );
 });
 
-test('đăng nhập quá nhanh không có số dùng tối thiểu 10 giây', () => {
+test('parse thông báo tài khoản đang đăng nhập hoặc quá tải', () => {
   assert.equal(
-    parseTemporaryLoginRejection('Bạn đang đăng nhập quá nhanh. Vui lòng chờ')?.retryAfterMs,
+    parseTemporaryLoginRejection('Tài khoản này đang đăng nhập. Xin hãy thử đăng nhập lại.')?.retryAfterMs,
     10_000,
   );
-  assert.equal(parseTemporaryLoginRejection('Bảo trì lúc 22h'), null);
+  assert.equal(
+    parseTemporaryLoginRejection('Hệ thống quá tải, xin vui lòng thử lại sau.')?.retryAfterMs,
+    10_000,
+  );
 });
 
 test('gói -40 phát temporary-rejection có cấu trúc', () => {

@@ -139,8 +139,8 @@ export interface AutoFarmClient {
   items: ItemInfo[];
   trees: TreeInfo[];
   animals: AnimalInfo[];
-  once(eventName: string | symbol, listener: () => void): this;
-  removeListener(eventName: string | symbol, listener: () => void): this;
+  once(eventName: string | symbol, listener: (...args: any[]) => void): this;
+  removeListener(eventName: string | symbol, listener: (...args: any[]) => void): this;
   /** Chờ gói phản hồi `cmd` của lệnh vừa gửi; true = có gói, false = hết giờ. */
   waitForReply(cmd: number, timeoutMs: number): Promise<boolean>;
   enterFarm(): void;

@@ -24,6 +24,8 @@ export function reduceAccountRuntime(
       return { ...current, macro: message.payload };
     case 'farm':
       return { ...current, farm: message.payload };
+    case 'farm-sync':
+      return { ...current, farmSync: message.payload };
     case 'inventory':
       return { ...current, inventory: message.payload };
     case 'money':

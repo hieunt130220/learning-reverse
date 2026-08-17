@@ -21,6 +21,7 @@ export function StatusPanel({
   const connecting = snap?.status === 'connecting'
     || snap?.status === 'handshaking'
     || snap?.status === 'logging-in';
+  const farmSync = snap?.farmSync;
 
   async function toggle() {
     setBusy(true);
@@ -56,6 +57,17 @@ export function StatusPanel({
           Vào nông trại / làm mới
         </button>
       </div>
+      {farmSync?.status === 'syncing' && (
+        <p className="hint">Đang tự động đồng bộ dữ liệu nông trại…</p>
+      )}
+      {farmSync?.status === 'success' && farmSync.completedAt && (
+        <p className="hint">
+          Đã đồng bộ nông trại lúc {new Date(farmSync.completedAt).toLocaleTimeString()}
+        </p>
+      )}
+      {farmSync?.status === 'error' && (
+        <p className="err">Đồng bộ nông trại thất bại: {farmSync.error}</p>
+      )}
       {/* Đang đếm ngược để thử lại: cho người dùng biết server chưa bỏ cuộc. */}
       {snap?.nextRetryAt && (
         <p className="hint">
