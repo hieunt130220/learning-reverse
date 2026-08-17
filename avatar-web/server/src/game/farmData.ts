@@ -754,93 +754,107 @@ export interface CookingState {
   updatedAt: number;
 }
 
-/** Catalog món ăn mặc định trong game Avatar */
+/** Catalog món ăn mặc định trong Bếp Nông Trại Avatar */
 export const DEFAULT_FOOD_CATALOG: FoodRecipe[] = [
   {
     id: 0,
-    name: 'Thức ăn gia súc',
+    name: 'Cơm',
     productID: 118,
     cookTimeMinutes: 30,
     level: 1,
     materials: [
-      { itemId: 7, count: 5 }, // Lúa mì / ngô / lúa
-      { itemId: 9, count: 5 }, // Cà rốt
+      { itemId: 6, count: 5 }, // Lúa (#6)
     ],
   },
   {
     id: 1,
-    name: 'Thức ăn gia cầm',
+    name: 'Cơm trứng',
     productID: 117,
-    cookTimeMinutes: 30,
+    cookTimeMinutes: 60,
     level: 1,
     materials: [
-      { itemId: 7, count: 5 },
-      { itemId: 8, count: 5 },
+      { itemId: 6, count: 5 },  // Lúa
+      { itemId: 50, count: 2 }, // Trứng gà (#50)
     ],
   },
   {
     id: 2,
-    name: 'Thức ăn thủy sản',
+    name: 'Bánh trứng',
     productID: 116,
-    cookTimeMinutes: 45,
-    level: 1,
+    cookTimeMinutes: 60,
+    level: 2,
     materials: [
-      { itemId: 7, count: 5 },
-      { itemId: 10, count: 5 },
+      { itemId: 6, count: 5 },  // Lúa
+      { itemId: 50, count: 5 }, // Trứng gà
     ],
   },
   {
     id: 3,
-    name: 'Thức ăn cho chó',
+    name: 'Bánh sữa',
     productID: 119,
-    cookTimeMinutes: 60,
+    cookTimeMinutes: 90,
     level: 2,
     materials: [
-      { itemId: 50, count: 2 }, // Thịt gà/trứng
-      { itemId: 7, count: 5 },
+      { itemId: 6, count: 5 },  // Lúa
+      { itemId: 51, count: 5 }, // Sữa bò (#51)
     ],
   },
   {
     id: 4,
-    name: 'Trứng ốp la',
+    name: 'Cơm gà',
     productID: 130,
-    cookTimeMinutes: 60,
-    level: 2,
+    cookTimeMinutes: 120,
+    level: 3,
     materials: [
-      { itemId: 50, count: 10 }, // Trứng gà
+      { itemId: 6, count: 10 }, // Lúa
+      { itemId: 50, count: 5 },  // Trứng gà / Thịt gà
+      { itemId: 1, count: 5 },   // Cà rốt (#1)
     ],
   },
   {
     id: 5,
-    name: 'Sữa tươi thanh trùng',
+    name: 'Súp cà chua',
     productID: 131,
-    cookTimeMinutes: 120,
-    level: 3,
+    cookTimeMinutes: 90,
+    level: 2,
     materials: [
-      { itemId: 51, count: 10 }, // Sữa bò
+      { itemId: 0, count: 10 },  // Cà chua (#0)
+      { itemId: 50, count: 2 },  // Trứng gà
     ],
   },
   {
     id: 6,
-    name: 'Cá kho tộ',
+    name: 'Cá kho',
     productID: 132,
     cookTimeMinutes: 180,
     level: 3,
     materials: [
-      { itemId: 54, count: 2 }, // Cá chép
-      { itemId: 12, count: 10 }, // Ớt / Gia vị
+      { itemId: 54, count: 2 },  // Cá chép (#54)
+      { itemId: 44, count: 5 },  // Ớt (#44)
     ],
   },
   {
     id: 7,
-    name: 'Bánh mì bơ sữa',
+    name: 'Heo quay',
     productID: 133,
     cookTimeMinutes: 240,
     level: 4,
     materials: [
-      { itemId: 7, count: 20 },
-      { itemId: 51, count: 10 },
-      { itemId: 50, count: 5 },
+      { itemId: 52, count: 1 },  // Heo (#52)
+      { itemId: 44, count: 10 }, // Ớt
+    ],
+  },
+  {
+    id: 8,
+    name: 'Bánh kem',
+    productID: 134,
+    cookTimeMinutes: 180,
+    level: 4,
+    materials: [
+      { itemId: 6, count: 10 },  // Lúa
+      { itemId: 50, count: 5 },  // Trứng
+      { itemId: 51, count: 5 },  // Sữa bò
+      { itemId: 35, count: 5 },  // Dâu tây (#35)
     ],
   },
 ];
