@@ -1,4 +1,4 @@
-import { getAccountById, listAutoEnabled, readGamePass, setAutoEnabled } from '../accounts/repo.js';
+import { getAccountById, listAutoEnabled, readGamePass, setAutoEnabled, updateCachedMetrics } from '../accounts/repo.js';
 import { updateFarmCells } from '../accounts/farmProfileRepo.js';
 import type { AutoFarmConfig } from '../autoFarm.js';
 import type { Db } from '../db/index.js';
@@ -155,6 +155,8 @@ export class SessionManager {
 
     const opts: AvatarSessionOptions = {
       accountId,
+      cachedMetrics: account.cachedMetrics,
+      onMetrics: (patch) => updateCachedMetrics(db, accountId, patch),
       // Đọc lại DB mỗi lần kết nối: mật khẩu hoặc cấu hình auto có thể đã đổi
       // giữa hai lần thử lại.
       loadCredentials: async (): Promise<AvatarCredentials> => {

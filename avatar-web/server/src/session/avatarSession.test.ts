@@ -19,6 +19,7 @@ class FakeClient extends EventEmitter {
   items: unknown[] = [];
   animals: unknown[] = [];
   money: number | undefined;
+  luong: number | undefined;
   traffic: unknown[] = [];
   lastPacket = new Map<number, string>();
   readonly farm = {
@@ -485,11 +486,15 @@ test('sự kiện của client được đẩy ra ngoài qua onEvent', async () 
   const h = harness();
   await h.session.start();
   h.clients[0].emit('log', 'xin chào');
-  h.clients[0].emit('money', { balance: 10 });
+  h.clients[0].emit('money', { type: 1, balance: 10 });
+  h.clients[0].emit('money', { type: 2, balance: 25 });
   const types = h.events.map((e) => e.type);
   assert.ok(types.includes('status'));
   assert.ok(types.includes('log'));
   assert.ok(types.includes('money'));
+  assert.ok(types.includes('metrics'));
+  assert.equal(h.session.snapshot().xu, 10);
+  assert.equal(h.session.snapshot().luong, 25);
 });
 
 test('callFarm gọi đúng method, tên sai thì ném', async () => {

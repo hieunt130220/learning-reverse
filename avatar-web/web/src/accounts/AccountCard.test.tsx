@@ -34,6 +34,18 @@ test('hiển thị nhãn, game user, trạng thái, xu và vòng auto', () => {
   expect(screen.getByText('vòng 32')).toBeInTheDocument();
 });
 
+test('hiển thị cached xu, lượng và level khi chưa kết nối', () => {
+  renderCard(makeAccount({
+    autoEnabled: false,
+    runtime: null,
+    cachedMetrics: { xu: 1200, luong: 35, playerLevel: 7, farmLevel: 4, syncedAt: 123 },
+  }));
+
+  expect(screen.getByText('1.200')).toBeInTheDocument();
+  expect(screen.getByText('35')).toBeInTheDocument();
+  expect(screen.getByText('NV 7 · Farm 4')).toBeInTheDocument();
+});
+
 test('ưu tiên lastError; nếu không có lỗi thì hiển thị thời điểm retry', () => {
   const account = makeAccount({
     runtime: makeSnapshot({ lastError: 'mất kết nối', nextRetryAt: Date.now() + 60_000 }),

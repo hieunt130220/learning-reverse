@@ -28,8 +28,27 @@ export function reduceAccountRuntime(
       return { ...current, farmSync: message.payload };
     case 'inventory':
       return { ...current, inventory: message.payload };
-    case 'money':
-      return { ...current, money: message.payload.balance ?? current.money };
+    case 'money': {
+      const isLegacy = message.payload.type === undefined;
+      const isXu = message.payload.type === 1;
+      const isLuong = message.payload.type === 2;
+      return {
+        ...current,
+        ...(isLegacy ? { money: message.payload.balance ?? current.money } : {}),
+        ...(isXu ? { money: message.payload.balance ?? current.money, xu: message.payload.balance ?? current.xu } : {}),
+        ...(isLuong ? { luong: message.payload.balance ?? current.luong } : {}),
+      };
+    }
+    case 'metrics':
+      return {
+        ...current,
+        xu: message.payload.xu ?? current.xu,
+        money: message.payload.xu ?? current.money,
+        luong: message.payload.luong ?? current.luong,
+        playerLevel: message.payload.playerLevel ?? current.playerLevel,
+        farmLevel: message.payload.farmLevel ?? current.farmLevel,
+        metricsSyncedAt: message.payload.syncedAt ?? current.metricsSyncedAt,
+      };
     case 'trees':
       return {
         ...current,

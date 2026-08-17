@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS avatar_accounts (
   device_json      TEXT,                -- DeviceProfile, NULL = sinh mặc định
   auto_enabled     INTEGER NOT NULL DEFAULT 0,
   auto_config_json TEXT,                -- AutoFarmConfig
+  cached_xu        INTEGER,
+  cached_luong     INTEGER,
+  cached_player_level INTEGER,
+  cached_farm_level INTEGER,
+  cached_metrics_at INTEGER,
   created_at       INTEGER NOT NULL,
   updated_at       INTEGER NOT NULL
 );

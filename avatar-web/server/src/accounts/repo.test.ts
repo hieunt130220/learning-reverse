@@ -17,6 +17,7 @@ import {
   readGamePass,
   saveAutoConfig,
   setAutoEnabled,
+  updateCachedMetrics,
   updateAccount,
 } from './repo.js';
 
@@ -339,6 +340,20 @@ test('getAccountById không lọc theo user — dùng cho bootstrap', () => {
   const acc = createAccount(db, TEST_KEY, { userId: b.id, label: 'x', gameUser: 'u', gamePass: 'p' });
   assert.equal(getAccountById(db, acc.id)!.userId, b.id);
   assert.equal(getAccountById(db, 999), null);
+  db.close();
+});
+
+test('lưu và đọc cached metrics sau khi session ngắt', () => {
+  const { db, a } = setup();
+  const acc = createAccount(db, TEST_KEY, { userId: a.id, label: 'x', gameUser: 'u', gamePass: 'p' });
+  updateCachedMetrics(db, acc.id, { xu: 1200, luong: 35, playerLevel: 7, farmLevel: 4 }, 123);
+  assert.deepEqual(getAccountById(db, acc.id)!.cachedMetrics, {
+    xu: 1200,
+    luong: 35,
+    playerLevel: 7,
+    farmLevel: 4,
+    syncedAt: 123,
+  });
   db.close();
 });
 

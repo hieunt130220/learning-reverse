@@ -407,6 +407,10 @@ button.ghost {
   justify-content: space-between;
   gap: 12px;
 }
+.account-card-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 
 .account-card-heading > span:first-child,
 .account-card-stats > span { display: grid; gap: 2px; }

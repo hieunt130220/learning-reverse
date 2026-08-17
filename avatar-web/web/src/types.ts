@@ -140,12 +140,25 @@ export type ClientStatus =
   | 'error';
 
 /** Khớp `AvatarSessionSnapshot` phía server. */
+export interface CachedAccountMetrics {
+  xu?: number;
+  luong?: number;
+  playerLevel?: number;
+  farmLevel?: number;
+  syncedAt?: number;
+}
+
 export interface SessionSnapshot {
   accountId: number;
   status: ClientStatus;
   lastError?: string;
   playerId?: number;
   money?: number;
+  xu?: number;
+  luong?: number;
+  playerLevel?: number;
+  farmLevel?: number;
+  metricsSyncedAt?: number;
   farm?: FarmState;
   cooking?: CookingState;
   foods?: FoodRecipe[];
@@ -173,6 +186,7 @@ export interface AvatarAccount {
   hasPassword: boolean;
   createdAt: number;
   updatedAt: number;
+  cachedMetrics?: CachedAccountMetrics;
 }
 
 export interface AccountWithRuntime extends AvatarAccount {

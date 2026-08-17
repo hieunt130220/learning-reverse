@@ -15,6 +15,14 @@ export function AccountCard({ account, reload }: AccountCardProps) {
   const [busy, setBusy] = useState<'delete' | null>(null);
   const [actionError, setActionError] = useState('');
   const runtime = account.runtime;
+  const cached = account.cachedMetrics;
+  const xu = runtime?.xu ?? runtime?.money ?? cached?.xu;
+  const luong = runtime?.luong ?? cached?.luong;
+  const playerLevel = runtime?.playerLevel ?? cached?.playerLevel;
+  const farmLevel = runtime?.farmLevel ?? cached?.farmLevel;
+  const autoWanted = runtime?.desiredConnected ?? account.autoEnabled;
+  const formatMetric = (value: number | undefined) =>
+    value === undefined ? '—' : Intl.NumberFormat('vi-VN').format(value);
   // Lỗi thật quan trọng hơn lịch thử lại; chỉ khi không có lỗi mới cần đếm ngược.
   const runtimeNotice = runtime?.lastError
     ?? (runtime?.nextRetryAt
@@ -44,8 +52,10 @@ export function AccountCard({ account, reload }: AccountCardProps) {
           <StatusBadge status={runtime?.status ?? 'idle'} />
         </span>
         <span className="account-card-stats">
-          <span><small>Xu</small><b>{runtime?.money === undefined ? '—' : Intl.NumberFormat('vi-VN').format(runtime.money)}</b></span>
-          <span><small>Tự động</small><b>{runtime?.auto.running ? `vòng ${runtime.auto.cycle}` : runtime?.desiredConnected ? 'đang chờ' : 'đang tắt'}</b></span>
+          <span><small>Xu</small><b>{formatMetric(xu)}</b></span>
+          <span><small>Lượng</small><b>{formatMetric(luong)}</b></span>
+          <span><small>Level</small><b>NV {playerLevel ?? '—'} · Farm {farmLevel ?? '—'}</b></span>
+          <span><small>Tự động</small><b>{runtime?.auto.running ? `vòng ${runtime.auto.cycle}` : autoWanted ? 'đang chờ' : 'đang tắt'}</b></span>
         </span>
         {runtimeNotice && <span className="account-card-notice">{runtimeNotice}</span>}
       </button>

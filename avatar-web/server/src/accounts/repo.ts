@@ -18,6 +18,16 @@ import { deleteFarmProfile } from './farmProfileRepo.js';
  * Cố ý KHÔNG có trường mật khẩu, kể cả dạng đã mã hoá: chỉ `readGamePass` mới
  * chạm tới bản mã, nên không có đường nào để nó vô tình lọt vào response.
  */
+export interface CachedAccountMetrics {
+  xu?: number;
+  luong?: number;
+  playerLevel?: number;
+  farmLevel?: number;
+  syncedAt?: number;
+}
+
+export type AccountMetricsPatch = Omit<CachedAccountMetrics, 'syncedAt'>;
+
 export interface AvatarAccount {
   id: number;
   userId: number;
@@ -32,6 +42,7 @@ export interface AvatarAccount {
   hasPassword: boolean;
   createdAt: number;
   updatedAt: number;
+  cachedMetrics?: CachedAccountMetrics;
 }
 
 export interface CreateAccountInput {
@@ -68,6 +79,11 @@ interface AccountRow {
   auto_config_json: string | null;
   created_at: number;
   updated_at: number;
+  cached_xu: number | null;
+  cached_luong: number | null;
+  cached_player_level: number | null;
+  cached_farm_level: number | null;
+  cached_metrics_at: number | null;
 }
 
 function parseJson<T>(raw: string | null): T | undefined {
@@ -81,6 +97,13 @@ function parseJson<T>(raw: string | null): T | undefined {
 
 function toAccount(r: AccountRow): AvatarAccount {
   const stored = readStoredAutoConfig(parseJson<unknown>(r.auto_config_json));
+  const cachedMetrics: CachedAccountMetrics = {
+    ...(r.cached_xu === null ? {} : { xu: r.cached_xu }),
+    ...(r.cached_luong === null ? {} : { luong: r.cached_luong }),
+    ...(r.cached_player_level === null ? {} : { playerLevel: r.cached_player_level }),
+    ...(r.cached_farm_level === null ? {} : { farmLevel: r.cached_farm_level }),
+    ...(r.cached_metrics_at === null ? {} : { syncedAt: r.cached_metrics_at }),
+  };
   return {
     id: r.id,
     userId: r.user_id,
@@ -95,6 +118,7 @@ function toAccount(r: AccountRow): AvatarAccount {
     hasPassword: r.game_pass_enc.length > 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    ...(Object.keys(cachedMetrics).length > 0 ? { cachedMetrics } : {}),
   };
 }
 
@@ -205,6 +229,29 @@ export function updateAccount(
     }
     return getAccount(db, userId, id);
   })();
+}
+
+export function updateCachedMetrics(
+  db: Db,
+  id: number,
+  patch: AccountMetricsPatch,
+  now = Date.now(),
+): void {
+  const sets: string[] = [];
+  const args: unknown[] = [];
+  const set = (column: string, value: number | undefined) => {
+    if (value === undefined || !Number.isFinite(value)) return;
+    sets.push(column + ' = ?');
+    args.push(Math.trunc(value));
+  };
+  set('cached_xu', patch.xu);
+  set('cached_luong', patch.luong);
+  set('cached_player_level', patch.playerLevel);
+  set('cached_farm_level', patch.farmLevel);
+  if (sets.length === 0) return;
+  sets.push('cached_metrics_at = ?', 'updated_at = ?');
+  args.push(now, now, id);
+  db.prepare('UPDATE avatar_accounts SET ' + sets.join(', ') + ' WHERE id = ?').run(...args);
 }
 
 export function deleteAccount(db: Db, userId: number, id: number): boolean {

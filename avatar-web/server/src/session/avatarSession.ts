@@ -1,3 +1,11 @@
+function isMoneyUpdate(value: unknown): value is { type?: number; balance: number } {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return (record.type === undefined || typeof record.type === 'number')
+    && typeof record.balance === 'number'
+    && Number.isFinite(record.balance);
+}
+
 import { AutoFarm, DEFAULT_AUTO_INTERVAL_MS, type AutoFarmConfig, type AutoFarmState } from '../autoFarm.js';
 import {
   GameClient,
@@ -7,6 +15,7 @@ import {
   type TrafficEntry,
 } from '../game/client.js';
 import { MacroRunner, type Macro, type MacroState } from '../macro.js';
+import type { AccountMetricsPatch, CachedAccountMetrics } from '../accounts/repo.js';
 
 export const RETRY_BASE_MS = 10_000;
 export const RETRY_MAX_MS = 5 * 60 * 1000;
@@ -43,6 +52,11 @@ export interface AvatarSessionSnapshot {
   lastError?: string;
   playerId?: number;
   money?: number;
+  xu?: number;
+  luong?: number;
+  playerLevel?: number;
+  farmLevel?: number;
+  metricsSyncedAt?: number;
   farm?: unknown;
   cooking?: unknown;
   foods?: unknown[];
@@ -67,6 +81,8 @@ export interface AvatarSessionOptions {
   onEvent: (type: string, payload: unknown) => void;
   /** Lỗi không thể tự khắc phục (sai mật khẩu game) — tầng trên ghi DB. */
   onPermanentFailure: (reason: string) => void;
+  onMetrics?: (patch: AccountMetricsPatch) => void;
+  cachedMetrics?: CachedAccountMetrics;
   createClient?: () => GameClient;
   createAutoFarm?: (client: GameClient) => AutoFarm;
   createMacroRunner?: (client: GameClient) => MacroRunner;
@@ -105,6 +121,7 @@ export class AvatarSession {
   private lastAutoConfig: Partial<AutoFarmConfig> = {};
   private wantAuto = false;
   private farmSync: FarmSyncState = EMPTY_FARM_SYNC;
+  private cachedMetrics: CachedAccountMetrics;
   private autoSyncKickoff?: NodeJS.Immediate;
 
   private readonly logs: LogLine[] = [];
@@ -120,6 +137,7 @@ export class AvatarSession {
     this.clearTimeoutFn = opts.clearTimeoutFn ?? clearTimeout;
     this.now = opts.now ?? Date.now;
     this.random = opts.random ?? Math.random;
+    this.cachedMetrics = { ...opts.cachedMetrics };
   }
 
   get status(): ClientStatus {
@@ -255,7 +273,12 @@ export class AvatarSession {
       status: c?.status ?? 'idle',
       lastError: c?.lastError,
       playerId: c?.playerId,
-      money: c?.money,
+      money: c?.money ?? this.cachedMetrics.xu,
+      xu: c?.money ?? this.cachedMetrics.xu,
+      luong: c?.luong ?? this.cachedMetrics.luong,
+      playerLevel: c?.playerLevel ?? this.cachedMetrics.playerLevel,
+      farmLevel: c?.farmLevel ?? this.cachedMetrics.farmLevel,
+      metricsSyncedAt: this.cachedMetrics.syncedAt,
       farm: c?.farmState,
       cooking: c?.cookingState,
       foods: c?.foods ?? [],
@@ -370,7 +393,12 @@ export class AvatarSession {
       if (this.isCurrent(client, epoch)) this.emit('trees', t);
     });
     client.on('money', (m: unknown) => {
-      if (this.isCurrent(client, epoch)) this.emit('money', m);
+      if (!this.isCurrent(client, epoch)) return;
+      if (isMoneyUpdate(m)) {
+        const patch = m.type === 2 ? { luong: m.balance } : { xu: m.balance };
+        this.updateCachedMetrics(patch);
+      }
+      this.emit('money', m);
     });
     client.on('cooking', (cook: unknown) => {
       if (this.isCurrent(client, epoch)) this.emit('cooking', cook);
@@ -468,6 +496,16 @@ export class AvatarSession {
     } catch (err) {
       this.pushLog(`không bật được tự động: ${(err as Error).message}`);
     }
+  }
+
+  private updateCachedMetrics(patch: AccountMetricsPatch): void {
+    const valid = Object.fromEntries(
+      Object.entries(patch).filter(([, value]) => typeof value === 'number' && Number.isFinite(value)),
+    ) as AccountMetricsPatch;
+    if (Object.keys(valid).length === 0) return;
+    this.cachedMetrics = { ...this.cachedMetrics, ...valid, syncedAt: this.now() };
+    this.opts.onMetrics?.(valid);
+    this.emit('metrics', this.cachedMetrics);
   }
 
   private onAutoCycleComplete(epoch: number): void {

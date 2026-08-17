@@ -135,8 +135,14 @@ export class GameClient extends EventEmitter {
   foods: FoodRecipe[] = [...DEFAULT_FOOD_CATALOG];
   /** Trạng thái bếp nấu ăn (cmd 91). */
   cookingState?: CookingState;
-  /** Số dư xu, cập nhật từ gói UPDATE_MONEY (-3). */
+  /** Số dư xu, cập nhật từ UPDATE_MONEY (-3), type 1. */
   money?: number;
+  /** Số dư lượng, cập nhật từ UPDATE_MONEY (-3), type 2. */
+  luong?: number;
+  /** Để dành cho parser player-info đã xác minh. */
+  playerLevel?: number;
+  /** Để dành cho parser farm-info đã xác minh. */
+  farmLevel?: number;
   /**
    * Body đầy đủ của gói RX gần nhất theo từng cmd, dạng hex.
    * Log gói tin trên UI cắt còn 64 byte, cái này giữ nguyên để còn giải mã tiếp
@@ -499,6 +505,7 @@ export class GameClient extends EventEmitter {
         // UPDATE_MONEY — server đẩy sau mỗi giao dịch
         const m = decodeMoney(msg.getData());
         if (m.type === 1) this.money = m.balance;
+        if (m.type === 2) this.luong = m.balance;
         this.emit('log', `tiền: ${m.delta >= 0 ? '+' : ''}${m.delta} (loại ${m.type}) -> ${m.balance}`);
         this.emit('money', m);
         break;
