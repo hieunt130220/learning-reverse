@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { classifyFarmSlots, decodeFarmData, isCellRipe, decodeAllTreeInfo, parseAnimalSpec } from './farmData.js';
+import { classifyFarmSlots, decodeFarmData, isCellRipe, decodeAllTreeInfo, parseAnimalSpec, decodeInventory } from './farmData.js';
 import { FARM_PACKET_69_HEX } from './farmData.fixture.js';
 
 const packet = Buffer.from(FARM_PACKET_69_HEX, 'hex');
@@ -182,5 +182,34 @@ test('parseAnimalSpec: parse đúng chu kỳ sản phẩm từ desc', () => {
   const heoSpec = parseAnimalSpec(heoDesc);
   assert.equal(heoSpec.productCycleMinutes, undefined);
   assert.equal(heoSpec.hasProduct, false);
+});
+
+test('decodeInventory: giải mã hạt, vật phẩm và xu từ 12 byte đuôi gói 70', () => {
+  // Gói 70 mẫu: 1 loại hạt (#6 x 45), 1 loại vật phẩm (#123 x 99), 2 section sau rỗng, đuôi 12 byte chứa xu = 473574 (0x000737e6)
+  const buf = Buffer.alloc(1 + 6 + 1 + 6 + 1 + 1 + 12);
+  let pos = 0;
+  // Section 1 (hạt): 1 loại
+  buf.writeInt8(1, pos++);
+  buf.writeInt16BE(6, pos); pos += 2;
+  buf.writeInt32BE(45, pos); pos += 4;
+  // Section 2 (vật phẩm): 1 loại
+  buf.writeInt8(1, pos++);
+  buf.writeInt16BE(123, pos); pos += 2;
+  buf.writeInt32BE(99, pos); pos += 4;
+  // Section 3 (nông sản): 0 loại
+  buf.writeInt8(0, pos++);
+  // Section 4: 0 loại
+  buf.writeInt8(0, pos++);
+  // Đuôi 12 byte: i32 xu = 473574, 8 byte còn lại = 0
+  buf.writeInt32BE(473574, pos); pos += 4;
+  buf.fill(0, pos, pos + 8);
+
+  const inv = decodeInventory(buf);
+  assert.equal(inv.seeds.length, 1);
+  assert.deepEqual(inv.seeds[0], { id: 6, num: 45 });
+  assert.equal(inv.items.length, 1);
+  assert.deepEqual(inv.items[0], { id: 123, num: 99 });
+  assert.equal(inv.xu, 473574);
+  assert.equal(inv.restHex, '0000000000000000');
 });
 

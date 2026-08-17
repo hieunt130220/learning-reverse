@@ -120,6 +120,10 @@ class FakeClient extends EventEmitter {
     buyItem: (id: number, num: number, typeShop: number): void => {
       this.calls.push(`buy:${id}x${num}`);
       this.echo(68);
+      // Mô phỏng server cấp hàng: lần getInventory sau đó phải thấy hàng vừa mua.
+      const existing = this.inventory.find((i) => i.id === id);
+      if (existing) existing.num += num;
+      else this.inventory.push({ id, num });
     },
     plantSeed: (idFarm: number, cellIndex: number, seedId: number): void => {
       this.calls.push(`plantSeed:${cellIndex}:${seedId}`);
@@ -312,7 +316,7 @@ test('override, fallback và skip chọn đúng hành động cho ô trống kh�
   assert.ok(client.calls.includes('plantSeed:9:5'));
 });
 
-test('không thay cây đang mọc và không trồng khi kho chỉ còn một hạt', async () => {
+test('không thay cây đang mọc; auto-buy mua bù hạt thiếu rồi trồng tiếp ô trống', async () => {
   const client = new FakeClient({
     idFarm: 1,
     cells: [cell(2, { idTree: 5 }), cell(7, { idTree: -1 }), cell(9, { idTree: -1 })],
@@ -324,9 +328,12 @@ test('không thay cây đang mọc và không trồng khi kho chỉ còn một h
 
   const auto = await runOneCycle(client, { seedId: 5, harvest: false, autoBuy: true });
 
-  assert.deepEqual(client.calls.filter((call) => call.startsWith('plantSeed:')), ['plantSeed:7:5']);
-  assert.equal(client.calls.some((call) => call.startsWith('buy:')), false);
-  assert.ok(auto.state().lastActions.some((line) => line.includes('ô 9') && line.includes('thiếu hạt #5')));
+  assert.deepEqual(
+    client.calls.filter((call) => call.startsWith('plantSeed:')),
+    ['plantSeed:7:5', 'plantSeed:9:5'],
+  );
+  assert.ok(client.calls.includes('buy:5x1'), 'phải mua bù đúng 1 hạt thiếu');
+  assert.ok(auto.state().lastActions.some((line) => line.includes('mua #5')));
 });
 
 test('seed ngoài catalog bị bỏ qua và ghi rõ ô cùng id hạt', async () => {

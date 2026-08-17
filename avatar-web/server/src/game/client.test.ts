@@ -118,6 +118,25 @@ test('waitForReply false khi server im lặng hết thời gian', async () => {
   assert.equal(await client.waitForReply(66, 30), false);
 });
 
+test('gói INVENTORY (70) cập nhật money và phát event money khi có đuôi xu', () => {
+  const client = new GameClient();
+  const moneyEvents: unknown[] = [];
+  client.on('money', (m) => moneyEvents.push(m));
+
+  // Gói 70 mẫu: 4 section rỗng, đuôi chứa xu = 50000
+  const buf = Buffer.alloc(4 + 12);
+  buf.writeInt8(0, 0); // section 1: 0 hạt
+  buf.writeInt8(0, 1); // section 2: 0 items
+  buf.writeInt8(0, 2); // section 3: 0
+  buf.writeInt8(0, 3); // section 4: 0
+  buf.writeInt32BE(50000, 4); // xu = 50000
+
+  client.session.emit('message', Message.fromData(70, buf));
+  assert.equal(client.money, 50000);
+  assert.equal(moneyEvents.length, 1);
+  assert.deepEqual(moneyEvents[0], { type: 1, balance: 50000, delta: 0 });
+});
+
 test('enterFarm lần đầu gửi GET_HANDLER 10, các lần sau gửi doJoinFarm cmd 69', () => {
   const client = new GameClient();
   client.playerId = 1005161;

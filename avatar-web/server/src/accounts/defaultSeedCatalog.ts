@@ -33,3 +33,9 @@ export const DEFAULT_SEED_CATALOG: CachedSeed[] = [
   { id: 47, name: 'Hoa Tam Giác Mạch', growMinutes: 3, value: 180 },
   { id: 48, name: 'Cây Dừa', growMinutes: 48, value: 2880 },
 ];
+
+/**
+ * 11 hạt trồng bằng xu (typeShop = 1), id 0–10. Hạt cao cấp (30–48) chưa xác
+ * định loại tiền (`typeShop = 2`) nên không tự mua.
+ */
+export const XU_SEED_IDS: ReadonlySet<number> = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);

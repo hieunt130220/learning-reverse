@@ -475,7 +475,7 @@ export class GameClient extends EventEmitter {
         this.emit('log', 'server phản hồi getServerLoginInfo — giải mã hai chiều OK');
         break;
       case 70: {
-        // INVENTORY — 4 section; section 1 = hạt giống, 2 = vật phẩm
+        // INVENTORY — 4 section; section 1 = hạt giống, 2 = vật phẩm; đuôi chứa số dư xu
         const inv = decodeInventory(msg.getData());
         this.inventory = [...inv.seeds, ...inv.items];
         // Section 3 = NÔNG SẢN thu được (đo thật: `#6×2813` lúa, `#50×530` trứng
@@ -483,10 +483,15 @@ export class GameClient extends EventEmitter {
         // bỏ đi cùng section 4, nên thu hoạch xong nhìn vào kho thấy y nguyên và
         // tưởng lệnh không chạy.
         this.produce = inv.other[0] ?? [];
+        if (inv.xu !== undefined && inv.xu >= 0) {
+          this.money = inv.xu;
+          this.emit('money', { type: 1, balance: inv.xu, delta: 0 });
+        }
         this.emit(
           'log',
           `kho: ${inv.seeds.length} loại hạt, ${inv.items.length} loại vật phẩm, ` +
-            `${this.produce.length} loại nông sản (${this.produce.map((i) => `#${i.id}×${i.num}`).join(' ')})`,
+            `${this.produce.length} loại nông sản (${this.produce.map((i) => `#${i.id}×${i.num}`).join(' ')})` +
+            (inv.xu !== undefined ? ` · xu: ${inv.xu}` : ''),
         );
         this.emit('inventory', this.inventory);
         break;

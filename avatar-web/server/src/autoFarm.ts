@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import { DEFAULT_SEED_CATALOG } from './accounts/defaultSeedCatalog.js';
+import { DEFAULT_SEED_CATALOG, XU_SEED_IDS } from './accounts/defaultSeedCatalog.js';
 import {
   DEFAULT_FOOD_CATALOG,
   GROWN_PERCENT,
@@ -337,6 +337,23 @@ export class AutoFarm extends EventEmitter {
     return !received;
   }
 
+  /**
+   * Xin lại kho (cmd 70) và chờ gói trả về. Server KHÔNG tự đẩy gói 70 sau
+   * doBuyItem (chỉ trả UPDATE_MONEY + echo 68 + dialog), nên mua xong phải gọi
+   * thủ công thì các giai đoạn sau (trồng/chăm sóc) mới thấy hàng vừa mua.
+   */
+  private async refreshInventory(): Promise<void> {
+    const fresh = new Promise<void>((resolve) => {
+      const t = setTimeout(resolve, 5000);
+      this.client.once('inventory', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+    this.client.farm.getInventory();
+    await fresh;
+  }
+
   private async runCycle(): Promise<void> {
     if (this.pendingConfig) {
       this.activeConfig = this.pendingConfig;
@@ -383,15 +400,7 @@ export class AutoFarm extends EventEmitter {
       // Kho PHẢI mới trước khi tính nhu cầu: nếu đọc kho rỗng (vd server vừa
       // khởi động lại, chưa có gói 70 nào) thì auto-buy sẽ tưởng đang có 0 và
       // mua thừa toàn bộ. Xin lại kho và chờ phản hồi.
-      const invFresh = new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, 5000);
-        this.client.once('inventory', () => {
-          clearTimeout(t);
-          resolve();
-        });
-      });
-      this.client.farm.getInventory();
-      await invFresh;
+      await this.refreshInventory();
       const idFarm = farm.idFarm;
 
       const plantingConfigured = cfg.seedId !== undefined
@@ -502,6 +511,13 @@ export class AutoFarm extends EventEmitter {
       }
 
       // --- Tính nhu cầu vật phẩm cho vòng này -----------------------------
+      // Bản đồ kế hoạch ô và bộ hạt đã biết dùng chung cho cả bước mua bù lẫn
+      // giai đoạn trồng — hai bước phải nhìn cùng một sự thật.
+      const planByCell = new Map(cfg.treeCellPlan?.map((entry) => [entry.cellIndex, entry]));
+      const knownSeeds = new Set<number>([
+        ...DEFAULT_SEED_CATALOG.map((s) => s.id),
+        ...this.client.trees.map((tree) => tree.id),
+      ]);
       const need = new Map<number, number>();
       const want = (id: number, n = 1) => need.set(id, (need.get(id) ?? 0) + n);
 
@@ -533,6 +549,25 @@ export class AutoFarm extends EventEmitter {
         if (c.isWorm && wormItemId !== undefined) want(wormItemId);
       }
 
+      // Hạt giống cho các ô sẽ trống trong vòng này: ô đang trống, hoặc ô chín
+      // được thu hoạch khi bật `harvest`. Chỉ đếm hạt giai đoạn trồng thật sự
+      // dùng (plan skip / hạt ngoài catalog / hạt cao cấp thì không), để
+      // auto-buy mua đúng số thiếu thay vì bỏ qua như trước.
+      const seedBuyableWithXu = (id: number): boolean => {
+        const tree = this.client.trees.find((t) => t.id === id);
+        if (tree !== undefined) return tree.category !== 'premium';
+        return XU_SEED_IDS.has(id);
+      };
+      for (const c of farm.cells) {
+        const plan = planByCell.get(c.index);
+        const plannedSeedId = plan?.action === 'seed' ? plan.seedId : seedId;
+        if (plan?.action === 'skip') continue;
+        if (plannedSeedId === undefined || !knownSeeds.has(plannedSeedId)) continue;
+        if (!seedBuyableWithXu(plannedSeedId)) continue;
+        const willBeEmpty = c.idTree === -1 || (harvest && cellRipe(c));
+        if (willBeEmpty) want(plannedSeedId);
+      }
+
       // --- Mua bù phần thiếu ----------------------------------------------
       // Đi TRƯỚC các bước dùng vật phẩm (chữa bệnh/cho ăn) để có hàng trong
       // kho trước khi dùng — không đổi vị trí bước này.
@@ -545,7 +580,12 @@ export class AutoFarm extends EventEmitter {
           if (this.aborted) return;
             const short = qty - (have.get(id) ?? 0);
           if (short <= 0) continue;
-          const price = this.client.items.find((i) => i.id === id)?.price;
+          // Hạt không nằm trong bảng vật phẩm (chỉ có 11 món tiêu dùng 111–124)
+          // — giá hạt lấy từ bảng cây (`value` = giá xu), fallback
+          // DEFAULT_SEED_CATALOG khi chưa có bảng cây.
+          const price = this.client.items.find((i) => i.id === id)?.price
+            ?? this.client.trees.find((t) => t.id === id)?.value
+            ?? DEFAULT_SEED_CATALOG.find((s) => s.id === id)?.value;
           if (price === undefined) {
             note(`bỏ mua #${id}: chưa biết giá`);
             continue;
@@ -567,7 +607,12 @@ export class AutoFarm extends EventEmitter {
           }
           spent += cost;
         }
-        if (spent > 0) await tick();
+        if (spent > 0) {
+          await tick();
+          // Server không tự đẩy gói 70 sau khi mua — làm mới kho để giai đoạn
+          // trồng cùng vòng thấy hạt vừa mua.
+          await this.refreshInventory();
+        }
       }
 
       // --- MUA VẬT NUÔI THEO KẾ HOẠCH --------------------------------------
@@ -703,12 +748,7 @@ export class AutoFarm extends EventEmitter {
       // Mỗi ô chạm đúng một lần, làm hết mọi việc của ô đó rồi mới sang ô sau.
       // Thu hoạch và trồng đi trước vì đó là mục đích chính của farm và không
       // phụ thuộc kho; chăm sóc ô là việc bảo trì nên xếp sau.
-      const planByCell = new Map(cfg.treeCellPlan?.map((entry) => [entry.cellIndex, entry]));
       const seedInventory = new Map(this.client.inventory.map((item) => [item.id, item.num]));
-      const knownSeeds = new Set<number>([
-        ...DEFAULT_SEED_CATALOG.map((s) => s.id),
-        ...this.client.trees.map((tree) => tree.id),
-      ]);
       for (const c of farm.cells) {
         if (this.aborted) return;
         const seen: string[] = [];

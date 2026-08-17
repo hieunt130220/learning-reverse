@@ -204,27 +204,45 @@ export function decodeInventory(body: Buffer): {
   seeds: InventoryItem[];
   items: InventoryItem[];
   other: InventoryItem[][];
+  xu?: number;
   restHex: string;
 } {
   const r = new MyReader(body);
   const sections: InventoryItem[][] = [];
-  while (r.available() > 0) {
-    const pos = r.position;
+  // Gói 70 có đúng 4 section
+  for (let s = 0; s < 4 && r.available() > 0; s++) {
     const count = r.readByte();
-    if (count <= 0 || r.available() < count * 6) {
-      // hết section hợp lệ -> phần còn lại là đuôi
-      return {
-        seeds: sections[0] ?? [],
-        items: sections[1] ?? [],
-        other: sections.slice(2),
-        restHex: body.subarray(pos).toString('hex'),
-      };
+    if (count < 0 || r.available() < count * 6) {
+      break;
     }
     const list: InventoryItem[] = [];
     for (let i = 0; i < count; i++) list.push({ id: r.readShort(), num: r.readInt() });
     sections.push(list);
   }
-  return { seeds: sections[0] ?? [], items: sections[1] ?? [], other: sections.slice(2), restHex: '' };
+
+  let xu: number | undefined;
+  let restHex = '';
+  if (r.available() > 0) {
+    if (r.available() >= 4) {
+      try {
+        const parsedXu = r.readInt();
+        if (parsedXu >= 0) {
+          xu = parsedXu;
+        }
+      } catch {
+        /* bỏ qua */
+      }
+    }
+    restHex = r.rest().toString('hex');
+  }
+
+  return {
+    seeds: sections[0] ?? [],
+    items: sections[1] ?? [],
+    other: sections.slice(2),
+    ...(xu !== undefined ? { xu } : {}),
+    restHex,
+  };
 }
 
 /**
