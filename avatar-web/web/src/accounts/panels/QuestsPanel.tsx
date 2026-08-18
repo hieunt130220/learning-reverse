@@ -211,13 +211,25 @@ export function QuestsPanel({
 
                 {daily.missions.length === 0 ? (
                   <div className="daily-completed-banner">
-                    <span className="banner-icon">🎉</span>
+                    <span className="banner-icon">{daily.score >= daily.maxScore ? '🎉' : '📋'}</span>
                     <div className="banner-text">
-                      <h5>Đã hoàn thành toàn bộ nhiệm vụ hôm nay!</h5>
-                      <p>
-                        Tài khoản đã hoàn tất nhiệm vụ hàng ngày và tích luỹ 100/100 ⭐ điểm năng động.
-                        Nhiệm vụ mới sẽ được máy chủ làm mới vào ngày mai.
-                      </p>
+                      {daily.score >= daily.maxScore ? (
+                        <>
+                          <h5>Đã hoàn thành toàn bộ nhiệm vụ hôm nay!</h5>
+                          <p>
+                            Tài khoản đã hoàn tất nhiệm vụ hàng ngày và tích luỹ 100/100 ⭐ điểm năng động.
+                            Nhiệm vụ mới sẽ được máy chủ làm mới vào ngày mai.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <h5>Chưa có danh sách nhiệm vụ cần làm</h5>
+                          <p>
+                            Tài khoản hiện chưa có nhiệm vụ nào trong chuỗi hoặc đang chờ máy chủ làm mới.
+                            Bạn có thể nhấn nút "Làm mới" ở góc trên để tải lại dữ liệu mới nhất.
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
                 ) : (

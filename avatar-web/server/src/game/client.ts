@@ -526,10 +526,12 @@ export class GameClient extends EventEmitter {
       }
       case -87: {
         // INFO_TEXT_BOX_SERVER:
-        // - sub_type = 1: phản hồi getServerLoginInfo
-        // - sub_type = 2 hoặc 4: DAILY_QUEST (DailyQuestScr.dailyQuestMessage @0xAF7664)
+        // - sub_type = 1: phản hồi getServerLoginInfo (@0x5ED0B4)
+        // - sub_type = 2: CUSTOM_CHEST / Part data (@0x5F18D8)
+        // - sub_type = 3: LoadMap.getAvatar update (@0x5F1368)
+        // - sub_type = 4: DAILY_QUEST (DailyQuestScr.dailyQuestMessage @0xAF7664)
         const data = msg.getData();
-        if (data.length > 0 && (data[0] === 2 || data[0] === 4)) {
+        if (data.length > 0 && data[0] === 4) {
           try {
             const res = decodeDailyQuestPacket(
               data.subarray(1),
@@ -545,12 +547,22 @@ export class GameClient extends EventEmitter {
                 'log',
                 `nhiệm vụ ngày: ${res.state.score}/${res.state.maxScore} ⭐ · ${res.state.missions.length} nhiệm vụ (${res.state.missions.filter((m) => m.isDone).length} xong)`,
               );
+              // Nếu vừa nhận thưởng nhiệm vụ (subAction = 2), nạp lại nhiệm vụ ngày từ server
+              if (res.action === 2) {
+                try {
+                  this.farm.getDailyQuest(0);
+                } catch {
+                  /* bỏ qua */
+                }
+              }
             }
           } catch (err) {
             this.emit('log', `giải mã nhiệm vụ ngày lỗi: ${(err as Error).message}`);
           }
         } else if (data.length > 0 && data[0] === 1) {
           this.emit('log', 'server phản hồi getServerLoginInfo — giải mã hai chiều OK');
+        } else if (data.length > 0 && data[0] === 2) {
+          // Gói tin CUSTOM_CHEST / Part data - bỏ qua để không nhầm sang DailyQuest
         }
         break;
       }

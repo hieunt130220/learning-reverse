@@ -2054,7 +2054,7 @@ export function decodeDailyQuestPacket(
       };
     }
 
-    // subAction = 2 (DONE / ALREADY COMPLETED)
+    // subAction = 2 (DONE / NHẬN THƯỞNG NHIỆM VỤ HOÀN TẤT)
     if (subAction === 2) {
       const rewards: DailyRewardItem[] = [];
       if (r.available() > 0) {
@@ -2078,8 +2078,8 @@ export function decodeDailyQuestPacket(
           });
         }
       }
-      const score = current?.score && current.score > 0 ? current.score : 100;
-      const boxDone = current?.boxDone ?? 0x1f;
+      const score = current?.score ?? 0;
+      const boxDone = current?.boxDone ?? 0;
       const MILESTONES = [20, 40, 60, 80, 100];
       const boxes: DailyBoxMilestone[] = MILESTONES.map((m, idx) => {
         const isClaimed = (boxDone & (1 << idx)) !== 0;
