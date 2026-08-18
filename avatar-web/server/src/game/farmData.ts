@@ -1964,7 +1964,7 @@ export function decodeDailyQuestPacket(
       return { action: subAction, state: current ?? createEmptyDailyQuestState() };
     }
 
-    if (subAction === 0 || subAction === 1 || subAction === 2) {
+    if (subAction === 0 || subAction === 1) {
       if (r.available() < 5) return null;
       const curScore = r.readInt();
       const boxDone = r.readByte();
@@ -1993,14 +1993,19 @@ export function decodeDailyQuestPacket(
         });
       }
 
-      // Decode rewards (vecPhanthuong)
+      // Đọc điểm thưởng của chuỗi nhiệm vụ (score_nhiemvu @0xAF78C8)
+      if (r.available() >= 4) {
+        r.readInt();
+      }
+
+      // Decode rewards (vecPhanthuong @0xAF7934)
       const nReward = r.available() > 0 ? r.readByte() : 0;
       const rewards: DailyRewardItem[] = [];
       for (let i = 0; i < nReward; i++) {
         if (r.available() < 5) break;
         const type = r.readByte();
         let itemId: number | undefined;
-        if (type === 4) {
+        if (type === 4 || type === 5) {
           if (r.available() < 6) break;
           itemId = r.readShort();
         }
@@ -2015,9 +2020,11 @@ export function decodeDailyQuestPacket(
 
       let typeMoneyChange = -1;
       let moneyChange = 0;
-      if (r.available() >= 5) {
+      if (r.available() >= 1) {
         typeMoneyChange = r.readByte();
-        moneyChange = r.readInt();
+        if (r.available() >= 4) {
+          moneyChange = r.readInt();
+        }
       }
 
       const MILESTONES = [20, 40, 60, 80, 100];
@@ -2045,6 +2052,41 @@ export function decodeDailyQuestPacket(
           updatedAt: Date.now(),
         },
       };
+    }
+
+    // subAction = 2 (DONE / FLY_TEXT)
+    if (subAction === 2) {
+      if (r.available() > 0) {
+        const nReward = r.readByte();
+        const rewards: DailyRewardItem[] = [];
+        for (let i = 0; i < nReward; i++) {
+          if (r.available() < 5) break;
+          const type = r.readByte();
+          let itemId: number | undefined;
+          if (type === 4 || type === 5) {
+            if (r.available() < 6) break;
+            itemId = r.readShort();
+          }
+          const amount = r.readInt();
+          rewards.push({
+            type,
+            name: getRewardTypeName(type, itemId, catalog?.items),
+            amount,
+            itemId,
+          });
+        }
+        if (current) {
+          return {
+            action: subAction,
+            state: {
+              ...current,
+              rewards: rewards.length > 0 ? rewards : current.rewards,
+              updatedAt: Date.now(),
+            },
+          };
+        }
+      }
+      return { action: subAction, state: current ?? createEmptyDailyQuestState() };
     }
 
     return null;

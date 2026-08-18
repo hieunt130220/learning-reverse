@@ -525,9 +525,9 @@ export class GameClient extends EventEmitter {
         break;
       }
       case -87: {
-        // INFO_TEXT_BOX_SERVER — phản hồi getServerLoginInfo hoặc DAILY_QUEST (sub=2)
+        // INFO_TEXT_BOX_SERVER — phản hồi getServerLoginInfo (sub=1) hoặc DAILY_QUEST (sub=4 hoặc sub=2)
         const data = msg.getData();
-        if (data.length > 0 && data[0] === 2) {
+        if (data.length > 0 && (data[0] === 4 || data[0] === 2)) {
           try {
             const res = decodeDailyQuestPacket(
               data.subarray(1),
@@ -543,6 +543,10 @@ export class GameClient extends EventEmitter {
                 'log',
                 `nhiệm vụ ngày: ${res.state.score}/${res.state.maxScore} ⭐ · ${res.state.missions.length} nhiệm vụ (${res.state.missions.filter((m) => m.isDone).length} xong)`,
               );
+              // Nếu vừa nhận thưởng nhiệm vụ (action 2), tự xin lại state đầy đủ
+              if (res.action === 2) {
+                this.farm.getDailyQuest(0);
+              }
             }
           } catch (err) {
             this.emit('log', `giải mã nhiệm vụ ngày lỗi: ${(err as Error).message}`);
