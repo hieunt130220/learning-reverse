@@ -149,6 +149,7 @@ export interface DailyQuestState {
   boxDone: number;
   boxes: DailyBoxMilestone[];
   missions: DailyMissionItem[];
+  missionScoreReward?: number;
   rewards: DailyRewardItem[];
   typeMoneyChange: number;
   moneyChange: number;

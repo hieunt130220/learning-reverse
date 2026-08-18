@@ -263,10 +263,15 @@ export function QuestsPanel({
                 )}
 
                 {/* Phần thưởng hàng ngày */}
-                {daily.rewards.length > 0 && (
+                {(daily.rewards.length > 0 || (daily.missionScoreReward !== undefined && daily.missionScoreReward > 0)) && (
                   <div className="daily-rewards-block">
                     <span className="label-caption">Phần thưởng khi hoàn thành:</span>
                     <div className="rewards-pill-group">
+                      {daily.missionScoreReward !== undefined && daily.missionScoreReward > 0 && (
+                        <span className="reward-pill reward-pill--star">
+                          ⭐ +{daily.missionScoreReward} điểm năng động
+                        </span>
+                      )}
                       {daily.rewards.map((r, i) => (
                         <span key={i} className="reward-pill">
                           {r.name}: +{r.amount.toLocaleString('vi-VN')}

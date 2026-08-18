@@ -245,24 +245,24 @@ export class FarmService {
     this.send(103, (m) => m.writer!.writeByte(8));
   }
 
-  // ---- nhiệm vụ hàng ngày (cmd -87, byte đầu = sub-type 2) ----------------
-  /** getDailyQuest — sub-type 2, type 0 = SHOW @0x6a2008 */
+  // ---- nhiệm vụ hàng ngày (cmd -87, byte đầu = sub-type 4) ----------------
+  /** getDailyQuest — sub-type 4, type 0 = SHOW @0x6a2008 */
   getDailyQuest(type = 0): void {
-    this.send(-87, (m) => m.writer!.writeByte(2).writeByte(type));
+    this.send(-87, (m) => m.writer!.writeByte(4).writeByte(type));
   }
 
   /** changeDailyQuest — type 1 = CHANGE */
   changeDailyQuest(): void {
-    this.send(-87, (m) => m.writer!.writeByte(2).writeByte(1));
+    this.send(-87, (m) => m.writer!.writeByte(4).writeByte(1));
   }
 
   /** claimDailyQuestReward — type 2 = DONE */
   claimDailyQuestReward(): void {
-    this.send(-87, (m) => m.writer!.writeByte(2).writeByte(2));
+    this.send(-87, (m) => m.writer!.writeByte(4).writeByte(2));
   }
 
   /** claimDailyQuestBox — type 3 = GETBOX */
   claimDailyQuestBox(): void {
-    this.send(-87, (m) => m.writer!.writeByte(2).writeByte(3));
+    this.send(-87, (m) => m.writer!.writeByte(4).writeByte(3));
   }
 }

@@ -1792,6 +1792,7 @@ export interface DailyQuestState {
   boxDone: number;
   boxes: DailyBoxMilestone[];
   missions: DailyMissionItem[];
+  missionScoreReward?: number;
   rewards: DailyRewardItem[];
   typeMoneyChange: number;
   moneyChange: number;
@@ -1835,18 +1836,33 @@ export const KNOWN_PRODUCE_NAME_MAP: Record<number, string> = {
   2: 'Dứa',
   3: 'Dưa hấu',
   4: 'Đậu nành',
-  5: 'Hoa hướng dương',
+  5: 'Hoa hồng',
   6: 'Lúa',
-  7: 'Khoai tây',
-  8: 'Bắp',
-  9: 'Mía',
-  10: 'Dâu tây',
+  7: 'Xoài',
+  8: 'Thanh long',
+  9: 'Hoa hướng dương',
+  10: 'Hoa tulip',
   11: 'Ớt',
   12: 'Xoài',
   13: 'Táo',
   14: 'Khế',
   15: 'Hoa cúc',
   16: 'Thanh long',
+  30: 'Bắp',
+  31: 'Nha đam',
+  32: 'Cà tím',
+  34: 'Tỏi',
+  35: 'Dâu tây',
+  36: 'Chuối',
+  39: 'Cúc chuồn chuồn',
+  41: 'Bí ngô',
+  42: 'Khoai tây',
+  43: 'Dưa leo',
+  44: 'Ớt',
+  45: 'Cải thảo',
+  46: 'Nhân sâm',
+  47: 'Hoa tam giác mạch',
+  48: 'Cây dừa',
   50: 'Trứng gà',
   51: 'Sữa bò',
   52: 'Trứng vịt',
@@ -1859,6 +1875,7 @@ export const KNOWN_PRODUCE_NAME_MAP: Record<number, string> = {
   59: 'Rùa / Ba ba',
   60: 'Cua',
   61: 'Tôm',
+  111: 'Ớt hiểm',
   120: 'Thuốc cúm',
   121: 'Thuốc tiêu chảy',
   122: 'Thuốc bổ',
@@ -1994,8 +2011,9 @@ export function decodeDailyQuestPacket(
       }
 
       // Đọc điểm thưởng của chuỗi nhiệm vụ (score_nhiemvu @0xAF78C8)
+      let missionScoreReward = 0;
       if (r.available() >= 4) {
-        r.readInt();
+        missionScoreReward = r.readInt();
       }
 
       // Decode rewards (vecPhanthuong @0xAF7934)
@@ -2045,6 +2063,7 @@ export function decodeDailyQuestPacket(
           boxDone,
           boxes,
           missions,
+          missionScoreReward,
           rewards,
           typeMoneyChange,
           moneyChange,
@@ -2097,6 +2116,7 @@ export function decodeDailyQuestPacket(
           boxDone,
           boxes: current?.boxes ?? boxes,
           missions: current?.missions ?? [],
+          missionScoreReward: current?.missionScoreReward,
           rewards: rewards.length > 0 ? rewards : (current?.rewards ?? []),
           typeMoneyChange: -1,
           moneyChange: 0,
