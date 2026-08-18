@@ -197,8 +197,14 @@ export class AvatarSession {
     };
   }
 
+  private setWanted(wanted: boolean): void {
+    if (this.wanted === wanted) return;
+    this.wanted = wanted;
+    this.emit('desired-connected', wanted);
+  }
+
   async start(): Promise<void> {
-    this.wanted = true;
+    this.setWanted(true);
     this.permanentlyFailed = false;
     if (this.client && this.client.status === 'online') return;
     if (this.client) {
@@ -209,7 +215,7 @@ export class AvatarSession {
   }
 
   stop(): void {
-    this.wanted = false;
+    this.setWanted(false);
     this.cancelRetry();
     this.cancelAutoCycleTimer();
     this.cancelAutoSyncKickoff();
@@ -646,7 +652,7 @@ export class AvatarSession {
 
   private failPermanently(reason: string): void {
     this.permanentlyFailed = true;
-    this.wanted = false;
+    this.setWanted(false);
     this.wantAuto = false;
     this.cancelRetry();
     this.pushLog(reason);
