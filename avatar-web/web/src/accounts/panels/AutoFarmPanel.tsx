@@ -199,6 +199,7 @@ export function AutoFarmPanel({
   onPlanDirtyChange,
 }: AutoFarmPanelProps) {
   const [autoHarvestCook, setAutoHarvestCook] = useState(true);
+  const [autoClaimDailyQuests, setAutoClaimDailyQuests] = useState(false);
 
   const [storedState, setStoredState] = useState<AutoConfigStateDto>(EMPTY_AUTO);
   const [draftPlan, setDraftPlan] = useState<TreeCellPlanEntry[]>([]);
@@ -220,6 +221,7 @@ export function AutoFarmPanel({
 
   const hydrateForm = useCallback((config: Partial<AutoFarmConfigDto>) => {
     setAutoHarvestCook(config.autoHarvestCook ?? true);
+    setAutoClaimDailyQuests(config.autoClaimDailyQuests ?? false);
     setDraftKitchenPlan(sortedKitchenPlan(config.cookingSlotPlan));
   }, []);
 
@@ -270,14 +272,15 @@ export function AutoFarmPanel({
     };
   }, [accountId, hydrateForm]);
 
-  // Chỉ so sánh các phần UI cho phép sửa: kế hoạch cây + vật nuôi (chuồng/hồ) + bếp nấu.
+  // Chỉ so sánh các phần UI cho phép sửa: kế hoạch cây + vật nuôi (chuồng/hồ) + bếp nấu + nhiệm vụ.
   const dirty = useMemo(
     () => planKey(draftPlan) !== planKey(storedState.config.treeCellPlan)
       || animalPlanKey(draftBarnPlan) !== animalPlanKey(storedState.config.barnAnimalPlan)
       || animalPlanKey(draftPondPlan) !== animalPlanKey(storedState.config.pondAnimalPlan)
       || kitchenPlanKey(draftKitchenPlan) !== kitchenPlanKey(storedState.config.cookingSlotPlan)
-      || autoHarvestCook !== (storedState.config.autoHarvestCook ?? true),
-    [draftPlan, draftBarnPlan, draftPondPlan, draftKitchenPlan, autoHarvestCook, storedState.config],
+      || autoHarvestCook !== (storedState.config.autoHarvestCook ?? true)
+      || autoClaimDailyQuests !== (storedState.config.autoClaimDailyQuests ?? false),
+    [draftPlan, draftBarnPlan, draftPondPlan, draftKitchenPlan, autoHarvestCook, autoClaimDailyQuests, storedState.config],
   );
   const planDirtyRef = useRef(dirty);
   planDirtyRef.current = dirty;
@@ -305,6 +308,7 @@ export function AutoFarmPanel({
           cookingSlotPlan: sortedKitchenPlan(draftKitchenPlan),
           autoCook: true,
           autoHarvestCook,
+          autoClaimDailyQuests,
         },
       });
       if (requestGeneration.current !== generation) return;
@@ -476,6 +480,21 @@ export function AutoFarmPanel({
             setConflict(null);
           }}
         />
+      </div>
+
+      <div className="setting-section">
+        <h3>🎯 Nhiệm vụ hàng ngày</h3>
+        <div className="row" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <label className="inline">
+            <input
+              type="checkbox"
+              checked={autoClaimDailyQuests}
+              onChange={(event) => setAutoClaimDailyQuests(event.target.checked)}
+              style={{ width: 'auto' }}
+            />
+            Tự động nhận thưởng nhiệm vụ hoàn thành & mở rương quà
+          </label>
+        </div>
       </div>
 
       <div className="row tree-plan-save-row">

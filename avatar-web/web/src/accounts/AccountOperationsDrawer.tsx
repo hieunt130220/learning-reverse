@@ -9,6 +9,7 @@ import { AssetsPanel } from './panels/AssetsPanel.js';
 import { AutoFarmPanel } from './panels/AutoFarmPanel.js';
 import { CookingPanel } from './panels/CookingPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
+import { QuestsPanel } from './panels/QuestsPanel.js';
 import { StatusPanel } from './panels/StatusPanel.js';
 
 export function AccountOperationsDrawer() {
@@ -86,6 +87,10 @@ function LoadedOperations({
       <AutoFarmPanel
         accountId={account.id}
         onPlanDirtyChange={onPlanDirtyChange}
+      />
+      <QuestsPanel
+        accountId={account.id}
+        quests={snapshot?.quests ?? null}
       />
       <CookingPanel
         cooking={snapshot?.cooking}

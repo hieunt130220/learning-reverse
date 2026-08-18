@@ -648,3 +648,479 @@ button.ghost {
   .dialog-backdrop,
   .account-drawer { animation: none; }
 }
+
+/* ==========================================================================
+   QuestsPanel Styling (Nhiệm vụ nông trại)
+   ========================================================================== */
+
+.quests-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #0d1117;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.quests-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quests-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quests-header-title h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.badge--star {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffd700;
+  background: rgba(255, 215, 0, 0.12);
+  border: 1px solid rgba(255, 215, 0, 0.35);
+  border-radius: 12px;
+}
+
+.quests-tabs {
+  display: flex;
+  gap: 4px;
+  background: #161b22;
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+.quests-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.quests-tab:hover {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.quests-tab--active {
+  background: #21262d;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.tab-pill {
+  font-size: 10px;
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+
+.quests-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Daily Progress */
+.daily-progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #161b22;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.daily-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.label-caption {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.score-text {
+  font-size: 13px;
+  color: #e6edf3;
+}
+
+.score-text strong {
+  color: #ffd700;
+  font-size: 15px;
+}
+
+.daily-meter {
+  width: 100%;
+  height: 8px;
+  background: #21262d;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.daily-meter-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffd700, #ff9f1c);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.daily-boxes-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.box-milestone-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 2px;
+  background: #0d1117;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.box-milestone-card--can-claim {
+  border-color: #e3b341;
+  background: rgba(227, 179, 65, 0.08);
+  box-shadow: 0 0 8px rgba(227, 179, 65, 0.2);
+}
+
+.box-milestone-card--claimed {
+  opacity: 0.6;
+  border-color: #238636;
+}
+
+.box-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.box-milestone-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.box-status-tag {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.tag-claimed {
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.12);
+}
+
+.tag-locked {
+  color: var(--muted);
+}
+
+.btn-box-claim {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #ffd700, #ff9f1c);
+  color: #0d1117;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  animation: pulse-glow 1.5s infinite alternate;
+}
+
+@keyframes pulse-glow {
+  from { transform: scale(0.95); filter: brightness(1); }
+  to { transform: scale(1.05); filter: brightness(1.2); }
+}
+
+/* Daily Missions List */
+.daily-missions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.missions-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.missions-list-header h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.btn-claim-all {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-claim-all:hover {
+  background: #2ea043;
+}
+
+.mission-item-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: #161b22;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.mission-item-card--done {
+  border-color: rgba(63, 185, 80, 0.4);
+  background: rgba(63, 185, 80, 0.04);
+}
+
+.mission-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.mission-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.mission-bullet {
+  font-size: 12px;
+}
+
+.mission-name {
+  color: var(--fg);
+}
+
+.mission-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.badge-success {
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.15);
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.badge-pending {
+  color: #d29922;
+  background: rgba(210, 153, 34, 0.12);
+  border: 1px solid rgba(210, 153, 34, 0.25);
+}
+
+.mission-mini-bar {
+  width: 100%;
+  height: 4px;
+  background: #21262d;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.mission-mini-bar-fill {
+  height: 100%;
+  background: #d29922;
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+.mission-mini-bar-fill.bar-done {
+  background: #3fb950;
+}
+
+.daily-rewards-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+  border: 1px dashed var(--line);
+}
+
+.rewards-pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.reward-pill {
+  font-size: 11px;
+  color: #58a6ff;
+  background: rgba(88, 166, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.daily-actions-footer {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.btn-change-quest {
+  font-size: 11px;
+}
+
+/* Quest Cards for Beginner & General */
+.quests-list-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quest-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #161b22;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.quest-card--done {
+  border-color: rgba(63, 185, 80, 0.35);
+  background: rgba(63, 185, 80, 0.04);
+}
+
+.quest-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.quest-card-left {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.quest-status-icon {
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.quest-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.quest-desc {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.quest-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+
+.reward-tag {
+  color: #e3b341;
+}
+
+.quest-state-text {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.quest-card--done .quest-state-text {
+  color: #3fb950;
+  font-weight: 600;
+}
+
+.toast-inline {
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.toast-inline--success {
+  background: rgba(63, 185, 80, 0.15);
+  border: 1px solid rgba(63, 185, 80, 0.4);
+  color: #3fb950;
+}
+
+.toast-inline--error {
+  background: rgba(248, 81, 73, 0.15);
+  border: 1px solid rgba(248, 81, 73, 0.4);
+  color: #f85149;
+}
+
+.quests-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 12px;
+  text-align: center;
+}
+
