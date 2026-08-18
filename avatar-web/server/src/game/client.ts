@@ -18,8 +18,10 @@ import {
   decodeItemCatalog,
   decodePlayerInfo,
   decodeTreeInfo,
+  decodeDailyQuestPacket,
   DEFAULT_FOOD_CATALOG,
   type CookingState,
+  type DailyQuestState,
   type FarmState,
   type FoodRecipe,
   type InventoryItem,
@@ -138,6 +140,8 @@ export class GameClient extends EventEmitter {
   foods: FoodRecipe[] = [...DEFAULT_FOOD_CATALOG];
   /** Trạng thái bếp nấu ăn (cmd 91). */
   cookingState?: CookingState;
+  /** Trạng thái nhiệm vụ hàng ngày (cmd -87 sub 2). */
+  dailyQuestState: DailyQuestState | null = null;
   /** Số dư xu, cập nhật từ UPDATE_MONEY (-3), type 1. */
   money?: number;
   /** Số dư lượng mở, cập nhật từ UPDATE_MONEY (-3). */
@@ -438,6 +442,22 @@ export class GameClient extends EventEmitter {
     this.session.send(m);
   }
 
+  getDailyQuest(type = 0): void {
+    this.farm.getDailyQuest(type);
+  }
+
+  changeDailyQuest(): void {
+    this.farm.changeDailyQuest();
+  }
+
+  claimDailyQuest(): void {
+    this.farm.claimDailyQuestReward();
+  }
+
+  claimDailyQuestBox(): void {
+    this.farm.claimDailyQuestBox();
+  }
+
   private onMessage(msg: Message): void {
     this.lastRxAt = Date.now();
     this.lastPacket.set(msg.command, msg.getData().toString('hex'));
@@ -504,9 +524,34 @@ export class GameClient extends EventEmitter {
         if (rejection) this.emit('temporary-rejection', rejection);
         break;
       }
-      case -87: // INFO_TEXT_BOX_SERVER — phản hồi getServerLoginInfo
-        this.emit('log', 'server phản hồi getServerLoginInfo — giải mã hai chiều OK');
+      case -87: {
+        // INFO_TEXT_BOX_SERVER — phản hồi getServerLoginInfo hoặc DAILY_QUEST (sub=2)
+        const data = msg.getData();
+        if (data.length > 0 && data[0] === 2) {
+          try {
+            const res = decodeDailyQuestPacket(
+              data.subarray(1),
+              this.dailyQuestState,
+              this.inventory,
+              this.produce,
+              { trees: this.trees, items: this.items },
+            );
+            if (res) {
+              this.dailyQuestState = res.state;
+              this.emit('quests', this.dailyQuestState);
+              this.emit(
+                'log',
+                `nhiệm vụ ngày: ${res.state.score}/${res.state.maxScore} ⭐ · ${res.state.missions.length} nhiệm vụ (${res.state.missions.filter((m) => m.isDone).length} xong)`,
+              );
+            }
+          } catch (err) {
+            this.emit('log', `giải mã nhiệm vụ ngày lỗi: ${(err as Error).message}`);
+          }
+        } else {
+          this.emit('log', 'server phản hồi getServerLoginInfo — giải mã hai chiều OK');
+        }
         break;
+      }
       case 70: {
         // INVENTORY — 4 section; section 1 = hạt giống, 2 = vật phẩm; đuôi chứa số dư xu, farmLevel, levelStore, capacityStore
         const inv = decodeInventory(msg.getData());
@@ -532,6 +577,26 @@ export class GameClient extends EventEmitter {
             (inv.farmLevel !== undefined ? ` · farmLevel: ${inv.farmLevel}` : ''),
         );
         this.emit('inventory', this.inventory);
+
+        // Cập nhật lại tiến độ kho hàng cho các nhiệm vụ ngày hiện có
+        if (this.dailyQuestState && this.dailyQuestState.missions.length > 0) {
+          let changed = false;
+          for (const m of this.dailyQuestState.missions) {
+            let numCurrent = 0;
+            const pItem = this.produce.find((p) => p.id === m.idItem);
+            if (pItem) numCurrent += pItem.num;
+            const invItem = this.inventory.find((p) => p.id === m.idItem);
+            if (invItem) numCurrent += invItem.num;
+            if (m.numCurrent !== numCurrent) {
+              m.numCurrent = numCurrent;
+              m.isDone = numCurrent >= m.numRequired;
+              changed = true;
+            }
+          }
+          if (changed) {
+            this.emit('quests', this.dailyQuestState);
+          }
+        }
         break;
       }
       case 100: {
@@ -697,9 +762,10 @@ export class GameClient extends EventEmitter {
       case 61: // cùng payload readFarmData
         try {
           this.farmState = decodeFarmData(msg.getData());
-          // Tự động tải catalog dữ liệu cây / vật phẩm / món ăn và thông tin bếp khi vào farm
+          // Tự động tải catalog dữ liệu cây / vật phẩm / món ăn, thông tin bếp và nhiệm vụ ngày khi vào farm
           this.farm.getTreeInfo();
           this.farm.getCook(0);
+          this.farm.getDailyQuest(0);
           // INFO_ANIMAL (cmd 101) chỉ có index mà không có species-ngữ-cảnh —
           // nếu gói 101 về trước gói 69 thì vùng phân loại (đã lưu trong farmState)
           // chưa có để chia ao/chuồng.
