@@ -226,6 +226,10 @@ const parsers: Record<ConfigKey, ConfigParser> = {
     if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
     return value;
   },
+  logoutAfterCycle: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
 };
 
 function isConfigKey(key: string): key is ConfigKey {

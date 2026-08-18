@@ -146,6 +146,8 @@ export interface AutoFarmConfig {
   // ---- Cấu hình Nhiệm vụ Hàng ngày (Daily Quest) ---------------------------
   /** Tự động nhận thưởng nhiệm vụ hàng ngày và mở rương quà khi đủ điều kiện. */
   autoClaimDailyQuests?: boolean;
+  /** Tự động đăng xuất sau khi hoàn thành 1 chu kỳ auto và đăng nhập lại khi tới chu kỳ kế tiếp. Mặc định: true. */
+  logoutAfterCycle?: boolean;
 }
 
 export interface AutoFarmState {
@@ -217,7 +219,7 @@ const ALWAYS_ON_CONFIG = {
   waterItemId: 100,
   grassItemId: 123,
   wormItemId: 124,
-  autoClaimDailyQuests: false,
+  autoClaimDailyQuests: true,
 } as const satisfies Partial<AutoFarmConfig>;
 
 export const DEFAULT_AUTO_INTERVAL_MS = 300_000;
@@ -238,6 +240,7 @@ const DEFAULTS: AutoFarmConfig = {
   stepDelayMs: 700,
   intervalMs: DEFAULT_AUTO_INTERVAL_MS,
   startDelayMs: 3_000,
+  logoutAfterCycle: true,
 };
 
 /**
@@ -1107,8 +1110,8 @@ export class AutoFarm extends EventEmitter {
         }
       }
 
-      // ---- Tự động nhận thưởng nhiệm vụ hàng ngày & mở rương quà ------------
-      if (cfg.autoClaimDailyQuests && !this.aborted) {
+      // ---- Tự động nhận thưởng nhiệm vụ hàng ngày & mở rương quà (Mặc định luôn bật) ------------
+      if (cfg.autoClaimDailyQuests !== false && !this.aborted) {
         if (!this.client.dailyQuestState) {
           this.client.farm.getDailyQuest(0);
           await tick();

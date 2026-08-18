@@ -192,7 +192,6 @@ test('lưu gửi đúng full stored config cùng plan mới và báo áp dụng 
       ...alwaysOnConfig,
       ...fixedConfig,
       autoHarvestCook: true,
-      autoClaimDailyQuests: false,
       treeCellPlan: nextPlan,
       barnAnimalPlan: [],
       pondAnimalPlan: [],
