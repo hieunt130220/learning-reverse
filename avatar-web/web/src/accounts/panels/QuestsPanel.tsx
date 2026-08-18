@@ -186,7 +186,16 @@ export function QuestsPanel({
                 </div>
 
                 {daily.missions.length === 0 ? (
-                  <p className="hint hint--empty">Chưa có nhiệm vụ hàng ngày nào.</p>
+                  <div className="daily-completed-banner">
+                    <span className="banner-icon">🎉</span>
+                    <div className="banner-text">
+                      <h5>Đã hoàn thành toàn bộ nhiệm vụ hôm nay!</h5>
+                      <p>
+                        Tài khoản đã hoàn tất nhiệm vụ hàng ngày và tích luỹ 100/100 ⭐ điểm năng động.
+                        Nhiệm vụ mới sẽ được máy chủ làm mới vào ngày mai.
+                      </p>
+                    </div>
+                  </div>
                 ) : (
                   daily.missions.map((mission, idx) => {
                     const pct = Math.min(100, Math.round((mission.numCurrent / mission.numRequired) * 100));

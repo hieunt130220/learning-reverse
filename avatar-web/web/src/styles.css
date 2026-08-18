@@ -1124,3 +1124,39 @@ button.ghost {
   text-align: center;
 }
 
+.daily-completed-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(63, 185, 80, 0.08);
+  border: 1px solid rgba(63, 185, 80, 0.3);
+  border-radius: 8px;
+}
+
+.daily-completed-banner .banner-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.daily-completed-banner .banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.daily-completed-banner h5 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3fb950;
+}
+
+.daily-completed-banner p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+

@@ -2054,20 +2054,22 @@ export function decodeDailyQuestPacket(
       };
     }
 
-    // subAction = 2 (DONE / FLY_TEXT)
+    // subAction = 2 (DONE / ALREADY COMPLETED)
     if (subAction === 2) {
+      const rewards: DailyRewardItem[] = [];
       if (r.available() > 0) {
         const nReward = r.readByte();
-        const rewards: DailyRewardItem[] = [];
         for (let i = 0; i < nReward; i++) {
-          if (r.available() < 5) break;
+          if (r.available() < 1) break;
           const type = r.readByte();
           let itemId: number | undefined;
-          if (type === 4 || type === 5) {
-            if (r.available() < 6) break;
+          if ((type === 4 || type === 5) && r.available() >= 2) {
             itemId = r.readShort();
           }
-          const amount = r.readInt();
+          let amount = 1;
+          if (r.available() >= 4) {
+            amount = r.readInt();
+          }
           rewards.push({
             type,
             name: getRewardTypeName(type, itemId, catalog?.items),
@@ -2075,18 +2077,33 @@ export function decodeDailyQuestPacket(
             itemId,
           });
         }
-        if (current) {
-          return {
-            action: subAction,
-            state: {
-              ...current,
-              rewards: rewards.length > 0 ? rewards : current.rewards,
-              updatedAt: Date.now(),
-            },
-          };
-        }
       }
-      return { action: subAction, state: current ?? createEmptyDailyQuestState() };
+      const score = current?.score && current.score > 0 ? current.score : 100;
+      const boxDone = current?.boxDone ?? 0x1f;
+      const MILESTONES = [20, 40, 60, 80, 100];
+      const boxes: DailyBoxMilestone[] = MILESTONES.map((m, idx) => {
+        const isClaimed = (boxDone & (1 << idx)) !== 0;
+        return {
+          milestone: m,
+          isClaimed,
+          canClaim: !isClaimed && score >= m,
+        };
+      });
+      return {
+        action: subAction,
+        state: {
+          score,
+          maxScore: 100,
+          boxDone,
+          boxes: current?.boxes ?? boxes,
+          missions: current?.missions ?? [],
+          rewards: rewards.length > 0 ? rewards : (current?.rewards ?? []),
+          typeMoneyChange: -1,
+          moneyChange: 0,
+          canChange: false,
+          updatedAt: Date.now(),
+        },
+      };
     }
 
     return null;
