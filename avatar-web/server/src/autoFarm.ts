@@ -197,6 +197,9 @@ const ALWAYS_ON_CONFIG = {
   harvestAnimals: true,
   harvestBarnAnimals: true,
   harvestPondAnimals: true,
+  sellAnimals: true,
+  sellBarnAnimals: true,
+  sellPondAnimals: true,
   feedAnimals: true,
   feedBarnAnimals: true,
   feedPondAnimals: true,
@@ -211,7 +214,7 @@ export const DEFAULT_AUTO_INTERVAL_MS = 300_000;
 
 const DEFAULTS: AutoFarmConfig = {
   ...ALWAYS_ON_CONFIG,
-  sellAnimals: false,
+  sellAnimals: true,
   sellWhenGrownSpecies: SPECIES_SELL_WHEN_GROWN,
   sellNearDeathSpecies: SPECIES_SELL_NEAR_DEATH,
   minGrowthToSell: GROWN_PERCENT,
@@ -857,9 +860,6 @@ export class AutoFarm extends EventEmitter {
         const allowHarvest = isPond ? (cfg.harvestPondAnimals ?? cfg.harvestAnimals) : (cfg.harvestBarnAnimals ?? cfg.harvestAnimals);
         const allowFeed = isPond ? (cfg.feedPondAnimals ?? cfg.feedAnimals) : (cfg.feedBarnAnimals ?? cfg.feedAnimals);
         const allowSell = isPond ? (cfg.sellPondAnimals ?? cfg.sellAnimals) : (cfg.sellBarnAnimals ?? cfg.sellAnimals);
-        const sellSpeciesList = isPond
-          ? (cfg.sellPondSpecies ?? cfg.sellWhenGrownSpecies)
-          : (cfg.sellBarnSpecies ?? cfg.sellWhenGrownSpecies);
         const seen: string[] = [];
         const did: string[] = [];
 
@@ -876,13 +876,13 @@ export class AutoFarm extends EventEmitter {
           await tick();
         }
 
-        // Bán KHÔNG ĐẢO NGƯỢC ĐƯỢC: mặc định tắt, và khi bật vẫn chặn nhiều lớp
-        // (chỉ đúng loài trong danh sách, phải đủ lớn, hoặc không kịp đợt sản phẩm tiếp theo).
-        // Bỏ giới hạn trần số lượng con bán 1 vòng (hoặc maxSellsPerCycle <= 0 coi như không giới hạn).
+        // Tự động bán: loài có sản phẩm (gà, vịt, bò, dê, cừu) bán khi gần chết;
+        // các loài còn lại (heo, cá chép, trâu, rùa, thỏ) bán khi đủ lớn.
+        // Chó 53 và Mèo 57 không nằm trong danh sách bán.
         let didSell = false;
         const unconstrainedSell = cfg.maxSellsPerCycle <= 0 || !Number.isFinite(cfg.maxSellsPerCycle);
         if (allowSell && (unconstrainedSell || sold < cfg.maxSellsPerCycle)) {
-          const whenGrown = sellSpeciesList.includes(a.species) || cfg.sellWhenGrownSpecies.includes(a.species);
+          const whenGrown = cfg.sellWhenGrownSpecies.includes(a.species);
           const nearDeath = cfg.sellNearDeathSpecies.includes(a.species);
           if (whenGrown || nearDeath) {
             // Thông số lấy từ mô tả trong bảng vật nuôi. Không có bảng thì KHÔNG
@@ -1149,8 +1149,8 @@ function makeConfig(input: Partial<AutoFarmConfig>): AutoFarmConfig {
     autoBuy: true,
     buyBudgetXu: Number.MAX_SAFE_INTEGER,
     maxSellsPerCycle: 0,
-    sellWhenGrownSpecies: speciesList(input.sellWhenGrownSpecies, SPECIES_SELL_WHEN_GROWN),
-    sellNearDeathSpecies: speciesList(input.sellNearDeathSpecies, SPECIES_SELL_NEAR_DEATH),
+    sellWhenGrownSpecies: SPECIES_SELL_WHEN_GROWN,
+    sellNearDeathSpecies: SPECIES_SELL_NEAR_DEATH,
     treeCellPlan: validateTreeCellPlan(input.treeCellPlan),
     cookingSlotPlan: validateKitchenPlan(input.cookingSlotPlan),
   };

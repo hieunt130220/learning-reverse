@@ -803,16 +803,12 @@ export function parseAnimalSpec(desc: string): AnimalSpec {
 }
 
 /**
- * Loài KHÔNG có sản phẩm thu hoạch — nuôi lớn rồi bán là hết vòng đời sử dụng.
- *
- * Căn cứ: mô tả từ server ghi thẳng "Không có sản phẩm" cho Heo 52, Cá chép 54,
- * Trâu 58, Rùa 59, Thỏ 61. Mặc định ở đây CỐ Ý chỉ gồm ba loài người dùng nêu
- * tên (52/54/59) — bán là không lấy lại được nên không tự ý nới mặc định; hai
- * loài còn lại thêm được từ UI.
+ * Loài KHÔNG có sản phẩm thu hoạch — nuôi lớn rồi bán là hết vòng đời sử dụng:
+ * Heo 52, Cá chép 54, Trâu 58, Rùa 59, Thỏ 61.
  *
  * Chó 53 và Mèo 57 là thú tiện ích (giữ nhà / hỗ trợ trộm), không bán.
  */
-export const SPECIES_SELL_WHEN_GROWN = [52, 54, 59];
+export const SPECIES_SELL_WHEN_GROWN = [52, 54, 58, 59, 61];
 
 /** Vật nuôi hồ: Cá chép 54, Rùa 59 */
 export const POND_SPECIES = [54, 59];
@@ -828,12 +824,10 @@ export function isBarnSpecies(species: number): boolean {
 }
 
 /**
- * Loài CÓ sản phẩm thu nhiều lần — giữ lại để thu, chỉ bán khi gần hết đời.
- * Mô tả từ server: Gà 50 (20 trứng/6h), Bò 51 (30 sữa/6h), Vịt 55 (20 trứng/6h),
- * Cừu 56 (20 lông/12h), Dê 60 (40 sữa/4h). Mặc định chỉ gồm ba loài người dùng
- * nêu tên; Cừu/Dê thêm được từ UI.
+ * Loài CÓ sản phẩm thu nhiều lần — giữ lại để thu, chỉ bán khi gần hết đời:
+ * Gà 50 (20 trứng/6h), Bò 51 (30 sữa/6h), Vịt 55 (20 trứng/6h), Cừu 56 (20 lông/12h), Dê 60 (40 sữa/4h).
  */
-export const SPECIES_SELL_NEAR_DEATH = [50, 51, 55];
+export const SPECIES_SELL_NEAR_DEATH = [50, 51, 55, 56, 60];
 
 /**
  * Coi là "gần hết thời gian sống" khi đã sống quá tỉ lệ này của tuổi thọ.
