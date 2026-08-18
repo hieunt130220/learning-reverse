@@ -996,13 +996,13 @@ export class AutoFarm extends EventEmitter {
         const cookState = this.client.cookingState;
         if (cookState && cookState.slots.length > 0) {
           // 1. Tự động thu hoạch món chín
-          if (cfg.autoHarvestCook) {
+          if (cfg.autoHarvestCook !== false) {
             for (const slot of cookState.slots) {
               if (this.aborted) break;
               if (slot.idFood !== -1 && (slot.isDone || slot.remainTime <= 0)) {
                 this.client.farm.harvestCook(slot.slot);
                 sent += 1;
-                actions.push(`[bếp] thu hoạch món #${slot.idFood} ở ô ${slot.slot}`);
+                note(`[bếp] thu hoạch món #${slot.idFood} ở ô ${slot.slot}`);
                 slot.idFood = -1;
                 slot.isDone = false;
                 slot.remainTime = 0;
@@ -1013,7 +1013,7 @@ export class AutoFarm extends EventEmitter {
           }
 
           // 2. Tự động nấu ăn cho các ô trống
-          if (cfg.autoCook) {
+          if (cfg.autoCook || hasKitchenPlan) {
             const foodCatalog: FoodRecipe[] = this.client.foods && this.client.foods.length > 0
               ? this.client.foods
               : DEFAULT_FOOD_CATALOG;
@@ -1029,13 +1029,18 @@ export class AutoFarm extends EventEmitter {
 
             for (const slot of cookState.slots) {
               if (this.aborted) break;
-              if (slot.idFood !== -1) continue; // ô đang nấu, bỏ qua
+              if (slot.idFood !== -1 && !slot.isDone && slot.remainTime > 0) continue; // ô đang nấu, bỏ qua
+
+              const planEntry = planBySlot.get(slot.slot);
+              if (planEntry?.action === 'skip') {
+                // Người dùng cài đặt "Không nấu" cho ô này -> bỏ qua
+                continue;
+              }
 
               // Xác định món cần nấu theo thứ tự ưu tiên
               let targetRecipe: FoodRecipe | undefined;
 
               // Ưu tiên 0: Kế hoạch món cho riêng ô bếp này
-              const planEntry = planBySlot.get(slot.slot);
               if (planEntry && planEntry.action === 'cook') {
                 targetRecipe = foodCatalog.find((f) => f.id === planEntry.recipeId);
               }
@@ -1053,8 +1058,8 @@ export class AutoFarm extends EventEmitter {
                 targetRecipe = foodCatalog.find((f) => f.id === cfg.defaultRecipeId);
               }
 
-              // Mặc định fallback: Món đầu tiên trong catalog (Thức ăn gia súc)
-              if (!targetRecipe && foodCatalog.length > 0) {
+              // Mặc định fallback: Món đầu tiên trong catalog nếu autoCook bật và không có plan
+              if (!targetRecipe && cfg.autoCook && foodCatalog.length > 0) {
                 targetRecipe = foodCatalog[0];
               }
 
@@ -1077,14 +1082,14 @@ export class AutoFarm extends EventEmitter {
 
                   this.client.farm.cook(slot.slot, targetRecipe.id);
                   sent += 1;
-                  actions.push(`[bếp] nấu món "${targetRecipe.name}" ở ô ${slot.slot}`);
+                  note(`[bếp] nấu món "${targetRecipe.name}" ở ô ${slot.slot}`);
                   slot.idFood = targetRecipe.id;
                   slot.isDone = false;
                   slot.remainTime = targetRecipe.cookTimeMinutes * 60;
                   await confirm(91, `nấu món ô ${slot.slot}`);
                   await tick();
                 } else {
-                  actions.push(`[bếp] ô ${slot.slot} thiếu nguyên liệu để nấu "${targetRecipe.name}"`);
+                  note(`[bếp] ô ${slot.slot} thiếu nguyên liệu để nấu "${targetRecipe.name}"`);
                 }
               }
             }

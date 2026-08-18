@@ -953,118 +953,412 @@ export interface CookingState {
   updatedAt: number;
 }
 
-/** Catalog món ăn mặc định trong Bếp Nông Trại Avatar */
+/** Catalog món ăn mặc định trong Bếp Nông Trại Avatar (35 món chuẩn khớp KNOWN_FOOD_REFERENCE) */
 export const DEFAULT_FOOD_CATALOG: FoodRecipe[] = [
   {
-    id: 0,
+    id: 1,
+    name: 'Bánh Trứng',
+    productID: 116,
+    cookTimeMinutes: 60,
+    level: 2,
+    iconId: 205,
+    materials: [
+      { itemId: 6, count: 5 },  // Lúa (#6)
+      { itemId: 50, count: 5 }, // Trứng gà (#50)
+    ],
+  },
+  {
+    id: 2,
+    name: 'Bánh sữa',
+    productID: 119,
+    cookTimeMinutes: 90,
+    level: 2,
+    iconId: 206,
+    materials: [
+      { itemId: 6, count: 5 },  // Lúa (#6)
+      { itemId: 51, count: 5 }, // Sữa bò (#51)
+    ],
+  },
+  {
+    id: 3,
     name: 'Cơm',
     productID: 118,
     cookTimeMinutes: 30,
     level: 1,
+    iconId: 207,
     materials: [
       { itemId: 6, count: 5 }, // Lúa (#6)
     ],
   },
   {
-    id: 1,
-    name: 'Cơm trứng',
+    id: 4,
+    name: 'Cơm Trứng',
     productID: 117,
     cookTimeMinutes: 60,
     level: 1,
+    iconId: 208,
     materials: [
-      { itemId: 6, count: 5 },  // Lúa
+      { itemId: 6, count: 5 },  // Lúa (#6)
       { itemId: 50, count: 2 }, // Trứng gà (#50)
     ],
   },
   {
-    id: 2,
-    name: 'Bánh trứng',
-    productID: 116,
-    cookTimeMinutes: 60,
-    level: 2,
-    materials: [
-      { itemId: 6, count: 5 },  // Lúa
-      { itemId: 50, count: 5 }, // Trứng gà
-    ],
-  },
-  {
-    id: 3,
-    name: 'Bánh sữa',
-    productID: 119,
-    cookTimeMinutes: 90,
-    level: 2,
-    materials: [
-      { itemId: 6, count: 5 },  // Lúa
-      { itemId: 51, count: 5 }, // Sữa bò (#51)
-    ],
-  },
-  {
-    id: 4,
-    name: 'Cơm gà',
-    productID: 130,
-    cookTimeMinutes: 120,
-    level: 3,
-    materials: [
-      { itemId: 6, count: 10 }, // Lúa
-      { itemId: 50, count: 5 },  // Trứng gà / Thịt gà
-      { itemId: 1, count: 5 },   // Cà rốt (#1)
-    ],
-  },
-  {
     id: 5,
-    name: 'Súp cà chua',
-    productID: 131,
-    cookTimeMinutes: 90,
-    level: 2,
+    name: 'Cơm Cà rốt',
+    productID: 125,
+    cookTimeMinutes: 60,
+    level: 1,
+    iconId: 209,
     materials: [
-      { itemId: 0, count: 10 },  // Cà chua (#0)
-      { itemId: 50, count: 2 },  // Trứng gà
+      { itemId: 6, count: 5 }, // Lúa (#6)
+      { itemId: 1, count: 5 }, // Cà rốt (#1)
     ],
   },
   {
     id: 6,
-    name: 'Cá kho',
-    productID: 132,
-    cookTimeMinutes: 180,
-    level: 3,
+    name: 'Nước ép trái cây',
+    productID: 126,
+    cookTimeMinutes: 60,
+    level: 1,
+    iconId: 210,
     materials: [
-      { itemId: 54, count: 2 },  // Cá chép (#54)
-      { itemId: 44, count: 5 },  // Ớt (#44)
+      { itemId: 7, count: 10 }, // Dưa hấu (#7)
+      { itemId: 51, count: 5 }, // Sữa bò (#51)
     ],
   },
   {
     id: 7,
-    name: 'Heo quay',
-    productID: 133,
-    cookTimeMinutes: 240,
-    level: 4,
+    name: 'Gỏi Xoài',
+    productID: 127,
+    cookTimeMinutes: 60,
+    level: 1,
+    iconId: 211,
     materials: [
-      { itemId: 52, count: 1 },  // Heo (#52)
-      { itemId: 44, count: 10 }, // Ớt
+      { itemId: 10, count: 5 }, // Xoài (#10)
+      { itemId: 44, count: 2 }, // Ớt (#44)
     ],
   },
   {
     id: 8,
-    name: 'Bánh kem',
-    productID: 134,
-    cookTimeMinutes: 180,
-    level: 4,
+    name: 'Sữa Chua',
+    productID: 128,
+    cookTimeMinutes: 60,
+    level: 1,
+    iconId: 212,
     materials: [
-      { itemId: 6, count: 10 },  // Lúa
-      { itemId: 50, count: 5 },  // Trứng
-      { itemId: 51, count: 5 },  // Sữa bò
-      { itemId: 35, count: 5 },  // Dâu tây (#35)
+      { itemId: 51, count: 5 }, // Sữa bò (#51)
     ],
   },
   {
     id: 9,
-    name: 'Thịt bò xào',
-    productID: 135,
-    cookTimeMinutes: 200,
-    level: 4,
+    name: 'Trái cây dầm',
+    productID: 129,
+    cookTimeMinutes: 90,
+    level: 2,
+    iconId: 213,
     materials: [
-      { itemId: 51, count: 2 },  // Bò (#51)
-      { itemId: 44, count: 5 },  // Ớt (#44)
+      { itemId: 35, count: 5 }, // Dâu tây (#35)
+      { itemId: 51, count: 5 }, // Sữa bò (#51)
+    ],
+  },
+  {
+    id: 10,
+    name: 'Tinh dầu hướng dương',
+    productID: 136,
+    cookTimeMinutes: 90,
+    level: 2,
+    iconId: 214,
+    materials: [
+      { itemId: 5, count: 10 }, // Hướng dương (#5)
+    ],
+  },
+  {
+    id: 11,
+    name: 'Nước Hoa',
+    productID: 137,
+    cookTimeMinutes: 120,
+    level: 2,
+    iconId: 216,
+    materials: [
+      { itemId: 4, count: 10 }, // Hoa hồng (#4)
+      { itemId: 5, count: 5 },  // Hướng dương (#5)
+    ],
+  },
+  {
+    id: 12,
+    name: 'Sữa Chua Trái Cây',
+    productID: 138,
+    cookTimeMinutes: 120,
+    level: 2,
+    iconId: 217,
+    materials: [
+      { itemId: 128, count: 5 }, // Sữa chua (#128)
+      { itemId: 35, count: 5 },  // Dâu tây (#35)
+    ],
+  },
+  {
+    id: 13,
+    name: 'Trái cây dĩa',
+    productID: 139,
+    cookTimeMinutes: 90,
+    level: 2,
+    iconId: 218,
+    materials: [
+      { itemId: 10, count: 5 }, // Xoài (#10)
+      { itemId: 7, count: 5 },  // Dưa hấu (#7)
+    ],
+  },
+  {
+    id: 14,
+    name: 'Kem Tươi',
+    productID: 140,
+    cookTimeMinutes: 90,
+    level: 2,
+    iconId: 262,
+    materials: [
+      { itemId: 51, count: 5 }, // Sữa bò (#51)
+      { itemId: 50, count: 5 }, // Trứng gà (#50)
+    ],
+  },
+  {
+    id: 15,
+    name: 'Trái Cây Ly',
+    productID: 141,
+    cookTimeMinutes: 90,
+    level: 2,
+    iconId: 219,
+    materials: [
+      { itemId: 35, count: 5 }, // Dâu tây (#35)
+      { itemId: 10, count: 5 }, // Xoài (#10)
+    ],
+  },
+  {
+    id: 16,
+    name: 'Nước ép dưa hấu',
+    productID: 142,
+    cookTimeMinutes: 60,
+    level: 1,
+    iconId: 272,
+    materials: [
+      { itemId: 7, count: 10 }, // Dưa hấu (#7)
+    ],
+  },
+  {
+    id: 17,
+    name: 'Phô Mai',
+    productID: 143,
+    cookTimeMinutes: 120,
+    level: 2,
+    iconId: 273,
+    materials: [
+      { itemId: 51, count: 10 }, // Sữa bò (#51)
+    ],
+  },
+  {
+    id: 18,
+    name: 'Khoai Tây Chiên',
+    productID: 144,
+    cookTimeMinutes: 90,
+    level: 2,
+    iconId: 274,
+    materials: [
+      { itemId: 43, count: 10 }, // Khoai tây (#43)
+    ],
+  },
+  {
+    id: 19,
+    name: 'Bắp Chiên Bơ',
+    productID: 145,
+    cookTimeMinutes: 90,
+    level: 2,
+    iconId: 275,
+    materials: [
+      { itemId: 37, count: 10 }, // Bắp (#37)
+    ],
+  },
+  {
+    id: 20,
+    name: 'Tương Cà Chua',
+    productID: 146,
+    cookTimeMinutes: 90,
+    level: 2,
+    iconId: 281,
+    materials: [
+      { itemId: 0, count: 10 }, // Cà chua (#0)
+    ],
+  },
+  {
+    id: 21,
+    name: 'Tương ớt',
+    productID: 147,
+    cookTimeMinutes: 90,
+    level: 2,
+    iconId: 287,
+    materials: [
+      { itemId: 44, count: 10 }, // Ớt (#44)
+    ],
+  },
+  {
+    id: 22,
+    name: 'Heo quay ngũ vị',
+    productID: 133,
+    cookTimeMinutes: 240,
+    level: 4,
+    iconId: 284,
+    materials: [
+      { itemId: 52, count: 1 },  // Heo (#52)
+      { itemId: 44, count: 10 }, // Ớt (#44)
+    ],
+  },
+  {
+    id: 23,
+    name: 'Cá chép om dưa',
+    productID: 132,
+    cookTimeMinutes: 180,
+    level: 3,
+    iconId: 285,
+    materials: [
+      { itemId: 54, count: 2 }, // Cá chép (#54)
+      { itemId: 39, count: 5 }, // Dưa leo (#39)
+    ],
+  },
+  {
+    id: 24,
+    name: 'Gà Luộc',
+    productID: 148,
+    cookTimeMinutes: 120,
+    level: 3,
+    iconId: 277,
+    materials: [
+      { itemId: 50, count: 1 }, // Gà (#50)
+    ],
+  },
+  {
+    id: 25,
+    name: 'Gà bó xôi',
+    productID: 149,
+    cookTimeMinutes: 180,
+    level: 3,
+    iconId: 278,
+    materials: [
+      { itemId: 50, count: 1 },  // Gà (#50)
+      { itemId: 6, count: 10 },  // Lúa (#6)
+    ],
+  },
+  {
+    id: 26,
+    name: 'Baba om chuối',
+    productID: 150,
+    cookTimeMinutes: 240,
+    level: 4,
+    iconId: 280,
+    materials: [
+      { itemId: 59, count: 2 }, // Rùa/Ba ba (#59)
+      { itemId: 38, count: 5 }, // Chuối (#38)
+    ],
+  },
+  {
+    id: 27,
+    name: 'Tinh Thể Dưa Hấu',
+    productID: 151,
+    cookTimeMinutes: 180,
+    level: 3,
+    iconId: 290,
+    materials: [
+      { itemId: 7, count: 20 }, // Dưa hấu (#7)
+    ],
+  },
+  {
+    id: 28,
+    name: 'Gà Đóng Hộp',
+    productID: 152,
+    cookTimeMinutes: 180,
+    level: 3,
+    iconId: 291,
+    materials: [
+      { itemId: 50, count: 1 }, // Gà (#50)
+    ],
+  },
+  {
+    id: 29,
+    name: 'Bánh Xèo',
+    productID: 153,
+    cookTimeMinutes: 120,
+    level: 3,
+    iconId: 256,
+    materials: [
+      { itemId: 6, count: 10 }, // Lúa (#6)
+      { itemId: 50, count: 5 },  // Trứng gà (#50)
+    ],
+  },
+  {
+    id: 30,
+    name: 'Trà Hoa Cúc',
+    productID: 154,
+    cookTimeMinutes: 60,
+    level: 1,
+    iconId: 292,
+    materials: [
+      { itemId: 8, count: 10 }, // Cúc (#8)
+    ],
+  },
+  {
+    id: 31,
+    name: 'Thịt Trâu Gác Bếp',
+    productID: 155,
+    cookTimeMinutes: 240,
+    level: 4,
+    iconId: 296,
+    materials: [
+      { itemId: 57, count: 1 },  // Trâu (#57)
+      { itemId: 44, count: 10 }, // Ớt (#44)
+    ],
+  },
+  {
+    id: 32,
+    name: 'Vịt Quay Lá Mắc Mật',
+    productID: 156,
+    cookTimeMinutes: 180,
+    level: 3,
+    iconId: 298,
+    materials: [
+      { itemId: 55, count: 1 }, // Vịt (#55)
+    ],
+  },
+  {
+    id: 33,
+    name: 'Mì Ramen Thượng Hạng',
+    productID: 157,
+    cookTimeMinutes: 240,
+    level: 4,
+    iconId: 299,
+    materials: [
+      { itemId: 6, count: 10 }, // Lúa (#6)
+      { itemId: 50, count: 2 },  // Trứng gà (#50)
+      { itemId: 52, count: 1 },  // Heo (#52)
+    ],
+  },
+  {
+    id: 34,
+    name: 'Khoai tây đóng hộp',
+    productID: 158,
+    cookTimeMinutes: 180,
+    level: 3,
+    iconId: 300,
+    materials: [
+      { itemId: 43, count: 20 }, // Khoai tây (#43)
+    ],
+  },
+  {
+    id: 35,
+    name: 'Thịt Kho Trứng',
+    productID: 159,
+    cookTimeMinutes: 240,
+    level: 4,
+    iconId: 302,
+    materials: [
+      { itemId: 52, count: 1 }, // Heo (#52)
+      { itemId: 50, count: 5 }, // Trứng gà (#50)
     ],
   },
 ];

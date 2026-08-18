@@ -85,6 +85,7 @@ const alwaysOnConfig = {
   waterItemId: 100,
   grassItemId: 123,
   wormItemId: 124,
+  autoCook: true,
 };
 
 const fixedConfig = {
@@ -186,7 +187,7 @@ test('lưu gửi đúng full stored config cùng plan mới và báo áp dụng 
       ...storedConfig,
       ...alwaysOnConfig,
       ...fixedConfig,
-      autoHarvestCook: false,
+      autoHarvestCook: true,
       treeCellPlan: nextPlan,
       barnAnimalPlan: [],
       pondAnimalPlan: [],

@@ -41,6 +41,7 @@ const ALWAYS_ON_AUTO_CONFIG = {
   waterItemId: 100,
   grassItemId: 123,
   wormItemId: 124,
+  autoCook: true,
 } satisfies Partial<AutoFarmConfigDto>;
 
 const FIXED_AUTO_CONFIG = {
@@ -59,12 +60,12 @@ function planKey(entries: TreeCellPlanEntry[] | undefined): string {
   return JSON.stringify(sortedPlan(entries));
 }
 
-function sortedAnimalPlan(entries: AnimalPlanEntry[] | undefined): AnimalPlanEntry[] {
-  return [...(entries ?? [])].sort((left, right) => left.slotIndex - right.slotIndex);
-}
-
 function animalPlanKey(entries: AnimalPlanEntry[] | undefined): string {
   return JSON.stringify(sortedAnimalPlan(entries));
+}
+
+function sortedAnimalPlan(entries: AnimalPlanEntry[] | undefined): AnimalPlanEntry[] {
+  return [...(entries ?? [])].sort((left, right) => left.slotIndex - right.slotIndex);
 }
 
 function sortedKitchenPlan(entries: KitchenPlanEntry[] | undefined): KitchenPlanEntry[] {
@@ -86,7 +87,8 @@ const AUTO_CONFIG_KEYS = new Set([
   'minGrowthToSell', 'nearDeathRatio', 'maxSellsPerCycle', 'feedAnimals', 'feedBarnAnimals',
   'feedPondAnimals', 'healAnimals', 'minHealth', 'fertilizeCells', 'minVitality', 'autoBuy',
   'buyBudgetXu', 'maxBuyPerItem', 'stepDelayMs', 'intervalMs', 'startDelayMs', 'treeCellPlan',
-  'barnAnimalPlan', 'pondAnimalPlan', 'cookingSlotPlan',
+  'barnAnimalPlan', 'pondAnimalPlan', 'cookingSlotPlan', 'autoCook', 'autoHarvestCook',
+  'prioritizeCookingMissions', 'defaultRecipeId',
 ]);
 
 function isFiniteNumber(value: unknown): value is number {
@@ -145,13 +147,14 @@ function isAutoConfig(value: unknown): value is Partial<AutoFarmConfigDto> {
   const optionalNumberKeys = [
     'seedId', 'waterItemId', 'grassItemId', 'wormItemId', 'minGrowthToSell',
     'nearDeathRatio', 'maxSellsPerCycle', 'minHealth', 'minVitality', 'buyBudgetXu',
-    'maxBuyPerItem', 'stepDelayMs', 'intervalMs', 'startDelayMs',
+    'maxBuyPerItem', 'stepDelayMs', 'intervalMs', 'startDelayMs', 'defaultRecipeId',
   ];
   const optionalBooleanKeys = [
     'harvest', 'harvestAnimals', 'harvestBarnAnimals', 'harvestPondAnimals',
     'sellAnimals', 'sellBarnAnimals', 'sellPondAnimals',
     'feedAnimals', 'feedBarnAnimals', 'feedPondAnimals',
-    'healAnimals', 'fertilizeCells', 'autoBuy',
+    'healAnimals', 'fertilizeCells', 'autoBuy', 'autoCook', 'autoHarvestCook',
+    'prioritizeCookingMissions',
   ];
   return optionalNumberKeys.every((key) => value[key] === undefined || isFiniteNumber(value[key]))
     && optionalBooleanKeys.every((key) => value[key] === undefined || typeof value[key] === 'boolean')
@@ -199,7 +202,7 @@ export function AutoFarmPanel({
   // Chuồng: Gà 50, Bò 51, Heo 52, Vịt 55 / Hồ: Cá chép 54, Rùa 59
   const [sellBarnSpeciesStr, setSellBarnSpeciesStr] = useState('50, 51, 52, 55');
   const [sellPondSpeciesStr, setSellPondSpeciesStr] = useState('54, 59');
-  const [autoHarvestCook, setAutoHarvestCook] = useState(false);
+  const [autoHarvestCook, setAutoHarvestCook] = useState(true);
 
   const [storedState, setStoredState] = useState<AutoConfigStateDto>(EMPTY_AUTO);
   const [draftPlan, setDraftPlan] = useState<TreeCellPlanEntry[]>([]);
@@ -228,7 +231,7 @@ export function AutoFarmPanel({
     setSellPondAnimals(config.sellPondAnimals ?? config.sellAnimals ?? false);
     setSellBarnSpeciesStr(config.sellBarnSpecies?.join(', ') ?? '50, 51, 52, 55');
     setSellPondSpeciesStr(config.sellPondSpecies?.join(', ') ?? '54, 59');
-    setAutoHarvestCook(config.autoHarvestCook ?? false);
+    setAutoHarvestCook(config.autoHarvestCook ?? true);
     setDraftKitchenPlan(sortedKitchenPlan(config.cookingSlotPlan));
   }, []);
 
@@ -293,7 +296,7 @@ export function AutoFarmPanel({
       || animalPlanKey(draftBarnPlan) !== animalPlanKey(storedState.config.barnAnimalPlan)
       || animalPlanKey(draftPondPlan) !== animalPlanKey(storedState.config.pondAnimalPlan)
       || kitchenPlanKey(draftKitchenPlan) !== kitchenPlanKey(storedState.config.cookingSlotPlan)
-      || autoHarvestCook !== (storedState.config.autoHarvestCook ?? false),
+      || autoHarvestCook !== (storedState.config.autoHarvestCook ?? true),
     [draftPlan, draftBarnPlan, draftPondPlan, draftKitchenPlan, autoHarvestCook, storedState.config],
   );
   const planDirtyRef = useRef(dirty);
@@ -320,6 +323,7 @@ export function AutoFarmPanel({
           barnAnimalPlan: sortedAnimalPlan(draftBarnPlan),
           pondAnimalPlan: sortedAnimalPlan(draftPondPlan),
           cookingSlotPlan: sortedKitchenPlan(draftKitchenPlan),
+          autoCook: true,
           autoHarvestCook,
         },
       });

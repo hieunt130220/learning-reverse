@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 
 import { AutoFarm, type AutoFarmOptions } from './autoFarm.js';
-import { ITEM_DIARRHEA_CURE, ITEM_FLU_CURE, ITEM_GRASS, ITEM_TONIC, ITEM_WATER } from './game/farmData.js';
-import type { FarmAnimal, FarmCell, FarmState, TreeInfo } from './game/farmData.js';
+import { DEFAULT_FOOD_CATALOG, ITEM_DIARRHEA_CURE, ITEM_FLU_CURE, ITEM_GRASS, ITEM_TONIC, ITEM_WATER } from './game/farmData.js';
+import type { CookingState, FarmAnimal, FarmCell, FarmState, FoodRecipe, TreeInfo } from './game/farmData.js';
 
 function cell(index: number, overrides: Partial<FarmCell> = {}): FarmCell {
   return {
@@ -56,8 +56,11 @@ class FakeClient extends EventEmitter {
   status = 'online';
   farmState: FarmState;
   inventory: { id: number; num: number }[] = [];
+  produce: { id: number; num: number }[] = [];
   items: { id: number; price: number }[] = [];
   trees: TreeInfo[] = [];
+  cookingState?: CookingState;
+  foods: FoodRecipe[] = [...DEFAULT_FOOD_CATALOG];
   /** Bảng vật nuôi (cmd 76) — `desc` là nguồn tuổi lớn/tuổi thọ. */
   animals: { id: number; name: string; desc: string }[] = [
     { id: 50, name: 'Gà', desc: 'Thời gian lớn : 1 ngày - Sản phẩm : 20 trứng gà sau mỗi 6 giờ - Thời gian sống: 7 ngày' },
@@ -164,6 +167,19 @@ class FakeClient extends EventEmitter {
           this.emit('dialog', 'Bạn không thể mua thêm vì nông trại đã hết chỗ.');
         });
       }
+    },
+    getCook: (step: number): void => {
+      this.calls.push(`getCook:${step}`);
+      this.echo(91);
+      queueMicrotask(() => this.emit('cooking', this.cookingState));
+    },
+    cook: (num: number, id: number): void => {
+      this.calls.push(`cook:${num}:${id}`);
+      this.echo(91);
+    },
+    harvestCook: (id: number): void => {
+      this.calls.push(`harvestCook:${id}`);
+      this.echo(92);
     },
   };
 
@@ -986,4 +1002,101 @@ test('thu hoạch tự động hoạt động với thời gian lớn từ DEFAU
   await runOneCycle(client, { harvest: true });
 
   assert.ok(client.calls.includes('harvest:41'), 'ô 41 đủ tuổi phải được thu theo DEFAULT_SEED_CATALOG');
+});
+
+test('bếp: tự động thu hoạch món đã chín khi autoHarvestCook bật', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  client.cookingState = {
+    numSlot: 3,
+    slots: [
+      { slot: 0, idFood: 3, time: 1800, remainTime: 0, isDone: true },
+      { slot: 1, idFood: 1, time: 3600, remainTime: 1200, isDone: false },
+      { slot: 2, idFood: -1, time: 0, remainTime: 0, isDone: false },
+    ],
+    missions: [],
+    isUnlocked: false,
+    isReadyToOpen: false,
+    updatedAt: Date.now(),
+  };
+
+  await runOneCycle(client, { autoHarvestCook: true });
+
+  assert.ok(client.calls.includes('getCook:0'), 'phải xin thông tin bếp');
+  assert.ok(client.calls.includes('harvestCook:0'), 'phải thu hoạch món chín ở ô 0');
+  assert.equal(client.calls.includes('harvestCook:1'), false, 'ô 1 đang nấu chưa chín không được thu');
+});
+
+test('bếp: tự động nấu món theo cookingSlotPlan khi đủ nguyên liệu', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  // Kho có 15 Lúa (#6), 10 Trứng gà (#50)
+  client.inventory = [
+    { id: 6, num: 15 },
+    { id: 50, num: 10 },
+  ];
+  client.cookingState = {
+    numSlot: 3,
+    slots: [
+      { slot: 0, idFood: -1, time: 0, remainTime: 0, isDone: false },
+      { slot: 1, idFood: -1, time: 0, remainTime: 0, isDone: false },
+      { slot: 2, idFood: -1, time: 0, remainTime: 0, isDone: false },
+    ],
+    missions: [],
+    isUnlocked: false,
+    isReadyToOpen: false,
+    updatedAt: Date.now(),
+  };
+
+  // Cài đặt: Ô 0 nấu Cơm #3 (5 Lúa), Ô 1 nấu Bánh Trứng #1 (5 Lúa + 5 Trứng), Ô 2 không nấu (skip)
+  await runOneCycle(client, {
+    cookingSlotPlan: [
+      { slotIndex: 0, action: 'cook', recipeId: 3 },
+      { slotIndex: 1, action: 'cook', recipeId: 1 },
+      { slotIndex: 2, action: 'skip' },
+    ],
+  });
+
+  assert.ok(client.calls.includes('cook:0:3'), 'ô 0 phải nấu Cơm #3');
+  assert.ok(client.calls.includes('cook:1:1'), 'ô 1 phải nấu Bánh Trứng #1');
+  assert.equal(client.calls.some((c) => c.startsWith('cook:2:')), false, 'ô 2 cấu hình skip không được nấu');
+});
+
+test('bếp: không nấu khi thiếu nguyên liệu trong kho', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [],
+    updatedAt: Date.now(),
+  });
+  // Kho chỉ có 2 Lúa (#6) — không đủ 5 Lúa để nấu Cơm #3
+  client.inventory = [
+    { id: 6, num: 2 },
+  ];
+  client.cookingState = {
+    numSlot: 2,
+    slots: [
+      { slot: 0, idFood: -1, time: 0, remainTime: 0, isDone: false },
+    ],
+    missions: [],
+    isUnlocked: false,
+    isReadyToOpen: false,
+    updatedAt: Date.now(),
+  };
+
+  await runOneCycle(client, {
+    cookingSlotPlan: [
+      { slotIndex: 0, action: 'cook', recipeId: 3 },
+    ],
+  });
+
+  assert.equal(client.calls.some((c) => c.startsWith('cook:')), false, 'thiếu nguyên liệu thì không gửi lệnh cook');
 });
