@@ -15,18 +15,25 @@ jobs:
     name: SSH Deploy to VPS
     runs-on: ubuntu-latest
     steps:
-      - name: Executing remote SSH commands for deployment
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Connect and Deploy via SSH
         env:
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER: ${{ secrets.SERVER_USER }}
+          PORT: ${{ secrets.SERVER_PORT || 22 }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/avatar-web' }}
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
-          script_stop: true
-          envs: DEPLOY_PATH
-          script: |
+        run: |
+          # 1. Khởi tạo và làm sạch SSH Key
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf "%s\n" "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # 2. Tự động nhận diện host key của VPS
+          ssh-keyscan -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          # 3. Kết nối SSH và chạy script deploy
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p "$PORT" "$USER@$HOST" << 'EOF'
             set -e
 
             echo "========================================="
@@ -34,7 +41,7 @@ jobs:
             echo "========================================="
 
             # 1. Điều hướng tới thư mục chứa dự án
-            TARGET_DIR="${DEPLOY_PATH:-/var/www/avatar-web}"
+            TARGET_DIR="/var/www/avatar-web"
             if [ ! -d "$TARGET_DIR" ]; then
               echo "❌ Thư mục $TARGET_DIR không tồn tại trên máy chủ!"
               exit 1
@@ -78,3 +85,4 @@ jobs:
             echo "========================================="
             echo "✅ Deploy hoàn tất thành công!"
             echo "========================================="
+          EOF
