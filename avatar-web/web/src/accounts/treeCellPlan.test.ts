@@ -3,8 +3,11 @@ import { describe, expect, test } from 'vitest';
 import type { FarmProfileDto, TreeCellPlanEntry } from '../types.js';
 import {
   applyTreePaint,
+  DEFAULT_SEED_CATALOG,
+  DEFAULT_TREE_CELL_SLOTS,
   invalidTreePlanEntries,
   summarizeTreePlan,
+  TREE_CELL_COUNT,
 } from './treeCellPlan.js';
 
 const profile = (
@@ -24,6 +27,21 @@ const profile = (
   cellsObservedAt: 1_000,
   seedsObservedAt: 2_000,
   updatedAt: 2_000,
+});
+
+describe('treeCellPlan constants', () => {
+  test('TREE_CELL_COUNT là 48 và DEFAULT_TREE_CELL_SLOTS từ 0 tới 47', () => {
+    expect(TREE_CELL_COUNT).toBe(48);
+    expect(DEFAULT_TREE_CELL_SLOTS).toHaveLength(48);
+    expect(DEFAULT_TREE_CELL_SLOTS[0]).toBe(0);
+    expect(DEFAULT_TREE_CELL_SLOTS[47]).toBe(47);
+  });
+
+  test('DEFAULT_SEED_CATALOG có đầy đủ 27 loại hạt giống mặc định', () => {
+    expect(DEFAULT_SEED_CATALOG.length).toBe(27);
+    expect(DEFAULT_SEED_CATALOG.some((s) => s.id === 0 && s.name === 'Cà chua')).toBe(true);
+    expect(DEFAULT_SEED_CATALOG.some((s) => s.id === 6 && s.name === 'Lúa')).toBe(true);
+  });
 });
 
 describe('applyTreePaint', () => {
@@ -58,7 +76,7 @@ describe('applyTreePaint', () => {
 });
 
 describe('summarizeTreePlan', () => {
-  test('summary dùng cell index thật, kể cả không liên tục', () => {
+  test('summary dùng cell index truyền vào hoặc mặc định 48 ô', () => {
     const result = summarizeTreePlan(
       [2, 7, 9],
       [
@@ -70,9 +88,20 @@ describe('summarizeTreePlan', () => {
     expect(result.defaults).toBe(1);
     expect(result.skipped).toBe(1);
     expect([...result.seeds]).toEqual([[6, 1]]);
+
+    const defaultResult = summarizeTreePlan(
+      DEFAULT_TREE_CELL_SLOTS,
+      [
+        { cellIndex: 2, action: 'seed', seedId: 6 },
+        { cellIndex: 7, action: 'skip' },
+      ],
+    );
+    expect(defaultResult.defaults).toBe(46);
+    expect(defaultResult.skipped).toBe(1);
+    expect([...defaultResult.seeds]).toEqual([[6, 1]]);
   });
 
-  test('không đếm entry ngoài danh sách ô đã quan sát', () => {
+  test('không đếm entry ngoài danh sách ô', () => {
     const result = summarizeTreePlan(
       [2, 7],
       [
@@ -86,35 +115,28 @@ describe('summarizeTreePlan', () => {
 });
 
 describe('invalidTreePlanEntries', () => {
-  test('đánh dấu ô không tồn tại và hạt không có trong catalog', () => {
+  test('đánh dấu ô ngoài 48 ô và hạt không có trong catalog', () => {
     const entries: TreeCellPlanEntry[] = [
       { cellIndex: 2, action: 'seed', seedId: 6 },
-      { cellIndex: 7, action: 'seed', seedId: 99 },
+      { cellIndex: 7, action: 'seed', seedId: 9999 },
       { cellIndex: 9, action: 'skip' },
-      { cellIndex: 42, action: 'skip' },
+      { cellIndex: 50, action: 'skip' },
     ];
 
     expect(invalidTreePlanEntries(profile([2, 7, 9], [5, 6]), entries)).toEqual([
-      { cellIndex: 7, action: 'seed', seedId: 99 },
-      { cellIndex: 42, action: 'skip' },
-    ]);
-    expect(entries).toEqual([
-      { cellIndex: 2, action: 'seed', seedId: 6 },
-      { cellIndex: 7, action: 'seed', seedId: 99 },
-      { cellIndex: 9, action: 'skip' },
-      { cellIndex: 42, action: 'skip' },
+      { cellIndex: 7, action: 'seed', seedId: 9999 },
+      { cellIndex: 50, action: 'skip' },
     ]);
   });
 
-  test('catalog rỗng thì mọi hạt đều không hợp lệ, chỉ skip là hợp lệ', () => {
-    // Không còn default catalog tĩnh: catalog rỗng nghĩa là CHƯA ĐỒNG BỘ được
-    // cửa hàng, không được phép lưu hạt nào. (Server route cũng chặn seed-entry
-    // khi profile.seedIds rỗng.)
-    expect(invalidTreePlanEntries(profile([2, 7], []), [
+  test('catalog rỗng tự động fallback DEFAULT_SEED_CATALOG và chấp nhận hạt mặc định', () => {
+    expect(invalidTreePlanEntries(profile([], []), [
       { cellIndex: 2, action: 'skip' },
+      { cellIndex: 7, action: 'seed', seedId: 6 }, // Hạt Lúa trong DEFAULT_SEED_CATALOG
     ])).toEqual([]);
-    expect(invalidTreePlanEntries(profile([2, 7], []), [
-      { cellIndex: 7, action: 'seed', seedId: 6 },
-    ])).toEqual([{ cellIndex: 7, action: 'seed', seedId: 6 }]);
+
+    expect(invalidTreePlanEntries(profile([], []), [
+      { cellIndex: 7, action: 'seed', seedId: 9999 }, // Không có trong DEFAULT_SEED_CATALOG
+    ])).toEqual([{ cellIndex: 7, action: 'seed', seedId: 9999 }]);
   });
 });
