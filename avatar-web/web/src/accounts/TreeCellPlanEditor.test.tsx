@@ -28,10 +28,12 @@ function profile(
 function ControlledEditor({
   initialEntries = [],
   farmProfile = profile([2, 7, 19]),
+  cellIndices,
   onChange = vi.fn(),
 }: {
   initialEntries?: TreeCellPlanEntry[];
   farmProfile?: FarmProfileDto;
+  cellIndices?: number[];
   onChange?: (entries: TreeCellPlanEntry[]) => void;
 }) {
   const [entries, setEntries] = useState(initialEntries);
@@ -39,6 +41,7 @@ function ControlledEditor({
     <TreeCellPlanEditor
       profile={farmProfile}
       entries={entries}
+      cellIndices={cellIndices}
       disabled={false}
       refreshing={false}
       onChange={(next) => {
@@ -54,7 +57,7 @@ describe('TreeCellPlanEditor', () => {
   test('click và keyboard áp palette đang chọn mà không phát onChange trùng', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
-    render(<ControlledEditor onChange={onChange} />);
+    render(<ControlledEditor onChange={onChange} cellIndices={[2, 7, 19]} />);
 
     await user.click(screen.getByRole('button', { name: /Hoa hồng/ }));
     await user.click(screen.getByRole('button', { name: /Ô 2/ }));
@@ -74,7 +77,7 @@ describe('TreeCellPlanEditor', () => {
   test('pointer paint tô các ô thật không liền nhau và dừng ở pointerup', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
-    render(<ControlledEditor onChange={onChange} />);
+    render(<ControlledEditor onChange={onChange} cellIndices={[2, 7, 19]} />);
 
     await user.click(screen.getByRole('button', { name: /Không trồng/ }));
     fireEvent.pointerDown(screen.getByRole('button', { name: /Ô 2/ }), {
@@ -104,7 +107,7 @@ describe('TreeCellPlanEditor', () => {
   test('pointer capture vẫn tô ô nằm dưới tọa độ chạm bằng hit-test', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
-    render(<ControlledEditor onChange={onChange} />);
+    render(<ControlledEditor onChange={onChange} cellIndices={[2, 7, 19]} />);
     const firstCell = screen.getByRole('button', { name: /Ô 2/ });
     const secondCell = screen.getByRole('button', { name: /Ô 7/ });
     const originalElementFromPoint = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
@@ -117,8 +120,6 @@ describe('TreeCellPlanEditor', () => {
     try {
       await user.click(screen.getByRole('button', { name: /Không trồng/ }));
       fireEvent.pointerDown(firstCell, { button: 0, isPrimary: true });
-      // Touch implicit pointer capture keeps the PointerEvent target on firstCell.
-      // The coordinates now sit above secondCell, so elementFromPoint must choose it.
       const pointerMove = createEvent.pointerMove(firstCell, { isPrimary: true });
       Object.defineProperties(pointerMove, {
         clientX: { value: 70 },
@@ -146,7 +147,7 @@ describe('TreeCellPlanEditor', () => {
     }
   });
 
-  test('không có cache ô thì khóa editor', async () => {
+  test('không có cache profile thì editor vẫn hiển thị đầy đủ 48 ô và seed catalog mặc định', async () => {
     const onChange = vi.fn();
     render(
       <TreeCellPlanEditor
@@ -166,22 +167,23 @@ describe('TreeCellPlanEditor', () => {
       />,
     );
 
-    expect(screen.getByText(/chưa có cache ô farm/i)).toBeInTheDocument();
-    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Mặc định/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Không trồng/ })).toBeDisabled();
-    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('grid')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Ô 0/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Ô 47/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Ô 48/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^◇ Mặc định$/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /⛔ Không trồng/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Lúa/ })).toBeInTheDocument();
   });
 
-  test('cache ô không có catalog vẫn sửa Default và Skip nhưng không cho chọn hạt mới', async () => {
+  test('cache không có catalog vẫn có đầy đủ hạt từ DEFAULT_SEED_CATALOG và tô màu ô được', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
     render(<ControlledEditor farmProfile={profile([4, 21], [])} onChange={onChange} />);
 
-    expect(screen.getByText(/catalog hạt chưa có trong cache/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^◇ Mặc định$/ })).toBeEnabled();
     expect(screen.getByRole('button', { name: /Không trồng/ })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: /Hoa hồng/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Lúa/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Không trồng/ }));
     await user.click(screen.getByRole('button', { name: /Ô 21/ }));
@@ -192,56 +194,22 @@ describe('TreeCellPlanEditor', () => {
     expect(onChange).toHaveBeenLastCalledWith([]);
   });
 
-  test('đổi sang profile không có catalog không giữ palette hạt của tài khoản trước', async () => {
-    const onChange = vi.fn();
-    const user = userEvent.setup();
-    const entries: TreeCellPlanEntry[] = [{ cellIndex: 2, action: 'skip' }];
-    const { rerender } = render(
-      <TreeCellPlanEditor
-        profile={profile([2])}
-        entries={entries}
-        disabled={false}
-        refreshing={false}
-        onChange={onChange}
-        onRefresh={vi.fn()}
-      />,
-    );
-
-    await user.click(screen.getByRole('button', { name: /Hoa hồng/ }));
-    rerender(
-      <TreeCellPlanEditor
-        profile={profile([2], [])}
-        entries={entries}
-        disabled={false}
-        refreshing={false}
-        onChange={onChange}
-        onRefresh={vi.fn()}
-      />,
-    );
-    await user.click(screen.getByRole('button', { name: /Ô 2/ }));
-
-    expect(onChange).toHaveBeenLastCalledWith([]);
-  });
-
   test('cảnh báo entry hỏng và tóm tắt kế hoạch', () => {
     render(
       <ControlledEditor
         farmProfile={profile([2, 7, 19])}
         initialEntries={[
-          { cellIndex: 2, action: 'seed', seedId: 999 },
+          { cellIndex: 2, action: 'seed', seedId: 9999 },
           { cellIndex: 7, action: 'skip' },
           { cellIndex: 99, action: 'seed', seedId: 6 },
         ]}
       />,
     );
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/2 mục kế hoạch không khớp cache/i);
-    expect(screen.getByRole('button', { name: /Ô 2/ })).toHaveClass('tree-plan-cell--invalid');
-    expect(screen.getByText(/Ô 99.*không có trong cache/i)).toHaveClass(
-      'tree-plan-invalid-entry',
-    );
-    expect(screen.getByText(/Mặc định: 1/)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/2 mục kế hoạch không khớp danh mục/i);
+    expect(screen.getByRole('button', { name: /^Ô 2 —/ })).toHaveClass('tree-plan-cell--invalid');
+    expect(screen.getByText(/Ô 99.*không hợp lệ/i)).toHaveClass('tree-plan-invalid-entry');
+    expect(screen.getByText(/Mặc định: 46/)).toBeInTheDocument();
     expect(screen.getByText(/Không trồng: 1/)).toBeInTheDocument();
-    expect(screen.getByText(/Hạt không hợp lệ #999: 1/)).toBeInTheDocument();
   });
 });
