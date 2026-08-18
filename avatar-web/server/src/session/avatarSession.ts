@@ -589,11 +589,34 @@ export class AvatarSession {
     const intervalMs = typeof rawInterval === 'number' && Number.isFinite(rawInterval)
       ? Math.max(0, rawInterval)
       : DEFAULT_AUTO_INTERVAL_MS;
+    const shouldLogout = this.lastAutoConfig.logoutAfterCycle ?? true;
+
     this.auto?.stop();
-    this.scheduleAutoCycle(intervalMs);
-    this.cancelAutoSyncKickoff();
-    this.teardown();
-    this.emit('status', 'idle');
+    if (shouldLogout) {
+      this.scheduleAutoCycle(intervalMs);
+      this.cancelAutoSyncKickoff();
+      this.teardown();
+      this.emit('status', 'idle');
+    } else {
+      this.scheduleOnlineAutoCycle(intervalMs);
+    }
+  }
+
+  private scheduleOnlineAutoCycle(delayMs: number): void {
+    this.cancelAutoCycleTimer();
+    this.autoCycleTimer = this.setTimeoutFn(() => {
+      this.autoCycleTimer = undefined;
+      if (!this.wantAuto || this.permanentlyFailed) return;
+      if (this.status === 'online') {
+        this.tryStartAuto();
+      } else {
+        this.pushLog('phiên bị ngắt trong lúc chờ, đang kết nối lại cho vòng kế tiếp...');
+        void this.start().catch((err: Error) => {
+          this.pushLog('kết nối lại cho vòng auto kế tiếp lỗi: ' + err.message);
+          this.scheduleRetry(this.connectionEpoch);
+        });
+      }
+    }, delayMs);
   }
 
   private scheduleAutoCycle(delayMs: number): void {
