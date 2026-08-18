@@ -1759,3 +1759,454 @@ function scanFoodBlock(body: Buffer): FoodRecipe[] | undefined {
   }
   return best && best.length > 0 ? best : undefined;
 }
+
+// ============================================================================
+// HỆ THỐNG NHIỆM VỤ NÔNG TRẠI (DAILY, BEGINNER, GENERAL QUESTS)
+// ============================================================================
+
+export interface DailyMissionItem {
+  idItem: number;
+  name: string;
+  numRequired: number;
+  numCurrent: number;
+  isDone: boolean;
+  iconId?: number;
+}
+
+export interface DailyRewardItem {
+  type: number; // 0: xu, 1: lượng, 2: lượng khoá, 3: exp, 4: item, 5: potion
+  name: string;
+  amount: number;
+  itemId?: number;
+}
+
+export interface DailyBoxMilestone {
+  milestone: number; // 20, 40, 60, 80, 100
+  isClaimed: boolean;
+  canClaim: boolean;
+}
+
+export interface DailyQuestState {
+  score: number;
+  maxScore: number;
+  boxDone: number;
+  boxes: DailyBoxMilestone[];
+  missions: DailyMissionItem[];
+  rewards: DailyRewardItem[];
+  typeMoneyChange: number;
+  moneyChange: number;
+  canChange: boolean;
+  updatedAt: number;
+}
+
+export interface BeginnerQuest {
+  id: string;
+  title: string;
+  description: string;
+  category: 'farming' | 'cattle' | 'cooking' | 'social';
+  target: number;
+  current: number;
+  isDone: boolean;
+  rewardText: string;
+}
+
+export interface GeneralQuest {
+  id: string;
+  title: string;
+  description: string;
+  category: 'land_upgrade' | 'storage' | 'barn_pond' | 'kitchen_slot';
+  level: number;
+  target: number;
+  current: number;
+  isDone: boolean;
+  rewardText: string;
+}
+
+export interface QuestOverviewState {
+  daily: DailyQuestState | null;
+  beginner: BeginnerQuest[];
+  general: GeneralQuest[];
+  updatedAt: number;
+}
+
+export const KNOWN_PRODUCE_NAME_MAP: Record<number, string> = {
+  0: 'Cà chua',
+  1: 'Cà rốt',
+  2: 'Dứa',
+  3: 'Dưa hấu',
+  4: 'Đậu nành',
+  5: 'Hoa hướng dương',
+  6: 'Lúa',
+  7: 'Khoai tây',
+  8: 'Bắp',
+  9: 'Mía',
+  10: 'Dâu tây',
+  11: 'Ớt',
+  12: 'Xoài',
+  13: 'Táo',
+  14: 'Khế',
+  15: 'Hoa cúc',
+  16: 'Thanh long',
+  50: 'Trứng gà',
+  51: 'Sữa bò',
+  52: 'Trứng vịt',
+  53: 'Thịt heo',
+  54: 'Cá chép',
+  55: 'Lông cừu',
+  56: 'Sữa dê',
+  57: 'Mật ong',
+  58: 'Thịt trâu',
+  59: 'Rùa / Ba ba',
+  60: 'Cua',
+  61: 'Tôm',
+  120: 'Thuốc cúm',
+  121: 'Thuốc tiêu chảy',
+  122: 'Thuốc bổ',
+  123: 'Phân bón cao cấp',
+  124: 'Thuốc trừ sâu',
+  125: 'Thuốc diệt cỏ',
+  126: 'Thức ăn gia súc',
+};
+
+export function getProduceOrItemName(
+  id: number,
+  trees?: TreeInfo[],
+  items?: ItemInfo[],
+): string {
+  if (trees) {
+    const foundTree = trees.find((t) => t.id === id);
+    if (foundTree) return foundTree.name;
+  }
+  if (items) {
+    const foundItem = items.find((i) => i.id === id);
+    if (foundItem) return foundItem.name;
+  }
+  return KNOWN_PRODUCE_NAME_MAP[id] ?? `Vật phẩm #${id}`;
+}
+
+export function getRewardTypeName(type: number, itemId?: number, items?: ItemInfo[]): string {
+  switch (type) {
+    case 0:
+      return 'Xu';
+    case 1:
+      return 'Lượng';
+    case 2:
+      return 'Lượng khoá';
+    case 3:
+      return 'EXP';
+    case 4:
+      return itemId !== undefined ? getProduceOrItemName(itemId, undefined, items) : 'Vật phẩm';
+    case 5:
+      return 'Bình thuốc / Nước thần';
+    default:
+      return `Phần thưởng (${type})`;
+  }
+}
+
+/**
+ * Giải mã gói nhiệm vụ hàng ngày (Daily Quest) từ cmd -87 (sub-type = 2).
+ *
+ * Wire protocol đã xác minh tại RVA 0xAF7664 (DailyQuestScr.dailyQuestMessage):
+ * - i8 subAction (0: SHOW, 1: CHANGE, 2: DONE, 3: GETBOX)
+ * Khi subAction == 0:
+ * - i32 curScore (Điểm năng động 0..100)
+ * - i8 boxDone (Mặt nạ rương quà đã nhận)
+ * - i8 nMission (Số lượng nhiệm vụ ngày)
+ *   repeat nMission:
+ *     - i16 idItem
+ *     - i32 numRequired
+ * - i8 nReward (Số lượng phần thưởng)
+ *   repeat nReward:
+ *     - i8 type (0: xu, 1: lượng, 2: lượng khoá, 3: exp, 4: item, 5: potion)
+ *     - if type == 4: i16 itemId
+ *     - i32 amount
+ * - i8 typeMoneyChange (-1: không đổi, 0: miễn phí, 1: xu, 2: lượng)
+ * - i32 moneyChange (phí đổi)
+ */
+export function decodeDailyQuestPacket(
+  data: Buffer,
+  current?: DailyQuestState | null,
+  inventory?: InventoryItem[],
+  produce?: InventoryItem[],
+  catalog?: { trees?: TreeInfo[]; items?: ItemInfo[] },
+): { action: number; state: DailyQuestState } | null {
+  try {
+    const r = new MyReader(data);
+    if (r.available() < 1) return null;
+    const subAction = r.readByte();
+
+    // Nếu là phản hồi cập nhật rương (subAction = 3 / GETBOX)
+    if (subAction === 3) {
+      if (r.available() >= 1) {
+        const boxDone = r.readByte();
+        const score = current?.score ?? 0;
+        const MILESTONES = [20, 40, 60, 80, 100];
+        const boxes: DailyBoxMilestone[] = MILESTONES.map((m, idx) => {
+          const isClaimed = (boxDone & (1 << idx)) !== 0;
+          return {
+            milestone: m,
+            isClaimed,
+            canClaim: !isClaimed && score >= m,
+          };
+        });
+        if (current) {
+          return {
+            action: subAction,
+            state: {
+              ...current,
+              boxDone,
+              boxes,
+              updatedAt: Date.now(),
+            },
+          };
+        }
+      }
+      return { action: subAction, state: current ?? createEmptyDailyQuestState() };
+    }
+
+    if (subAction === 0 || subAction === 1 || subAction === 2) {
+      if (r.available() < 5) return null;
+      const curScore = r.readInt();
+      const boxDone = r.readByte();
+
+      // Decode missions (vecNhiemvu)
+      const nMission = r.available() > 0 ? r.readByte() : 0;
+      const missions: DailyMissionItem[] = [];
+      for (let i = 0; i < nMission; i++) {
+        if (r.available() < 6) break;
+        const idItem = r.readShort();
+        const numRequired = r.readInt();
+
+        // Tìm số lượng hiện có trong kho hàng (produce) hoặc vật phẩm (inventory)
+        let numCurrent = 0;
+        const pItem = produce?.find((p) => p.id === idItem);
+        if (pItem) numCurrent += pItem.num;
+        const invItem = inventory?.find((p) => p.id === idItem);
+        if (invItem) numCurrent += invItem.num;
+
+        missions.push({
+          idItem,
+          name: getProduceOrItemName(idItem, catalog?.trees, catalog?.items),
+          numRequired,
+          numCurrent,
+          isDone: numCurrent >= numRequired,
+        });
+      }
+
+      // Decode rewards (vecPhanthuong)
+      const nReward = r.available() > 0 ? r.readByte() : 0;
+      const rewards: DailyRewardItem[] = [];
+      for (let i = 0; i < nReward; i++) {
+        if (r.available() < 5) break;
+        const type = r.readByte();
+        let itemId: number | undefined;
+        if (type === 4) {
+          if (r.available() < 6) break;
+          itemId = r.readShort();
+        }
+        const amount = r.readInt();
+        rewards.push({
+          type,
+          name: getRewardTypeName(type, itemId, catalog?.items),
+          amount,
+          itemId,
+        });
+      }
+
+      let typeMoneyChange = -1;
+      let moneyChange = 0;
+      if (r.available() >= 5) {
+        typeMoneyChange = r.readByte();
+        moneyChange = r.readInt();
+      }
+
+      const MILESTONES = [20, 40, 60, 80, 100];
+      const boxes: DailyBoxMilestone[] = MILESTONES.map((m, idx) => {
+        const isClaimed = (boxDone & (1 << idx)) !== 0;
+        return {
+          milestone: m,
+          isClaimed,
+          canClaim: !isClaimed && curScore >= m,
+        };
+      });
+
+      return {
+        action: subAction,
+        state: {
+          score: curScore,
+          maxScore: 100,
+          boxDone,
+          boxes,
+          missions,
+          rewards,
+          typeMoneyChange,
+          moneyChange,
+          canChange: typeMoneyChange >= 0,
+          updatedAt: Date.now(),
+        },
+      };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function createEmptyDailyQuestState(): DailyQuestState {
+  const MILESTONES = [20, 40, 60, 80, 100];
+  return {
+    score: 0,
+    maxScore: 100,
+    boxDone: 0,
+    boxes: MILESTONES.map((m) => ({ milestone: m, isClaimed: false, canClaim: false })),
+    missions: [],
+    rewards: [],
+    typeMoneyChange: -1,
+    moneyChange: 0,
+    canChange: false,
+    updatedAt: Date.now(),
+  };
+}
+
+/**
+ * Tạo danh sách nhiệm vụ tân thủ (Beginner Quests) với tiến độ được tính toán
+ * từ trạng thái hiện tại của tài khoản nông trại.
+ */
+export function buildBeginnerQuests(
+  farm?: FarmState | null,
+  inventory?: InventoryItem[],
+  produce?: InventoryItem[],
+  cooking?: CookingState | null,
+  metrics?: { farmLevel?: number; playerLevel?: number },
+): BeginnerQuest[] {
+  const numCells = farm?.cells.length ?? 0;
+  const numAnimals = farm?.animals.length ?? 0;
+  const numCookSlots = cooking?.numSlot ?? 0;
+  const farmLevel = metrics?.farmLevel ?? 1;
+  const totalProduce = (produce ?? []).reduce((acc, cur) => acc + cur.num, 0);
+
+  return [
+    {
+      id: 'bg_1',
+      title: 'Khai hoang mở đất',
+      description: 'Mở rộng nông trại đạt ít nhất 10 ô đất trồng',
+      category: 'farming',
+      target: 10,
+      current: Math.min(numCells, 10),
+      isDone: numCells >= 10,
+      rewardText: '500 Xu, 10 EXP',
+    },
+    {
+      id: 'bg_2',
+      title: 'Nông dân chăm chỉ',
+      description: 'Nâng cấp trang trại đạt cấp độ Farm level 3',
+      category: 'farming',
+      target: 3,
+      current: Math.min(farmLevel, 3),
+      isDone: farmLevel >= 3,
+      rewardText: '1.000 Xu, 20 EXP',
+    },
+    {
+      id: 'bg_3',
+      title: 'Mùa màng bội thu',
+      description: 'Thu hoạch và tích lũy ít nhất 50 nông sản trong kho',
+      category: 'farming',
+      target: 50,
+      current: Math.min(totalProduce, 50),
+      isDone: totalProduce >= 50,
+      rewardText: '1.200 Xu, 25 EXP',
+    },
+    {
+      id: 'bg_4',
+      title: 'Gầy dựng đàn vật nuôi',
+      description: 'Nuôi ít nhất 2 vật nuôi trong chuồng gia súc hoặc ao cá',
+      category: 'cattle',
+      target: 2,
+      current: Math.min(numAnimals, 2),
+      isDone: numAnimals >= 2,
+      rewardText: '1.500 Xu, 30 EXP',
+    },
+    {
+      id: 'bg_5',
+      title: 'Đầu bếp tập sự',
+      description: 'Mở khóa và sử dụng nhà bếp nông trại',
+      category: 'cooking',
+      target: 1,
+      current: numCookSlots > 0 ? 1 : 0,
+      isDone: numCookSlots > 0,
+      rewardText: '2.000 Xu, 1 Lượng khoá',
+    },
+  ];
+}
+
+/**
+ * Tạo danh sách nhiệm vụ chung & thành tích (General Quests) phát triển nông trại.
+ */
+export function buildGeneralQuests(
+  farm?: FarmState | null,
+  inventory?: InventoryItem[],
+  produce?: InventoryItem[],
+  cooking?: CookingState | null,
+  metrics?: { farmLevel?: number; playerLevel?: number },
+): GeneralQuest[] {
+  const cells = farm?.cells ?? [];
+  const upgradedCells = cells.filter((c) => (c.level ?? 0) > 0).length;
+  const cookingMissions = cooking?.missions ?? [];
+  const totalSlots = cells.length || 48;
+  const farmLevel = metrics?.farmLevel ?? 1;
+
+  const quests: GeneralQuest[] = [
+    {
+      id: 'gen_land_all',
+      title: 'Trang trại trù phú',
+      description: 'Khai khẩn toàn bộ 48 ô đất nông trại',
+      category: 'land_upgrade',
+      level: 1,
+      target: 48,
+      current: cells.length,
+      isDone: cells.length >= 48,
+      rewardText: 'Danh hiệu Nông Trại Trù Phú, 5.000 Xu',
+    },
+    {
+      id: 'gen_land_up',
+      title: 'Quy hoạch đất cấp cao',
+      description: 'Nâng cấp toàn bộ ô đất lên Đất Đỏ / Đất Cấp 2',
+      category: 'land_upgrade',
+      level: 2,
+      target: totalSlots,
+      current: upgradedCells,
+      isDone: totalSlots > 0 && upgradedCells >= totalSlots,
+      rewardText: 'Tăng 20% tốc độ phát triển cây trồng',
+    },
+    {
+      id: 'gen_farm_master',
+      title: 'Đại gia nông nghiệp',
+      description: 'Đạt cấp độ nông trại Farm level 10',
+      category: 'storage',
+      level: 1,
+      target: 10,
+      current: Math.min(farmLevel, 10),
+      isDone: farmLevel >= 10,
+      rewardText: '10.000 Xu, 5 Lượng khoá',
+    },
+  ];
+
+  // Tích hợp tiến độ nhiệm vụ mở ô bếp Master nếu có
+  if (cookingMissions.length > 0) {
+    const doneCount = cookingMissions.filter((m) => m.isDone).length;
+    quests.push({
+      id: 'gen_kitchen_master',
+      title: 'Thử thách Bếp trưởng Master',
+      description: `Nấu hoàn thành các công thức món ăn để mở ô bếp cuối cùng (${doneCount}/${cookingMissions.length} món)`,
+      category: 'kitchen_slot',
+      level: 1,
+      target: cookingMissions.length,
+      current: doneCount,
+      isDone: doneCount >= cookingMissions.length,
+      rewardText: 'Mở vĩnh viễn Ô Bếp Master thứ 6',
+    });
+  }
+
+  return quests;
+}

@@ -121,6 +121,71 @@ export interface CookingState {
   updatedAt: number;
 }
 
+export interface DailyMissionItem {
+  idItem: number;
+  name: string;
+  numRequired: number;
+  numCurrent: number;
+  isDone: boolean;
+  iconId?: number;
+}
+
+export interface DailyRewardItem {
+  type: number; // 0: xu, 1: lượng, 2: lượng khoá, 3: exp, 4: item, 5: potion
+  name: string;
+  amount: number;
+  itemId?: number;
+}
+
+export interface DailyBoxMilestone {
+  milestone: number; // 20, 40, 60, 80, 100
+  isClaimed: boolean;
+  canClaim: boolean;
+}
+
+export interface DailyQuestState {
+  score: number;
+  maxScore: number;
+  boxDone: number;
+  boxes: DailyBoxMilestone[];
+  missions: DailyMissionItem[];
+  rewards: DailyRewardItem[];
+  typeMoneyChange: number;
+  moneyChange: number;
+  canChange: boolean;
+  updatedAt: number;
+}
+
+export interface BeginnerQuest {
+  id: string;
+  title: string;
+  description: string;
+  category: 'farming' | 'cattle' | 'cooking' | 'social';
+  target: number;
+  current: number;
+  isDone: boolean;
+  rewardText: string;
+}
+
+export interface GeneralQuest {
+  id: string;
+  title: string;
+  description: string;
+  category: 'land_upgrade' | 'storage' | 'barn_pond' | 'kitchen_slot';
+  level: number;
+  target: number;
+  current: number;
+  isDone: boolean;
+  rewardText: string;
+}
+
+export interface QuestOverviewState {
+  daily: DailyQuestState | null;
+  beginner: BeginnerQuest[];
+  general: GeneralQuest[];
+  updatedAt: number;
+}
+
 export interface LogLine {
   t: number;
   line: string;
@@ -166,6 +231,7 @@ export interface SessionSnapshot {
   farm?: FarmState;
   cooking?: CookingState;
   foods?: FoodRecipe[];
+  quests?: QuestOverviewState | null;
   farmSync?: FarmSyncState;
   auto: AutoState;
   macro: MacroState;
@@ -254,6 +320,7 @@ export interface AutoFarmConfigDto {
   autoHarvestCook?: boolean;
   prioritizeCookingMissions?: boolean;
   defaultRecipeId?: number;
+  autoClaimDailyQuests?: boolean;
 }
 
 export interface CachedSeedDto {
