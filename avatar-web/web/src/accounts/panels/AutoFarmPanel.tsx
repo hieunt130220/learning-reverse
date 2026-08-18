@@ -91,7 +91,7 @@ const AUTO_CONFIG_KEYS = new Set([
   'feedPondAnimals', 'healAnimals', 'minHealth', 'fertilizeCells', 'minVitality', 'autoBuy',
   'buyBudgetXu', 'maxBuyPerItem', 'stepDelayMs', 'intervalMs', 'startDelayMs', 'treeCellPlan',
   'barnAnimalPlan', 'pondAnimalPlan', 'cookingSlotPlan', 'autoCook', 'autoHarvestCook',
-  'prioritizeCookingMissions', 'defaultRecipeId',
+  'prioritizeCookingMissions', 'defaultRecipeId', 'autoClaimDailyQuests', 'logoutAfterCycle',
 ]);
 
 function isFiniteNumber(value: unknown): value is number {
@@ -157,7 +157,7 @@ function isAutoConfig(value: unknown): value is Partial<AutoFarmConfigDto> {
     'sellAnimals', 'sellBarnAnimals', 'sellPondAnimals',
     'feedAnimals', 'feedBarnAnimals', 'feedPondAnimals',
     'healAnimals', 'fertilizeCells', 'autoBuy', 'autoCook', 'autoHarvestCook',
-    'prioritizeCookingMissions',
+    'prioritizeCookingMissions', 'autoClaimDailyQuests', 'logoutAfterCycle',
   ];
   return optionalNumberKeys.every((key) => value[key] === undefined || isFiniteNumber(value[key]))
     && optionalBooleanKeys.every((key) => value[key] === undefined || typeof value[key] === 'boolean')

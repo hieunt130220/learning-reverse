@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { apiPost } from '../../api.js';
+import { apiGet, apiPost, apiPut } from '../../api.js';
 import { StatusBadge } from '../AccountStatus.js';
-import type { SessionSnapshot } from '../../types.js';
+import type { AutoConfigResponse, AutoConfigStateDto, SessionSnapshot } from '../../types.js';
 
 export function StatusPanel({
   accountId,
@@ -17,9 +17,32 @@ export function StatusPanel({
 }) {
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoErr, setAutoErr] = useState('');
+  const [logoutAfterCycle, setLogoutAfterCycle] = useState(true);
+  const [loadingOpt, setLoadingOpt] = useState(false);
+  const [savingOpt, setSavingOpt] = useState(false);
   const farmSync = snap?.farmSync;
   const auto = snap?.auto ?? { running: false, cycle: 0, lastActions: [] };
   const autoActive = auto.running || snap?.desiredConnected === true;
+
+  useEffect(() => {
+    let active = true;
+    setLoadingOpt(true);
+    apiGet<AutoConfigResponse>(`/api/accounts/${accountId}/auto/config`)
+      .then((res) => {
+        if (active) {
+          setLogoutAfterCycle(res.config.logoutAfterCycle ?? true);
+        }
+      })
+      .catch(() => {
+        /* bỏ qua nếu chưa tải được */
+      })
+      .finally(() => {
+        if (active) setLoadingOpt(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountId]);
 
   async function startAuto() {
     setAutoBusy(true);
@@ -47,6 +70,28 @@ export function StatusPanel({
     }
   }
 
+  async function toggleLogoutAfterCycle(checked: boolean) {
+    setSavingOpt(true);
+    setAutoErr('');
+    try {
+      const current = await apiGet<AutoConfigResponse>(`/api/accounts/${accountId}/auto/config`);
+      const nextConfig = {
+        ...current.config,
+        logoutAfterCycle: checked,
+      };
+      await apiPut<AutoConfigStateDto>(`/api/accounts/${accountId}/auto/config`, {
+        expectedRevision: current.revision,
+        config: nextConfig,
+      });
+      setLogoutAfterCycle(checked);
+      onChanged();
+    } catch (e) {
+      setAutoErr((e as Error).message);
+    } finally {
+      setSavingOpt(false);
+    }
+  }
+
   return (
     <section className="card">
       <h2>Trạng thái</h2>
@@ -71,6 +116,27 @@ export function StatusPanel({
               : 'auto đang tắt'}
           {auto.lastRun ? ` · lần cuối ${new Date(auto.lastRun).toLocaleTimeString()}` : ''}
         </span>
+      </div>
+      <div className="row" style={{ marginTop: '0.25rem' }}>
+        <label
+          className="inline"
+          style={{
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={logoutAfterCycle}
+            disabled={savingOpt || loadingOpt}
+            onChange={(e) => void toggleLogoutAfterCycle(e.target.checked)}
+            style={{ width: 'auto', margin: 0 }}
+          />
+          Đăng xuất sau khi chạy xong 1 vòng (tự đăng nhập lại ở vòng kế)
+        </label>
       </div>
       {(autoErr || auto.lastError) && <p className="err">{autoErr || auto.lastError}</p>}
       {farmSync?.status === 'syncing' && (

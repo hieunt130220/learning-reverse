@@ -7,10 +7,14 @@ import { StatusPanel } from './StatusPanel.js';
 
 const mocks = vi.hoisted(() => ({
   apiPost: vi.fn(),
+  apiGet: vi.fn(),
+  apiPut: vi.fn(),
 }));
 
 vi.mock('../../api.js', () => ({
   apiPost: mocks.apiPost,
+  apiGet: mocks.apiGet,
+  apiPut: mocks.apiPut,
 }));
 
 const idleSnapshot = makeSnapshot({
@@ -30,6 +34,8 @@ const onlineSnapshot = makeSnapshot({
 
 beforeEach(() => {
   mocks.apiPost.mockResolvedValue({});
+  mocks.apiGet.mockResolvedValue({ revision: 0, config: { logoutAfterCycle: true } });
+  mocks.apiPut.mockResolvedValue({ revision: 1, config: { logoutAfterCycle: true } });
 });
 
 test('hiển thị trạng thái và chỉ hiển thị các nút điều khiển auto', () => {

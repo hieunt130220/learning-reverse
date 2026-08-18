@@ -322,6 +322,7 @@ export interface AutoFarmConfigDto {
   prioritizeCookingMissions?: boolean;
   defaultRecipeId?: number;
   autoClaimDailyQuests?: boolean;
+  logoutAfterCycle?: boolean;
 }
 
 export interface CachedSeedDto {
