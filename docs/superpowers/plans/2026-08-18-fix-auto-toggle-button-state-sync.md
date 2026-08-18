@@ -24,7 +24,7 @@
 **Interfaces:**
 - Produces: WebSocket event `desired-connected` (payload: `boolean`).
 
-- [ ] **Step 1: Thêm `setWanted` và cập nhật `start`, `stop`, `failPermanently` trong `avatarSession.ts`**
+- [x] **Step 1: Thêm `setWanted` và cập nhật `start`, `stop`, `failPermanently` trong `avatarSession.ts`**
 ```ts
   private setWanted(wanted: boolean): void {
     if (this.wanted === wanted) return;
@@ -34,11 +34,11 @@
 ```
 Gọi `this.setWanted(true)` trong `start()` và `this.setWanted(false)` trong `stop()`, `failPermanently()`.
 
-- [ ] **Step 2: Chạy test server `avatarSession.test.ts`**
+- [x] **Step 2: Chạy test server `avatarSession.test.ts`**
 Run: `npm test` trong thư mục `avatar-web/server`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 `git commit -m "fix(server): emit desired-connected event when session wanted state changes"`
 
 ---
@@ -52,20 +52,20 @@ Expected: PASS
 **Interfaces:**
 - Consumes: WebSocket event `desired-connected` (payload: `boolean`).
 
-- [ ] **Step 1: Thêm `case 'desired-connected'` vào `reduceAccountRuntime` trong `accountRuntime.ts`**
+- [x] **Step 1: Thêm `case 'desired-connected'` vào `reduceAccountRuntime` trong `accountRuntime.ts`**
 ```ts
     case 'desired-connected':
       return { ...current, desiredConnected: Boolean(message.payload) };
 ```
 
-- [ ] **Step 2: Cập nhật `AccountsProvider.tsx` để lắng nghe và cập nhật `desired-connected`**
+- [x] **Step 2: Cập nhật `AccountsProvider.tsx` để lắng nghe và cập nhật `desired-connected`**
 Thêm `message.type !== 'desired-connected'` vào điều kiện lọc và gộp vào `runtime.desiredConnected`.
 
-- [ ] **Step 3: Chạy test web `npm test`**
+- [x] **Step 3: Chạy test web `npm test`**
 Run: `npm test` trong thư mục `avatar-web/web`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 `git commit -m "fix(web): handle desired-connected event in runtime reducer and accounts provider"`
 
 ---
@@ -75,9 +75,9 @@ Expected: PASS
 **Files:**
 - Modify: Không có
 
-- [ ] **Step 1: Build server và web**
+- [x] **Step 1: Build server và web**
 Run: `npm run build` ở cả `avatar-web/server` và `avatar-web/web`
 Expected: Build thành công không có lỗi type hoặc compile.
 
-- [ ] **Step 2: Commit và tổng kết**
+- [x] **Step 2: Commit và tổng kết**
 `git status` sạch sẽ và sẵn sàng.
