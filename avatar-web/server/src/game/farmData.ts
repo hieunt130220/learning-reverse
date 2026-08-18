@@ -292,6 +292,34 @@ export function decodePlayerInfo(body: Buffer): DecodedPlayerInfo {
   return { playerId, playerLevel, perLvMain };
 }
 
+export interface DecodedPlayerProfile {
+  id: number;
+  name: string;
+  xu: number;
+  playerLevel: number;
+  luong: number;
+  luongKhoa: number;
+  exp: number;
+}
+
+/**
+ * Giải mã gói thông tin hồ sơ nhân vật đầy đủ (cmd -8 PLAYER_PROFILE):
+ * Gửi bởi server sau khi client gọi GlobalService.requestInfoOf(playerId).
+ * Thứ tự wire @0x5ec02c: i32 id, utf name, i32 xu, i16 playerLevel, i32 luong, i32 luongKhoa, i32 exp, ...
+ */
+export function decodePlayerProfile(body: Buffer): DecodedPlayerProfile | null {
+  const r = new MyReader(body);
+  const id = r.readInt();
+  if (id <= 0) return null;
+  const name = r.readUTF();
+  const xu = r.available() >= 4 ? r.readInt() : 0;
+  const playerLevel = r.available() >= 2 ? r.readShort() : 0;
+  const luong = r.available() >= 4 ? r.readInt() : 0;
+  const luongKhoa = r.available() >= 4 ? r.readInt() : 0;
+  const exp = r.available() >= 4 ? r.readInt() : 0;
+  return { id, name, xu, playerLevel, luong, luongKhoa, exp };
+}
+
 /**
  * Cập nhật 1 ô từ gói `INFO_CELL` (cmd 100): `i8 index` + bản ghi ô y hệt trong
  * readFarmData. Server đẩy gói này sau `doUsingItem` khi trạng thái ô đổi.
@@ -821,6 +849,64 @@ export interface FoodRecipe {
   cookTimeMinutes: number;
   level: number;
   materials: FoodMaterial[];
+  /** iconId hiển thị trong web — khớp id ảnh `kitchen/N.png`. */
+  iconId?: number;
+  /** URL icon nông trại, đồng bộ với `iconId`. */
+  icon?: string;
+}
+
+/**
+ * 35 món thật trong bếp Avatar (đối chiếu với bảng 3x.4utovip.com và hiển thị
+ * trong game). Dùng làm dữ liệu chuẩn để (1) xác minh block món ăn khi quét gói
+ * 76 và (2) gán `iconId`/`icon` cho đúng ảnh `kitchen/N.png`.
+ */
+export const KNOWN_FOOD_REFERENCE: Array<{ id: number; name: string; iconId: number }> = [
+  { id: 1, name: 'Bánh Trứng', iconId: 205 },
+  { id: 2, name: 'Bánh sữa', iconId: 206 },
+  { id: 3, name: 'Cơm', iconId: 207 },
+  { id: 4, name: 'Cơm Trứng', iconId: 208 },
+  { id: 5, name: 'Cơm Cà rốt', iconId: 209 },
+  { id: 6, name: 'Nước ép trái cây', iconId: 210 },
+  { id: 7, name: 'Gỏi Xoài', iconId: 211 },
+  { id: 8, name: 'Sữa Chua', iconId: 212 },
+  { id: 9, name: 'Trái cây dầm', iconId: 213 },
+  { id: 10, name: 'Tinh dầu hướng dương', iconId: 214 },
+  { id: 11, name: 'Nước Hoa', iconId: 216 },
+  { id: 12, name: 'Sữa Chua Trái Cây', iconId: 217 },
+  { id: 13, name: 'Trái cây dĩa', iconId: 218 },
+  { id: 14, name: 'Kem Tươi', iconId: 262 },
+  { id: 15, name: 'Trái Cây Ly', iconId: 219 },
+  { id: 16, name: 'Nước ép dưa hấu', iconId: 272 },
+  { id: 17, name: 'Phô Mai', iconId: 273 },
+  { id: 18, name: 'Khoai Tây Chiên', iconId: 274 },
+  { id: 19, name: 'Bắp Chiên Bơ', iconId: 275 },
+  { id: 20, name: 'Tương Cà Chua', iconId: 281 },
+  { id: 21, name: 'Tương ớt', iconId: 287 },
+  { id: 22, name: 'Heo quay ngũ vị', iconId: 284 },
+  { id: 23, name: 'Cá chép om dưa', iconId: 285 },
+  { id: 24, name: 'Gà Luộc', iconId: 277 },
+  { id: 25, name: 'Gà bó xôi', iconId: 278 },
+  { id: 26, name: 'Baba om chuối', iconId: 280 },
+  { id: 27, name: 'Tinh Thể Dưa Hấu', iconId: 290 },
+  { id: 28, name: 'Gà Đóng Hộp', iconId: 291 },
+  { id: 29, name: 'Bánh Xèo', iconId: 256 },
+  { id: 30, name: 'Trà Hoa Cúc', iconId: 292 },
+  { id: 31, name: 'Thịt Trâu Gác Bếp', iconId: 296 },
+  { id: 32, name: 'Vịt Quay Lá Mắc Mật', iconId: 298 },
+  { id: 33, name: 'Mì Ramen Thượng Hạng', iconId: 299 },
+  { id: 34, name: 'Khoai tây đóng hộp', iconId: 300 },
+  { id: 35, name: 'Thịt Kho Trứng', iconId: 302 },
+];
+
+const KNOWN_FOOD_BY_NAME = new Map(KNOWN_FOOD_REFERENCE.map((f) => [normFoodName(f.name), f]));
+
+/** Chuẩn hoá tên món khi so khớp (bỏ hoa thường + dấu). */
+function normFoodName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
 }
 
 export interface ItemCooking {
@@ -1105,43 +1191,82 @@ export function decodeCookingPacket(
 
 /**
  * Trích xuất Food Recipe Catalog từ gói Cmd 76.
- * Kết hợp cả giải mã tuần tự theo cấu trúc Il2Cpp và quét mẫu (pattern scan)
- * để luôn bóc tách chính xác 100% tất cả món ăn thật sự có trong gói tin từ Server TeaMobi.
+ *
+ * Trên gói thật (13.336 byte) block món ăn xuất hiện nhiều lần (localization)
+ * và mỗi recipe có header/biên độ thay đổi, nên parse tuần tự theo offset không
+ * ổn định. Cách xác minh đã kiểm chứng trên gói thật: tên 35 món chuẩn
+ * (`KNOWN_FOOD_REFERENCE`) đều hiện diện trong raw. Nếu đủ số tên thì trả về
+ * catalog chuẩn (đúng id/iconId/icon); ngược lại quét block nếu có thể đọc được.
  */
 export function decodeFoodCatalog(body: Buffer): FoodRecipe[] | undefined {
-  // Helper: thử đọc 1 recipe tại offset — trả về recipe + offset byte kế tiếp
-  // nếu dữ liệu hợp lệ, undefined nếu không khớp cấu trúc FoodRecipe.
-  //
-  // Layout mỗi recipe (đã xác minh từ default catalog):
-  //   i16 id, UTF name, i16 productID, i16 cookTimeMinutes,
-  //   i16 numMaterials, (i16 matId, i16 count) × N, i8 level
+  if (!body || body.length === 0) return undefined;
+
+  const defaultByNorm = new Map<string, FoodRecipe>(
+    (DEFAULT_FOOD_CATALOG as FoodRecipe[]).map((f) => [normFoodName(f.name), f]),
+  );
+
+  const verifyFoodBlock = (): { matched: number; total: number } => {
+    let matched = 0;
+    for (const k of KNOWN_FOOD_REFERENCE) {
+      // Tên trên wire khác chữ thường/hoa so với chuẩn (vd "Cơm cà rốt"), nên
+      // so khớp bằng chuẩn hoá (bỏ dấu + hoa thường).
+      const haystack = body.toString('utf8');
+      const hay = normFoodName(haystack);
+      if (hay.includes(normFoodName(k.name))) matched++;
+    }
+    return { matched, total: KNOWN_FOOD_REFERENCE.length };
+  };
+
+  const { matched, total } = verifyFoodBlock();
+  if (matched >= total) {
+    return KNOWN_FOOD_REFERENCE.map((k) => {
+      const base = defaultByNorm.get(normFoodName(k.name));
+      return {
+        id: k.id,
+        name: k.name,
+        productID: base?.productID ?? 0,
+        cookTimeMinutes: base?.cookTimeMinutes ?? 0,
+        level: base?.level ?? 1,
+        materials: base?.materials ?? [],
+        iconId: k.iconId,
+        icon: `/assets/farm/kitchen/${k.id}.png`,
+      };
+    });
+  }
+
+  // Fallback: quét raw tìm block recipe đọc được (gói cũ/khác không có tên chuẩn).
+  const result = scanFoodBlock(body);
+  return result && result.length > 0 ? result : undefined;
+}
+
+/**
+ * Quét thô khối recipe theo layout nFood: `i16 nFood` + từng recipe
+ * `i16 id, utf text, i16 productID, i16 cookTime, i16 numMaterials,
+ * (i16 matId, i16 count) × N, i8 level`. Chỉ dùng làm fallback.
+ */
+function scanFoodBlock(body: Buffer): FoodRecipe[] | undefined {
   function tryReadFoodAt(buf: Buffer, offset: number): { food: FoodRecipe; end: number } | undefined {
     if (offset + 10 > buf.length) return undefined;
     const id = buf.readInt16BE(offset);
-    if (id < 0 || id > 100) return undefined;
+    if (id < 0 || id > 400) return undefined;
 
     const nameLen = buf.readUInt16BE(offset + 2);
     if (nameLen < 2 || nameLen > 60) return undefined;
-
     const nameEnd = offset + 4 + nameLen;
     if (nameEnd + 7 > buf.length) return undefined;
-
     const name = buf.toString('utf8', offset + 4, nameEnd);
-    const letters = [...name].filter((ch) => /\p{L}/u.test(ch)).length;
-    if (letters < Math.ceil(name.length * 0.3)) return undefined;
+    if (!name.trim() || name.includes('\uFFFD')) return undefined;
 
     let p = nameEnd;
     const productID = buf.readInt16BE(p);
     const cookTime = buf.readInt16BE(p + 2);
     const numMaterials = buf.readInt16BE(p + 4);
-
     if (productID < 0 || productID > 500) return undefined;
     if (cookTime < 1 || cookTime > 1440) return undefined;
     if (numMaterials < 1 || numMaterials > 10) return undefined;
 
     p += 6;
     if (p + numMaterials * 4 + 1 > buf.length) return undefined;
-
     const materials: FoodMaterial[] = [];
     for (let j = 0; j < numMaterials; j++) {
       const matId = buf.readInt16BE(p);
@@ -1150,23 +1275,14 @@ export function decodeFoodCatalog(body: Buffer): FoodRecipe[] | undefined {
       materials.push({ itemId: matId, count });
       p += 4;
     }
-
     const level = buf.readUInt8(p);
     if (level < 1 || level > 10) return undefined;
-
-    return {
-      food: { id, name, productID, cookTimeMinutes: cookTime, level, materials },
-      end: p + 1,
-    };
+    return { food: { id, name, productID, cookTimeMinutes: cookTime, level, materials }, end: p + 1 };
   }
 
-  // Helper: tại offset, thử đọc đúng nFood recipe liên tiếp.
-  // Chỉ chấp nhận khi TẤT CẢ nFood recipe đều đọc được —
-  // ngăn false-positive do match nhầm byte rác.
   function tryReadFoodBlock(buf: Buffer, offset: number): FoodRecipe[] | undefined {
     const nFood = buf.readInt16BE(offset);
     if (nFood < 1 || nFood > 50) return undefined;
-
     let pos = offset + 2;
     const recipes: FoodRecipe[] = [];
     for (let i = 0; i < nFood; i++) {
@@ -1178,37 +1294,27 @@ export function decodeFoodCatalog(body: Buffer): FoodRecipe[] | undefined {
     return recipes;
   }
 
-  // ── Chiến lược: dùng decodeTreeInfo để bỏ qua phần cây chính xác,
-  //     rồi quét remainder tìm block nFood + nFood recipe hợp lệ. ──
-  //
-  // Cũ: skip tuần tự trees+misc+animals rồi đọc nFood — sai khi宠物 attrs
-  //     có độ dài thay đổi (con cuối 68 byte thay vì 62),导致 offset lệch.
-  //
-  // Mới: dùng decodeTreeInfo (đã xác minh chính xác trên gói thật) để lấy
-  //     offset sau cây, rồi quét remainder tìm block recipe hợp lệ.
-
-  // 1. Bỏ qua phần cây — dùng decodeTreeInfo (đã xác minh chính xác)
   let searchBuf = body;
   try {
     const { restHex } = decodeTreeInfo(body);
-    if (restHex.length > 0) {
-      searchBuf = Buffer.from(restHex, 'hex');
-    }
+    if (restHex.length > 0) searchBuf = Buffer.from(restHex, 'hex');
   } catch {
-    // decodeTreeInfo lỗi → quét toàn bộ body bên dưới
+    // decodeTreeInfo lỗi → quét toàn bộ body
   }
 
-  // 2. Quét phần còn lại tìm nFood + block recipe hợp lệ
-  for (let offset = 0; offset <= searchBuf.length - 10; offset++) {
-    const block = tryReadFoodBlock(searchBuf, offset);
-    if (block && block.length > 0) return block;
+  let best: FoodRecipe[] | undefined;
+  let bestCount = 0;
+  for (const buf of [searchBuf, body]) {
+    for (let offset = 0; offset <= buf.length - 10; offset++) {
+      const block = tryReadFoodBlock(buf, offset);
+      if (!block || block.length === 0) continue;
+      const n = block.filter((f) => KNOWN_FOOD_BY_NAME.has(normFoodName(f.name))).length;
+      if (n > bestCount) {
+        best = block;
+        bestCount = n;
+      }
+      if (n === block.length) return block;
+    }
   }
-
-  // 3. Fallback: quét toàn bộ body (decodeTreeInfo lỗi hoặc cây ở giữa buffer)
-  for (let offset = 0; offset <= body.length - 10; offset++) {
-    const block = tryReadFoodBlock(body, offset);
-    if (block && block.length > 0) return block;
-  }
-
-  return undefined;
+  return best && best.length > 0 ? best : undefined;
 }

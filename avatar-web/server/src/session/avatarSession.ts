@@ -255,6 +255,9 @@ export class AvatarSession {
     client.once('farm', onFarm);
 
     try {
+      if (client.playerId) {
+        client.requestPlayerProfile(client.playerId);
+      }
       client.enterFarm();
       await completed;
     } finally {

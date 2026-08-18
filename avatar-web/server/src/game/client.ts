@@ -15,6 +15,7 @@ import {
   decodeInventory,
   decodeItemCatalog,
   decodePlayerInfo,
+  decodePlayerProfile,
   decodeTreeInfo,
   DEFAULT_FOOD_CATALOG,
   type CookingState,
@@ -402,6 +403,14 @@ export class GameClient extends EventEmitter {
     this.session.send(m);
   }
 
+  /** Gửi yêu cầu lấy hồ sơ người chơi đầy đủ (xu, level, luong, luongKhoa) (cmd -8). */
+  requestPlayerProfile(idUser?: number): void {
+    const target = idUser ?? this.playerId ?? 0;
+    const m = Message.create(-8);
+    m.writer!.writeInt(target);
+    this.session.send(m);
+  }
+
   /** Gửi gói tự do — dùng để dò các opcode chưa chốt từ UI. */
   sendRaw(cmd: number, fields: Array<{ t: string; v: string }>): void {
     const m = Message.create(cmd);
@@ -452,7 +461,8 @@ export class GameClient extends EventEmitter {
             this.setStatus('online');
             this.startKeepAlive();
             this.emit('log', `đăng nhập thành công — id nhân vật = ${id}`);
-            // Xin thông tin nhân vật để lấy playerLevel
+            // Xin thông tin hồ sơ nhân vật đầy đủ (xu, lượng, lượng khoá, level)
+            this.requestPlayerProfile(id);
             this.requestYourInfo(id);
           } else {
             this.emit('log', `đăng nhập không thành công (id = ${id})`);
@@ -535,6 +545,31 @@ export class GameClient extends EventEmitter {
           }
         } catch (err) {
           this.emit('log', `giải mã thông tin nhân vật lỗi: ${(err as Error).message}`);
+        }
+        break;
+      }
+      case -8: {
+        // PLAYER_PROFILE / PARK_BUY_ITEM / USER_DATA — hồ sơ người chơi đầy đủ (xu, level, luong, luongKhoa)
+        try {
+          const profile = decodePlayerProfile(msg.getData());
+          if (profile && (this.playerId === undefined || profile.id === this.playerId)) {
+            if (profile.xu >= 0) this.money = profile.xu;
+            if (profile.playerLevel >= 0) this.playerLevel = profile.playerLevel;
+            if (profile.luong >= 0) this.luong = profile.luong;
+            if (profile.luongKhoa >= 0) this.luongKhoa = profile.luongKhoa;
+            this.emit('metrics', {
+              xu: profile.xu,
+              luong: profile.luong,
+              luongKhoa: profile.luongKhoa,
+              playerLevel: profile.playerLevel,
+            });
+            this.emit(
+              'log',
+              `thông tin người chơi: ${profile.name} (id=${profile.id}) · level=${profile.playerLevel} · xu=${profile.xu} · lượng=${profile.luong} · lượng khoá=${profile.luongKhoa}`,
+            );
+          }
+        } catch (err) {
+          this.emit('log', `giải mã thông tin người chơi lỗi: ${(err as Error).message}`);
         }
         break;
       }

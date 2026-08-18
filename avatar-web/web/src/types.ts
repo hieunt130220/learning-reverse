@@ -93,6 +93,8 @@ export interface FoodRecipe {
   cookTimeMinutes: number;
   level: number;
   materials: FoodMaterial[];
+  iconId?: number;
+  icon?: string;
 }
 
 export interface ItemCooking {

@@ -270,8 +270,18 @@ export function CookingPanel({
                     fontSize: '0.85rem',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 500 }}>
-                    <span>{r.name}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 500 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      {r.icon && (
+                        <img
+                          src={r.icon}
+                          alt=""
+                          style={{ width: 28, height: 28, objectFit: 'contain' }}
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      )}
+                      <span>{r.name}</span>
+                    </span>
                     <span className="hint">Lv.{r.level} · {r.cookTimeMinutes} phút</span>
                   </div>
                   <div style={{ marginTop: '0.25rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
