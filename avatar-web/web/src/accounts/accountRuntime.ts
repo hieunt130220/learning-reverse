@@ -29,6 +29,17 @@ export function reduceAccountRuntime(
     case 'inventory':
       return { ...current, inventory: message.payload };
     case 'money': {
+      const hasDetailed = typeof message.payload.xu === 'number'
+        || typeof message.payload.luong === 'number'
+        || typeof message.payload.luongKhoa === 'number';
+      if (hasDetailed) {
+        return {
+          ...current,
+          ...(typeof message.payload.xu === 'number' ? { money: message.payload.xu, xu: message.payload.xu } : {}),
+          ...(typeof message.payload.luong === 'number' ? { luong: message.payload.luong } : {}),
+          ...(typeof message.payload.luongKhoa === 'number' ? { luongKhoa: message.payload.luongKhoa } : {}),
+        };
+      }
       const isLegacy = message.payload.type === undefined;
       const isXu = message.payload.type === 1;
       const isLuong = message.payload.type === 2;
@@ -45,6 +56,7 @@ export function reduceAccountRuntime(
         xu: message.payload.xu ?? current.xu,
         money: message.payload.xu ?? current.money,
         luong: message.payload.luong ?? current.luong,
+        luongKhoa: message.payload.luongKhoa ?? current.luongKhoa,
         playerLevel: message.payload.playerLevel ?? current.playerLevel,
         farmLevel: message.payload.farmLevel ?? current.farmLevel,
         metricsSyncedAt: message.payload.syncedAt ?? current.metricsSyncedAt,
@@ -55,6 +67,7 @@ export function reduceAccountRuntime(
         trees: message.payload.trees ?? [],
         items: message.payload.items ?? [],
         animals: message.payload.animals ?? [],
+        foods: message.payload.foods ?? current.foods,
       };
     case 'cooking':
       return { ...current, cooking: message.payload };

@@ -54,6 +54,7 @@ export interface AvatarSessionSnapshot {
   money?: number;
   xu?: number;
   luong?: number;
+  luongKhoa?: number;
   playerLevel?: number;
   farmLevel?: number;
   metricsSyncedAt?: number;
@@ -276,6 +277,7 @@ export class AvatarSession {
       money: c?.money ?? this.cachedMetrics.xu,
       xu: c?.money ?? this.cachedMetrics.xu,
       luong: c?.luong ?? this.cachedMetrics.luong,
+      luongKhoa: c?.luongKhoa ?? this.cachedMetrics.luongKhoa,
       playerLevel: c?.playerLevel ?? this.cachedMetrics.playerLevel,
       farmLevel: c?.farmLevel ?? this.cachedMetrics.farmLevel,
       metricsSyncedAt: this.cachedMetrics.syncedAt,
@@ -395,13 +397,31 @@ export class AvatarSession {
     client.on('money', (m: unknown) => {
       if (!this.isCurrent(client, epoch)) return;
       if (isMoneyUpdate(m)) {
-        const patch = m.type === 2 ? { luong: m.balance } : { xu: m.balance };
-        this.updateCachedMetrics(patch);
+        const hasDetailed = typeof (m as Record<string, unknown>).xu === 'number'
+          || typeof (m as Record<string, unknown>).luong === 'number'
+          || typeof (m as Record<string, unknown>).luongKhoa === 'number';
+        if (hasDetailed) {
+          const rec = m as { xu?: number; luong?: number; luongKhoa?: number };
+          this.updateCachedMetrics({
+            ...(typeof rec.xu === 'number' && rec.xu >= 0 ? { xu: rec.xu } : {}),
+            ...(typeof rec.luong === 'number' && rec.luong >= 0 ? { luong: rec.luong } : {}),
+            ...(typeof rec.luongKhoa === 'number' && rec.luongKhoa >= 0 ? { luongKhoa: rec.luongKhoa } : {}),
+          });
+        } else {
+          const patch = m.type === 2 ? { luong: m.balance } : { xu: m.balance };
+          this.updateCachedMetrics(patch);
+        }
       }
       this.emit('money', m);
     });
     client.on('cooking', (cook: unknown) => {
       if (this.isCurrent(client, epoch)) this.emit('cooking', cook);
+    });
+    client.on('metrics', (patch: unknown) => {
+      if (!this.isCurrent(client, epoch)) return;
+      if (patch && typeof patch === 'object') {
+        this.updateCachedMetrics(patch as AccountMetricsPatch);
+      }
     });
 
     client.on('message', (msg: { command: number }) => {

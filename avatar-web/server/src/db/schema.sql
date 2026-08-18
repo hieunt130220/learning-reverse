@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS avatar_accounts (
   auto_config_json TEXT,                -- AutoFarmConfig
   cached_xu        INTEGER,
   cached_luong     INTEGER,
+  cached_luong_khoa INTEGER,
   cached_player_level INTEGER,
   cached_farm_level INTEGER,
   cached_metrics_at INTEGER,

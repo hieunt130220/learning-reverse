@@ -143,6 +143,7 @@ export type ClientStatus =
 export interface CachedAccountMetrics {
   xu?: number;
   luong?: number;
+  luongKhoa?: number;
   playerLevel?: number;
   farmLevel?: number;
   syncedAt?: number;
@@ -156,6 +157,7 @@ export interface SessionSnapshot {
   money?: number;
   xu?: number;
   luong?: number;
+  luongKhoa?: number;
   playerLevel?: number;
   farmLevel?: number;
   metricsSyncedAt?: number;

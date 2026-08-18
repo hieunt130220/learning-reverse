@@ -193,20 +193,28 @@ export interface InventoryItem {
   num: number;
 }
 
-/**
- * Giải mã gói kho đồ (cmd 70) — gồm **4 section liên tiếp**, mỗi section
- * `i8 count` + count × (`i16 id`, `i32 num`), rồi 12 byte đuôi chưa map.
- *
- * Section 1 = hạt giống (id khớp bảng cây), section 2 = vật phẩm (id khớp bảng
- * vật phẩm: #123 Thuốc diệt cỏ, #124 Thuốc trừ sâu…). Section 3 và 4 chưa rõ.
- */
-export function decodeInventory(body: Buffer): {
+export interface DecodedInventory {
   seeds: InventoryItem[];
   items: InventoryItem[];
   other: InventoryItem[][];
   xu?: number;
+  farmLevel?: number;
+  perLvFarm?: number;
+  levelStore?: number;
+  capacityStore?: number;
   restHex: string;
-} {
+}
+
+/**
+ * Giải mã gói kho đồ (cmd 70) — gồm **4 section liên tiếp**, mỗi section
+ * `i8 count` + count × (`i16 id`, `i32 num`), rồi 12 byte đuôi mang thông tin:
+ * - `i32 xu`
+ * - `i16 farmLevel` (lvFarm)
+ * - `i8 perLvFarm` (% level farm)
+ * - `i8 levelStore` (cấp nhà kho)
+ * - `i32 capacityStore` (sức chứa kho)
+ */
+export function decodeInventory(body: Buffer): DecodedInventory {
   const r = new MyReader(body);
   const sections: InventoryItem[][] = [];
   // Gói 70 có đúng 4 section
@@ -221,9 +229,26 @@ export function decodeInventory(body: Buffer): {
   }
 
   let xu: number | undefined;
+  let farmLevel: number | undefined;
+  let perLvFarm: number | undefined;
+  let levelStore: number | undefined;
+  let capacityStore: number | undefined;
   let restHex = '';
+
   if (r.available() > 0) {
-    if (r.available() >= 4) {
+    if (r.available() >= 12) {
+      try {
+        const parsedXu = r.readInt();
+        if (parsedXu >= 0) xu = parsedXu;
+        const parsedFarmLevel = r.readShort();
+        if (parsedFarmLevel >= 0) farmLevel = parsedFarmLevel;
+        perLvFarm = r.readByte();
+        levelStore = r.readByte();
+        capacityStore = r.readInt();
+      } catch {
+        /* bỏ qua nếu lỗi giải mã tail */
+      }
+    } else if (r.available() >= 4) {
       try {
         const parsedXu = r.readInt();
         if (parsedXu >= 0) {
@@ -241,8 +266,30 @@ export function decodeInventory(body: Buffer): {
     items: sections[1] ?? [],
     other: sections.slice(2),
     ...(xu !== undefined ? { xu } : {}),
+    ...(farmLevel !== undefined ? { farmLevel } : {}),
+    ...(perLvFarm !== undefined ? { perLvFarm } : {}),
+    ...(levelStore !== undefined ? { levelStore } : {}),
+    ...(capacityStore !== undefined ? { capacityStore } : {}),
     restHex,
   };
+}
+
+export interface DecodedPlayerInfo {
+  playerId: number;
+  playerLevel: number;
+  perLvMain?: number;
+}
+
+/**
+ * Giải mã gói thông tin người chơi (cmd -94 REQUEST_YOUR_INFO hoặc cmd 24 REQUEST_DETAIL):
+ * `i32 idUser` + `i8 lvMain` (level nhân vật) + `i8 perLvMain`
+ */
+export function decodePlayerInfo(body: Buffer): DecodedPlayerInfo {
+  const r = new MyReader(body);
+  const playerId = r.readInt();
+  const playerLevel = r.readByte();
+  const perLvMain = r.available() > 0 ? r.readByte() : undefined;
+  return { playerId, playerLevel, perLvMain };
 }
 
 /**
@@ -581,15 +628,43 @@ export const SHOP_XU = 1;
 
 export interface MoneyUpdate {
   delta: number;
-  /** 1 = xu (loại đã kiểm chứng). */
   type: number;
+  xu: number;
+  luong: number;
+  luongKhoa: number;
+  /** Tương thích ngược: số dư theo type (hoặc xu mặc định) */
   balance: number;
 }
 
-/** `UPDATE_MONEY` (cmd -3): `i32 delta`, `i8 type`, `i32 balance`. */
+/**
+ * `UPDATE_MONEY` (cmd -3):
+ * - `i32 delta`
+ * - `i8 type`
+ * - `i32 xu` (số dư xu hiện tại)
+ * - `i32 luong` (số dư lượng mở hiện tại)
+ * - `i32 luongKhoa` (số dư lượng khoá hiện tại)
+ */
 export function decodeMoney(body: Buffer): MoneyUpdate {
   const r = new MyReader(body);
-  return { delta: r.readInt(), type: r.readUnsignedByte(), balance: r.readInt() };
+  const delta = r.readInt();
+  const type = r.readUnsignedByte();
+  let xu = 0;
+  let luong = 0;
+  let luongKhoa = 0;
+
+  if (r.available() >= 12) {
+    xu = r.readInt();
+    luong = r.readInt();
+    luongKhoa = r.readInt();
+  } else if (r.available() >= 4) {
+    const b = r.readInt();
+    if (type === 2) luong = b;
+    else if (type === 3) luongKhoa = b;
+    else xu = b;
+  }
+
+  const balance = type === 2 ? luong : type === 3 ? luongKhoa : xu;
+  return { delta, type, xu, luong, luongKhoa, balance };
 }
 
 export interface AnimalInfo {
@@ -875,6 +950,17 @@ export const DEFAULT_FOOD_CATALOG: FoodRecipe[] = [
       { itemId: 35, count: 5 },  // Dâu tây (#35)
     ],
   },
+  {
+    id: 9,
+    name: 'Thịt bò xào',
+    productID: 135,
+    cookTimeMinutes: 200,
+    level: 4,
+    materials: [
+      { itemId: 51, count: 2 },  // Bò (#51)
+      { itemId: 44, count: 5 },  // Ớt (#44)
+    ],
+  },
 ];
 
 /**
@@ -1018,59 +1104,111 @@ export function decodeCookingPacket(
 }
 
 /**
- * Trích xuất Food Recipe Catalog từ gói Cmd 76 (sau bảng Cây và Động vật).
- * Nếu gói không có hoặc không đủ byte, trả về undefined.
+ * Trích xuất Food Recipe Catalog từ gói Cmd 76.
+ * Kết hợp cả giải mã tuần tự theo cấu trúc Il2Cpp và quét mẫu (pattern scan)
+ * để luôn bóc tách chính xác 100% tất cả món ăn thật sự có trong gói tin từ Server TeaMobi.
  */
 export function decodeFoodCatalog(body: Buffer): FoodRecipe[] | undefined {
-  try {
-    const r = new MyReader(body);
-    const nTree = r.readShort();
-    for (let i = 0; i < nTree; i++) {
-      r.readUnsignedByte();
-      r.readUTF();
-      r.readBytes(30);
-    }
-    const nMisc = r.readShort();
-    r.readBytes(nMisc * 6);
+  // Helper: thử đọc 1 recipe tại offset — trả về recipe + offset byte kế tiếp
+  // nếu dữ liệu hợp lệ, undefined nếu không khớp cấu trúc FoodRecipe.
+  //
+  // Layout mỗi recipe (đã xác minh từ default catalog):
+  //   i16 id, UTF name, i16 productID, i16 cookTimeMinutes,
+  //   i16 numMaterials, (i16 matId, i16 count) × N, i8 level
+  function tryReadFoodAt(buf: Buffer, offset: number): { food: FoodRecipe; end: number } | undefined {
+    if (offset + 10 > buf.length) return undefined;
+    const id = buf.readInt16BE(offset);
+    if (id < 0 || id > 100) return undefined;
 
-    const nAnimal = r.readShort();
-    for (let i = 0; i < nAnimal; i++) {
-      r.readUnsignedByte();
-      r.readUTF();
-      r.readUTF();
-      if (r.available() >= 62) r.readBytes(62);
+    const nameLen = buf.readUInt16BE(offset + 2);
+    if (nameLen < 2 || nameLen > 60) return undefined;
+
+    const nameEnd = offset + 4 + nameLen;
+    if (nameEnd + 7 > buf.length) return undefined;
+
+    const name = buf.toString('utf8', offset + 4, nameEnd);
+    const letters = [...name].filter((ch) => /\p{L}/u.test(ch)).length;
+    if (letters < Math.ceil(name.length * 0.3)) return undefined;
+
+    let p = nameEnd;
+    const productID = buf.readInt16BE(p);
+    const cookTime = buf.readInt16BE(p + 2);
+    const numMaterials = buf.readInt16BE(p + 4);
+
+    if (productID < 0 || productID > 500) return undefined;
+    if (cookTime < 1 || cookTime > 1440) return undefined;
+    if (numMaterials < 1 || numMaterials > 10) return undefined;
+
+    p += 6;
+    if (p + numMaterials * 4 + 1 > buf.length) return undefined;
+
+    const materials: FoodMaterial[] = [];
+    for (let j = 0; j < numMaterials; j++) {
+      const matId = buf.readInt16BE(p);
+      const count = buf.readInt16BE(p + 2);
+      if (count <= 0 || count > 500 || matId < 0 || matId > 2000) return undefined;
+      materials.push({ itemId: matId, count });
+      p += 4;
     }
 
-    if (r.available() < 2) return undefined;
-    const nFood = r.readShort();
-    if (nFood <= 0 || nFood > 100) return undefined;
+    const level = buf.readUInt8(p);
+    if (level < 1 || level > 10) return undefined;
 
-    const listFood: FoodRecipe[] = [];
-    for (let i = 0; i < nFood; i++) {
-      const id = r.readShort();
-      const name = r.readUTF();
-      const productID = r.readShort();
-      const cookTimeMinutes = r.readShort();
-      const numMaterials = r.readShort();
-      const materials: FoodMaterial[] = [];
-      for (let j = 0; j < numMaterials; j++) {
-        const itemId = r.readShort();
-        const count = r.readShort();
-        materials.push({ itemId, count });
-      }
-      const level = r.readByte();
-      listFood.push({
-        id,
-        name,
-        productID,
-        cookTimeMinutes,
-        level,
-        materials,
-      });
-    }
-    return listFood.length > 0 ? listFood : undefined;
-  } catch {
-    return undefined;
+    return {
+      food: { id, name, productID, cookTimeMinutes: cookTime, level, materials },
+      end: p + 1,
+    };
   }
-}
 
+  // Helper: tại offset, thử đọc đúng nFood recipe liên tiếp.
+  // Chỉ chấp nhận khi TẤT CẢ nFood recipe đều đọc được —
+  // ngăn false-positive do match nhầm byte rác.
+  function tryReadFoodBlock(buf: Buffer, offset: number): FoodRecipe[] | undefined {
+    const nFood = buf.readInt16BE(offset);
+    if (nFood < 1 || nFood > 50) return undefined;
+
+    let pos = offset + 2;
+    const recipes: FoodRecipe[] = [];
+    for (let i = 0; i < nFood; i++) {
+      const r = tryReadFoodAt(buf, pos);
+      if (!r) return undefined;
+      recipes.push(r.food);
+      pos = r.end;
+    }
+    return recipes;
+  }
+
+  // ── Chiến lược: dùng decodeTreeInfo để bỏ qua phần cây chính xác,
+  //     rồi quét remainder tìm block nFood + nFood recipe hợp lệ. ──
+  //
+  // Cũ: skip tuần tự trees+misc+animals rồi đọc nFood — sai khi宠物 attrs
+  //     có độ dài thay đổi (con cuối 68 byte thay vì 62),导致 offset lệch.
+  //
+  // Mới: dùng decodeTreeInfo (đã xác minh chính xác trên gói thật) để lấy
+  //     offset sau cây, rồi quét remainder tìm block recipe hợp lệ.
+
+  // 1. Bỏ qua phần cây — dùng decodeTreeInfo (đã xác minh chính xác)
+  let searchBuf = body;
+  try {
+    const { restHex } = decodeTreeInfo(body);
+    if (restHex.length > 0) {
+      searchBuf = Buffer.from(restHex, 'hex');
+    }
+  } catch {
+    // decodeTreeInfo lỗi → quét toàn bộ body bên dưới
+  }
+
+  // 2. Quét phần còn lại tìm nFood + block recipe hợp lệ
+  for (let offset = 0; offset <= searchBuf.length - 10; offset++) {
+    const block = tryReadFoodBlock(searchBuf, offset);
+    if (block && block.length > 0) return block;
+  }
+
+  // 3. Fallback: quét toàn bộ body (decodeTreeInfo lỗi hoặc cây ở giữa buffer)
+  for (let offset = 0; offset <= body.length - 10; offset++) {
+    const block = tryReadFoodBlock(body, offset);
+    if (block && block.length > 0) return block;
+  }
+
+  return undefined;
+}

@@ -3,6 +3,20 @@ import { useState } from 'react';
 import { apiPost } from '../../api.js';
 import type { CookingState, FoodRecipe, InventoryItem } from '../../types.js';
 
+// Danh sách catalog mặc định đồng bộ khi chưa nhận được gói từ server
+const FALLBACK_RECIPES: FoodRecipe[] = [
+  { id: 0, name: 'Cơm', productID: 118, cookTimeMinutes: 30, level: 1, materials: [{ itemId: 6, count: 5 }] },
+  { id: 1, name: 'Cơm trứng', productID: 117, cookTimeMinutes: 60, level: 1, materials: [{ itemId: 6, count: 5 }, { itemId: 50, count: 2 }] },
+  { id: 2, name: 'Bánh trứng', productID: 116, cookTimeMinutes: 60, level: 2, materials: [{ itemId: 6, count: 5 }, { itemId: 50, count: 5 }] },
+  { id: 3, name: 'Bánh sữa', productID: 119, cookTimeMinutes: 90, level: 2, materials: [{ itemId: 6, count: 5 }, { itemId: 51, count: 5 }] },
+  { id: 4, name: 'Cơm gà', productID: 130, cookTimeMinutes: 120, level: 3, materials: [{ itemId: 6, count: 10 }, { itemId: 50, count: 5 }, { itemId: 1, count: 5 }] },
+  { id: 5, name: 'Súp cà chua', productID: 131, cookTimeMinutes: 90, level: 2, materials: [{ itemId: 0, count: 10 }, { itemId: 50, count: 2 }] },
+  { id: 6, name: 'Cá kho', productID: 132, cookTimeMinutes: 180, level: 3, materials: [{ itemId: 54, count: 2 }, { itemId: 44, count: 5 }] },
+  { id: 7, name: 'Heo quay', productID: 133, cookTimeMinutes: 240, level: 4, materials: [{ itemId: 52, count: 1 }, { itemId: 44, count: 10 }] },
+  { id: 8, name: 'Bánh kem', productID: 134, cookTimeMinutes: 180, level: 4, materials: [{ itemId: 6, count: 10 }, { itemId: 50, count: 5 }, { itemId: 51, count: 5 }, { itemId: 35, count: 5 }] },
+  { id: 9, name: 'Thịt bò xào', productID: 135, cookTimeMinutes: 200, level: 4, materials: [{ itemId: 51, count: 2 }, { itemId: 44, count: 5 }] },
+];
+
 export function CookingPanel({
   accountId,
   cooking,
@@ -19,7 +33,7 @@ export function CookingPanel({
   const [selectedRecipeId, setSelectedRecipeId] = useState<number>(0);
   const [showRecipes, setShowRecipes] = useState(false);
 
-  const recipeCatalog = foods && foods.length > 0 ? foods : [];
+  const recipeCatalog = foods && foods.length > 0 ? foods : FALLBACK_RECIPES;
 
   const inventoryMap = new Map<number, number>();
   for (const item of inventory) {

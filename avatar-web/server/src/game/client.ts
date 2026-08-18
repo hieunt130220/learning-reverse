@@ -14,6 +14,7 @@ import {
   decodeInfoCell,
   decodeInventory,
   decodeItemCatalog,
+  decodePlayerInfo,
   decodeTreeInfo,
   DEFAULT_FOOD_CATALOG,
   type CookingState,
@@ -137,8 +138,10 @@ export class GameClient extends EventEmitter {
   cookingState?: CookingState;
   /** Số dư xu, cập nhật từ UPDATE_MONEY (-3), type 1. */
   money?: number;
-  /** Số dư lượng, cập nhật từ UPDATE_MONEY (-3), type 2. */
+  /** Số dư lượng mở, cập nhật từ UPDATE_MONEY (-3). */
   luong?: number;
+  /** Số dư lượng khoá, cập nhật từ UPDATE_MONEY (-3). */
+  luongKhoa?: number;
   /** Để dành cho parser player-info đã xác minh. */
   playerLevel?: number;
   /** Để dành cho parser farm-info đã xác minh. */
@@ -391,6 +394,14 @@ export class GameClient extends EventEmitter {
     }
   }
 
+  /** Gửi yêu cầu lấy thông tin chi tiết nhân vật (cmd -94). */
+  requestYourInfo(idUser?: number): void {
+    const target = idUser ?? this.playerId ?? 0;
+    const m = Message.create(-94);
+    m.writer!.writeInt(target);
+    this.session.send(m);
+  }
+
   /** Gửi gói tự do — dùng để dò các opcode chưa chốt từ UI. */
   sendRaw(cmd: number, fields: Array<{ t: string; v: string }>): void {
     const m = Message.create(cmd);
@@ -441,6 +452,8 @@ export class GameClient extends EventEmitter {
             this.setStatus('online');
             this.startKeepAlive();
             this.emit('log', `đăng nhập thành công — id nhân vật = ${id}`);
+            // Xin thông tin nhân vật để lấy playerLevel
+            this.requestYourInfo(id);
           } else {
             this.emit('log', `đăng nhập không thành công (id = ${id})`);
           }
@@ -475,7 +488,7 @@ export class GameClient extends EventEmitter {
         this.emit('log', 'server phản hồi getServerLoginInfo — giải mã hai chiều OK');
         break;
       case 70: {
-        // INVENTORY — 4 section; section 1 = hạt giống, 2 = vật phẩm; đuôi chứa số dư xu
+        // INVENTORY — 4 section; section 1 = hạt giống, 2 = vật phẩm; đuôi chứa số dư xu, farmLevel, levelStore, capacityStore
         const inv = decodeInventory(msg.getData());
         this.inventory = [...inv.seeds, ...inv.items];
         // Section 3 = NÔNG SẢN thu được (đo thật: `#6×2813` lúa, `#50×530` trứng
@@ -487,11 +500,16 @@ export class GameClient extends EventEmitter {
           this.money = inv.xu;
           this.emit('money', { type: 1, balance: inv.xu, delta: 0 });
         }
+        if (inv.farmLevel !== undefined && inv.farmLevel >= 0) {
+          this.farmLevel = inv.farmLevel;
+          this.emit('metrics', { farmLevel: inv.farmLevel, ...(inv.xu !== undefined ? { xu: inv.xu } : {}) });
+        }
         this.emit(
           'log',
           `kho: ${inv.seeds.length} loại hạt, ${inv.items.length} loại vật phẩm, ` +
             `${this.produce.length} loại nông sản (${this.produce.map((i) => `#${i.id}×${i.num}`).join(' ')})` +
-            (inv.xu !== undefined ? ` · xu: ${inv.xu}` : ''),
+            (inv.xu !== undefined ? ` · xu: ${inv.xu}` : '') +
+            (inv.farmLevel !== undefined ? ` · farmLevel: ${inv.farmLevel}` : ''),
         );
         this.emit('inventory', this.inventory);
         break;
@@ -506,12 +524,35 @@ export class GameClient extends EventEmitter {
         this.emit('log', `ô ${cell.index} cập nhật: hạn=${cell.isArid} cỏ=${cell.isGrass} sâu=${cell.isWorm}`);
         break;
       }
+      case -94: {
+        // REQUEST_YOUR_INFO — thông tin người chơi (idUser, playerLevel, ...)
+        try {
+          const info = decodePlayerInfo(msg.getData());
+          if (info.playerLevel >= 0) {
+            this.playerLevel = info.playerLevel;
+            this.emit('metrics', { playerLevel: info.playerLevel });
+            this.emit('log', `thông tin nhân vật: id=${info.playerId} level=${info.playerLevel}`);
+          }
+        } catch (err) {
+          this.emit('log', `giải mã thông tin nhân vật lỗi: ${(err as Error).message}`);
+        }
+        break;
+      }
       case -3: {
-        // UPDATE_MONEY — server đẩy sau mỗi giao dịch
+        // UPDATE_MONEY — server đẩy sau mỗi giao dịch (chứa đủ xu, luong mở, luong khoá)
         const m = decodeMoney(msg.getData());
-        if (m.type === 1) this.money = m.balance;
-        if (m.type === 2) this.luong = m.balance;
-        this.emit('log', `tiền: ${m.delta >= 0 ? '+' : ''}${m.delta} (loại ${m.type}) -> ${m.balance}`);
+        if (m.xu >= 0) this.money = m.xu;
+        if (m.luong >= 0) this.luong = m.luong;
+        if (m.luongKhoa >= 0) this.luongKhoa = m.luongKhoa;
+        this.emit('metrics', {
+          ...(m.xu >= 0 ? { xu: m.xu } : {}),
+          ...(m.luong >= 0 ? { luong: m.luong } : {}),
+          ...(m.luongKhoa >= 0 ? { luongKhoa: m.luongKhoa } : {}),
+        });
+        this.emit(
+          'log',
+          `tiền: ${m.delta >= 0 ? '+' : ''}${m.delta} (loại ${m.type}) -> xu=${m.xu} lượng=${m.luong} khóa=${m.luongKhoa}`,
+        );
         this.emit('money', m);
         break;
       }
@@ -576,7 +617,7 @@ export class GameClient extends EventEmitter {
         } catch (err) {
           this.emit('log', `giải mã bảng món ăn lỗi: ${(err as Error).message}`);
         }
-        this.emit('trees', { trees: this.trees, items: this.items, animals: this.animals });
+        this.emit('trees', { trees: this.trees, items: this.items, animals: this.animals, foods: this.foods });
         break;
       }
       case 91: {
@@ -614,7 +655,8 @@ export class GameClient extends EventEmitter {
       case 61: // cùng payload readFarmData
         try {
           this.farmState = decodeFarmData(msg.getData());
-          // Tự động lấy thông tin bếp khi vào farm
+          // Tự động tải catalog dữ liệu cây / vật phẩm / món ăn và thông tin bếp khi vào farm
+          this.farm.getTreeInfo();
           this.farm.getCook(0);
           // INFO_ANIMAL (cmd 101) chỉ có index mà không có species-ngữ-cảnh —
           // nếu gói 101 về trước gói 69 thì vùng phân loại (đã lưu trong farmState)

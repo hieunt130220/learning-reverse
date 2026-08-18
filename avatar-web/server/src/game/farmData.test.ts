@@ -200,9 +200,12 @@ test('decodeInventory: giải mã hạt, vật phẩm và xu từ 12 byte đuôi
   buf.writeInt8(0, pos++);
   // Section 4: 0 loại
   buf.writeInt8(0, pos++);
-  // Đuôi 12 byte: i32 xu = 473574, 8 byte còn lại = 0
+  // Đuôi 12 byte: i32 xu = 473574, farmLevel = 15, perLvFarm = 50, levelStore = 2, capacityStore = 500
   buf.writeInt32BE(473574, pos); pos += 4;
-  buf.fill(0, pos, pos + 8);
+  buf.writeInt16BE(15, pos); pos += 2;
+  buf.writeInt8(50, pos++);
+  buf.writeInt8(2, pos++);
+  buf.writeInt32BE(500, pos); pos += 4;
 
   const inv = decodeInventory(buf);
   assert.equal(inv.seeds.length, 1);
@@ -210,6 +213,9 @@ test('decodeInventory: giải mã hạt, vật phẩm và xu từ 12 byte đuôi
   assert.equal(inv.items.length, 1);
   assert.deepEqual(inv.items[0], { id: 123, num: 99 });
   assert.equal(inv.xu, 473574);
-  assert.equal(inv.restHex, '0000000000000000');
+  assert.equal(inv.farmLevel, 15);
+  assert.equal(inv.perLvFarm, 50);
+  assert.equal(inv.levelStore, 2);
+  assert.equal(inv.capacityStore, 500);
 });
 

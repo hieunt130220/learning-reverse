@@ -21,6 +21,7 @@ import { deleteFarmProfile } from './farmProfileRepo.js';
 export interface CachedAccountMetrics {
   xu?: number;
   luong?: number;
+  luongKhoa?: number;
   playerLevel?: number;
   farmLevel?: number;
   syncedAt?: number;
@@ -81,6 +82,7 @@ interface AccountRow {
   updated_at: number;
   cached_xu: number | null;
   cached_luong: number | null;
+  cached_luong_khoa: number | null;
   cached_player_level: number | null;
   cached_farm_level: number | null;
   cached_metrics_at: number | null;
@@ -100,6 +102,7 @@ function toAccount(r: AccountRow): AvatarAccount {
   const cachedMetrics: CachedAccountMetrics = {
     ...(r.cached_xu === null ? {} : { xu: r.cached_xu }),
     ...(r.cached_luong === null ? {} : { luong: r.cached_luong }),
+    ...(r.cached_luong_khoa === null ? {} : { luongKhoa: r.cached_luong_khoa }),
     ...(r.cached_player_level === null ? {} : { playerLevel: r.cached_player_level }),
     ...(r.cached_farm_level === null ? {} : { farmLevel: r.cached_farm_level }),
     ...(r.cached_metrics_at === null ? {} : { syncedAt: r.cached_metrics_at }),
@@ -246,6 +249,7 @@ export function updateCachedMetrics(
   };
   set('cached_xu', patch.xu);
   set('cached_luong', patch.luong);
+  set('cached_luong_khoa', patch.luongKhoa);
   set('cached_player_level', patch.playerLevel);
   set('cached_farm_level', patch.farmLevel);
   if (sets.length === 0) return;

@@ -32,6 +32,7 @@ export function openDb(file: string): Db {
   addColumn("ALTER TABLE avatar_farm_profile_cache ADD COLUMN animal_slots_json TEXT NOT NULL DEFAULT '[]'");
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_xu INTEGER');
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_luong INTEGER');
+  addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_luong_khoa INTEGER');
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_player_level INTEGER');
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_farm_level INTEGER');
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_metrics_at INTEGER');

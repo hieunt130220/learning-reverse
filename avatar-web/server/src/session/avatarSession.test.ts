@@ -127,6 +127,7 @@ interface Harness {
 function harness(
   creds: Partial<AvatarCredentials> = {},
   clientCfg: { loginError?: Error; autoOnline?: boolean; treeInfoError?: Error } = {},
+  sessionOpts: Partial<AvatarSessionOptions> = {},
 ): Harness {
   const clients: FakeClient[] = [];
   const autos: FakeAuto[] = [];
@@ -171,6 +172,7 @@ function harness(
     }) as unknown as typeof clearTimeout,
     now: () => 1_000_000,
     random: () => 0.5, // jitter = hệ số 1.0, backoff thành số tròn
+    ...sessionOpts,
   });
 
   return {
@@ -566,4 +568,38 @@ test('dòng log từ auto của client đã bị thay thế bị bỏ qua', asyn
   stale.emit('log', 'dòng của phiên cũ');
 
   assert.equal(h.session.snapshot().logs.length, before, 'epoch cũ không được ghi vào phiên mới');
+});
+
+test('cập nhật và đồng bộ metrics từ client sang cachedMetrics và snapshot', async () => {
+  const patches: unknown[] = [];
+  const h = harness(
+    {},
+    {},
+    {
+      onMetrics: (p) => patches.push(p),
+      cachedMetrics: { xu: 100, luong: 10, luongKhoa: 5, playerLevel: 5, farmLevel: 2 },
+    },
+  );
+  await h.session.start();
+
+  assert.equal(h.session.snapshot().xu, 100);
+  assert.equal(h.session.snapshot().luong, 10);
+  assert.equal(h.session.snapshot().luongKhoa, 5);
+  assert.equal(h.session.snapshot().playerLevel, 5);
+  assert.equal(h.session.snapshot().farmLevel, 2);
+
+  // Client phát event metrics
+  h.clients[0].emit('metrics', { farmLevel: 12, xu: 50000 });
+  assert.equal(h.session.snapshot().farmLevel, 12);
+  assert.equal(h.session.snapshot().xu, 50000);
+  assert.equal(patches.length, 1);
+
+  // Client phát UPDATE_MONEY
+  h.clients[0].emit('money', { delta: 0, type: 2, xu: 50000, luong: 25, luongKhoa: 10, balance: 25 });
+  assert.equal(h.session.snapshot().luong, 25);
+  assert.equal(h.session.snapshot().luongKhoa, 10);
+
+  // Client phát playerLevel
+  h.clients[0].emit('metrics', { playerLevel: 25 });
+  assert.equal(h.session.snapshot().playerLevel, 25);
 });

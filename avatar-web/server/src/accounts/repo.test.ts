@@ -346,10 +346,11 @@ test('getAccountById không lọc theo user — dùng cho bootstrap', () => {
 test('lưu và đọc cached metrics sau khi session ngắt', () => {
   const { db, a } = setup();
   const acc = createAccount(db, TEST_KEY, { userId: a.id, label: 'x', gameUser: 'u', gamePass: 'p' });
-  updateCachedMetrics(db, acc.id, { xu: 1200, luong: 35, playerLevel: 7, farmLevel: 4 }, 123);
+  updateCachedMetrics(db, acc.id, { xu: 1200, luong: 35, luongKhoa: 10, playerLevel: 7, farmLevel: 4 }, 123);
   assert.deepEqual(getAccountById(db, acc.id)!.cachedMetrics, {
     xu: 1200,
     luong: 35,
+    luongKhoa: 10,
     playerLevel: 7,
     farmLevel: 4,
     syncedAt: 123,
