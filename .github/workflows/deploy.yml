@@ -18,26 +18,40 @@ jobs:
       - name: Connect and Deploy via SSH
         env:
           SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
-          HOST: ${{ secrets.SERVER_HOST }}
-          USER: ${{ secrets.SERVER_USER }}
-          PORT: ${{ secrets.SERVER_PORT || 22 }}
+          RAW_USER: ${{ secrets.SERVER_USER }}
+          RAW_HOST: ${{ secrets.SERVER_HOST }}
+          RAW_PORT: ${{ secrets.SERVER_PORT }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/avatar-web' }}
         run: |
-          # 1. Khởi tạo và làm sạch SSH Key
+          # 1. Làm sạch và chuẩn hóa biến môi trường
+          CLEAN_USER=$(echo "$RAW_USER" | tr -d '[:space:]')
+          CLEAN_HOST=$(echo "$RAW_HOST" | tr -d '[:space:]')
+          CLEAN_PORT=$(echo "$RAW_PORT" | tr -d '[:space:]')
+
+          TARGET_USER="${CLEAN_USER:-dev_nguyentrunghieu}"
+          TARGET_HOST="${CLEAN_HOST:-34.46.208.67}"
+          TARGET_PORT="${CLEAN_PORT:-22}"
+
+          echo "🚀 Đang kết nối tới máy chủ $TARGET_HOST với user $TARGET_USER qua cổng $TARGET_PORT..."
+
+          # 2. Khởi tạo và kiểm tra Private SSH Key
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf "%s\n" "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # 2. Tự động nhận diện host key của VPS
-          ssh-keyscan -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          echo "🔑 Fingerprint chìa khóa SSH tại GitHub Runner:"
+          ssh-keygen -lf ~/.ssh/deploy_key
 
-          # 3. Kết nối SSH và chạy script deploy
-          ssh -v -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p "$PORT" "$USER@$HOST" << 'EOF'
+          # 3. Tự động nhận diện host key
+          ssh-keyscan -p "$TARGET_PORT" "$TARGET_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          # 4. Kết nối SSH và chạy script deploy
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p "$TARGET_PORT" "$TARGET_USER@$TARGET_HOST" << 'EOF'
             set -e
 
             echo "========================================="
-            echo "🚀 Bắt đầu quá trình tự động Deploy..."
+            echo "🚀 Bắt đầu quá trình tự động Deploy trên VPS..."
             echo "========================================="
 
             # 1. Điều hướng tới thư mục chứa dự án
@@ -53,7 +67,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # Tự động phát hiện cấu trúc thư mục (monorepo root vs subpath)
+            # Tự động phát hiện cấu trúc thư mục
             if [ -d "avatar-web/server" ]; then
               BASE_PATH="avatar-web"
             else
@@ -83,6 +97,6 @@ jobs:
             npm run build
 
             echo "========================================="
-            echo "✅ Deploy hoàn tất thành công!"
+            echo "✅ Deploy hoàn tất thành công 100%!"
             echo "========================================="
           EOF
