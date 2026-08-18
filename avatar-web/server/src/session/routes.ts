@@ -265,7 +265,15 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
 
   router.get('/:id/quests', owned, (req, res) => {
     try {
-      const sess = sessions.require(accountId(req));
+      const sess = sessions.peek(accountId(req));
+      if (!sess) {
+        return res.json({
+          daily: null,
+          beginner: [],
+          general: [],
+          updatedAt: Date.now(),
+        });
+      }
       res.json(sess.getQuestOverview());
     } catch (err) {
       fail(res, err);

@@ -162,6 +162,13 @@ export class AvatarSession {
   getQuestOverview(): QuestOverviewState {
     const c = this.client;
     const daily = c?.dailyQuestState ?? null;
+    if (!daily && c && c.status === 'online') {
+      try {
+        c.farm.getDailyQuest(0);
+      } catch {
+        /* bỏ qua */
+      }
+    }
     const beginner = buildBeginnerQuests(
       c?.farmState,
       c?.inventory,

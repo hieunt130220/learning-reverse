@@ -49,6 +49,12 @@ function renderRoute(path: string) {
       seedsObservedAt: 1_700_000_010_000,
       updatedAt: 1_700_000_010_000,
     });
+    if (url.startsWith('/api/accounts/1/quests')) return Promise.resolve({
+      daily: null,
+      beginner: [],
+      general: [],
+      updatedAt: 1_700_000_000_000,
+    });
     throw new Error(`API ngoài dự kiến: ${url}`);
   });
   return render(

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { apiPost } from '../../api.js';
+import { apiGet, apiPost } from '../../api.js';
 import type { QuestOverviewState } from '../../types.js';
 
 export function QuestsPanel({
@@ -14,10 +14,28 @@ export function QuestsPanel({
   const [busy, setBusy] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [localQuests, setLocalQuests] = useState<QuestOverviewState | null>(quests);
 
-  const daily = quests?.daily ?? null;
-  const beginner = quests?.beginner ?? [];
-  const general = quests?.general ?? [];
+  useEffect(() => {
+    if (quests) {
+      setLocalQuests(quests);
+    }
+  }, [quests]);
+
+  useEffect(() => {
+    if (!quests?.daily) {
+      void apiGet<QuestOverviewState>(`/api/accounts/${accountId}/quests`)
+        .then((res) => {
+          if (res) setLocalQuests(res);
+        })
+        .catch(() => {});
+    }
+  }, [accountId, quests?.daily]);
+
+  const effectiveQuests = localQuests ?? quests;
+  const daily = effectiveQuests?.daily ?? null;
+  const beginner = effectiveQuests?.beginner ?? [];
+  const general = effectiveQuests?.general ?? [];
 
   const runAction = async (endpoint: string, label: string) => {
     try {
@@ -27,6 +45,12 @@ export function QuestsPanel({
       await apiPost(endpoint);
       setStatusMsg(`${label} thành công!`);
       setTimeout(() => setStatusMsg(null), 3000);
+      setTimeout(async () => {
+        try {
+          const res = await apiGet<QuestOverviewState>(`/api/accounts/${accountId}/quests`);
+          if (res) setLocalQuests(res);
+        } catch {}
+      }, 500);
     } catch (err) {
       setErrorMsg((err as Error).message);
     } finally {
@@ -50,7 +74,7 @@ export function QuestsPanel({
           <h3>Nhiệm vụ nông trại</h3>
           {daily && (
             <span className="badge badge--star">
-              ⭐ {daily.score} / {daily.maxScore} điểm
+              ⭐ {daily.score} / {daily.maxScore} điểm{daily.score >= daily.maxScore && daily.missions.length === 0 ? ' · Đã hoàn thành' : ''}
             </span>
           )}
         </div>
