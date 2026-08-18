@@ -14,6 +14,11 @@ import {
   type TemporaryLoginRejection,
   type TrafficEntry,
 } from '../game/client.js';
+import {
+  buildBeginnerQuests,
+  buildGeneralQuests,
+  type QuestOverviewState,
+} from '../game/farmData.js';
 import { MacroRunner, type Macro, type MacroState } from '../macro.js';
 import type { AccountMetricsPatch, CachedAccountMetrics } from '../accounts/repo.js';
 
@@ -61,6 +66,7 @@ export interface AvatarSessionSnapshot {
   farm?: unknown;
   cooking?: unknown;
   foods?: unknown[];
+  quests?: QuestOverviewState | null;
   farmSync: FarmSyncState;
   auto: AutoFarmState;
   macro: MacroState;
@@ -147,6 +153,41 @@ export class AvatarSession {
 
   get desiredConnected(): boolean {
     return this.wanted;
+  }
+
+  get rawClient(): GameClient | undefined {
+    return this.client;
+  }
+
+  getQuestOverview(): QuestOverviewState {
+    const c = this.client;
+    const daily = c?.dailyQuestState ?? null;
+    const beginner = buildBeginnerQuests(
+      c?.farmState,
+      c?.inventory,
+      c?.produce,
+      c?.cookingState,
+      {
+        farmLevel: c?.farmLevel ?? this.cachedMetrics.farmLevel,
+        playerLevel: c?.playerLevel ?? this.cachedMetrics.playerLevel,
+      },
+    );
+    const general = buildGeneralQuests(
+      c?.farmState,
+      c?.inventory,
+      c?.produce,
+      c?.cookingState,
+      {
+        farmLevel: c?.farmLevel ?? this.cachedMetrics.farmLevel,
+        playerLevel: c?.playerLevel ?? this.cachedMetrics.playerLevel,
+      },
+    );
+    return {
+      daily,
+      beginner,
+      general,
+      updatedAt: daily?.updatedAt ?? Date.now(),
+    };
   }
 
   async start(): Promise<void> {
@@ -287,6 +328,7 @@ export class AvatarSession {
       farm: c?.farmState,
       cooking: c?.cookingState,
       foods: c?.foods ?? [],
+      quests: this.getQuestOverview(),
       farmSync: this.farmSync,
       auto: this.auto?.state() ?? EMPTY_AUTO,
       macro: this.macros?.state() ?? EMPTY_MACRO,
@@ -419,6 +461,9 @@ export class AvatarSession {
     });
     client.on('cooking', (cook: unknown) => {
       if (this.isCurrent(client, epoch)) this.emit('cooking', cook);
+    });
+    client.on('quests', () => {
+      if (this.isCurrent(client, epoch)) this.emit('quests', this.getQuestOverview());
     });
     client.on('metrics', (patch: unknown) => {
       if (!this.isCurrent(client, epoch)) return;

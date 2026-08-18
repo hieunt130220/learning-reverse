@@ -17,6 +17,7 @@ import {
   parseAnimalSpec,
   isCellSpent,
   type CookingState,
+  type DailyQuestState,
   type FoodRecipe,
 } from './game/farmData.js';
 import type {
@@ -141,6 +142,10 @@ export interface AutoFarmConfig {
   prioritizeCookingMissions?: boolean;
   /** ID món ăn mặc định khi nấu tự động (0: Thức ăn gia súc, 1: Gia cầm...). */
   defaultRecipeId?: number;
+
+  // ---- Cấu hình Nhiệm vụ Hàng ngày (Daily Quest) ---------------------------
+  /** Tự động nhận thưởng nhiệm vụ hàng ngày và mở rương quà khi đủ điều kiện. */
+  autoClaimDailyQuests?: boolean;
 }
 
 export interface AutoFarmState {
@@ -156,6 +161,7 @@ export interface AutoFarmClient {
   status: string;
   farmState?: FarmState;
   cookingState?: CookingState;
+  dailyQuestState?: DailyQuestState | null;
   foods?: FoodRecipe[];
   inventory: InventoryItem[];
   produce?: InventoryItem[];
@@ -171,6 +177,9 @@ export interface AutoFarmClient {
     getInventory(): void;
     getTreeInfo(): void;
     getCook(step: number): void;
+    getDailyQuest(type?: number): void;
+    claimDailyQuestReward(): void;
+    claimDailyQuestBox(): void;
     cook(num: number, id: number): void;
     harvestCook(id: number): void;
     useItem(idFarm: number, index: number, idItem: number): void;
@@ -208,6 +217,7 @@ const ALWAYS_ON_CONFIG = {
   waterItemId: 100,
   grassItemId: 123,
   wormItemId: 124,
+  autoClaimDailyQuests: false,
 } as const satisfies Partial<AutoFarmConfig>;
 
 export const DEFAULT_AUTO_INTERVAL_MS = 300_000;
@@ -1092,6 +1102,37 @@ export class AutoFarm extends EventEmitter {
                   note(`[bếp] ô ${slot.slot} thiếu nguyên liệu để nấu "${targetRecipe.name}"`);
                 }
               }
+            }
+          }
+        }
+      }
+
+      // ---- Tự động nhận thưởng nhiệm vụ hàng ngày & mở rương quà ------------
+      if (cfg.autoClaimDailyQuests && !this.aborted) {
+        if (!this.client.dailyQuestState) {
+          this.client.farm.getDailyQuest(0);
+          await tick();
+        }
+
+        const dq = this.client.dailyQuestState;
+        if (dq) {
+          // 1. Kiểm tra nhiệm vụ hoàn thành để nhận thưởng
+          const claimableMissions = dq.missions.filter((m) => m.isDone);
+          if (claimableMissions.length > 0) {
+            this.client.farm.claimDailyQuestReward();
+            sent += 1;
+            note(`[nhiệm vụ] tự động nhận thưởng ${claimableMissions.length} nhiệm vụ hàng ngày đã hoàn thành`);
+            await tick();
+          }
+
+          // 2. Kiểm tra mở rương mốc điểm
+          const claimableBoxes = dq.boxes.filter((b) => b.canClaim && !b.isClaimed);
+          if (claimableBoxes.length > 0) {
+            for (const box of claimableBoxes) {
+              this.client.farm.claimDailyQuestBox();
+              sent += 1;
+              note(`[nhiệm vụ] tự động mở rương quà mốc ${box.milestone} điểm`);
+              await tick();
             }
           }
         }

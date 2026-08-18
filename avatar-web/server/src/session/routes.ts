@@ -261,6 +261,53 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     }
   });
 
+  // ---- Quests (Nhiệm vụ nông trại: Daily, Beginner, General) --------------
+
+  router.get('/:id/quests', owned, (req, res) => {
+    try {
+      const sess = sessions.require(accountId(req));
+      res.json(sess.getQuestOverview());
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/:id/quests/daily/refresh', owned, (req, res) => {
+    try {
+      sessions.require(accountId(req)).callFarm('getDailyQuest', [0]);
+      res.json({ ok: true });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/:id/quests/daily/change', owned, (req, res) => {
+    try {
+      sessions.require(accountId(req)).callFarm('changeDailyQuest', []);
+      res.json({ ok: true });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/:id/quests/daily/claim', owned, (req, res) => {
+    try {
+      sessions.require(accountId(req)).callFarm('claimDailyQuestReward', []);
+      res.json({ ok: true });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/:id/quests/daily/box', owned, (req, res) => {
+    try {
+      sessions.require(accountId(req)).callFarm('claimDailyQuestBox', []);
+      res.json({ ok: true });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
   router.post('/:id/raw', owned, (req, res) => {
     const { cmd, fields } = (req.body ?? {}) as { cmd?: unknown; fields?: Array<{ t: string; v: string }> };
     try {

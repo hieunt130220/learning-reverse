@@ -222,6 +222,10 @@ const parsers: Record<ConfigKey, ConfigParser> = {
     return value;
   },
   defaultRecipeId: nonNegativeInteger,
+  autoClaimDailyQuests: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
 };
 
 function isConfigKey(key: string): key is ConfigKey {
