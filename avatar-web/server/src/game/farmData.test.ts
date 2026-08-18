@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { classifyFarmSlots, decodeFarmData, isCellRipe, decodeAllTreeInfo, parseAnimalSpec, decodeInventory, decodeMoney, decodeCreCharacter } from './farmData.js';
+import { classifyFarmSlots, decodeFarmData, isCellRipe, decodeAllTreeInfo, parseAnimalSpec, decodeInventory, decodeLoginSuccessMoney, decodeMoney, decodeCreCharacter } from './farmData.js';
 import { MyWriter } from '../proto/writer.js';
 import { FARM_PACKET_69_HEX } from './farmData.fixture.js';
 
@@ -218,6 +218,22 @@ test('decodeInventory: giải mã hạt, vật phẩm và xu từ 12 byte đuôi
   assert.equal(inv.perLvFarm, 50);
   assert.equal(inv.levelStore, 2);
   assert.equal(inv.capacityStore, 500);
+});
+
+test('decodeLoginSuccessMoney: lấy xu, lượng mở và lượng khoá từ gói -34 thật', () => {
+  // Gói LOGIN_SUCESS bắt được sau login tài khoản #1. Các danh sách chức năng
+  // trong phần trước ví có count động; decoder phải đi qua chúng trước khi đọc
+  // 3 i32 tiền ở handler GlobalMessageHandler.
+  const body = Buffer.from(
+    '01000f5669000a596575616e686c696e680b02146500000860650000173d64001b4e67c3a0792068e1babf742068e1baa16e203a382d392d32303236173c64001b4e67c3a0792068e1babf742068e1baa16e203a382d392d32303236005664001c4e67c3a0792068e1babf742068e1baa16e203a31382d382d323032360004650000173a64001b4e67c3a0792068e1babf742068e1baa16e203a382d392d32303236024f3c001c4e67c3a0792068e1babf742068e1baa16e203a32362d382d32303236006a65000011ff64001b4e67c3a0792068e1babf742068e1baa16e203a342d392d3230323601ba39001c4e67c3a0792068e1babf742068e1baa16e203a32312d382d323032360121440002e4936100543f1100000151ff2ae701000c4368e1bba963206ec4836e67000202005c000a54c3a0692078e1bb897504d8000024000948e1bab96e2048c3b204480101010021ffff010000000000000000000000015101ffff0000ffff0000ffffffffffff',
+    'hex',
+  );
+
+  assert.deepEqual(decodeLoginSuccessMoney(body), {
+    xu: 189_587,
+    luong: 0,
+    luongKhoa: 337,
+  });
 });
 
 test('decodeMoney: gói -3 dạng ngắn 3 trường (delta, type, balance) theo farm.md', () => {

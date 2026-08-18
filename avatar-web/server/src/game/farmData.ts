@@ -281,8 +281,9 @@ export interface DecodedPlayerInfo {
 }
 
 /**
- * Giải mã gói thông tin người chơi (cmd -94 REQUEST_YOUR_INFO hoặc cmd 24 REQUEST_DETAIL):
- * `i32 idUser` + `i8 lvMain` (level nhân vật) + `i8 perLvMain`
+ * Giải mã gói thông tin người chơi (cmd -94 REQUEST_YOUR_INFO): `i32 idUser`
+ * + `i8 lvMain` (level nhân vật) + `i8 perLvMain`. Cmd 24 có tên
+ * REQUEST_DETAIL nhưng là request của các tính năng khác, không dùng layout này.
  */
 export function decodePlayerInfo(body: Buffer): DecodedPlayerInfo {
   const r = new MyReader(body);
@@ -290,6 +291,138 @@ export function decodePlayerInfo(body: Buffer): DecodedPlayerInfo {
   const playerLevel = r.readByte();
   const perLvMain = r.available() > 0 ? r.readByte() : undefined;
   return { playerId, playerLevel, perLvMain };
+}
+
+export interface DecodedLoginSuccessMoney {
+  xu: number;
+  luong: number;
+  luongKhoa: number;
+}
+
+/**
+ * Đọc ba số dư nằm trong LOGIN_SUCESS (-34).
+ *
+ * Handler GlobalMessageHandler của game đọc `xu` rồi gọi Avatar.setMoney,
+ * sau đó đi qua một số danh sách động (UTF + count), mới đọc `luong`
+ * (Avatar.setGold) và `luongKhoa` (Avatar+0x90). Vì phần trước ví có count
+ * thay đổi theo dữ liệu tài khoản, decoder thử từng offset và chỉ nhận một
+ * candidate có layout hợp lệ, bounds an toàn và phần đuôi ngắn như handler.
+ * Không gửi thêm request và không phụ thuộc vào giao dịch mua/bán.
+ */
+export function decodeLoginSuccessMoney(body: Buffer): DecodedLoginSuccessMoney | null {
+  const MAX_LIST_ITEMS = 64;
+  const MIN_REMAINDER = 5;
+  const MAX_REMAINDER = 64;
+
+  const isInsideUtf = (offset: number): boolean => {
+    for (let cursor = 0; cursor + 2 <= offset; cursor++) {
+      const length = body.readUInt16BE(cursor);
+      const end = cursor + 2 + length;
+      if (length < 1 || end > body.length || offset < cursor + 2 || offset >= end) continue;
+      const text = body.toString('utf8', cursor + 2, end);
+      if (!text.includes('\uFFFD')) return true;
+    }
+    return false;
+  };
+
+  const decodeAt = (start: number): (DecodedLoginSuccessMoney & { remainder: number }) | null => {
+    const r = new MyReader(body.subarray(start));
+    const ensure = (bytes: number): void => {
+      if (bytes < 0 || r.available() < bytes) throw new Error('gói login thiếu byte');
+    };
+    const readByte = (): number => {
+      ensure(1);
+      return r.readByte();
+    };
+    const readBoolean = (): boolean => {
+      ensure(1);
+      const value = r.readUnsignedByte();
+      if (value > 1) throw new Error('boolean login không hợp lệ');
+      return value === 1;
+    };
+    const readShort = (): number => {
+      ensure(2);
+      return r.readShort();
+    };
+    const readInt = (): number => {
+      ensure(4);
+      return r.readInt();
+    };
+    const readUtf = (): string => {
+      ensure(2);
+      const length = r.readUnsignedShort();
+      ensure(length);
+      const text = r.readBytes(length).toString('utf8');
+      if (text.includes('\uFFFD')) throw new Error('UTF login không hợp lệ');
+      return text;
+    };
+    const readCount = (): number => {
+      const count = readByte();
+      if (count < 0) return 0; // handler coi count âm là danh sách rỗng
+      if (count > MAX_LIST_ITEMS) throw new Error('count login quá lớn');
+      return count;
+    };
+
+    const xu = readInt();
+    for (let i = 0; i < 5; i++) readByte();
+    readInt();
+    readByte();
+    readShort();
+
+    const nFunction = readCount();
+    for (let i = 0; i < nFunction; i++) {
+      readUtf();
+      readShort();
+    }
+
+    const nAction = readCount();
+    for (let i = 0; i < nAction; i++) {
+      readShort();
+      readUtf();
+      readShort();
+      readBoolean();
+    }
+
+    readBoolean();
+    if (r.available() > 0) {
+      readByte();
+      readShort();
+    }
+    readShort();
+    if (r.available() > 0 && readBoolean()) readInt();
+
+    const nTask = readCount();
+    for (let i = 0; i < nTask; i++) {
+      readShort();
+      readUtf();
+      readShort();
+      readInt();
+    }
+
+    const luong = readInt();
+    const luongKhoa = readInt();
+    if (
+      xu < 0 ||
+      luong < 0 ||
+      luongKhoa < 0 ||
+      r.available() < MIN_REMAINDER ||
+      r.available() > MAX_REMAINDER
+    ) return null;
+    return { xu, luong, luongKhoa, remainder: r.available() };
+  };
+
+  const candidates: Array<DecodedLoginSuccessMoney & { remainder: number }> = [];
+  for (let start = 5; start <= body.length - 8; start++) {
+    try {
+      const decoded = decodeAt(start);
+      if (decoded && !isInsideUtf(start)) candidates.push(decoded);
+    } catch {
+      // Hầu hết offset là bytes giữa các field; bỏ qua và thử offset kế tiếp.
+    }
+  }
+  if (candidates.length !== 1) return null;
+  const { xu, luong, luongKhoa } = candidates[0];
+  return { xu, luong, luongKhoa };
 }
 
 export interface DecodedCreCharacter {

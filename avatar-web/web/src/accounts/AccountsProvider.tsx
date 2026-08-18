@@ -37,8 +37,8 @@ export function AccountsProvider() {
 
   useEffect(() => void reload(), [reload]);
 
-  // `status` và `auto` là sự kiện nhẹ, server đẩy về không cần subscribe — đủ để
-  // các card tự cập nhật mà không phải hỏi lại API.
+  // `status`, `auto`, `farm-sync` và metrics là sự kiện nhẹ, server đẩy về
+  // không cần subscribe — đủ để các card tự cập nhật mà không phải hỏi lại API.
   useEffect(
     () =>
       onWsMessage((message) => {
@@ -47,7 +47,12 @@ export function AccountsProvider() {
           void reload();
           return;
         }
-        if (message.type !== 'status' && message.type !== 'auto' && message.type !== 'farm-sync') return;
+        if (
+          message.type !== 'status'
+          && message.type !== 'auto'
+          && message.type !== 'farm-sync'
+          && message.type !== 'metrics'
+        ) return;
         setAccounts((current) =>
           current.map((account) => {
             if (account.id !== message.accountId || !account.runtime) return account;
@@ -57,7 +62,22 @@ export function AccountsProvider() {
             if (message.type === 'auto') {
               return { ...account, runtime: { ...account.runtime, auto: message.payload } };
             }
-            return { ...account, runtime: { ...account.runtime, farmSync: message.payload } };
+            if (message.type === 'farm-sync') {
+              return { ...account, runtime: { ...account.runtime, farmSync: message.payload } };
+            }
+            return {
+              ...account,
+              runtime: {
+                ...account.runtime,
+                xu: message.payload.xu ?? account.runtime.xu,
+                money: message.payload.xu ?? account.runtime.money,
+                luong: message.payload.luong ?? account.runtime.luong,
+                luongKhoa: message.payload.luongKhoa ?? account.runtime.luongKhoa,
+                playerLevel: message.payload.playerLevel ?? account.runtime.playerLevel,
+                farmLevel: message.payload.farmLevel ?? account.runtime.farmLevel,
+                metricsSyncedAt: message.payload.syncedAt ?? account.runtime.metricsSyncedAt,
+              },
+            };
           }),
         );
       }),

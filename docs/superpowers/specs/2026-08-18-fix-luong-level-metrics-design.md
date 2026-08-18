@@ -29,6 +29,9 @@ Từ kết quả dịch ngược mã nguồn game `libil2cpp.so` (arm64, `Avatar
      - Hoặc có thể chủ động truy vấn thông tin nhân vật bằng `GlobalService.requestInfoOf(playerId)` hoặc `requestYourInfo()`.
 3. **Số dư Lượng (`luong`)**:
    - Được cập nhật qua gói **`UPDATE_MONEY (-3)`** khi `type === 2` (Lượng) hoặc khi nhận gói thông tin nhân vật. Khi `GameClient` kết nối vào farm/game, nếu chưa có giao dịch lượng phát sinh thì gói `-3` có thể chưa được gửi lại. Khi gửi request thông tin nhân vật hoặc nhận phản hồi cập nhật từ server, số dư và level sẽ được đồng bộ.
+4. **Kết quả probe và disassembly đã hiệu chỉnh giả thuyết trên**:
+   - Gói **`LOGIN_SUCESS (-34)`** đã chứa sẵn ví của Avatar. Handler game đọc `i32 xu` rồi gọi `Avatar.setMoney`, đi qua các danh sách động, sau đó đọc `i32 luong` (`Avatar.setGold`) và `i32 luongKhoa` (`Avatar + 0x90`). Vì vậy không cần mua vật phẩm hay chờ `-3/-5` để biết số dư sau login.
+   - Gói **`-94`** chỉ bổ sung level nhân vật; request `24` không phải đường lấy ví. Fixture gói `-34` thật đã được dùng để kiểm tra decoder.
 
 ---
 
@@ -37,14 +40,15 @@ Từ kết quả dịch ngược mã nguồn game `libil2cpp.so` (arm64, `Avatar
 ### 2.1 In-Scope
 1. **Giải mã đầy đủ 12 byte đuôi của gói INVENTORY (cmd 70)** trong `farmData.ts`:
    - Trích xuất: `xu` (`i32`), `farmLevel` (`i16`), `perLvFarm` (`i8`), `levelStore` (`i8`), `capacityStore` (`i32`).
-2. **Cập nhật `GameClient` (`client.ts`)**:
+2. **Giải mã ví ngay trong gói LOGIN_SUCESS (-34)** bằng `decodeLoginSuccessMoney` và phát `xu`, `luong`, `luongKhoa` ngay sau login thành công.
+3. **Cập nhật `GameClient` (`client.ts`)**:
    - Xử lý gói `70` (INVENTORY): Lưu `this.farmLevel = inv.farmLevel` và cập nhật thông tin kho.
    - Thêm handler cho gói `-94` (`REQUEST_YOUR_INFO`): Đọc `playerLevel` và `perLvMain` để gán vào `this.playerLevel`.
    - Cung cấp hàm gửi yêu cầu thông tin nhân vật sau khi login thành công (`LOGIN_SUCESS -34`).
-3. **Cập nhật `AvatarSession` (`avatarSession.ts`)**:
+4. **Cập nhật `AvatarSession` (`avatarSession.ts`)**:
    - Khi `GameClient` cập nhật `farmLevel`, `playerLevel`, `luong`, `xu`, gọi `updateCachedMetrics` để đồng bộ và lưu vào DB SQLite.
    - Snapshot của session trả về đầy đủ `farmLevel`, `playerLevel`, `luong`, `xu`.
-4. **Kiểm thử tự động & Verify**:
+5. **Kiểm thử tự động & Verify**:
    - Unit tests cho `decodeInventory` với đầy đủ 12 byte tail.
    - Unit tests cho `GameClient` & `AvatarSession` metric caching và event emission.
 
@@ -101,10 +105,26 @@ export function decodePlayerInfo(body: Buffer): { playerId: number; playerLevel:
 }
 ```
 
-### 3.3 Luồng đồng bộ metrics
+### 3.3 Bộ giải mã ví trong LOGIN_SUCESS (cmd -34)
+```text
+header/body prefix: i8 + i32 id
+xu: i32
+dynamic enter-world fields: 5×i8, i32, i8, i16, function/action/task lists
+luong: i32
+luongKhoa: i32
+tail: protocol fields còn lại
+```
+
+`decodeLoginSuccessMoney` tìm đúng điểm bắt đầu của layout động bằng bounds check,
+count/bool/UTF nghiêm ngặt và yêu cầu một candidate duy nhất. Không gửi thêm lệnh
+và không thực hiện giao dịch.
+
+### 3.4 Luồng đồng bộ metrics
 ```
 Game Server
     │
+    ├─► LOGIN_SUCESS (-34) ──► decodeLoginSuccessMoney() ──► GameClient (xu/lượng/lượng khóa)
+    │                                                      │
     ├─► INVENTORY (cmd 70) ──► decodeInventory() ──► GameClient (xu, farmLevel)
     │                                                      │
     ├─► UPDATE_MONEY (-3)  ──► decodeMoney()      ──► GameClient (xu/luong)
@@ -132,3 +152,6 @@ Game Server
    - Thêm test case cho `AvatarSession` xác minh `cachedMetrics` được cập nhật và snapshot trả về đúng giá trị.
 2. **Build Test**:
    - `npm run build` trong cả `avatar-web/server` và `avatar-web/web` đảm bảo không có lỗi TypeScript / JSX.
+3. **Protocol fixture**:
+   - `farmData.test.ts` giải mã gói `-34` thật (370 byte) thành `xu=189587`, `luong=0`, `luongKhoa=337`.
+   - Chạy một lần relog read-only để xác nhận event metrics cập nhật SQLite/UI; không mua hoặc bán vật phẩm.

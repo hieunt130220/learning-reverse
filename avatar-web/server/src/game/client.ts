@@ -14,6 +14,7 @@ import {
   decodeMoney,
   decodeInfoCell,
   decodeInventory,
+  decodeLoginSuccessMoney,
   decodeItemCatalog,
   decodePlayerInfo,
   decodeTreeInfo,
@@ -442,8 +443,9 @@ export class GameClient extends EventEmitter {
     this.lastPacket.set(msg.command, msg.getData().toString('hex'));
     switch (msg.command) {
       case -34: {
-        // LOGIN_SUCESS — body quan sát được: i8, i32 id, i16. id = -1 nghĩa là
-        // đăng nhập KHÔNG thành công (server vẫn gửi gói này kèm gói -40 báo lỗi).
+        // LOGIN_SUCESS — body bắt đầu bằng i8 + i32 id; phần còn lại là dữ liệu
+        // enter-world và các field Avatar (gồm xu, lượng, lượng khóa). id = -1
+        // nghĩa là đăng nhập KHÔNG thành công (server vẫn gửi kèm gói -40).
         const r = msg.reader!;
         try {
           r.readByte();
@@ -453,8 +455,24 @@ export class GameClient extends EventEmitter {
             this.setStatus('online');
             this.startKeepAlive();
             this.emit('log', `đăng nhập thành công — id nhân vật = ${id}`);
-            // Dữ liệu nhân vật (xu, lượng mở, lượng khoá) được server đẩy qua gói
-            // CRE_CHARACTER (-5) ngay trong tiến trình vào game; chỉ còn cần xin level.
+            // LOGIN_SUCESS (-34) chứa ví của Avatar; -94 bên dưới chỉ bổ sung level.
+            const wallet = decodeLoginSuccessMoney(msg.getData());
+            if (wallet) {
+              this.money = wallet.xu;
+              this.luong = wallet.luong;
+              this.luongKhoa = wallet.luongKhoa;
+              this.emit('metrics', {
+                xu: wallet.xu,
+                luong: wallet.luong,
+                luongKhoa: wallet.luongKhoa,
+              });
+              this.emit(
+                'log',
+                `số dư login: xu=${wallet.xu} · lượng=${wallet.luong} · lượng khoá=${wallet.luongKhoa}`,
+              );
+            } else {
+              this.emit('log', 'LOGIN_SUCESS không giải mã được số dư ví');
+            }
             this.requestYourInfo(id);
           } else {
             this.emit('log', `đăng nhập không thành công (id = ${id})`);

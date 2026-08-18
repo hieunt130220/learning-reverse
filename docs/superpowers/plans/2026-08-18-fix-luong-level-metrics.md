@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Giải mã đầy đủ các trường metrics (farm level, player level, xu, lượng) từ các gói tin game protocol (cmd 70, cmd -94, cmd -3) và lưu/đồng bộ cached metrics lên Web UI.
+**Goal:** Giải mã số dư xu/lượng/lượng khóa ngay từ gói đăng nhập `-34`, đồng thời giữ đồng bộ level và số dư bổ sung từ các gói farm/tiền để Web UI hiển thị ngay sau login.
 
-**Architecture:** Mở rộng decoder `decodeInventory` trong `farmData.ts` để đọc trọn vẹn 12-byte tail (xu, farmLevel, perLvFarm, levelStore, capacityStore). Bổ sung decoder `decodePlayerInfo` cho cmd -94 (`REQUEST_YOUR_INFO`). Cập nhật `GameClient` và `AvatarSession` để phát event và lưu các metric vào `cachedMetrics` (SQLite), từ đó Web UI hiển thị ngay cả khi offline.
+**Architecture:** `decodeLoginSuccessMoney` đọc layout động trong `LOGIN_SUCESS (-34)` và phát ví ngay khi login thành công. `decodeInventory` và `decodePlayerInfo` tiếp tục bổ sung farm/player level, còn `-3/-5` vẫn được giữ để cập nhật tương thích sau giao dịch hoặc khi server gửi character payload. `GameClient` và `AvatarSession` lưu các patch vào `cachedMetrics` (SQLite), từ đó Web UI hiển thị ngay cả khi offline.
 
 **Tech Stack:** TypeScript, Node.js, SQLite, React, Vite.
 
@@ -17,7 +17,7 @@
 
 ---
 
-### Task 1: Mở rộng `decodeInventory` và thêm `decodePlayerInfo` trong `farmData.ts`
+### Task 1: Mở rộng các decoder metrics trong `farmData.ts`
 
 **Files:**
 - Modify: `avatar-web/server/src/game/farmData.ts:200-250`
@@ -25,9 +25,9 @@
 
 **Interfaces:**
 - Consumes: `MyReader`
-- Produces: `DecodedInventory` có `farmLevel`, `perLvFarm`, `levelStore`, `capacityStore`, `xu`. Hàm `decodePlayerInfo(body: Buffer)`.
+- Produces: `DecodedInventory` có `farmLevel`, `perLvFarm`, `levelStore`, `capacityStore`, `xu`; `decodePlayerInfo(body: Buffer)`; `decodeLoginSuccessMoney(body: Buffer)`.
 
-- [ ] **Step 1: Cập nhật hàm `decodeInventory` và thêm `decodePlayerInfo`**
+- [x] **Step 1: Cập nhật hàm `decodeInventory`, thêm `decodePlayerInfo` và `decodeLoginSuccessMoney`**
 Trong [avatar-web/server/src/game/farmData.ts](avatar-web/server/src/game/farmData.ts):
 ```ts
 export interface DecodedInventory {
@@ -105,23 +105,24 @@ export function decodePlayerInfo(body: Buffer): { playerId: number; playerLevel:
 }
 ```
 
-- [ ] **Step 2: Kiểm tra test suite**
+- [x] **Step 2: Kiểm tra test suite**
 Run: `npm test` trong `avatar-web/server`
-Expected: Tests pass thành công.
+Expected: 254 tests pass thành công.
 
 ---
 
-### Task 2: Cập nhật `GameClient` để xử lý và phát event metrics
+### Task 2: Cập nhật `GameClient` để xử lý ví login và phát event metrics
 
 **Files:**
 - Modify: `avatar-web/server/src/game/client.ts:470-520`
 
 **Interfaces:**
-- Consumes: `decodeInventory`, `decodePlayerInfo` từ `farmData.ts`
-- Produces: `client.farmLevel`, `client.playerLevel`, event `metrics`
+- Consumes: `decodeLoginSuccessMoney`, `decodeInventory`, `decodePlayerInfo` từ `farmData.ts`
+- Produces: `client.money`, `client.luong`, `client.luongKhoa`, `client.farmLevel`, `client.playerLevel`, event `metrics`
 
-- [ ] **Step 1: Xử lý cmd 70 và cmd -94 trong `client.ts`**
+- [x] **Step 1: Xử lý cmd -34, cmd 70 và cmd -94 trong `client.ts`**
 Trong [avatar-web/server/src/game/client.ts](avatar-web/server/src/game/client.ts):
+- Khi nhận cmd `-34` login thành công, gọi `decodeLoginSuccessMoney(msg.getData())`, cập nhật ba field ví và phát một event `metrics`. Không gửi request mua/bán hay request phụ để lấy ví.
 - Khi nhận cmd 70 (INVENTORY):
   - Cập nhật `this.farmLevel = inv.farmLevel`.
   - Phát event `metrics` với `{ farmLevel: inv.farmLevel, xu: inv.xu }`.
@@ -131,9 +132,9 @@ Trong [avatar-web/server/src/game/client.ts](avatar-web/server/src/game/client.t
   - Phát event `metrics` với `{ playerLevel: info.playerLevel }`.
 - Thêm phương thức `requestYourInfo(idUser?: number)` trong `GameClient`.
 
-- [ ] **Step 2: Kiểm tra test suite**
+- [x] **Step 2: Kiểm tra test suite**
 Run: `npm test` trong `avatar-web/server`
-Expected: Tests pass thành công.
+Expected: 254 tests pass thành công.
 
 ---
 
@@ -146,11 +147,11 @@ Expected: Tests pass thành công.
 - Consumes: Events `metrics`, `money` từ `GameClient`
 - Produces: Cập nhật `cachedMetrics`, gọi `this.updateCachedMetrics(...)`
 
-- [ ] **Step 1: Lắng nghe event `metrics` trong `AvatarSession`**
+- [x] **Step 1: Lắng nghe event `metrics` trong `AvatarSession`**
 Trong [avatar-web/server/src/session/avatarSession.ts](avatar-web/server/src/session/avatarSession.ts):
 - Đăng ký listener `client.on('metrics', (patch: AccountMetricsPatch) => { this.updateCachedMetrics(patch); })`.
 - Đồng thời khi kết nối online thành công (`onOnline`), nếu có `client.playerId`, gửi `client.requestYourInfo()` để lấy level nhân vật.
 
-- [ ] **Step 2: Kiểm tra test suite và build**
+- [x] **Step 2: Kiểm tra test suite và build**
 Run: `npm test` trong `avatar-web/server` và `npm run build` trong `avatar-web/web`
-Expected: Build và test pass 100%.
+Expected: server 254/254, web 71/71 và build pass.
