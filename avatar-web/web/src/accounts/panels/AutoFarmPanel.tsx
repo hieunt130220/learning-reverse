@@ -33,6 +33,9 @@ const ALWAYS_ON_AUTO_CONFIG = {
   harvestAnimals: true,
   harvestBarnAnimals: true,
   harvestPondAnimals: true,
+  sellAnimals: true,
+  sellBarnAnimals: true,
+  sellPondAnimals: true,
   feedAnimals: true,
   feedBarnAnimals: true,
   feedPondAnimals: true,
@@ -195,13 +198,6 @@ export function AutoFarmPanel({
   accountId,
   onPlanDirtyChange,
 }: AutoFarmPanelProps) {
-  const [seedId, setSeedId] = useState('');
-  // Bán là thao tác KHÔNG lấy lại được -> mặc định tắt, người dùng phải tự bật.
-  const [sellBarnAnimals, setSellBarnAnimals] = useState(false);
-  const [sellPondAnimals, setSellPondAnimals] = useState(false);
-  // Chuồng: Gà 50, Bò 51, Heo 52, Vịt 55 / Hồ: Cá chép 54, Rùa 59
-  const [sellBarnSpeciesStr, setSellBarnSpeciesStr] = useState('50, 51, 52, 55');
-  const [sellPondSpeciesStr, setSellPondSpeciesStr] = useState('54, 59');
   const [autoHarvestCook, setAutoHarvestCook] = useState(true);
 
   const [storedState, setStoredState] = useState<AutoConfigStateDto>(EMPTY_AUTO);
@@ -223,14 +219,6 @@ export function AutoFarmPanel({
   currentAccountId.current = accountId;
 
   const hydrateForm = useCallback((config: Partial<AutoFarmConfigDto>) => {
-    const optionalId = (value: number | undefined, fallback = '') => (
-      value === undefined ? fallback : String(value)
-    );
-    setSeedId(optionalId(config.seedId));
-    setSellBarnAnimals(config.sellBarnAnimals ?? config.sellAnimals ?? false);
-    setSellPondAnimals(config.sellPondAnimals ?? config.sellAnimals ?? false);
-    setSellBarnSpeciesStr(config.sellBarnSpecies?.join(', ') ?? '50, 51, 52, 55');
-    setSellPondSpeciesStr(config.sellPondSpecies?.join(', ') ?? '54, 59');
     setAutoHarvestCook(config.autoHarvestCook ?? true);
     setDraftKitchenPlan(sortedKitchenPlan(config.cookingSlotPlan));
   }, []);
@@ -281,14 +269,6 @@ export function AutoFarmPanel({
       active = false;
     };
   }, [accountId, hydrateForm]);
-
-  const num = (value: string) => (value.trim() === '' ? undefined : Number(value));
-  /** "52, 54, 59" -> [52, 54, 59]. Bỏ phần rác thay vì gửi NaN lên server. */
-  const idList = (value: string) =>
-    value
-      .split(',')
-      .map((part) => Number(part.trim()))
-      .filter((id) => Number.isFinite(id));
 
   // Chỉ so sánh các phần UI cho phép sửa: kế hoạch cây + vật nuôi (chuồng/hồ) + bếp nấu.
   const dirty = useMemo(
@@ -440,16 +420,6 @@ export function AutoFarmPanel({
 
       <div className="setting-section">
         <h3>🐓 Vật nuôi chuồng (Gà, Vịt, Bò, Heo, Cừu, Trâu, Dê, Thỏ...)</h3>
-        <div className="row">
-          <label className="inline">
-            <input type="checkbox" checked={sellBarnAnimals} onChange={(event) => setSellBarnAnimals(event.target.checked)} style={{ width: 'auto' }} />
-            bán vật nuôi chuồng khi lớn
-          </label>
-          <label className="inline">
-            loài bán chuồng
-            <input value={sellBarnSpeciesStr} onChange={(event) => setSellBarnSpeciesStr(event.target.value)} placeholder="không bán" disabled={!sellBarnAnimals} />
-          </label>
-        </div>
         <AnimalPlanEditor
           title="Kế hoạch vật nuôi chuồng theo slot"
           catalog={BARN_ANIMAL_CATALOG}
@@ -467,16 +437,6 @@ export function AutoFarmPanel({
 
       <div className="setting-section">
         <h3>🐟 Vật nuôi hồ (Cá chép, Rùa)</h3>
-        <div className="row">
-          <label className="inline">
-            <input type="checkbox" checked={sellPondAnimals} onChange={(event) => setSellPondAnimals(event.target.checked)} style={{ width: 'auto' }} />
-            bán cá/rùa khi lớn
-          </label>
-          <label className="inline">
-            loài bán hồ
-            <input value={sellPondSpeciesStr} onChange={(event) => setSellPondSpeciesStr(event.target.value)} placeholder="54, 59" disabled={!sellPondAnimals} />
-          </label>
-        </div>
         <AnimalPlanEditor
           title="Kế hoạch vật nuôi hồ theo slot"
           catalog={POND_ANIMAL_CATALOG}
