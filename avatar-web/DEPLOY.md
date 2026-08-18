@@ -256,6 +256,36 @@ sudo certbot --nginx -d avatar.domaincuaban.com
 
 ---
 
+## 📌 BƯỚC 8: Thiết lập CI/CD Tự động Triển khai (GitHub Actions)
+
+Dự án đã được tích hợp sẵn file cấu hình GitHub Actions tại `.github/workflows/deploy.yml`. Mỗi khi bạn **push hoặc merge code vào nhánh `main`**, hệ thống sẽ tự động SSH vào VPS, pull code mới, build cả Server + Web và reload lại ứng dụng.
+
+### 1. Thêm Secrets trên GitHub Repository
+
+1. Mở trang repository của bạn trên GitHub.
+2. Vào **Settings** ➔ **Secrets and variables** ➔ **Actions**.
+3. Nhấn **New repository secret** và thêm lần lượt các Secret sau:
+
+| Tên Secret | Bắt buộc | Mô tả | Giá trị ví dụ |
+|---|---|---|---|
+| `SERVER_HOST` | **Bắt buộc** | Địa chỉ Public IP hoặc Domain của VPS Oracle | `123.45.67.89` hoặc `avatar.domaincuaban.com` |
+| `SERVER_USER` | **Bắt buộc** | Tên user đăng nhập SSH trên VPS | `ubuntu` |
+| `SERVER_SSH_KEY` | **Bắt buộc** | Toàn bộ nội dung file Private Key SSH (`.key` / `.pem` / `id_rsa`) | Copy toàn bộ từ `-----BEGIN ...` đến `-----END ...` |
+| `SERVER_PORT` | Không | Cổng SSH | `22` (mặc định) |
+| `DEPLOY_PATH` | Không | Đường dẫn thư mục cài đặt trên VPS | `/var/www/avatar-web` (mặc định) |
+
+> 💡 **Mẹo lấy nội dung SSH Key trên máy cá nhân**:
+> - Nếu bạn dùng file key tải từ Oracle Cloud: Mở file `.key` bằng TextEdit / Notepad rồi copy toàn bộ nội dung dán vào secret `SERVER_SSH_KEY`.
+> - Hoặc chạy lệnh: `cat /duong/dan/toi/oracle-key.key`
+
+### 2. Kích hoạt và Kiểm tra Deploy
+
+* **Tự động**: Mỗi khi có commit mới merge vào nhánh `main`, GitHub Actions sẽ tự chạy.
+* **Thủ công**: Vào tab **Actions** trên GitHub ➔ Chọn workflow **Deploy to Production VPS** ➔ Nhấn **Run workflow** ➔ Chọn nhánh `main` ➔ Nhấn **Run workflow**.
+* Xem trực tiếp log deploy trên giao diện GitHub Actions để xác nhận server và web đã được cập nhật thành công.
+
+---
+
 ## 🛠 Lệnh Bảo trì & Cập nhật thường dùng
 
 * **Xem trạng thái ứng dụng Node.js**:
@@ -270,12 +300,12 @@ sudo certbot --nginx -d avatar.domaincuaban.com
   ```bash
   pm2 restart avatar-web
   ```
-* **Cập nhật phiên bản code mới (Deploy update)**:
+* **Cập nhật thủ công (khi không dùng CI/CD)**:
   ```bash
   cd /var/www/avatar-web
   git pull
-  cd server && npm run build
-  cd ../web && npm run build
+  cd server && npm install && npm run build
+  cd ../web && npm install && npm run build
   pm2 restart avatar-web
   ```
 * **Sao lưu dữ liệu quan trọng**:

@@ -272,6 +272,49 @@ sudo certbot --nginx -d avatar.domaincuaban.com
 
 ---
 
+## 📌 BƯỚC 8: Thiết lập CI/CD Tự động Triển khai (GitHub Actions)
+
+Dự án đã được tích hợp sẵn file cấu hình GitHub Actions tại `.github/workflows/deploy.yml`. Mỗi khi bạn **push hoặc merge code vào nhánh `main`**, hệ thống sẽ tự động SSH vào VPS, pull code mới, build cả Server + Web và reload lại ứng dụng.
+
+### 1. Tạo SSH Key trên VPS GCP (nếu chưa có)
+
+Nếu bạn trước giờ kết nối GCP qua nút SSH trên trình duyệt, hãy chạy các lệnh sau trên terminal SSH của VPS để tạo một cặp SSH key cho GitHub Actions:
+
+```bash
+# 1. Tạo cặp key SSH (nhấn Enter liên tục để bỏ qua passphrase)
+ssh-keygen -t rsa -b 4096 -C "github-actions-deploy" -f ~/.ssh/github_actions
+
+# 2. Đưa public key vào authorized_keys
+cat ~/.ssh/github_actions.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+
+# 3. In private key ra màn hình để copy
+cat ~/.ssh/github_actions
+```
+*(Sao chép toàn bộ chuỗi private key hiển thị từ `-----BEGIN OPENSSH PRIVATE KEY-----` đến `-----END OPENSSH PRIVATE KEY-----`)*.
+
+### 2. Thêm Secrets trên GitHub Repository
+
+1. Mở trang repository của bạn trên GitHub.
+2. Vào **Settings** ➔ **Secrets and variables** ➔ **Actions**.
+3. Nhấn **New repository secret** và thêm lần lượt các Secret sau:
+
+| Tên Secret | Bắt buộc | Mô tả | Giá trị ví dụ |
+|---|---|---|---|
+| `SERVER_HOST` | **Bắt buộc** | Địa chỉ External IP hoặc Domain của VM GCP | `34.123.45.67` hoặc `avatar.domaincuaban.com` |
+| `SERVER_USER` | **Bắt buộc** | Tên user đăng nhập trên VPS GCP | Tên user hiện tại (chạy `whoami` trên VPS) |
+| `SERVER_SSH_KEY` | **Bắt buộc** | Toàn bộ nội dung file Private Key vừa in ở trên | Copy toàn bộ nội dung `~/.ssh/github_actions` |
+| `SERVER_PORT` | Không | Cổng SSH | `22` (mặc định) |
+| `DEPLOY_PATH` | Không | Đường dẫn thư mục cài đặt trên VPS | `/var/www/avatar-web` (mặc định) |
+
+### 3. Kích hoạt và Kiểm tra Deploy
+
+* **Tự động**: Mỗi khi có commit mới merge vào nhánh `main`, GitHub Actions sẽ tự chạy.
+* **Thủ công**: Vào tab **Actions** trên GitHub ➔ Chọn workflow **Deploy to Production VPS** ➔ Nhấn **Run workflow** ➔ Chọn nhánh `main` ➔ Nhấn **Run workflow**.
+* Xem trực tiếp log deploy trên giao diện GitHub Actions để xác nhận server và web đã được cập nhật thành công.
+
+---
+
 ## 🛠 Lệnh Quản lý, Bảo trì & Cập nhật thường dùng
 
 * **Xem trạng thái ứng dụng**:
@@ -286,7 +329,7 @@ sudo certbot --nginx -d avatar.domaincuaban.com
   ```bash
   pm2 restart avatar-web
   ```
-* **Cập nhật code khi có phiên bản mới**:
+* **Cập nhật thủ công (khi không dùng CI/CD)**:
   ```bash
   cd /var/www/avatar-web
   git pull
