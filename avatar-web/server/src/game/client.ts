@@ -592,15 +592,13 @@ export class GameClient extends EventEmitter {
         );
         this.emit('inventory', this.inventory);
 
-        // Cập nhật lại tiến độ kho hàng cho các nhiệm vụ ngày hiện có
+        // Cập nhật lại tiến độ kho nông sản cho các nhiệm vụ ngày hiện có
         if (this.dailyQuestState && this.dailyQuestState.missions.length > 0) {
           let changed = false;
           for (const m of this.dailyQuestState.missions) {
             let numCurrent = 0;
             const pItem = this.produce.find((p) => p.id === m.idItem);
             if (pItem) numCurrent += pItem.num;
-            const invItem = this.inventory.find((p) => p.id === m.idItem);
-            if (invItem) numCurrent += invItem.num;
             if (m.numCurrent !== numCurrent) {
               m.numCurrent = numCurrent;
               m.isDone = numCurrent >= m.numRequired;

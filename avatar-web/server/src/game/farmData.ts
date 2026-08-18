@@ -1994,12 +1994,10 @@ export function decodeDailyQuestPacket(
         const idItem = r.readShort();
         const numRequired = r.readInt();
 
-        // Tìm số lượng hiện có trong kho hàng (produce) hoặc vật phẩm (inventory)
+        // Tìm số lượng hiện có trong kho nông sản (produce)
         let numCurrent = 0;
         const pItem = produce?.find((p) => p.id === idItem);
         if (pItem) numCurrent += pItem.num;
-        const invItem = inventory?.find((p) => p.id === idItem);
-        if (invItem) numCurrent += invItem.num;
 
         missions.push({
           idItem,
