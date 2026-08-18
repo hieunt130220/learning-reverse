@@ -18,6 +18,8 @@ export function reduceAccountRuntime(
   switch (message.type) {
     case 'status':
       return { ...current, status: message.payload };
+    case 'desired-connected':
+      return { ...current, desiredConnected: Boolean(message.payload) };
     case 'auto':
       return { ...current, auto: message.payload };
     case 'macro':

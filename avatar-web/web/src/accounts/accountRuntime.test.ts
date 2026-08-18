@@ -18,6 +18,7 @@ describe('reduceAccountRuntime', () => {
 
   test.each([
     ['status', 'error', 'status'],
+    ['desired-connected', false, 'desiredConnected'],
     ['auto', { running: false, cycle: 7, lastActions: [] }, 'auto'],
     ['macro', { running: true, cycle: 2 }, 'macro'],
     ['farm', { idFarm: 7, cells: [], animals: [], updatedAt: 3 }, 'farm'],

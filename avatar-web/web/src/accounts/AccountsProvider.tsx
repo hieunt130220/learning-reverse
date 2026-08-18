@@ -49,6 +49,7 @@ export function AccountsProvider() {
         }
         if (
           message.type !== 'status'
+          && message.type !== 'desired-connected'
           && message.type !== 'auto'
           && message.type !== 'farm-sync'
           && message.type !== 'metrics'
@@ -58,6 +59,15 @@ export function AccountsProvider() {
             if (account.id !== message.accountId || !account.runtime) return account;
             if (message.type === 'status') {
               return { ...account, runtime: { ...account.runtime, status: message.payload } };
+            }
+            if (message.type === 'desired-connected') {
+              return {
+                ...account,
+                runtime: {
+                  ...account.runtime,
+                  desiredConnected: Boolean(message.payload),
+                },
+              };
             }
             if (message.type === 'auto') {
               return { ...account, runtime: { ...account.runtime, auto: message.payload } };
