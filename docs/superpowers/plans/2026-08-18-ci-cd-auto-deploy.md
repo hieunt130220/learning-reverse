@@ -27,7 +27,7 @@
 - Consumes: GitHub Secrets (`SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY`, `SERVER_PORT`, `DEPLOY_PATH`)
 - Produces: GitHub Actions deployment pipeline trên nhánh `main`.
 
-- [ ] **Step 1: Tạo file `.github/workflows/deploy.yml`**
+- [x] **Step 1: Tạo file `.github/workflows/deploy.yml`**
 Tạo file cấu hình workflow với nội dung chi tiết:
 ```yaml
 name: Deploy to Production VPS
@@ -112,10 +112,10 @@ jobs:
             echo "========================================="
 ```
 
-- [ ] **Step 2: Xác thực cú pháp YAML**
+- [x] **Step 2: Xác thực cú pháp YAML**
 Kiểm tra tính hợp lệ của file `.github/workflows/deploy.yml`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 ```bash
 git add .github/workflows/deploy.yml
 git commit -m "feat(ci): add GitHub Actions SSH auto-deployment workflow"
@@ -132,17 +132,17 @@ git commit -m "feat(ci): add GitHub Actions SSH auto-deployment workflow"
 **Interfaces:**
 - Produces: Hướng dẫn cấu hình GitHub Secrets và vận hành CI/CD trong tài liệu.
 
-- [ ] **Step 1: Cập nhật `avatar-web/DEPLOY.md`**
+- [x] **Step 1: Cập nhật `avatar-web/DEPLOY.md`**
 Bổ sung mục `BƯỚC 8: Thiết lập CI/CD Tự động Deploy (GitHub Actions)` với:
 - Giới thiệu cơ chế tự động deploy khi merge/push vào branch `main`.
 - Bảng danh sách Secrets cần thêm vào GitHub Repository (`SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY`, `SERVER_PORT`, `DEPLOY_PATH`).
 - Hướng dẫn từng bước copy Private SSH Key và thêm vào **Settings ➔ Secrets and variables ➔ Actions**.
 - Hướng dẫn kích hoạt chạy thử nghiệm từ tab **Actions** trên GitHub.
 
-- [ ] **Step 2: Cập nhật `avatar-web/DEPLOY_GCP.md`**
+- [x] **Step 2: Cập nhật `avatar-web/DEPLOY_GCP.md`**
 Bổ sung mục `BƯỚC 8: Thiết lập CI/CD Tự động Deploy (GitHub Actions)` tương tự, lưu ý thêm về Swap RAM trên máy ảo `e2-micro` khi build qua SSH.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 ```bash
 git add avatar-web/DEPLOY.md avatar-web/DEPLOY_GCP.md
 git commit -m "docs: add GitHub Actions CI/CD setup guide to DEPLOY and DEPLOY_GCP docs"
@@ -155,13 +155,13 @@ git commit -m "docs: add GitHub Actions CI/CD setup guide to DEPLOY and DEPLOY_G
 **Files:**
 - Modify: Không có
 
-- [ ] **Step 1: Kiểm tra build local của Server**
+- [x] **Step 1: Kiểm tra build local của Server**
 Run: `npm run build` trong `avatar-web/server`
 Expected: Biên dịch TypeScript thành công, copy schema.sql vào dist/.
 
-- [ ] **Step 2: Kiểm tra build local của Web**
+- [x] **Step 2: Kiểm tra build local của Web**
 Run: `npm run build` trong `avatar-web/web`
 Expected: Vite build thành công, tạo thư mục `web/dist/`.
 
-- [ ] **Step 3: Tổng kết & Kiểm tra Git Status**
+- [x] **Step 3: Tổng kết & Kiểm tra Git Status**
 Xác nhận toàn bộ các thay đổi sạch sẽ, đúng chuẩn.
