@@ -292,32 +292,46 @@ export function decodePlayerInfo(body: Buffer): DecodedPlayerInfo {
   return { playerId, playerLevel, perLvMain };
 }
 
-export interface DecodedPlayerProfile {
+export interface DecodedCreCharacter {
   id: number;
   name: string;
+  /** `Avatar.setMoney` -> money[0] (xu). */
   xu: number;
-  playerLevel: number;
+  /** `Avatar.setGold` -> money[2] (lượng mở). */
   luong: number;
+  /** `Avatar.luongKhoa` @+0x90 (lượng khoá). */
   luongKhoa: number;
-  exp: number;
 }
 
 /**
- * Giải mã gói thông tin hồ sơ nhân vật đầy đủ (cmd -8 PLAYER_PROFILE):
- * Gửi bởi server sau khi client gọi GlobalService.requestInfoOf(playerId).
- * Thứ tự wire @0x5ec02c: i32 id, utf name, i32 xu, i16 playerLevel, i32 luong, i32 luongKhoa, i32 exp, ...
+ * Giải mã gói CRE_CHARACTER (cmd -5) — server đẩy toàn bộ dữ liệu nhân vật
+ * khi vào game (GlobalMessageHandler.onMessage handler @0x5ed598, xác minh
+ * bằng disassembly libil2cpp.so):
+ *
+ *   i32 id          -> Avatar+0x38
+ *   utf name        -> Avatar.setName
+ *   i8  gender      -> Avatar+0xa0
+ *   i8  nPart       -> số bộ phận đang mặc
+ *   nPart × i16     -> SeriPart id
+ *   i32 xu          -> Avatar.setMoney  (money[0])
+ *   i32 luong       -> Avatar.setGold   (money[2])
+ *   i32 (skip)      -> Avatar+0x2c (trường khác, không cần)
+ *   i32 luongKhoa   -> Avatar.luongKhoa (@+0x90)
+ *   … (danh sách skill/kỹ năng — bỏ qua sau luongKhoa)
  */
-export function decodePlayerProfile(body: Buffer): DecodedPlayerProfile | null {
+export function decodeCreCharacter(body: Buffer): DecodedCreCharacter | null {
   const r = new MyReader(body);
   const id = r.readInt();
   if (id <= 0) return null;
   const name = r.readUTF();
+  r.readByte(); // gender
+  const nPart = r.readByte();
+  for (let i = 0; i < nPart && r.available() >= 2; i++) r.readShort();
   const xu = r.available() >= 4 ? r.readInt() : 0;
-  const playerLevel = r.available() >= 2 ? r.readShort() : 0;
   const luong = r.available() >= 4 ? r.readInt() : 0;
+  if (r.available() >= 4) r.readInt(); // +0x2c (bỏ qua)
   const luongKhoa = r.available() >= 4 ? r.readInt() : 0;
-  const exp = r.available() >= 4 ? r.readInt() : 0;
-  return { id, name, xu, playerLevel, luong, luongKhoa, exp };
+  return { id, name, xu, luong, luongKhoa };
 }
 
 /**
@@ -657,9 +671,12 @@ export const SHOP_XU = 1;
 export interface MoneyUpdate {
   delta: number;
   type: number;
-  xu: number;
-  luong: number;
-  luongKhoa: number;
+  /** Số dư xu hiện tại — `undefined` nếu gói ngắn không mang trường này. */
+  xu?: number;
+  /** Số dư lượng mở hiện tại — `undefined` nếu gói ngắn không mang trường này. */
+  luong?: number;
+  /** Số dư lượng khoá hiện tại — `undefined` nếu gói ngắn không mang trường này. */
+  luongKhoa?: number;
   /** Tương thích ngược: số dư theo type (hoặc xu mặc định) */
   balance: number;
 }
@@ -676,9 +693,9 @@ export function decodeMoney(body: Buffer): MoneyUpdate {
   const r = new MyReader(body);
   const delta = r.readInt();
   const type = r.readUnsignedByte();
-  let xu = 0;
-  let luong = 0;
-  let luongKhoa = 0;
+  let xu: number | undefined;
+  let luong: number | undefined;
+  let luongKhoa: number | undefined;
 
   if (r.available() >= 12) {
     xu = r.readInt();
@@ -686,12 +703,15 @@ export function decodeMoney(body: Buffer): MoneyUpdate {
     luongKhoa = r.readInt();
   } else if (r.available() >= 4) {
     const b = r.readInt();
+    // Gói ngắn chỉ mang số dư của đúng loại tiền `type`; các loại còn lại là
+    // "chưa biết" (undefined) — không được ép về 0 kẻo consumer ghi đè sai.
     if (type === 2) luong = b;
     else if (type === 3) luongKhoa = b;
     else xu = b;
   }
 
-  const balance = type === 2 ? luong : type === 3 ? luongKhoa : xu;
+  // balance giữ tương thích ngược: luôn là số (0 nếu gói không mang loại nào).
+  const balance = type === 2 ? (luong ?? 0) : type === 3 ? (luongKhoa ?? 0) : (xu ?? 0);
   return { delta, type, xu, luong, luongKhoa, balance };
 }
 

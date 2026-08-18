@@ -10,12 +10,12 @@ import {
   decodeCookingPacket,
   decodeFoodCatalog,
   decodeInfoAnimal,
+  decodeCreCharacter,
   decodeMoney,
   decodeInfoCell,
   decodeInventory,
   decodeItemCatalog,
   decodePlayerInfo,
-  decodePlayerProfile,
   decodeTreeInfo,
   DEFAULT_FOOD_CATALOG,
   type CookingState,
@@ -403,14 +403,6 @@ export class GameClient extends EventEmitter {
     this.session.send(m);
   }
 
-  /** Gửi yêu cầu lấy hồ sơ người chơi đầy đủ (xu, level, luong, luongKhoa) (cmd -8). */
-  requestPlayerProfile(idUser?: number): void {
-    const target = idUser ?? this.playerId ?? 0;
-    const m = Message.create(-8);
-    m.writer!.writeInt(target);
-    this.session.send(m);
-  }
-
   /** Gửi gói tự do — dùng để dò các opcode chưa chốt từ UI. */
   sendRaw(cmd: number, fields: Array<{ t: string; v: string }>): void {
     const m = Message.create(cmd);
@@ -461,8 +453,8 @@ export class GameClient extends EventEmitter {
             this.setStatus('online');
             this.startKeepAlive();
             this.emit('log', `đăng nhập thành công — id nhân vật = ${id}`);
-            // Xin thông tin hồ sơ nhân vật đầy đủ (xu, lượng, lượng khoá, level)
-            this.requestPlayerProfile(id);
+            // Dữ liệu nhân vật (xu, lượng mở, lượng khoá) được server đẩy qua gói
+            // CRE_CHARACTER (-5) ngay trong tiến trình vào game; chỉ còn cần xin level.
             this.requestYourInfo(id);
           } else {
             this.emit('log', `đăng nhập không thành công (id = ${id})`);
@@ -548,45 +540,42 @@ export class GameClient extends EventEmitter {
         }
         break;
       }
-      case -8: {
-        // PLAYER_PROFILE / PARK_BUY_ITEM / USER_DATA — hồ sơ người chơi đầy đủ (xu, level, luong, luongKhoa)
+      case -5: {
+        // CRE_CHARACTER — server đẩy toàn bộ dữ liệu nhân vật khi vào game
+        // (handler @0x5ed598): setMoney(xu), setGold(lượng mở), luongKhoa(+0x90).
         try {
-          const profile = decodePlayerProfile(msg.getData());
-          if (profile && (this.playerId === undefined || profile.id === this.playerId)) {
-            if (profile.xu >= 0) this.money = profile.xu;
-            if (profile.playerLevel >= 0) this.playerLevel = profile.playerLevel;
-            if (profile.luong >= 0) this.luong = profile.luong;
-            if (profile.luongKhoa >= 0) this.luongKhoa = profile.luongKhoa;
-            this.emit('metrics', {
-              xu: profile.xu,
-              luong: profile.luong,
-              luongKhoa: profile.luongKhoa,
-              playerLevel: profile.playerLevel,
-            });
+          const ch = decodeCreCharacter(msg.getData());
+          if (ch) {
+            this.money = ch.xu;
+            this.luong = ch.luong;
+            this.luongKhoa = ch.luongKhoa;
+            this.emit('metrics', { xu: ch.xu, luong: ch.luong, luongKhoa: ch.luongKhoa });
             this.emit(
               'log',
-              `thông tin người chơi: ${profile.name} (id=${profile.id}) · level=${profile.playerLevel} · xu=${profile.xu} · lượng=${profile.luong} · lượng khoá=${profile.luongKhoa}`,
+              `nhân vật: ${ch.name} (id=${ch.id}) · xu=${ch.xu} · lượng=${ch.luong} · lượng khoá=${ch.luongKhoa}`,
             );
           }
         } catch (err) {
-          this.emit('log', `giải mã thông tin người chơi lỗi: ${(err as Error).message}`);
+          this.emit('log', `giải mã nhân vật lỗi: ${(err as Error).message}`);
         }
         break;
       }
       case -3: {
         // UPDATE_MONEY — server đẩy sau mỗi giao dịch (chứa đủ xu, luong mở, luong khoá)
         const m = decodeMoney(msg.getData());
-        if (m.xu >= 0) this.money = m.xu;
-        if (m.luong >= 0) this.luong = m.luong;
-        if (m.luongKhoa >= 0) this.luongKhoa = m.luongKhoa;
+        // Gói ngắn chỉ mang đúng loại tiền `type`; các loại còn lại là
+        // undefined và phải được bỏ qua, không được ghi đè 0.
+        if (typeof m.xu === 'number' && m.xu >= 0) this.money = m.xu;
+        if (typeof m.luong === 'number' && m.luong >= 0) this.luong = m.luong;
+        if (typeof m.luongKhoa === 'number' && m.luongKhoa >= 0) this.luongKhoa = m.luongKhoa;
         this.emit('metrics', {
-          ...(m.xu >= 0 ? { xu: m.xu } : {}),
-          ...(m.luong >= 0 ? { luong: m.luong } : {}),
-          ...(m.luongKhoa >= 0 ? { luongKhoa: m.luongKhoa } : {}),
+          ...(typeof m.xu === 'number' && m.xu >= 0 ? { xu: m.xu } : {}),
+          ...(typeof m.luong === 'number' && m.luong >= 0 ? { luong: m.luong } : {}),
+          ...(typeof m.luongKhoa === 'number' && m.luongKhoa >= 0 ? { luongKhoa: m.luongKhoa } : {}),
         });
         this.emit(
           'log',
-          `tiền: ${m.delta >= 0 ? '+' : ''}${m.delta} (loại ${m.type}) -> xu=${m.xu} lượng=${m.luong} khóa=${m.luongKhoa}`,
+          `tiền: ${m.delta >= 0 ? '+' : ''}${m.delta} (loại ${m.type}) -> xu=${m.xu ?? '—'} lượng=${m.luong ?? '—'} khóa=${m.luongKhoa ?? '—'}`,
         );
         this.emit('money', m);
         break;

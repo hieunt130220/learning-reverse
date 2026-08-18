@@ -256,7 +256,7 @@ export class AvatarSession {
 
     try {
       if (client.playerId) {
-        client.requestPlayerProfile(client.playerId);
+        client.requestYourInfo(client.playerId);
       }
       client.enterFarm();
       await completed;

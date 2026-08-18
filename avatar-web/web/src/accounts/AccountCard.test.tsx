@@ -46,6 +46,29 @@ test('hiển thị cached xu, lượng và level khi chưa kết nối', () => {
   expect(screen.getByText('NV 7 · Farm 4')).toBeInTheDocument();
 });
 
+test('hiển thị lượng mở kèm lượng khoá khi cache có luongKhoa > 0', () => {
+  renderCard(makeAccount({
+    autoEnabled: false,
+    runtime: null,
+    cachedMetrics: { xu: 1200, luong: 0, luongKhoa: 337, playerLevel: 33, farmLevel: 39, syncedAt: 123 },
+  }));
+
+  expect(screen.getByText('0 (+337 khóa)')).toBeInTheDocument();
+});
+
+test('hiển thị gạch ngang cho lượng khi cache chưa có luong và luongKhoa', () => {
+  // Đúng trạng thái của tài khoản chưa kết nối với cache cũ (cached_luong = NULL).
+  renderCard(makeAccount({
+    autoEnabled: false,
+    runtime: null,
+    cachedMetrics: { xu: 189587, playerLevel: 33, farmLevel: 39, syncedAt: 123 },
+  }));
+
+  expect(screen.getByText('—')).toBeInTheDocument();
+  expect(screen.getByText('189.587')).toBeInTheDocument();
+  expect(screen.getByText('NV 33 · Farm 39')).toBeInTheDocument();
+});
+
 test('ưu tiên lastError; nếu không có lỗi thì hiển thị thời điểm retry', () => {
   const account = makeAccount({
     runtime: makeSnapshot({ lastError: 'mất kết nối', nextRetryAt: Date.now() + 60_000 }),

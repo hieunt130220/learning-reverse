@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { classifyFarmSlots, decodeFarmData, isCellRipe, decodeAllTreeInfo, parseAnimalSpec, decodeInventory } from './farmData.js';
+import { classifyFarmSlots, decodeFarmData, isCellRipe, decodeAllTreeInfo, parseAnimalSpec, decodeInventory, decodeMoney, decodeCreCharacter } from './farmData.js';
+import { MyWriter } from '../proto/writer.js';
 import { FARM_PACKET_69_HEX } from './farmData.fixture.js';
 
 const packet = Buffer.from(FARM_PACKET_69_HEX, 'hex');
@@ -219,3 +220,134 @@ test('decodeInventory: giải mã hạt, vật phẩm và xu từ 12 byte đuôi
   assert.equal(inv.capacityStore, 500);
 });
 
+test('decodeMoney: gói -3 dạng ngắn 3 trường (delta, type, balance) theo farm.md', () => {
+  // Gói thật trong farm.md: fffffffb 01 000737e1 = delta -5, type 1 (xu), còn 473569.
+  const w = new MyWriter();
+  w.writeInt(-5);
+  w.writeByte(1);
+  w.writeInt(473_569);
+
+  const m = decodeMoney(w.getData());
+  assert.equal(m.delta, -5);
+  assert.equal(m.type, 1);
+  assert.equal(m.xu, 473_569);
+  // Gói ngắn chỉ mang đúng loại tiền `type`; các loại còn lại là chưa biết.
+  assert.equal(m.luong, undefined);
+  assert.equal(m.luongKhoa, undefined);
+  assert.equal(m.balance, 473_569);
+});
+
+test('decodeMoney: gói ngắn type 2 không ghi đè xu về 0', () => {
+  // Mua bằng lượng chỉ đẩy số dư lượng (type 2), không kèm số dư xu.
+  // Các trường khác phải là undefined để consumer không ghi đè sai.
+  const w = new MyWriter();
+  w.writeInt(-10);
+  w.writeByte(2);
+  w.writeInt(1_234); // số dư lượng mở hiện tại
+
+  const m = decodeMoney(w.getData());
+  assert.equal(m.type, 2);
+  assert.equal(m.luong, 1_234);
+  assert.equal(m.xu, undefined, 'xu không được ép về 0 khi gói không mang nó');
+  assert.equal(m.luongKhoa, undefined);
+  assert.equal(m.balance, 1_234);
+});
+
+test('decodeMoney: gói ngắn type 3 chỉ mang lượng khoá', () => {
+  const w = new MyWriter();
+  w.writeInt(50);
+  w.writeByte(3);
+  w.writeInt(337);
+
+  const m = decodeMoney(w.getData());
+  assert.equal(m.luongKhoa, 337);
+  assert.equal(m.xu, undefined);
+  assert.equal(m.luong, undefined);
+  assert.equal(m.balance, 337);
+});
+
+test('decodeMoney: gói -3 dạng đủ 5 trường gán xu, lượng mở và lượng khoá', () => {
+  const w = new MyWriter();
+  w.writeInt(-20);
+  w.writeByte(2);
+  w.writeInt(500_000);   // xu
+  w.writeInt(1_234);     // lượng mở
+  w.writeInt(337);       // lượng khoá
+
+  const m = decodeMoney(w.getData());
+  assert.equal(m.delta, -20);
+  assert.equal(m.type, 2);
+  assert.equal(m.xu, 500_000);
+  assert.equal(m.luong, 1_234);
+  assert.equal(m.luongKhoa, 337);
+  // Tương thích ngược: type 2 là lượng mở.
+  assert.equal(m.balance, 1_234);
+});
+
+test('decodeCreCharacter: giải mã gói -5 với xu, lượng mở và lượng khoá', () => {
+  // Layout đã xác minh từ handler CRE_CHARACTER @0x5ed598:
+  // id, name, gender(byte), nPart(byte)+parts×i16, xu(setMoney), luong(setGold),
+  // skip(+0x2c), luongKhoa(+0x90).
+  const w = new MyWriter();
+  w.writeInt(42);            // id
+  w.writeUTF('devios');      // name
+  w.writeByte(0);            // gender
+  w.writeByte(2);            // nPart
+  w.writeShort(101);         // part
+  w.writeShort(202);         // part
+  w.writeInt(189_587);       // xu
+  w.writeInt(0);             // lượng mở
+  w.writeInt(123);           // +0x2c (bỏ qua)
+  w.writeInt(337);           // lượng khoá
+
+  const c = decodeCreCharacter(w.getData());
+  assert.ok(c, 'nhân vật phải decode được');
+  assert.equal(c!.id, 42);
+  assert.equal(c!.name, 'devios');
+  assert.equal(c!.xu, 189_587);
+  assert.equal(c!.luong, 0);
+  assert.equal(c!.luongKhoa, 337);
+});
+
+test('decodeCreCharacter: phần trang phục nhiều items vẫn lấy đúng ví', () => {
+  const w = new MyWriter();
+  w.writeInt(7);
+  w.writeUTF('nv');
+  w.writeByte(1);
+  w.writeByte(3);            // 3 bộ phận
+  w.writeShort(10);
+  w.writeShort(20);
+  w.writeShort(30);
+  w.writeInt(500_000);       // xu
+  w.writeInt(12_345);        // lượng mở
+  w.writeInt(0);             // skip
+  w.writeInt(1);             // lượng khoá
+
+  const c = decodeCreCharacter(w.getData());
+  assert.ok(c);
+  assert.equal(c!.xu, 500_000);
+  assert.equal(c!.luong, 12_345);
+  assert.equal(c!.luongKhoa, 1);
+});
+
+test('decodeCreCharacter: id <= 0 trả null — không nhầm gói lạ thành nhân vật', () => {
+  const w = new MyWriter();
+  w.writeInt(-1);
+  assert.equal(decodeCreCharacter(w.getData()), null);
+});
+
+test('decodeCreCharacter: body thiếu trường ví không tràn buffer, fallback về 0', () => {
+  const w = new MyWriter();
+  w.writeInt(7);
+  w.writeUTF('ab');
+  w.writeByte(0);
+  w.writeByte(0);            // 0 bộ phận
+  w.writeInt(100);           // xu
+  // thiếu lượng / skip / lượng khoá
+
+  const c = decodeCreCharacter(w.getData());
+  assert.ok(c);
+  assert.equal(c!.xu, 100);
+  assert.equal(c!.luong, 0);
+  assert.equal(c!.luongKhoa, 0);
+});

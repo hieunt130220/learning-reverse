@@ -603,3 +603,28 @@ test('cập nhật và đồng bộ metrics từ client sang cachedMetrics và s
   h.clients[0].emit('metrics', { playerLevel: 25 });
   assert.equal(h.session.snapshot().playerLevel, 25);
 });
+
+test('gói -3 ngắn chỉ cập nhật lượng, không ghi đè số dư xu trong snapshot', async () => {
+  const patches: unknown[] = [];
+  const h = harness(
+    {},
+    {},
+    {
+      onMetrics: (p) => patches.push(p),
+      cachedMetrics: { xu: 189587, luong: 0, playerLevel: 33, farmLevel: 39 },
+    },
+  );
+  await h.session.start();
+
+  assert.equal(h.session.snapshot().xu, 189587);
+  assert.equal(h.session.snapshot().luong, 0);
+
+  // Gói -3 dạng ngắn khi mua bằng lượng: chỉ có luong, không có xu.
+  // decodeMoney trả xu = undefined; session không được ghi đè xu về 0.
+  h.clients[0].emit('money', { delta: -10, type: 2, luong: 25, balance: 25 });
+
+  assert.equal(h.session.snapshot().luong, 25, 'lượng phải được cập nhật');
+  assert.equal(h.session.snapshot().xu, 189587, 'xu không được về 0 khi gói không mang nó');
+  assert.equal(patches.length, 1);
+  assert.deepEqual(patches[0], { luong: 25 }, 'chỉ persist trường mà gói thực sự mang (undefined bị loại)');
+});
