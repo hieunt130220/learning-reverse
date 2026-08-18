@@ -25,3 +25,6 @@ avatar-re/notes/assembly-csharp.cs
 # --- hệ điều hành ---
 .DS_Store
 .gitnexus
+
+# --- ci/cd ---
+!.github/

@@ -1,0 +1,80 @@
+name: Deploy to Production VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production_deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH Deploy to VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Executing remote SSH commands for deployment
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script_stop: true
+          envs: DEPLOY_PATH
+          env:
+            DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/avatar-web' }}
+          script: |
+            set -e
+
+            echo "========================================="
+            echo "🚀 Bắt đầu quá trình tự động Deploy..."
+            echo "========================================="
+
+            # 1. Điều hướng tới thư mục chứa dự án
+            TARGET_DIR="${DEPLOY_PATH:-/var/www/avatar-web}"
+            if [ ! -d "$TARGET_DIR" ]; then
+              echo "❌ Thư mục $TARGET_DIR không tồn tại trên máy chủ!"
+              exit 1
+            fi
+            cd "$TARGET_DIR"
+
+            # 2. Cập nhật mã nguồn mới nhất từ branch main
+            echo "📥 Đang đồng bộ mã nguồn mới nhất từ origin/main..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Tự động phát hiện cấu trúc thư mục (monorepo root vs subpath)
+            if [ -d "avatar-web/server" ]; then
+              BASE_PATH="avatar-web"
+            else
+              BASE_PATH="."
+            fi
+
+            # 3. Triển khai Backend Server
+            echo "📦 [1/2] Đang cập nhật Backend Server..."
+            cd "$TARGET_DIR/$BASE_PATH/server"
+            npm install
+            npm run build
+
+            # Reload lại tiến trình PM2 (hoặc start mới nếu chưa tồn tại)
+            if pm2 list | grep -q "avatar-web"; then
+              echo "🔄 Đang reload PM2 service avatar-web..."
+              pm2 reload avatar-web --update-env
+            else
+              echo "▶️ Đang khởi động PM2 service avatar-web lần đầu..."
+              pm2 start dist/index.js --name "avatar-web"
+            fi
+            pm2 save
+
+            # 4. Triển khai Frontend Web UI
+            echo "🎨 [2/2] Đang cập nhật Frontend Web UI..."
+            cd "$TARGET_DIR/$BASE_PATH/web"
+            npm install
+            npm run build
+
+            echo "========================================="
+            echo "✅ Deploy hoàn tất thành công!"
+            echo "========================================="
