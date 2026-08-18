@@ -1,3 +1,4 @@
+import { DEFAULT_SEED_CATALOG } from './defaultSeedCatalog.js';
 import type { AnimalPlanEntry, AutoFarmConfig, KitchenPlanEntry, TreeCellPlanEntry } from '../autoFarm.js';
 
 export type { AnimalPlanEntry, KitchenPlanEntry, TreeCellPlanEntry } from '../autoFarm.js';
@@ -290,13 +291,17 @@ export function validateAutoConfigProfile(
   config: Partial<AutoFarmConfig>,
   profile: AutoConfigProfile | null,
 ): void {
-  if (profile === null || config.treeCellPlan === undefined) return;
-  const availableCells = new Set(profile.cellIndices);
-  const availableSeeds = new Set(profile.seedIds);
+  if (config.treeCellPlan === undefined) return;
+  const availableSeeds = new Set<number>([
+    ...DEFAULT_SEED_CATALOG.map((s) => s.id),
+    ...(profile?.seedIds ?? []),
+  ]);
   for (const entry of config.treeCellPlan) {
-    if (!availableCells.has(entry.cellIndex)) throw new Error(`ô ${entry.cellIndex} không có trong farm profile`);
+    if (!Number.isInteger(entry.cellIndex) || entry.cellIndex < 0 || entry.cellIndex >= 48) {
+      throw new Error(`ô ${entry.cellIndex} không hợp lệ`);
+    }
     if (entry.action === 'seed' && !availableSeeds.has(entry.seedId)) {
-      throw new Error(`hạt ${entry.seedId} không có trong farm profile`);
+      throw new Error(`hạt ${entry.seedId} không có trong danh mục`);
     }
   }
 }

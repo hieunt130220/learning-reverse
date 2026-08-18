@@ -355,13 +355,13 @@ test('PUT config khi chưa có session trả application next-start', async () =
   db.close();
 });
 
-test('plan thiếu profile hoặc seed ngoài catalog bị từ chối mà không mutate', async () => {
+test('plan với ô ngoài dải hoặc seed ngoài catalog bị từ chối mà không mutate', async () => {
   const cases = [
     {
       prepare: (_db: ReturnType<typeof newTestDb>, _id: number) => {},
-      config: { treeCellPlan: [{ cellIndex: 2, action: 'skip' }] },
-      status: 409,
-      code: 'farm-profile-required',
+      config: { treeCellPlan: [{ cellIndex: 50, action: 'skip' }] },
+      status: 400,
+      code: 'invalid-tree-cell-plan',
     },
     {
       prepare: (db: ReturnType<typeof newTestDb>, id: number) => updateFarmCells(db, id, 3, [2]),
@@ -395,13 +395,13 @@ test('plan thiếu profile hoặc seed ngoài catalog bị từ chối mà khôn
   }
 });
 
-test('profile thiếu catalog chấp nhận plan rỗng hoặc chỉ skip', async () => {
+test('chưa có profile cache vẫn chấp nhận plan hợp lệ trong 48 ô và seed mặc định', async () => {
   for (const config of [
     { treeCellPlan: [] },
     { treeCellPlan: [{ cellIndex: 2, action: 'skip' }] },
+    { treeCellPlan: [{ cellIndex: 7, action: 'seed', seedId: 6 }] },
   ]) {
     const { db, server, id } = await setup();
-    updateFarmCells(db, id, 3, [2]);
     const response = await server.fetch(`/api/accounts/${id}/auto/config`, {
       method: 'PUT',
       json: { expectedRevision: 0, config },
@@ -413,12 +413,12 @@ test('profile thiếu catalog chấp nhận plan rỗng hoặc chỉ skip', asyn
   }
 });
 
-test('plan lệch profile trả danh sách lỗi chính xác cho PUT và legacy start', async () => {
+test('plan có ô hoặc seed không hợp lệ trả danh sách lỗi chính xác cho PUT và legacy start', async () => {
   const invalidConfig = {
     treeCellPlan: [
       { cellIndex: 4, action: 'seed', seedId: 8 },
-      { cellIndex: 9, action: 'seed', seedId: 999 },
-      { cellIndex: 10, action: 'skip' },
+      { cellIndex: 50, action: 'seed', seedId: 9999 },
+      { cellIndex: 52, action: 'skip' },
     ],
   };
   for (const endpoint of ['auto/config', 'auto/start']) {
@@ -433,8 +433,8 @@ test('plan lệch profile trả danh sách lỗi chính xác cho PUT và legacy 
     });
     assert.equal(response.status, 400);
     assert.equal(response.body.code, 'invalid-tree-cell-plan');
-    assert.deepEqual(response.body.invalidCellIndices, [9, 10]);
-    assert.deepEqual(response.body.invalidSeedIds, [999]);
+    assert.deepEqual(response.body.invalidCellIndices, [50, 52]);
+    assert.deepEqual(response.body.invalidSeedIds, [9999]);
     assert.deepEqual(getAutoConfig(db, getAccountById(db, id)!.userId, id), {
       revision: 0,
       config: {},

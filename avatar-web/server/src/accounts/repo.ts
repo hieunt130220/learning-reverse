@@ -3,6 +3,7 @@ import { decryptSecret, encryptSecret } from '../crypto/secretBox.js';
 import type { Db } from '../db/index.js';
 import type { DeviceProfile } from '../game/client.js';
 import type { AutoFarmConfig } from '../autoFarm.js';
+import { DEFAULT_SEED_CATALOG } from './defaultSeedCatalog.js';
 import {
   mergeAutoConfig,
   normalizeAutoConfig,
@@ -344,33 +345,24 @@ function validateProfile(
 ): void {
   const plan = config.treeCellPlan;
   if (plan === undefined || plan.length === 0) return;
-  if (profile === null || profile.cellIndices.length === 0) {
-    throw new AutoConfigProfileError(
-      'farm-profile-required',
-      'cần đồng bộ farm profile trước khi lưu kế hoạch',
-    );
-  }
 
   const seedEntries = plan.filter((entry) => entry.action === 'seed');
-  if (profile.seedIds.length === 0 && seedEntries.length > 0) {
-    throw new AutoConfigProfileError(
-      'seed-catalog-required',
-      'cần đồng bộ seed catalog trước khi lưu kế hoạch trồng',
-    );
-  }
+  const knownSeeds = new Set<number>([
+    ...DEFAULT_SEED_CATALOG.map((s) => s.id),
+    ...(profile?.seedIds ?? []),
+  ]);
 
-  const knownCells = new Set(profile.cellIndices);
-  const knownSeeds = new Set(profile.seedIds);
   const invalidCellIndices = [...new Set(
-    plan.filter((entry) => !knownCells.has(entry.cellIndex)).map((entry) => entry.cellIndex),
+    plan.filter((entry) => !Number.isInteger(entry.cellIndex) || entry.cellIndex < 0 || entry.cellIndex >= 48).map((entry) => entry.cellIndex),
   )].sort((left, right) => left - right);
   const invalidSeedIds = [...new Set(
     seedEntries.filter((entry) => !knownSeeds.has(entry.seedId)).map((entry) => entry.seedId),
   )].sort((left, right) => left - right);
+
   if (invalidCellIndices.length > 0 || invalidSeedIds.length > 0) {
     throw new AutoConfigProfileError(
       'invalid-tree-cell-plan',
-      'kế hoạch cây không khớp farm profile hiện tại',
+      'kế hoạch cây không hợp lệ',
       invalidCellIndices,
       invalidSeedIds,
     );

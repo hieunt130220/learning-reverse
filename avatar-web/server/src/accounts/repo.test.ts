@@ -248,21 +248,16 @@ test('legacy start merge config, tăng revision và bật auto cùng transaction
   db.close();
 });
 
-test('legacy start reject profile thiếu hoặc lệch và rollback revision lẫn cờ auto', () => {
+test('legacy start reject plan không hợp lệ và rollback revision lẫn cờ auto', () => {
   const cases = [
     {
       profile: null,
-      patch: { treeCellPlan: [{ cellIndex: 2, action: 'skip' }] },
-      code: 'farm-profile-required',
+      patch: { treeCellPlan: [{ cellIndex: 50, action: 'skip' }] },
+      code: 'invalid-tree-cell-plan',
     },
     {
       profile: { cellIndices: [2], seedIds: [] },
-      patch: { treeCellPlan: [{ cellIndex: 2, action: 'seed', seedId: 6 }] },
-      code: 'seed-catalog-required',
-    },
-    {
-      profile: { cellIndices: [2], seedIds: [6] },
-      patch: { treeCellPlan: [{ cellIndex: 9, action: 'seed', seedId: 7 }] },
+      patch: { treeCellPlan: [{ cellIndex: 2, action: 'seed', seedId: 9999 }] },
       code: 'invalid-tree-cell-plan',
     },
   ] as const;
