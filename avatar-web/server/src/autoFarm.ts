@@ -976,7 +976,7 @@ export class AutoFarm extends EventEmitter {
         await tick();
       }
 
-      if (cfg.sellAnimals && sold >= cfg.maxSellsPerCycle) {
+      if (cfg.sellAnimals && cfg.maxSellsPerCycle > 0 && sold >= cfg.maxSellsPerCycle) {
         note(`đã đạt trần ${cfg.maxSellsPerCycle} con bán/vòng`);
       }
       if (noSpec > 0) {

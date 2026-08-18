@@ -506,7 +506,7 @@ test('thu hoạch sản phẩm vật nuôi khi numEggOne > 0, bỏ qua con chưa
   );
 });
 
-test('mặc định KHÔNG bán vật nuôi — bán là thao tác không đảo ngược', async () => {
+test('mặc định tự động bán con đủ lớn (loài không sản phẩm)', async () => {
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
@@ -517,7 +517,7 @@ test('mặc định KHÔNG bán vật nuôi — bán là thao tác không đảo
 
   assert.equal(
     client.calls.some((c) => c.startsWith('sellAnimal:')),
-    false,
+    true,
   );
 });
 

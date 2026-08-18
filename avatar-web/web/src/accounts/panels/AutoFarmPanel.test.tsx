@@ -77,6 +77,9 @@ const alwaysOnConfig = {
   harvestAnimals: true,
   harvestBarnAnimals: true,
   harvestPondAnimals: true,
+  sellAnimals: true,
+  sellBarnAnimals: true,
+  sellPondAnimals: true,
   feedAnimals: true,
   feedBarnAnimals: true,
   feedPondAnimals: true,
@@ -144,12 +147,13 @@ beforeEach(() => {
 test('hydrate các control còn lại từ config đã lưu; control đã bỏ không hiển thị', async () => {
   renderPanel();
 
-  await waitFor(() => expect(screen.getByRole('checkbox', { name: /bán vật nuôi chuồng khi lớn/ })).toBeChecked());
-  expect(screen.getByLabelText('loài bán chuồng')).toHaveValue('50, 51');
-  expect(screen.getByRole('checkbox', { name: /bán cá\/rùa khi lớn/ })).toBeChecked();
-  expect(screen.getByLabelText('loài bán hồ')).toHaveValue('54, 59');
+  await waitFor(() => expect(screen.getByText(/Kế hoạch cây theo ô/i)).toBeInTheDocument());
 
   // Các setup đã bỏ theo yêu cầu: không còn control nào trong UI.
+  expect(screen.queryByRole('checkbox', { name: /bán vật nuôi chuồng khi lớn/ })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('loài bán chuồng')).not.toBeInTheDocument();
+  expect(screen.queryByRole('checkbox', { name: /bán cá\/rùa khi lớn/ })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('loài bán hồ')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('chu kỳ (giây)')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('id hạt trồng lại')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('id tưới nước')).not.toBeInTheDocument();
