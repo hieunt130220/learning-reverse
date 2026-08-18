@@ -260,51 +260,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     }
   });
 
-  // ---- Cooking (Bếp nấu ăn) -----------------------------------------------
-
-  router.post('/:id/farm/cook', owned, (req, res) => {
-    const { slot, recipeId } = (req.body ?? {}) as { slot?: unknown; recipeId?: unknown };
-    if (typeof slot !== 'number' || typeof recipeId !== 'number') {
-      return res.status(400).json({ error: 'thiếu slot hoặc recipeId' });
-    }
-    try {
-      sessions.require(accountId(req)).callFarm('cook', [slot, recipeId]);
-      res.json({ ok: true });
-    } catch (err) {
-      fail(res, err);
-    }
-  });
-
-  router.post('/:id/farm/harvest-cook', owned, (req, res) => {
-    const { slot } = (req.body ?? {}) as { slot?: unknown };
-    if (typeof slot !== 'number') {
-      return res.status(400).json({ error: 'thiếu slot' });
-    }
-    try {
-      sessions.require(accountId(req)).callFarm('harvestCook', [slot]);
-      res.json({ ok: true });
-    } catch (err) {
-      fail(res, err);
-    }
-  });
-
-  router.post('/:id/farm/cook/open-slot', owned, (req, res) => {
-    try {
-      sessions.require(accountId(req)).callFarm('openCookSlot', []);
-      res.json({ ok: true });
-    } catch (err) {
-      fail(res, err);
-    }
-  });
-
-  router.post('/:id/farm/cook/open-last-slot', owned, (req, res) => {
-    try {
-      sessions.require(accountId(req)).callFarm('openLastCookSlot', []);
-      res.json({ ok: true });
-    } catch (err) {
-      fail(res, err);
-    }
-  });
+  // ---- Cooking (Bếp nấu ăn) — chỉ giữ refresh trạng thái, bỏ nấu/mở bếp ----
 
   router.post('/:id/farm/cook/refresh', owned, (req, res) => {
     try {

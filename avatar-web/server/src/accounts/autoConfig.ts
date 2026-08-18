@@ -1,6 +1,6 @@
-import type { AnimalPlanEntry, AutoFarmConfig, TreeCellPlanEntry } from '../autoFarm.js';
+import type { AnimalPlanEntry, AutoFarmConfig, KitchenPlanEntry, TreeCellPlanEntry } from '../autoFarm.js';
 
-export type { AnimalPlanEntry, TreeCellPlanEntry } from '../autoFarm.js';
+export type { AnimalPlanEntry, KitchenPlanEntry, TreeCellPlanEntry } from '../autoFarm.js';
 
 export interface StoredAutoConfigState {
   revision: number;
@@ -103,6 +103,36 @@ function animalPlan(value: unknown): AnimalPlanEntry[] {
   return entries;
 }
 
+function kitchenPlan(value: unknown): KitchenPlanEntry[] {
+  if (!Array.isArray(value)) throw new Error('cookingSlotPlan phải là mảng');
+
+  const entries = value.map((raw) => {
+    const entry = record(raw, 'mỗi kế hoạch ô bếp');
+    const slotIndex = nonNegativeInteger(entry.slotIndex, 'slotIndex');
+    if (entry.action === 'skip') {
+      if (Object.keys(entry).some((key) => key !== 'slotIndex' && key !== 'action')) {
+        throw new Error(`kế hoạch ô bếp ${slotIndex} không hợp lệ`);
+      }
+      return { slotIndex, action: 'skip' } as const;
+    }
+    if (entry.action === 'cook') {
+      if (Object.keys(entry).some((key) => key !== 'slotIndex' && key !== 'action' && key !== 'recipeId')) {
+        throw new Error(`kế hoạch ô bếp ${slotIndex} không hợp lệ`);
+      }
+      return { slotIndex, action: 'cook', recipeId: nonNegativeInteger(entry.recipeId, 'recipeId') } as const;
+    }
+    throw new Error(`action của ô bếp ${slotIndex} không hợp lệ`);
+  });
+
+  entries.sort((left, right) => left.slotIndex - right.slotIndex);
+  for (let index = 1; index < entries.length; index += 1) {
+    if (entries[index - 1].slotIndex === entries[index].slotIndex) {
+      throw new Error(`ô bếp ${entries[index].slotIndex} bị lặp`);
+    }
+  }
+  return entries;
+}
+
 const parsers: Record<ConfigKey, ConfigParser> = {
   harvest: (value, key) => {
     if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
@@ -177,6 +207,7 @@ const parsers: Record<ConfigKey, ConfigParser> = {
   treeCellPlan: treeCellPlan,
   barnAnimalPlan: animalPlan,
   pondAnimalPlan: animalPlan,
+  cookingSlotPlan: kitchenPlan,
   autoCook: (value, key) => {
     if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
     return value;

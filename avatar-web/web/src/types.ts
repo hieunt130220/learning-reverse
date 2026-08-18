@@ -210,6 +210,10 @@ export type AnimalPlanEntry =
   | { slotIndex: number; action: 'breed'; speciesId: number }
   | { slotIndex: number; action: 'skip' };
 
+export type KitchenPlanEntry =
+  | { slotIndex: number; action: 'cook'; recipeId: number }
+  | { slotIndex: number; action: 'skip' };
+
 export interface AutoFarmConfigDto {
   seedId?: number;
   waterItemId?: number;
@@ -245,6 +249,7 @@ export interface AutoFarmConfigDto {
   treeCellPlan: TreeCellPlanEntry[];
   barnAnimalPlan?: AnimalPlanEntry[];
   pondAnimalPlan?: AnimalPlanEntry[];
+  cookingSlotPlan?: KitchenPlanEntry[];
   autoCook?: boolean;
   autoHarvestCook?: boolean;
   prioritizeCookingMissions?: boolean;

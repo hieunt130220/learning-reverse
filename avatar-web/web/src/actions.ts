@@ -98,18 +98,6 @@ export const ACTIONS: ActionDef[] = [
   { action: 'stealStore', label: 'Trộm kho', group: 'Trộm', args: [] },
   { action: 'stealHistory', label: 'Lịch sử bị trộm', group: 'Trộm', args: [] },
 
-  {
-    action: 'cook',
-    label: 'Nấu ăn',
-    group: 'Bếp',
-    args: [{ name: 'num', label: 'số lượng', default: 1 }, { name: 'id', label: 'id món', default: 0 }],
-  },
-  {
-    action: 'harvestCook',
-    label: 'Lấy món đã nấu',
-    group: 'Bếp',
-    args: [{ name: 'id', label: 'id', default: 0 }],
-  },
   { action: 'getCook', label: 'Xem bếp', group: 'Bếp', args: [{ name: 'step', label: 'step', default: 0 }] },
 ];
 

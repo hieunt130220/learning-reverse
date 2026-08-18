@@ -36,6 +36,10 @@ export type AnimalPlanEntry =
   | { slotIndex: number; action: 'breed'; speciesId: number }
   | { slotIndex: number; action: 'skip' };
 
+export type KitchenPlanEntry =
+  | { slotIndex: number; action: 'cook'; recipeId: number }
+  | { slotIndex: number; action: 'skip' };
+
 export interface AutoFarmConfig {
   /** Hạt để trồng lại ô trống. Bỏ trống = không trồng. */
   seedId?: number;
@@ -125,6 +129,8 @@ export interface AutoFarmConfig {
   startDelayMs: number;
   barnAnimalPlan?: AnimalPlanEntry[];
   pondAnimalPlan?: AnimalPlanEntry[];
+  /** Kế hoạch món nấu cho từng ô bếp; không có entry thì dùng logic mặc định. */
+  cookingSlotPlan?: KitchenPlanEntry[];
 
   // ---- Cấu hình Bếp nấu ăn (Cooking) --------------------------------------
   /** Tự động nấu ăn khi có ô bếp trống. */
@@ -980,7 +986,8 @@ export class AutoFarm extends EventEmitter {
       // ----------------------------------------------------------------------
       // GIAI ĐOẠN: BẾP NẤU ĂN (COOKING PHASE)
       // ----------------------------------------------------------------------
-      if ((cfg.autoHarvestCook || cfg.autoCook) && !this.aborted) {
+      const hasKitchenPlan = Array.isArray(cfg.cookingSlotPlan) && cfg.cookingSlotPlan.length > 0;
+      if ((cfg.autoHarvestCook || cfg.autoCook || hasKitchenPlan) && !this.aborted) {
         // Xin dữ liệu bếp mới nhất nếu chưa có
         this.client.farm.getCook(0);
         await confirm(91, 'lấy thông tin bếp');
@@ -1010,6 +1017,9 @@ export class AutoFarm extends EventEmitter {
             const foodCatalog: FoodRecipe[] = this.client.foods && this.client.foods.length > 0
               ? this.client.foods
               : DEFAULT_FOOD_CATALOG;
+            const planBySlot = new Map<number, KitchenPlanEntry>(
+              (cfg.cookingSlotPlan ?? []).map((entry) => [entry.slotIndex, entry]),
+            );
 
             // Tổng hợp kho nguyên liệu hiện có (inventory + produce)
             const availableMaterials = new Map<number, number>();
@@ -1024,8 +1034,14 @@ export class AutoFarm extends EventEmitter {
               // Xác định món cần nấu theo thứ tự ưu tiên
               let targetRecipe: FoodRecipe | undefined;
 
+              // Ưu tiên 0: Kế hoạch món cho riêng ô bếp này
+              const planEntry = planBySlot.get(slot.slot);
+              if (planEntry && planEntry.action === 'cook') {
+                targetRecipe = foodCatalog.find((f) => f.id === planEntry.recipeId);
+              }
+
               // Ưu tiên 1: Nhiệm vụ mở ô bếp Master chưa hoàn thành
-              if (cfg.prioritizeCookingMissions && cookState.missions.length > 0) {
+              if (!targetRecipe && cfg.prioritizeCookingMissions && cookState.missions.length > 0) {
                 const pendingMission = cookState.missions.find((m) => !m.isDone && m.numCook < m.numNeed);
                 if (pendingMission) {
                   targetRecipe = foodCatalog.find((f) => f.id === pendingMission.idFood);
@@ -1131,6 +1147,7 @@ function makeConfig(input: Partial<AutoFarmConfig>): AutoFarmConfig {
     sellWhenGrownSpecies: speciesList(input.sellWhenGrownSpecies, SPECIES_SELL_WHEN_GROWN),
     sellNearDeathSpecies: speciesList(input.sellNearDeathSpecies, SPECIES_SELL_NEAR_DEATH),
     treeCellPlan: validateTreeCellPlan(input.treeCellPlan),
+    cookingSlotPlan: validateKitchenPlan(input.cookingSlotPlan),
   };
   if (!Number.isFinite(cfg.stepDelayMs) || cfg.stepDelayMs < 300) {
     throw new Error('stepDelayMs tối thiểu 300ms');
@@ -1139,6 +1156,24 @@ function makeConfig(input: Partial<AutoFarmConfig>): AutoFarmConfig {
     throw new Error('maxSellsPerCycle phải là số không âm');
   }
   return cfg;
+}
+
+function validateKitchenPlan(value: KitchenPlanEntry[] | undefined): KitchenPlanEntry[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error('cookingSlotPlan phải là mảng');
+  const seen = new Set<number>();
+  return value.map((entry) => {
+    if (!Number.isInteger(entry.slotIndex) || entry.slotIndex < 0) {
+      throw new Error('slotIndex phải là số nguyên không âm');
+    }
+    if (seen.has(entry.slotIndex)) throw new Error(`ô bếp ${entry.slotIndex} bị lặp`);
+    seen.add(entry.slotIndex);
+    if (entry.action === 'skip') return { slotIndex: entry.slotIndex, action: 'skip' };
+    if (entry.action !== 'cook' || !Number.isInteger(entry.recipeId) || entry.recipeId < 0) {
+      throw new Error(`kế hoạch ô bếp ${entry.slotIndex} không hợp lệ`);
+    }
+    return { slotIndex: entry.slotIndex, action: 'cook', recipeId: entry.recipeId };
+  });
 }
 
 function validateTreeCellPlan(value: TreeCellPlanEntry[] | undefined): TreeCellPlanEntry[] | undefined {

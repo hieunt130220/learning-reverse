@@ -186,9 +186,11 @@ test('lưu gửi đúng full stored config cùng plan mới và báo áp dụng 
       ...storedConfig,
       ...alwaysOnConfig,
       ...fixedConfig,
+      autoHarvestCook: false,
       treeCellPlan: nextPlan,
       barnAnimalPlan: [],
       pondAnimalPlan: [],
+      cookingSlotPlan: [],
     },
   }));
   expect(await screen.findByText(/vòng kế tiếp/i)).toBeInTheDocument();

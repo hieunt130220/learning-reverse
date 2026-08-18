@@ -7,10 +7,12 @@ import type {
   AutoConfigStateDto,
   AutoFarmConfigDto,
   FarmProfileDto,
+  KitchenPlanEntry,
   TreeCellPlanEntry,
 } from '../../types.js';
 import { BARN_ANIMAL_CATALOG, DEFAULT_BARN_ANIMAL_SLOTS, DEFAULT_POND_ANIMAL_SLOTS, POND_ANIMAL_CATALOG } from '../animalPlan.js';
 import { AnimalPlanEditor } from '../AnimalPlanEditor.js';
+import { KitchenPlanEditor } from '../KitchenPlanEditor.js';
 import { TreeCellPlanEditor } from '../TreeCellPlanEditor.js';
 
 const EMPTY_PROFILE: FarmProfileDto = {
@@ -65,6 +67,14 @@ function animalPlanKey(entries: AnimalPlanEntry[] | undefined): string {
   return JSON.stringify(sortedAnimalPlan(entries));
 }
 
+function sortedKitchenPlan(entries: KitchenPlanEntry[] | undefined): KitchenPlanEntry[] {
+  return [...(entries ?? [])].sort((left, right) => left.slotIndex - right.slotIndex);
+}
+
+function kitchenPlanKey(entries: KitchenPlanEntry[] | undefined): string {
+  return JSON.stringify(sortedKitchenPlan(entries));
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -76,7 +86,7 @@ const AUTO_CONFIG_KEYS = new Set([
   'minGrowthToSell', 'nearDeathRatio', 'maxSellsPerCycle', 'feedAnimals', 'feedBarnAnimals',
   'feedPondAnimals', 'healAnimals', 'minHealth', 'fertilizeCells', 'minVitality', 'autoBuy',
   'buyBudgetXu', 'maxBuyPerItem', 'stepDelayMs', 'intervalMs', 'startDelayMs', 'treeCellPlan',
-  'barnAnimalPlan', 'pondAnimalPlan',
+  'barnAnimalPlan', 'pondAnimalPlan', 'cookingSlotPlan',
 ]);
 
 function isFiniteNumber(value: unknown): value is number {
@@ -116,6 +126,20 @@ function isAnimalPlan(value: unknown): value is AnimalPlanEntry[] {
   });
 }
 
+function isKitchenPlan(value: unknown): value is KitchenPlanEntry[] {
+  return Array.isArray(value) && value.every((entry) => {
+    if (!isRecord(entry)
+      || typeof entry.slotIndex !== 'number'
+      || !Number.isInteger(entry.slotIndex)
+      || entry.slotIndex < 0) return false;
+    if (entry.action === 'skip') return true;
+    return entry.action === 'cook'
+      && typeof entry.recipeId === 'number'
+      && Number.isInteger(entry.recipeId)
+      && entry.recipeId >= 0;
+  });
+}
+
 function isAutoConfig(value: unknown): value is Partial<AutoFarmConfigDto> {
   if (!isRecord(value) || Object.keys(value).some((key) => !AUTO_CONFIG_KEYS.has(key))) return false;
   const optionalNumberKeys = [
@@ -137,7 +161,8 @@ function isAutoConfig(value: unknown): value is Partial<AutoFarmConfigDto> {
     && (value.sellPondSpecies === undefined || isIntegerArray(value.sellPondSpecies))
     && (value.treeCellPlan === undefined || isTreePlan(value.treeCellPlan))
     && (value.barnAnimalPlan === undefined || isAnimalPlan(value.barnAnimalPlan))
-    && (value.pondAnimalPlan === undefined || isAnimalPlan(value.pondAnimalPlan));
+    && (value.pondAnimalPlan === undefined || isAnimalPlan(value.pondAnimalPlan))
+    && (value.cookingSlotPlan === undefined || isKitchenPlan(value.cookingSlotPlan));
 }
 
 function isAutoConfigState(value: unknown): value is AutoConfigStateDto {
@@ -174,15 +199,13 @@ export function AutoFarmPanel({
   // Chuồng: Gà 50, Bò 51, Heo 52, Vịt 55 / Hồ: Cá chép 54, Rùa 59
   const [sellBarnSpeciesStr, setSellBarnSpeciesStr] = useState('50, 51, 52, 55');
   const [sellPondSpeciesStr, setSellPondSpeciesStr] = useState('54, 59');
-  const [autoCook, setAutoCook] = useState(false);
   const [autoHarvestCook, setAutoHarvestCook] = useState(false);
-  const [prioritizeCookingMissions, setPrioritizeCookingMissions] = useState(false);
-  const [defaultRecipeId, setDefaultRecipeId] = useState('0');
 
   const [storedState, setStoredState] = useState<AutoConfigStateDto>(EMPTY_AUTO);
   const [draftPlan, setDraftPlan] = useState<TreeCellPlanEntry[]>([]);
   const [draftBarnPlan, setDraftBarnPlan] = useState<AnimalPlanEntry[]>([]);
   const [draftPondPlan, setDraftPondPlan] = useState<AnimalPlanEntry[]>([]);
+  const [draftKitchenPlan, setDraftKitchenPlan] = useState<KitchenPlanEntry[]>([]);
   const [profile, setProfile] = useState<FarmProfileDto>(EMPTY_PROFILE);
   const [configReady, setConfigReady] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -205,10 +228,8 @@ export function AutoFarmPanel({
     setSellPondAnimals(config.sellPondAnimals ?? config.sellAnimals ?? false);
     setSellBarnSpeciesStr(config.sellBarnSpecies?.join(', ') ?? '50, 51, 52, 55');
     setSellPondSpeciesStr(config.sellPondSpecies?.join(', ') ?? '54, 59');
-    setAutoCook(config.autoCook ?? false);
     setAutoHarvestCook(config.autoHarvestCook ?? false);
-    setPrioritizeCookingMissions(config.prioritizeCookingMissions ?? false);
-    setDefaultRecipeId(optionalId(config.defaultRecipeId, '0'));
+    setDraftKitchenPlan(sortedKitchenPlan(config.cookingSlotPlan));
   }, []);
 
   useEffect(() => {
@@ -219,6 +240,7 @@ export function AutoFarmPanel({
     setSaving(false);
     setStoredState(EMPTY_AUTO);
     setDraftPlan([]);
+    setDraftKitchenPlan([]);
     setProfile(EMPTY_PROFILE);
     hydrateForm({});
     setConfigError('');
@@ -235,6 +257,7 @@ export function AutoFarmPanel({
       setDraftPlan(sortedPlan(state.config.treeCellPlan));
       setDraftBarnPlan(sortedAnimalPlan(state.config.barnAnimalPlan));
       setDraftPondPlan(sortedAnimalPlan(state.config.pondAnimalPlan));
+      setDraftKitchenPlan(sortedKitchenPlan(state.config.cookingSlotPlan));
       hydrateForm(state.config);
       setConfigReady(true);
     }).catch((cause: unknown) => {
@@ -269,11 +292,9 @@ export function AutoFarmPanel({
     () => planKey(draftPlan) !== planKey(storedState.config.treeCellPlan)
       || animalPlanKey(draftBarnPlan) !== animalPlanKey(storedState.config.barnAnimalPlan)
       || animalPlanKey(draftPondPlan) !== animalPlanKey(storedState.config.pondAnimalPlan)
-      || autoCook !== (storedState.config.autoCook ?? false)
-      || autoHarvestCook !== (storedState.config.autoHarvestCook ?? false)
-      || prioritizeCookingMissions !== (storedState.config.prioritizeCookingMissions ?? false)
-      || num(defaultRecipeId) !== storedState.config.defaultRecipeId,
-    [draftPlan, draftBarnPlan, draftPondPlan, autoCook, autoHarvestCook, prioritizeCookingMissions, defaultRecipeId, storedState.config],
+      || kitchenPlanKey(draftKitchenPlan) !== kitchenPlanKey(storedState.config.cookingSlotPlan)
+      || autoHarvestCook !== (storedState.config.autoHarvestCook ?? false),
+    [draftPlan, draftBarnPlan, draftPondPlan, draftKitchenPlan, autoHarvestCook, storedState.config],
   );
   const planDirtyRef = useRef(dirty);
   planDirtyRef.current = dirty;
@@ -298,10 +319,8 @@ export function AutoFarmPanel({
           treeCellPlan: sortedPlan(draftPlan),
           barnAnimalPlan: sortedAnimalPlan(draftBarnPlan),
           pondAnimalPlan: sortedAnimalPlan(draftPondPlan),
-          autoCook,
+          cookingSlotPlan: sortedKitchenPlan(draftKitchenPlan),
           autoHarvestCook,
-          prioritizeCookingMissions,
-          defaultRecipeId: num(defaultRecipeId),
         },
       });
       if (requestGeneration.current !== generation) return;
@@ -314,9 +333,13 @@ export function AutoFarmPanel({
       const nextPondPlan = Array.isArray(saved.config.pondAnimalPlan)
         ? sortedAnimalPlan(saved.config.pondAnimalPlan)
         : sortedAnimalPlan(draftPondPlan);
+      const nextKitchenPlan = Array.isArray(saved.config.cookingSlotPlan)
+        ? sortedKitchenPlan(saved.config.cookingSlotPlan)
+        : sortedKitchenPlan(draftKitchenPlan);
       setDraftPlan(nextTreePlan);
       setDraftBarnPlan(nextBarnPlan);
       setDraftPondPlan(nextPondPlan);
+      setDraftKitchenPlan(nextKitchenPlan);
       setStoredState({
         revision: saved.revision,
         config: {
@@ -324,6 +347,7 @@ export function AutoFarmPanel({
           treeCellPlan: nextTreePlan,
           barnAnimalPlan: nextBarnPlan,
           pondAnimalPlan: nextPondPlan,
+          cookingSlotPlan: nextKitchenPlan,
         },
       });
       setPlanNotice(saved.application === 'next-cycle'
@@ -372,6 +396,7 @@ export function AutoFarmPanel({
     setDraftPlan(sortedPlan(conflict.config.treeCellPlan));
     setDraftBarnPlan(sortedAnimalPlan(conflict.config.barnAnimalPlan));
     setDraftPondPlan(sortedAnimalPlan(conflict.config.pondAnimalPlan));
+    setDraftKitchenPlan(sortedKitchenPlan(conflict.config.cookingSlotPlan));
     hydrateForm(conflict.config);
     setConflict(null);
     setPlanError('');
@@ -475,37 +500,18 @@ export function AutoFarmPanel({
             />
             Tự động thu hoạch món chín khi xong
           </label>
-          <label className="inline">
-            <input
-              type="checkbox"
-              checked={autoCook}
-              onChange={(event) => setAutoCook(event.target.checked)}
-              style={{ width: 'auto' }}
-            />
-            Tự động nấu món khi có ô trống (nếu đủ nguyên liệu)
-          </label>
-          <label className="inline" style={{ marginLeft: '1.25rem' }}>
-            <input
-              type="checkbox"
-              checked={prioritizeCookingMissions}
-              onChange={(event) => setPrioritizeCookingMissions(event.target.checked)}
-              disabled={!autoCook}
-              style={{ width: 'auto' }}
-            />
-            Ưu tiên nấu các món theo tiến độ nhiệm vụ mở ô Master
-          </label>
-          <label className="inline" style={{ marginLeft: '1.25rem' }}>
-            ID món nấu mặc định (khi không theo nhiệm vụ):
-            <input
-              type="number"
-              value={defaultRecipeId}
-              onChange={(event) => setDefaultRecipeId(event.target.value)}
-              placeholder="0 (Thức ăn gia súc)"
-              disabled={!autoCook}
-              style={{ width: '80px', marginLeft: '0.5rem' }}
-            />
-          </label>
         </div>
+        <KitchenPlanEditor
+          title="Kế hoạch món nấu theo ô bếp"
+          entries={draftKitchenPlan}
+          disabled={!configReady || saving}
+          onChange={(entries) => {
+            setDraftKitchenPlan(sortedKitchenPlan(entries));
+            setPlanNotice('');
+            setPlanError('');
+            setConflict(null);
+          }}
+        />
       </div>
 
       <div className="row tree-plan-save-row">

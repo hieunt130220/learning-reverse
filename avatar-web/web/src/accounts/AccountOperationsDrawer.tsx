@@ -88,7 +88,6 @@ function LoadedOperations({
         onPlanDirtyChange={onPlanDirtyChange}
       />
       <CookingPanel
-        accountId={account.id}
         cooking={snapshot?.cooking}
         foods={snapshot?.foods}
         inventory={snapshot?.inventory ?? []}
