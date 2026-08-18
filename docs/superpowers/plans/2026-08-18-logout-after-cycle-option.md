@@ -27,7 +27,7 @@
 **Interfaces:**
 - Produces: `AutoFarmConfig.logoutAfterCycle?: boolean`, parser `logoutAfterCycle: (value, key) => boolean`.
 
-- [ ] **Step 1: Cập nhật `AutoFarmConfig` và `DEFAULTS` trong `autoFarm.ts`**
+- [x] **Step 1: Cập nhật `AutoFarmConfig` và `DEFAULTS` trong `autoFarm.ts`**
 Thêm trường `logoutAfterCycle?: boolean;` vào interface `AutoFarmConfig` và `logoutAfterCycle: true` vào `DEFAULTS`:
 ```ts
 export interface AutoFarmConfig {
@@ -47,7 +47,7 @@ export const DEFAULTS: AutoFarmConfig = {
 };
 ```
 
-- [ ] **Step 2: Cập nhật parser trong `autoConfig.ts`**
+- [x] **Step 2: Cập nhật parser trong `autoConfig.ts`**
 Thêm parser cho `logoutAfterCycle` vào object `parsers`:
 ```ts
   autoClaimDailyQuests: (value, key) => {
@@ -60,11 +60,11 @@ Thêm parser cho `logoutAfterCycle` vào object `parsers`:
   },
 ```
 
-- [ ] **Step 3: Chạy test kiểm tra `autoConfig.test.ts`**
+- [x] **Step 3: Chạy test kiểm tra `autoConfig.test.ts`**
 Run: `npm test` trong thư mục `avatar-web/server`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 `git commit -m "feat(server): add logoutAfterCycle to AutoFarmConfig and autoConfig parser"`
 
 ---
@@ -78,7 +78,7 @@ Expected: PASS
 - Consumes: `this.lastAutoConfig.logoutAfterCycle`
 - Produces: `scheduleOnlineAutoCycle(delayMs: number)`
 
-- [ ] **Step 1: Cập nhật `onAutoCycleComplete` và thêm `scheduleOnlineAutoCycle` trong `avatarSession.ts`**
+- [x] **Step 1: Cập nhật `onAutoCycleComplete` và thêm `scheduleOnlineAutoCycle` trong `avatarSession.ts`**
 Trong `avatar-web/server/src/session/avatarSession.ts`:
 ```ts
   private onAutoCycleComplete(epoch: number): void {
@@ -118,11 +118,11 @@ Trong `avatar-web/server/src/session/avatarSession.ts`:
   }
 ```
 
-- [ ] **Step 2: Chạy test `avatarSession.test.ts`**
+- [x] **Step 2: Chạy test `avatarSession.test.ts`**
 Run: `npm test` trong thư mục `avatar-web/server`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 `git commit -m "feat(server): support continuous online between cycles when logoutAfterCycle is false"`
 
 ---
@@ -138,10 +138,10 @@ Expected: PASS
 - Consumes: `GET/PUT /api/accounts/:id/auto/config`
 - Produces: UI checkbox toggle trong `StatusPanel` và `AutoFarmPanel`.
 
-- [ ] **Step 1: Cập nhật `AutoFarmConfigDto` trong `web/src/types.ts`**
+- [x] **Step 1: Cập nhật `AutoFarmConfigDto` trong `web/src/types.ts`**
 Thêm `logoutAfterCycle?: boolean;` vào `AutoFarmConfigDto`.
 
-- [ ] **Step 2: Thêm checkbox toggle nhanh vào `StatusPanel.tsx`**
+- [x] **Step 2: Thêm checkbox toggle nhanh vào `StatusPanel.tsx`**
 - Tải `autoConfig` của tài khoản khi mount / `accountId` thay đổi.
 - Lưu trạng thái `logoutAfterCycle` (mặc định `true`).
 - Render checkbox:
@@ -161,15 +161,15 @@ Thêm `logoutAfterCycle?: boolean;` vào `AutoFarmConfigDto`.
   ```
 - Khi toggle: Cập nhật state và gọi `PUT /api/accounts/${accountId}/auto/config` với `expectedRevision`.
 
-- [ ] **Step 3: Bổ sung `logoutAfterCycle` vào `AutoFarmPanel.tsx`**
+- [x] **Step 3: Bổ sung `logoutAfterCycle` vào `AutoFarmPanel.tsx`**
 - Thêm `'logoutAfterCycle'` vào `AUTO_CONFIG_KEYS`.
 - Thêm state `logoutAfterCycle` trong `AutoFarmPanel` và render checkbox trong phần cài đặt.
 
-- [ ] **Step 4: Chạy test web `StatusPanel.test.tsx` và `AutoFarmPanel.test.tsx`**
+- [x] **Step 4: Chạy test web `StatusPanel.test.tsx` và `AutoFarmPanel.test.tsx`**
 Run: `npm test` trong thư mục `avatar-web/web`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 `git commit -m "feat(web): add logout-after-cycle toggle to StatusPanel and AutoFarmPanel"`
 
 ---
@@ -179,9 +179,9 @@ Expected: PASS
 **Files:**
 - Modify: Không có
 
-- [ ] **Step 1: Build server và web**
+- [x] **Step 1: Build server và web**
 Run: `npm run build` ở cả `avatar-web/server` và `avatar-web/web`
 Expected: Build thành công không có lỗi type hoặc compile.
 
-- [ ] **Step 2: Commit và tổng kết**
+- [x] **Step 2: Commit và tổng kết**
 `git status` sạch sẽ và sẵn sàng.
