@@ -31,7 +31,7 @@
   - `decodeDailyQuestPacket(body: Buffer, current?: DailyQuestState | null): { action: number; state: DailyQuestState } | null`
   - `buildBeginnerQuests(...)`, `buildGeneralQuests(...)`
 
-- [ ] **Step 1: Khai báo types và hàm decode DailyQuest trong `farmData.ts`**
+- [x] **Step 1: Khai báo types và hàm decode DailyQuest trong `farmData.ts`**
 
 Bổ sung các interface và hàm decode gói tin `cmd -87 (sub=2)` vào `avatar-web/server/src/game/farmData.ts`:
 
@@ -290,15 +290,15 @@ export function buildGeneralQuests(
 }
 ```
 
-- [ ] **Step 2: Đồng bộ type definitions trong `avatar-web/web/src/types.ts`**
+- [x] **Step 2: Đồng bộ type definitions trong `avatar-web/web/src/types.ts`**
 
 Thêm các interface `DailyMissionItem`, `DailyRewardItem`, `DailyBoxMilestone`, `DailyQuestState`, `BeginnerQuest`, `GeneralQuest`, `QuestOverviewState` vào `avatar-web/web/src/types.ts`.
 
-- [ ] **Step 3: Verify TypeScript build**
+- [x] **Step 3: Verify TypeScript build**
 Run: `npm run build --prefix avatar-web/server && npm run build --prefix avatar-web/web`
 Expected: Compile thành công không có lỗi type.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 `git commit -m "feat(game): add daily, beginner and general quest data structures and decoders"`
 
 ---
@@ -319,7 +319,7 @@ Expected: Compile thành công không có lỗi type.
   - `GameClient.dailyQuestState: DailyQuestState | null`
   - `GameClient.onMessage` handling `cmd -87 (sub=2)`
 
-- [ ] **Step 1: Bổ sung các hàm gửi lệnh Daily Quest trong `farmService.ts`**
+- [x] **Step 1: Bổ sung các hàm gửi lệnh Daily Quest trong `farmService.ts`**
 
 ```typescript
   // ---- nhiệm vụ hàng ngày (cmd -87, byte đầu = sub-type 2) ----------------
@@ -344,7 +344,7 @@ Expected: Compile thành công không có lỗi type.
   }
 ```
 
-- [ ] **Step 2: Đón gói `cmd -87 (sub=2)` và quản lý trạng thái nhiệm vụ trong `client.ts`**
+- [x] **Step 2: Đón gói `cmd -87 (sub=2)` và quản lý trạng thái nhiệm vụ trong `client.ts`**
 
 Trong `avatar-web/server/src/game/client.ts`:
 - Bổ sung property `dailyQuestState: DailyQuestState | null = null;`
@@ -355,11 +355,11 @@ Trong `avatar-web/server/src/game/client.ts`:
   - Tự động gọi `this.farm.getDailyQuest(0)` trong handler `cmd 69 / JOIN` để nạp nhiệm vụ ngay khi vào farm.
 - Expose các helper: `getDailyQuest()`, `changeDailyQuest()`, `claimDailyQuest()`, `claimDailyQuestBox()`.
 
-- [ ] **Step 3: Verify TypeScript build**
+- [x] **Step 3: Verify TypeScript build**
 Run: `npm run build --prefix avatar-web/server`
 Expected: Build thành công không có lỗi.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 `git commit -m "feat(game): add daily quest protocol sending and message handling in GameClient"`
 
 ---
@@ -383,7 +383,7 @@ Expected: Build thành công không có lỗi.
     - `POST /api/accounts/:id/quests/daily/claim`
     - `POST /api/accounts/:id/quests/daily/box`
 
-- [ ] **Step 1: Bổ sung Quests vào Snapshot trong `avatarSession.ts`**
+- [x] **Step 1: Bổ sung Quests vào Snapshot trong `avatarSession.ts`**
 
 - Định nghĩa getter `getQuestOverview(): QuestOverviewState`:
   - Lấy `daily`: `this.client.dailyQuestState` (tự động cập nhật `numCurrent` và `isDone` theo số lượng nông sản hiện có trong `produce` và `inventory`).
@@ -392,7 +392,7 @@ Expected: Build thành công không có lỗi.
 - Đưa `quests: this.getQuestOverview()` vào `getSnapshot()`.
 - Lắng nghe `this.client.on('quests', () => this.emit('snapshot', this.getSnapshot()))`.
 
-- [ ] **Step 2: Tích hợp Auto-claim Daily Quest vào `autoFarm.ts`**
+- [x] **Step 2: Tích hợp Auto-claim Daily Quest vào `autoFarm.ts`**
 
 Trong `avatar-web/server/src/autoFarm.ts`:
 - Thêm `autoClaimDailyQuests?: boolean;` vào `AutoFarmConfig` (mặc định `false`).
@@ -403,7 +403,7 @@ Trong `avatar-web/server/src/autoFarm.ts`:
       - Nếu có rương quà điểm năng động đủ điều kiện mở (`canClaim === true`): gửi `farm.claimDailyQuestBox()`.
     - Ghi nhận action vào log auto: `"tự động trả nhiệm vụ hàng ngày / mở rương quà"`.
 
-- [ ] **Step 3: Thêm các REST API Routes trong `session/routes.ts`**
+- [x] **Step 3: Thêm các REST API Routes trong `session/routes.ts`**
 
 Bổ sung các handler endpoint:
 - `GET /api/accounts/:id/quests`: Trả về `session.getQuestOverview()`.
@@ -412,11 +412,11 @@ Bổ sung các handler endpoint:
 - `POST /api/accounts/:id/quests/daily/claim`: Gọi `session.client.farm.claimDailyQuestReward()`.
 - `POST /api/accounts/:id/quests/daily/box`: Gọi `session.client.farm.claimDailyQuestBox()`.
 
-- [ ] **Step 4: Verify TypeScript build**
+- [x] **Step 4: Verify TypeScript build**
 Run: `npm run build --prefix avatar-web/server`
 Expected: Build thành công không có lỗi.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 `git commit -m "feat(server): integrate quests into session snapshot, autofarm and rest routes"`
 
 ---
@@ -437,7 +437,7 @@ Expected: Build thành công không có lỗi.
   - UI 3 Tabs: Hàng ngày, Tân thủ, Nhiệm vụ chung
   - Checkbox cấu hình `autoClaimDailyQuests` trong `AutoFarmPanel`
 
-- [ ] **Step 1: Bổ sung các API client methods trong `avatar-web/web/src/api.ts`**
+- [x] **Step 1: Bổ sung các API client methods trong `avatar-web/web/src/api.ts`**
 
 ```typescript
 export async function fetchQuests(accountId: number): Promise<QuestOverviewState> {
@@ -467,7 +467,7 @@ export async function claimDailyQuestBox(accountId: number): Promise<void> {
 }
 ```
 
-- [ ] **Step 2: Xây dựng UI component `QuestsPanel.tsx`**
+- [x] **Step 2: Xây dựng UI component `QuestsPanel.tsx`**
 
 Tạo `avatar-web/web/src/accounts/panels/QuestsPanel.tsx`:
 - Quản lý tab đang chọn: `daily` | `beginner` | `general`.
@@ -482,14 +482,14 @@ Tạo `avatar-web/web/src/accounts/panels/QuestsPanel.tsx`:
   - Danh sách thành tích phát triển nông trại: Quy hoạch đất cấp 2, Mở rộng kho, Thử thách bếp Master...
 - Nút "Làm mới" trên header để fetch lại dữ liệu mới nhất từ server game.
 
-- [ ] **Step 3: Nhúng `QuestsPanel` vào `AccountOperationsDrawer.tsx`**
+- [x] **Step 3: Nhúng `QuestsPanel` vào `AccountOperationsDrawer.tsx`**
 
 Bổ sung `QuestsPanel` vào danh sách panel hiển thị của `LoadedOperations`:
 ```tsx
 <QuestsPanel accountId={account.id} quests={snapshot?.quests ?? null} />
 ```
 
-- [ ] **Step 4: Bổ sung tuỳ chọn Auto-claim vào `AutoFarmPanel.tsx`**
+- [x] **Step 4: Bổ sung tuỳ chọn Auto-claim vào `AutoFarmPanel.tsx`**
 
 Thêm checkbox trong bảng cấu hình `AutoFarmPanel`:
 ```tsx
@@ -503,7 +503,7 @@ Thêm checkbox trong bảng cấu hình `AutoFarmPanel`:
 </label>
 ```
 
-- [ ] **Step 5: Thêm styling CSS trong `avatar-web/web/src/styles.css`**
+- [x] **Step 5: Thêm styling CSS trong `avatar-web/web/src/styles.css`**
 
 Tạo style chuẩn đẹp cho `QuestsPanel`:
 - Tabs navigation pill design.
@@ -511,11 +511,11 @@ Tạo style chuẩn đẹp cho `QuestsPanel`:
 - Mission cards with item tags, progress indicator, action buttons with hover states.
 - Clean typography and mobile-responsive layout.
 
-- [ ] **Step 6: Verify Frontend Build**
+- [x] **Step 6: Verify Frontend Build**
 Run: `npm run build --prefix avatar-web/web`
 Expected: Build thành công không có lỗi syntax hay styling.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 `git commit -m "feat(web): add QuestsPanel component and autofarm quest settings"`
 
 ---
@@ -525,9 +525,9 @@ Expected: Build thành công không có lỗi syntax hay styling.
 **Files:**
 - None (Toàn bộ project)
 
-- [ ] **Step 1: Run Full Project Typecheck & Build**
+- [x] **Step 1: Run Full Project Typecheck & Build**
 Run: `npm run build --prefix avatar-web/server && npm run build --prefix avatar-web/web`
 Expected: Cả Server và Web Client biên dịch thành công 100% không có lỗi.
 
-- [ ] **Step 2: Commit All Clean State**
+- [x] **Step 2: Commit All Clean State**
 `git commit -m "chore: complete farm quests viewer implementation"`
