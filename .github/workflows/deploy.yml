@@ -36,28 +36,19 @@ jobs:
 
           echo "🚀 Đang kết nối tới máy chủ $TARGET_HOST với user $TARGET_USER qua cổng $TARGET_PORT..."
 
-          # 2. Khởi tạo và kiểm tra Private SSH Key
+          # 2. Khởi tạo và ghi trực tiếp Private SSH Key
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          FALLBACK_KEY=$(printf "%s\n" \
+          printf "%s\n" \
             "-----BEGIN OPENSSH PRIVATE KEY-----" \
             "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW" \
             "QyNTUxOQAAACCFuBXBgZz5Hxaloqjn2SybL83nU8qWjgeU2UKFa/lwywAAAJit1025rddN" \
             "uQAAAAtzc2gtZWQyNTUxOQAAACCFuBXBgZz5Hxaloqjn2SybL83nU8qWjgeU2UKFa/lwyw" \
             "AAAECCf4TCednrLS85befY+c+Rvx4VX5X43+UL3PhYkDshwoW4FcGBnPkfFqWiqOfZLJsv" \
             "zedTypaOB5TZQoVr+XDLAAAAFWdpdGh1Yi1hY3Rpb25zLWRlcGxveQ==" \
-            "-----END OPENSSH PRIVATE KEY-----")
+            "-----END OPENSSH PRIVATE KEY-----" > ~/.ssh/deploy_key
 
-          KEY_CONTENT="${SSH_KEY:-$FALLBACK_KEY}"
-
-          # Tự động chuyển đổi nếu secret bị dán dưới dạng literal \n
-          if echo "$KEY_CONTENT" | grep -q '\\n'; then
-            echo "ℹ️ Phát hiện literal \n trong key, đang tự động format lại..."
-            KEY_CONTENT=$(printf "%b" "$KEY_CONTENT")
-          fi
-
-          printf "%s\n" "$KEY_CONTENT" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
           # Kiểm tra tính hợp lệ của Private SSH Key
