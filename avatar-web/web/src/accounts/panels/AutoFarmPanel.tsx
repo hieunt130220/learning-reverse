@@ -10,6 +10,7 @@ import type {
   KitchenPlanEntry,
   TreeCellPlanEntry,
 } from '../../types.js';
+import type { FoodRecipe } from '../../types.js';
 import { BARN_ANIMAL_CATALOG, DEFAULT_BARN_ANIMAL_SLOTS, DEFAULT_POND_ANIMAL_SLOTS, POND_ANIMAL_CATALOG } from '../animalPlan.js';
 import { AnimalPlanEditor } from '../AnimalPlanEditor.js';
 import { KitchenPlanEditor } from '../KitchenPlanEditor.js';
@@ -191,15 +192,15 @@ function errorMessage(cause: unknown): string {
 
 export interface AutoFarmPanelProps {
   accountId: number;
+  foods?: FoodRecipe[];
   onPlanDirtyChange?(dirty: boolean): void;
 }
 
 export function AutoFarmPanel({
   accountId,
+  foods = [],
   onPlanDirtyChange,
 }: AutoFarmPanelProps) {
-  const [autoHarvestCook, setAutoHarvestCook] = useState(true);
-
   const [storedState, setStoredState] = useState<AutoConfigStateDto>(EMPTY_AUTO);
   const [draftPlan, setDraftPlan] = useState<TreeCellPlanEntry[]>([]);
   const [draftBarnPlan, setDraftBarnPlan] = useState<AnimalPlanEntry[]>([]);
@@ -219,7 +220,6 @@ export function AutoFarmPanel({
   currentAccountId.current = accountId;
 
   const hydrateForm = useCallback((config: Partial<AutoFarmConfigDto>) => {
-    setAutoHarvestCook(config.autoHarvestCook ?? true);
     setDraftKitchenPlan(sortedKitchenPlan(config.cookingSlotPlan));
   }, []);
 
@@ -275,9 +275,8 @@ export function AutoFarmPanel({
     () => planKey(draftPlan) !== planKey(storedState.config.treeCellPlan)
       || animalPlanKey(draftBarnPlan) !== animalPlanKey(storedState.config.barnAnimalPlan)
       || animalPlanKey(draftPondPlan) !== animalPlanKey(storedState.config.pondAnimalPlan)
-      || kitchenPlanKey(draftKitchenPlan) !== kitchenPlanKey(storedState.config.cookingSlotPlan)
-      || autoHarvestCook !== (storedState.config.autoHarvestCook ?? true),
-    [draftPlan, draftBarnPlan, draftPondPlan, draftKitchenPlan, autoHarvestCook, storedState.config],
+      || kitchenPlanKey(draftKitchenPlan) !== kitchenPlanKey(storedState.config.cookingSlotPlan),
+    [draftPlan, draftBarnPlan, draftPondPlan, draftKitchenPlan, storedState.config],
   );
   const planDirtyRef = useRef(dirty);
   planDirtyRef.current = dirty;
@@ -304,7 +303,7 @@ export function AutoFarmPanel({
           pondAnimalPlan: sortedAnimalPlan(draftPondPlan),
           cookingSlotPlan: sortedKitchenPlan(draftKitchenPlan),
           autoCook: true,
-          autoHarvestCook,
+          autoHarvestCook: true,
         },
       });
       if (requestGeneration.current !== generation) return;
@@ -454,20 +453,10 @@ export function AutoFarmPanel({
 
       <div className="setting-section">
         <h3>🍳 Bếp nấu ăn tự động</h3>
-        <div className="row" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <label className="inline">
-            <input
-              type="checkbox"
-              checked={autoHarvestCook}
-              onChange={(event) => setAutoHarvestCook(event.target.checked)}
-              style={{ width: 'auto' }}
-            />
-            Tự động thu hoạch món chín khi xong
-          </label>
-        </div>
         <KitchenPlanEditor
           title="Kế hoạch món nấu theo ô bếp"
           entries={draftKitchenPlan}
+          foods={foods}
           disabled={!configReady || saving}
           onChange={(entries) => {
             setDraftKitchenPlan(sortedKitchenPlan(entries));

@@ -2,7 +2,6 @@ import { EventEmitter } from 'node:events';
 
 import { DEFAULT_SEED_CATALOG, XU_SEED_IDS } from './accounts/defaultSeedCatalog.js';
 import {
-  DEFAULT_FOOD_CATALOG,
   GROWN_PERCENT,
   ITEM_DIARRHEA_CURE,
   ITEM_FERTILIZER,
@@ -308,7 +307,10 @@ export class AutoFarm extends EventEmitter {
   }
 
   queueConfig(cfg: Partial<AutoFarmConfig>): void {
-    this.pendingConfig = makeConfig(cfg);
+    // A live update may be a partial patch. Preserve the active tree/kitchen
+    // plans and other settings instead of rebuilding from DEFAULTS and
+    // accidentally dropping them until the next stop/start.
+    this.pendingConfig = makeConfig({ ...this.activeConfig, ...cfg });
   }
 
   stop(): void {
@@ -797,9 +799,11 @@ export class AutoFarm extends EventEmitter {
           } else if (plannedSeedId !== undefined && !knownSeeds.has(plannedSeedId)) {
             seen.push('trống');
             did.push(`bỏ qua hạt #${plannedSeedId} — không có trong catalog cây`);
+            note(`[cây] ô ${c.index}: hạt #${plannedSeedId} không có trong knownSeeds`);
           } else if (plannedSeedId !== undefined && (seedInventory.get(plannedSeedId) ?? 0) <= 0) {
             seen.push('trống');
             did.push(`bỏ qua — thiếu hạt #${plannedSeedId} trong kho`);
+            note(`[cây] ô ${c.index}: bỏ qua trồng #${plannedSeedId} — kho=${seedInventory.get(plannedSeedId) ?? 0}`);
           } else if (plannedSeedId !== undefined) {
             this.client.farm.plantSeed(idFarm, c.index, plannedSeedId);
             seedInventory.set(plannedSeedId, (seedInventory.get(plannedSeedId) ?? 0) - 1);
@@ -1027,9 +1031,10 @@ export class AutoFarm extends EventEmitter {
 
           // 2. Tự động nấu ăn cho các ô trống
           if (cfg.autoCook || hasKitchenPlan) {
-            const foodCatalog: FoodRecipe[] = this.client.foods && this.client.foods.length > 0
-              ? this.client.foods
-              : DEFAULT_FOOD_CATALOG;
+            const foodCatalog: FoodRecipe[] = this.client.foods ?? [];
+            if (foodCatalog.length === 0) {
+              note('[bếp] bỏ qua nấu: chưa nhận được catalog công thức từ Cmd 76');
+            }
             const planBySlot = new Map<number, KitchenPlanEntry>(
               (cfg.cookingSlotPlan ?? []).map((entry) => [entry.slotIndex, entry]),
             );
@@ -1071,7 +1076,7 @@ export class AutoFarm extends EventEmitter {
                 targetRecipe = foodCatalog.find((f) => f.id === cfg.defaultRecipeId);
               }
 
-              // Mặc định fallback: Món đầu tiên trong catalog nếu autoCook bật và không có plan
+              // Mặc định: chỉ chọn món đầu tiên của catalog ĐỘNG đã nhận từ Cmd 76.
               if (!targetRecipe && cfg.autoCook && foodCatalog.length > 0) {
                 targetRecipe = foodCatalog[0];
               }

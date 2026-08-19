@@ -1631,51 +1631,15 @@ export function decodeCookingPacket(
 }
 
 /**
- * Trích xuất Food Recipe Catalog từ gói Cmd 76.
+ * Trích xuất Food Recipe Catalog động từ gói Cmd 76.
  *
- * Trên gói thật (13.336 byte) block món ăn xuất hiện nhiều lần (localization)
- * và mỗi recipe có header/biên độ thay đổi, nên parse tuần tự theo offset không
- * ổn định. Cách xác minh đã kiểm chứng trên gói thật: tên 35 món chuẩn
- * (`KNOWN_FOOD_REFERENCE`) đều hiện diện trong raw. Nếu đủ số tên thì trả về
- * catalog chuẩn (đúng id/iconId/icon); ngược lại quét block nếu có thể đọc được.
+ * APK chỉ xác nhận schema wire; giá trị công thức phải lấy từ packet. Vì vậy
+ * hàm này tuyệt đối không dựng lại công thức từ `KNOWN_FOOD_REFERENCE` hay
+ * `DEFAULT_FOOD_CATALOG`. Nếu không tìm thấy một block hoàn chỉnh, trả về
+ * `undefined` để caller giữ trạng thái "chưa có catalog".
  */
 export function decodeFoodCatalog(body: Buffer): FoodRecipe[] | undefined {
   if (!body || body.length === 0) return undefined;
-
-  const defaultByNorm = new Map<string, FoodRecipe>(
-    (DEFAULT_FOOD_CATALOG as FoodRecipe[]).map((f) => [normFoodName(f.name), f]),
-  );
-
-  const verifyFoodBlock = (): { matched: number; total: number } => {
-    let matched = 0;
-    for (const k of KNOWN_FOOD_REFERENCE) {
-      // Tên trên wire khác chữ thường/hoa so với chuẩn (vd "Cơm cà rốt"), nên
-      // so khớp bằng chuẩn hoá (bỏ dấu + hoa thường).
-      const haystack = body.toString('utf8');
-      const hay = normFoodName(haystack);
-      if (hay.includes(normFoodName(k.name))) matched++;
-    }
-    return { matched, total: KNOWN_FOOD_REFERENCE.length };
-  };
-
-  const { matched, total } = verifyFoodBlock();
-  if (matched >= total) {
-    return KNOWN_FOOD_REFERENCE.map((k) => {
-      const base = defaultByNorm.get(normFoodName(k.name));
-      return {
-        id: k.id,
-        name: k.name,
-        productID: base?.productID ?? 0,
-        cookTimeMinutes: base?.cookTimeMinutes ?? 0,
-        level: base?.level ?? 1,
-        materials: base?.materials ?? [],
-        iconId: k.iconId,
-        icon: `/assets/farm/kitchen/${k.id}.png`,
-      };
-    });
-  }
-
-  // Fallback: quét raw tìm block recipe đọc được (gói cũ/khác không có tên chuẩn).
   const result = scanFoodBlock(body);
   return result && result.length > 0 ? result : undefined;
 }
@@ -1712,7 +1676,9 @@ function scanFoodBlock(body: Buffer): FoodRecipe[] | undefined {
     for (let j = 0; j < numMaterials; j++) {
       const matId = buf.readInt16BE(p);
       const count = buf.readInt16BE(p + 2);
-      if (count <= 0 || count > 500 || matId < 0 || matId > 2000) return undefined;
+      // Server stores some recipe quantities in sub-units (e.g. 2000/5000),
+      // so the old 500 cap rejected the real Cmd 76 block.
+      if (count <= 0 || count > 10000 || matId < 0 || matId > 2000) return undefined;
       materials.push({ itemId: matId, count });
       p += 4;
     }
@@ -1744,15 +1710,19 @@ function scanFoodBlock(body: Buffer): FoodRecipe[] | undefined {
   }
 
   let best: FoodRecipe[] | undefined;
-  let bestCount = 0;
+  let bestKnownCount = -1;
+  let bestLength = 0;
   for (const buf of [searchBuf, body]) {
     for (let offset = 0; offset <= buf.length - 10; offset++) {
       const block = tryReadFoodBlock(buf, offset);
       if (!block || block.length === 0) continue;
       const n = block.filter((f) => KNOWN_FOOD_BY_NAME.has(normFoodName(f.name))).length;
-      if (n > bestCount) {
+      // Tên trên wire có thể khác localization/reference. Cấu trúc block hợp lệ
+      // là bằng chứng chính; known-name chỉ dùng để ưu tiên khi có nhiều ứng viên.
+      if (n > bestKnownCount || (n === bestKnownCount && block.length > bestLength)) {
         best = block;
-        bestCount = n;
+        bestKnownCount = n;
+        bestLength = block.length;
       }
       if (n === block.length) return block;
     }

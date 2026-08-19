@@ -19,7 +19,6 @@ import {
   decodePlayerInfo,
   decodeTreeInfo,
   decodeDailyQuestPacket,
-  DEFAULT_FOOD_CATALOG,
   type CookingState,
   type DailyQuestState,
   type FarmState,
@@ -136,8 +135,10 @@ export class GameClient extends EventEmitter {
   items: ItemInfo[] = [];
   /** Bảng vật nuôi (id 50..61) từ cùng gói 76. */
   animals: AnimalInfo[] = [];
-  /** Danh mục công thức món ăn nấu trong bếp. */
-  foods: FoodRecipe[] = [...DEFAULT_FOOD_CATALOG];
+  /** Danh mục công thức từ Cmd 76; rỗng cho tới khi decode được packet hợp lệ. */
+  foods: FoodRecipe[] = [];
+  /** Chỉ true sau khi decode được một block Food[] hoàn chỉnh từ Cmd 76. */
+  foodCatalogReady = false;
   /** Trạng thái bếp nấu ăn (cmd 91). */
   cookingState?: CookingState;
   /** Trạng thái nhiệm vụ hàng ngày (cmd -87 sub 2). */
@@ -731,7 +732,10 @@ export class GameClient extends EventEmitter {
           const foods = decodeFoodCatalog(body);
           if (foods && foods.length > 0) {
             this.foods = foods;
+            this.foodCatalogReady = true;
             this.emit('log', `bảng món ăn (${foods.length} món): ${foods.map((f) => `#${f.id} ${f.name}`).join(', ')}`);
+          } else {
+            this.emit('log', 'bảng món ăn chưa sẵn sàng: Cmd 76 không có block công thức hợp lệ');
           }
         } catch (err) {
           this.emit('log', `giải mã bảng món ăn lỗi: ${(err as Error).message}`);

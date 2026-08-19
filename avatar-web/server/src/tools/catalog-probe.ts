@@ -16,6 +16,7 @@ import { getAccountById, readGamePass } from '../accounts/repo.js';
 import { GameClient } from '../game/client.js';
 import { decodeTreeInfo, decodeItemCatalog } from '../game/farmData.js';
 import { loadConfig } from '../config.js';
+import { writeFileSync } from 'node:fs';
 
 const accountId = Number(process.argv[2] ?? 1);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -64,8 +65,10 @@ c.farm.getTreeInfo();
 await sleep(5000);
 console.log('gói 76 sau getTreeInfo:', seen76.size);
 
-if (seen76.size > 0) {
-  const body = [...seen76.values()][seen76.size - 1]!;
+  if (seen76.size > 0) {
+    const body = [...seen76.values()][seen76.size - 1]!;
+    writeFileSync('/private/tmp/avatar-cmd76-account2.hex', body.toString('hex'));
+    console.log('đã lưu raw packet: /private/tmp/avatar-cmd76-account2.hex');
   console.log(`\n--- phân tích gói 76 cuối (${body.length} byte) ---`);
   // Thử decode trực tiếp
   try {

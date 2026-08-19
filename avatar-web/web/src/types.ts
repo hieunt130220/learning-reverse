@@ -232,6 +232,7 @@ export interface SessionSnapshot {
   farm?: FarmState;
   cooking?: CookingState;
   foods?: FoodRecipe[];
+  foodCatalogReady?: boolean;
   quests?: QuestOverviewState | null;
   farmSync?: FarmSyncState;
   auto: AutoState;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import type { CookingState, FoodRecipe, InventoryItem } from '../../types.js';
+import type { AnimalInfo, CookingState, FoodRecipe, InventoryItem, ItemInfo, TreeInfo } from '../../types.js';
 
 // Danh sách catalog mặc định khi chưa nhận được gói từ server (35 món chuẩn)
 const FALLBACK_RECIPES: FoodRecipe[] = [
@@ -41,22 +41,43 @@ const FALLBACK_RECIPES: FoodRecipe[] = [
   { id: 35, name: 'Thịt Kho Trứng', productID: 159, cookTimeMinutes: 240, level: 4, iconId: 302, materials: [{ itemId: 52, count: 1 }, { itemId: 50, count: 5 }] },
 ];
 
+const ANIMAL_PRODUCT_NAMES: Record<number, string> = {
+  50: 'Trứng gà',
+  51: 'Sữa bò',
+  52: 'Thịt heo',
+  54: 'Cá chép',
+  55: 'Thịt vịt',
+  57: 'Thịt trâu',
+  59: 'Thịt ba ba',
+};
+
 export function CookingPanel({
   cooking,
   foods,
   inventory,
+  items,
+  trees,
+  animals,
 }: {
   cooking?: CookingState;
   foods?: FoodRecipe[];
   inventory: InventoryItem[];
+  items: ItemInfo[];
+  trees: TreeInfo[];
+  animals: AnimalInfo[];
 }) {
   const [showRecipes, setShowRecipes] = useState(false);
 
-  const recipeCatalog = foods && foods.length > 0 ? foods : FALLBACK_RECIPES;
+  const recipeCatalog = foods ?? [];
   const inventoryMap = new Map<number, number>();
   for (const item of inventory) {
     inventoryMap.set(item.id, (inventoryMap.get(item.id) ?? 0) + item.num);
   }
+  const itemNames = new Map<number, string>();
+  for (const item of items) itemNames.set(item.id, item.name);
+  for (const tree of trees) itemNames.set(tree.id, tree.name);
+  for (const animal of animals) itemNames.set(animal.id, animal.name);
+  for (const [id, name] of Object.entries(ANIMAL_PRODUCT_NAMES)) itemNames.set(Number(id), name);
 
   const recipeName = (id: number) => recipeCatalog.find((r) => r.id === id)?.name ?? `Món #${id}`;
 
@@ -87,6 +108,9 @@ export function CookingPanel({
       <p className="hint">
         {cooking ? `${cooking.numSlot} ô bếp · ${slots.filter((s) => s.idFood !== -1).length} ô đang nấu · ${slots.filter((s) => s.isDone).length} ô chín` : 'Chưa có thông tin bếp'}
       </p>
+      {recipeCatalog.length === 0 && (
+        <p className="hint">Đang chờ dữ liệu công thức từ máy chủ (Cmd 76).</p>
+      )}
 
       {/* Lưới các ô bếp — chỉ hiển thị trạng thái */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.5rem', margin: '0.75rem 0' }}>
@@ -169,7 +193,7 @@ export function CookingPanel({
                           borderRadius: '3px',
                         }}
                       >
-                        Item #{m.itemId}: {m.countInBag}/{m.count}
+                        {itemNames.get(m.itemId) ?? `Item #${m.itemId}`} #{m.itemId}: {m.countInBag}/{m.count}
                       </span>
                     ))}
                   </div>

@@ -10,7 +10,6 @@ export function QuestsPanel({
   accountId: number;
   quests: QuestOverviewState | null;
 }) {
-  const [activeTab, setActiveTab] = useState<'daily' | 'beginner' | 'general'>('daily');
   const [busy, setBusy] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -34,8 +33,6 @@ export function QuestsPanel({
 
   const effectiveQuests = localQuests ?? quests;
   const daily = effectiveQuests?.daily ?? null;
-  const beginner = effectiveQuests?.beginner ?? [];
-  const general = effectiveQuests?.general ?? [];
 
   const runAction = async (endpoint: string, label: string) => {
     try {
@@ -71,7 +68,7 @@ export function QuestsPanel({
     <section className="card drawer-panel quests-panel">
       <header className="quests-header">
         <div className="quests-header-title">
-          <h3>Nhiệm vụ nông trại</h3>
+          <h3>Nhiệm vụ Lái buôn</h3>
           {daily && (
             <span className="badge badge--star">
               ⭐ {daily.score} / {daily.maxScore} điểm{daily.score >= daily.maxScore && daily.missions.length === 0 ? ' · Đã hoàn thành' : ''}
@@ -92,53 +89,14 @@ export function QuestsPanel({
       {statusMsg && <div className="toast-inline toast-inline--success">{statusMsg}</div>}
       {errorMsg && <div className="toast-inline toast-inline--error">{errorMsg}</div>}
 
-      {/* Tabs navigation */}
-      <div className="quests-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'daily'}
-          className={`quests-tab ${activeTab === 'daily' ? 'quests-tab--active' : ''}`}
-          onClick={() => setActiveTab('daily')}
-        >
-          Hàng ngày
-          {daily && totalDailyCount > 0 && (
-            <span className="tab-pill">{completedDailyCount}/{totalDailyCount}</span>
-          )}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'beginner'}
-          className={`quests-tab ${activeTab === 'beginner' ? 'quests-tab--active' : ''}`}
-          onClick={() => setActiveTab('beginner')}
-        >
-          Tân thủ
-          {beginner.length > 0 && (
-            <span className="tab-pill">
-              {beginner.filter((b) => b.isDone).length}/{beginner.length}
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'general'}
-          className={`quests-tab ${activeTab === 'general' ? 'quests-tab--active' : ''}`}
-          onClick={() => setActiveTab('general')}
-        >
-          Nhiệm vụ chung
-          {general.length > 0 && (
-            <span className="tab-pill">
-              {general.filter((g) => g.isDone).length}/{general.length}
-            </span>
-          )}
-        </button>
+      <div className="quests-source-note">
+        <span className="label-caption">Dữ liệu trực tiếp từ NPC Lái buôn trong Nông trại</span>
+        {daily && totalDailyCount > 0 && (
+          <span className="tab-pill">{completedDailyCount}/{totalDailyCount}</span>
+        )}
       </div>
 
-      {/* TAB 1: NHIỆM VỤ HÀNG NGÀY */}
-      {activeTab === 'daily' && (
-        <div className="quests-tab-content">
+      <div className="quests-tab-content">
           {daily ? (
             <>
               {/* Điểm năng động & Rương quà */}
@@ -322,98 +280,7 @@ export function QuestsPanel({
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      {/* TAB 2: NHIỆM VỤ TÂN THỦ */}
-      {activeTab === 'beginner' && (
-        <div className="quests-tab-content">
-          <div className="beginner-intro">
-            <span className="label-caption">Chuỗi nhiệm vụ nhập môn nông trại Avatar</span>
-          </div>
-
-          <div className="quests-list-vertical">
-            {beginner.map((b) => {
-              const pct = Math.min(100, Math.round((b.current / b.target) * 100));
-              return (
-                <div key={b.id} className={`quest-card ${b.isDone ? 'quest-card--done' : ''}`}>
-                  <div className="quest-card-top">
-                    <div className="quest-card-left">
-                      <span className="quest-status-icon">{b.isDone ? '✅' : '🌱'}</span>
-                      <div>
-                        <h4 className="quest-title">{b.title}</h4>
-                        <p className="quest-desc">{b.description}</p>
-                      </div>
-                    </div>
-                    <span className={`badge ${b.isDone ? 'badge-success' : 'badge-pending'}`}>
-                      {b.current} / {b.target}
-                    </span>
-                  </div>
-
-                  <div className="mission-mini-bar">
-                    <div
-                      className={`mission-mini-bar-fill ${b.isDone ? 'bar-done' : ''}`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-
-                  <div className="quest-card-bottom">
-                    <span className="reward-tag">🎁 Thưởng: {b.rewardText}</span>
-                    <span className="quest-state-text">
-                      {b.isDone ? 'Đã hoàn thành' : 'Đang thực hiện'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: NHIỆM VỤ CHUNG */}
-      {activeTab === 'general' && (
-        <div className="quests-tab-content">
-          <div className="general-intro">
-            <span className="label-caption">Cột mốc & Thành tích phát triển nông trại lâu dài</span>
-          </div>
-
-          <div className="quests-list-vertical">
-            {general.map((g) => {
-              const pct = Math.min(100, Math.round((g.current / g.target) * 100));
-              return (
-                <div key={g.id} className={`quest-card ${g.isDone ? 'quest-card--done' : ''}`}>
-                  <div className="quest-card-top">
-                    <div className="quest-card-left">
-                      <span className="quest-status-icon">{g.isDone ? '🏆' : '🎯'}</span>
-                      <div>
-                        <h4 className="quest-title">{g.title}</h4>
-                        <p className="quest-desc">{g.description}</p>
-                      </div>
-                    </div>
-                    <span className={`badge ${g.isDone ? 'badge-success' : 'badge-pending'}`}>
-                      {g.current} / {g.target}
-                    </span>
-                  </div>
-
-                  <div className="mission-mini-bar">
-                    <div
-                      className={`mission-mini-bar-fill ${g.isDone ? 'bar-done' : ''}`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-
-                  <div className="quest-card-bottom">
-                    <span className="reward-tag">🌟 Hiệu ứng: {g.rewardText}</span>
-                    <span className="quest-state-text">
-                      {g.isDone ? 'Đã đạt' : 'Tiến độ: ' + pct + '%'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      </div>
     </section>
   );
 }

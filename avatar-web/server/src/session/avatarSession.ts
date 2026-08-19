@@ -14,11 +14,7 @@ import {
   type TemporaryLoginRejection,
   type TrafficEntry,
 } from '../game/client.js';
-import {
-  buildBeginnerQuests,
-  buildGeneralQuests,
-  type QuestOverviewState,
-} from '../game/farmData.js';
+import { type QuestOverviewState } from '../game/farmData.js';
 import { MacroRunner, type Macro, type MacroState } from '../macro.js';
 import type { AccountMetricsPatch, CachedAccountMetrics } from '../accounts/repo.js';
 
@@ -66,6 +62,7 @@ export interface AvatarSessionSnapshot {
   farm?: unknown;
   cooking?: unknown;
   foods?: unknown[];
+  foodCatalogReady?: boolean;
   quests?: QuestOverviewState | null;
   farmSync: FarmSyncState;
   auto: AutoFarmState;
@@ -169,30 +166,12 @@ export class AvatarSession {
         /* bỏ qua */
       }
     }
-    const beginner = buildBeginnerQuests(
-      c?.farmState,
-      c?.inventory,
-      c?.produce,
-      c?.cookingState,
-      {
-        farmLevel: c?.farmLevel ?? this.cachedMetrics.farmLevel,
-        playerLevel: c?.playerLevel ?? this.cachedMetrics.playerLevel,
-      },
-    );
-    const general = buildGeneralQuests(
-      c?.farmState,
-      c?.inventory,
-      c?.produce,
-      c?.cookingState,
-      {
-        farmLevel: c?.farmLevel ?? this.cachedMetrics.farmLevel,
-        playerLevel: c?.playerLevel ?? this.cachedMetrics.playerLevel,
-      },
-    );
     return {
       daily,
-      beginner,
-      general,
+      // Game không có packet “tân thủ” hoặc “nhiệm vụ chung”. Hai danh sách
+      // trước đây được dựng cứng từ state local nên gây hiểu nhầm là dữ liệu NPC.
+      beginner: [],
+      general: [],
       updatedAt: daily?.updatedAt ?? Date.now(),
     };
   }
@@ -341,6 +320,7 @@ export class AvatarSession {
       farm: c?.farmState,
       cooking: c?.cookingState,
       foods: c?.foods ?? [],
+      foodCatalogReady: c?.foodCatalogReady ?? false,
       quests: this.getQuestOverview(),
       farmSync: this.farmSync,
       auto: this.auto?.state() ?? EMPTY_AUTO,

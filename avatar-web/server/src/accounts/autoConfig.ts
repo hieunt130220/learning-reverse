@@ -265,6 +265,8 @@ export function normalizeAutoConfig(input: unknown): Partial<AutoFarmConfig> {
     if (value === undefined) continue;
     Object.assign(normalized, { [key]: parsers[key](value, key) });
   }
+  // Mandatory runtime policy: cooked dishes are always harvested.
+  normalized.autoHarvestCook = true;
   return normalized;
 }
 

@@ -86,6 +86,7 @@ function LoadedOperations({
       <StatusPanel accountId={account.id} snap={snapshot} gameUser={account.gameUser} onChanged={() => void reload()} />
       <AutoFarmPanel
         accountId={account.id}
+        foods={snapshot?.foods}
         onPlanDirtyChange={onPlanDirtyChange}
       />
       <QuestsPanel
@@ -96,6 +97,9 @@ function LoadedOperations({
         cooking={snapshot?.cooking}
         foods={snapshot?.foods}
         inventory={snapshot?.inventory ?? []}
+        items={snapshot?.items ?? []}
+        trees={snapshot?.trees ?? []}
+        animals={snapshot?.animals ?? []}
       />
       <AssetsPanel accountId={account.id} farm={snapshot?.farm ?? null} inventory={snapshot?.inventory ?? []} trees={snapshot?.trees ?? []} animals={snapshot?.animals ?? []} />
       <LogPanel logs={snapshot?.logs ?? []} />

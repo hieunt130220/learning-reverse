@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { apiPost } from '../../api.js';
-import type { AnimalInfo, FarmCell, FarmState, InventoryItem, TreeInfo } from '../../types.js';
+import type { AnimalInfo, FarmAnimal, FarmCell, FarmState, InventoryItem, TreeInfo } from '../../types.js';
 
 /**
  * Ô đã chín chưa — giữ ĐÚNG điều kiện của server (`isCellRipe` trong
@@ -154,25 +154,59 @@ function FarmSection({
 }
 
 function AnimalSection({ farm, catalog }: { farm: FarmState | null; catalog: AnimalInfo[] }) {
+  const [selected, setSelected] = useState<FarmAnimal | null>(null);
   const name = (sp: number) => catalog.find((a) => a.id === sp)?.name ?? `#${sp}`;
   if (!farm || farm.animals.length === 0) return null;
   const hungry = farm.animals.filter((a) => a.hunger).length;
+  const needsCare = (animal: FarmAnimal) => animal.hunger || animal.hasFlu || animal.hasDiarrhea;
+  const isReady = (animal: FarmAnimal) => animal.harvestPer > 0 || animal.numEggOne > 0;
+  const statusText = (animal: FarmAnimal) => {
+    const statuses: string[] = [];
+    if (animal.hunger) statuses.push('đói');
+    if (animal.hasFlu) statuses.push('cúm');
+    if (animal.hasDiarrhea) statuses.push('tiêu chảy');
+    if (isReady(animal)) statuses.push('có thể thu hoạch');
+    return statuses.join(', ') || 'bình thường';
+  };
 
   return (
     <section className="card">
       <h2>Vật nuôi</h2>
       <p className="hint">
-        {farm.animals.length} con · {hungry} đang đói. Địa chỉ hoá bằng vị trí trong danh sách (= IDDB).
+        {farm.animals.length} con · {hungry} đang đói · mỗi ô là một IDDB.
       </p>
-      <div className="log" style={{ maxHeight: 260 }}>
-        {farm.animals.map((a) => (
-          <div key={a.index} className={a.hunger ? 'care' : ''}>
-            <b>#{a.index}</b> {name(a.species)} · máu {a.health} · thu hoạch {a.harvestPer}% · trứng{' '}
-            {a.numEggOne}
-            {a.hunger && <span style={{ color: '#d9a441' }}> · ĐÓI</span>}
-          </div>
-        ))}
+      <div className="grid">
+        {farm.animals.map((animal) => {
+          const cls = [
+            'cell',
+            needsCare(animal) ? 'care' : '',
+            isReady(animal) ? 'ready' : '',
+            selected?.index === animal.index ? 'sel' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <button
+              key={animal.index}
+              type="button"
+              className={cls}
+              onClick={() => setSelected(animal)}
+              title={`${name(animal.species)} · ${statusText(animal)}`}
+            >
+              <span className="idx">{animal.index}</span>
+              <span className="tree">{name(animal.species)}</span>
+            </button>
+          );
+        })}
       </div>
+
+      {selected && (
+        <div className="cell-detail">
+          <b>IDDB {selected.index}</b> — {name(selected.species)} · máu {selected.health} · thu hoạch{' '}
+          {selected.harvestPer}% · sản phẩm {selected.numEggOne}
+          <div className="hint">trạng thái: {statusText(selected)}</div>
+        </div>
+      )}
     </section>
   );
 }

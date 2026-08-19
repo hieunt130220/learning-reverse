@@ -3,15 +3,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KitchenPlanEntry } from '../types.js';
 import {
   DEFAULT_KITCHEN_SLOTS,
-  KITCHEN_FOOD_CATALOG,
   applyKitchenPaint,
   summarizeKitchenPlan,
+  type KitchenFoodInfo,
   type KitchenPaint,
 } from './kitchenPlan.js';
 
 export interface KitchenPlanEditorProps {
   title: string;
   entries: KitchenPlanEntry[];
+  foods: KitchenFoodInfo[];
   disabled: boolean;
   onChange(entries: KitchenPlanEntry[]): void;
 }
@@ -40,6 +41,7 @@ function entryKey(entry: KitchenPlanEntry | undefined): string {
 export function KitchenPlanEditor({
   title,
   entries,
+  foods,
   disabled,
   onChange,
 }: KitchenPlanEditorProps) {
@@ -62,8 +64,8 @@ export function KitchenPlanEditor({
   }, []);
 
   const foodById = useMemo(
-    () => new Map(KITCHEN_FOOD_CATALOG.map((item) => [item.id, item])),
-    [],
+    () => new Map(foods.map((item) => [item.id, item])),
+    [foods],
   );
 
   useEffect(() => {
@@ -115,7 +117,7 @@ export function KitchenPlanEditor({
         }}>
           <option value="default">◇ Mặc định</option>
           <option value="skip">⛔ Không nấu</option>
-          {KITCHEN_FOOD_CATALOG.map((item) => <option key={item.id} value={`cook:${item.id}`}>{item.name} #{item.id}</option>)}
+          {foods.map((item) => <option key={item.id} value={`cook:${item.id}`}>{item.name} #{item.id}</option>)}
         </select>
       </div>
 
