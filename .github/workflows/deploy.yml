@@ -40,16 +40,15 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          FALLBACK_KEY=$(cat << 'KEY_EOF'
------BEGIN OPENSSH PRIVATE KEY-----
-b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-QyNTUxOQAAACCFuBXBgZz5Hxaloqjn2SybL83nU8qWjgeU2UKFa/lwywAAAJit1025rddN
-uQAAAAtzc2gtZWQyNTUxOQAAACCFuBXBgZz5Hxaloqjn2SybL83nU8qWjgeU2UKFa/lwyw
-AAAECCf4TCednrLS85befY+c+Rvx4VX5X43+UL3PhYkDshwoW4FcGBnPkfFqWiqOfZLJsv
-zedTypaOB5TZQoVr+XDLAAAAFWdpdGh1Yi1hY3Rpb25zLWRlcGxveQ==
------END OPENSSH PRIVATE KEY-----
-KEY_EOF
-)
+          FALLBACK_KEY=$(printf "%s\n" \
+            "-----BEGIN OPENSSH PRIVATE KEY-----" \
+            "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW" \
+            "QyNTUxOQAAACCFuBXBgZz5Hxaloqjn2SybL83nU8qWjgeU2UKFa/lwywAAAJit1025rddN" \
+            "uQAAAAtzc2gtZWQyNTUxOQAAACCFuBXBgZz5Hxaloqjn2SybL83nU8qWjgeU2UKFa/lwyw" \
+            "AAAECCf4TCednrLS85befY+c+Rvx4VX5X43+UL3PhYkDshwoW4FcGBnPkfFqWiqOfZLJsv" \
+            "zedTypaOB5TZQoVr+XDLAAAAFWdpdGh1Yi1hY3Rpb25zLWRlcGxveQ==" \
+            "-----END OPENSSH PRIVATE KEY-----")
+
           KEY_CONTENT="${SSH_KEY:-$FALLBACK_KEY}"
 
           # Tự động chuyển đổi nếu secret bị dán dưới dạng literal \n
