@@ -112,7 +112,7 @@ test('loadCredentials đọc lại DB mỗi lần — đổi cấu hình là có
   setAutoEnabled(db, acc.id, true);
   const creds = await made[0].opts.loadCredentials();
   assert.equal(creds.autoEnabled, true);
-  assert.deepEqual(creds.autoConfig, { harvest: true });
+  assert.deepEqual(creds.autoConfig, { harvest: true, autoHarvestCook: true });
   db.close();
 });
 
@@ -175,6 +175,7 @@ test('permanent failure chỉ tắt cờ, giữ config envelope', async () => {
     config: {
       harvest: true,
       treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
+      autoHarvestCook: true,
     },
   });
   db.close();
@@ -291,6 +292,7 @@ test('bootstrap unwrap envelope và giữ nguyên treeCellPlan khi start auto', 
       { cellIndex: 2, action: 'seed', seedId: 6 },
       { cellIndex: 7, action: 'skip' },
     ],
+    autoHarvestCook: true,
   });
   db.close();
 });

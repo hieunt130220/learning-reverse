@@ -20,7 +20,7 @@ chung, `command` = hằng sub-command trong `Cmd_Message`.
 
 | cmd | Tên | TX method | Body (verified) | RVA |
 |---|---|---|---|---|
-| 66 | PLANT_SEED | doPlantSeed | **i32** idUser, **i8** indexCell, **i8** idSeed | 0x5D1290 |
+| 66 | PLANT_SEED | doPlantSeed | **i32** idUser, **i8** indexCell, **i8** idSeed (`>=0`: gieo hạt, `-1 / 0xFF`: làm đất dọn cây cũ) | 0x5D1290 |
 | 64 | TREE_HARVEST | doHervest | i32 idFarm, i8 indexCell | 0x5D1548 |
 | 60 | OPEN_LAND | doOpenLand | i32 idFarm, i8 typeBuy | 0x5D1684 |
 | 54 | HARVEST_ANIMAL ⚠ | doHarvestAnimal | i32 idFarm, i8 index | 0x5D18D0 |
@@ -342,10 +342,11 @@ và **đứng yên ở đó** (kiểm tra lại sau nhiều phút vẫn vậy). 
 server im lặng. Vậy phải loại trạng thái này ra khỏi điều kiện chín, nếu không mỗi
 vòng auto lại bắn một lệnh vô ích.
 
-⚠ **`idTree` KHÔNG về -1 sau khi thu** → điều kiện "ô trống" `idTree === -1` cũng
-không bao giờ đúng, nên auto không bao giờ trồng lại. `doPlantSeed` vào ô
-`time=-1` bị server bỏ qua im lặng (thử cả hạt #6 lẫn #10, kho còn đủ hạt) → **cách
-làm ô trống trở lại vẫn CHƯA tìm ra**, phần trồng còn treo ở đây.
+⚠ **`idTree` KHÔNG về -1 sau khi thu** → Cây cũ vẫn còn trên ô đất (`time = -1`).
+Phân tích binary client (`libil2cpp.so` tại `FarmMsgHandler.onHarvestTree` và `FarmScr.resetAction`)
+đã tìm ra cơ chế: Client gửi `doPlantSeed(idFarm, cellIndex, -1)` (`cmd 66` với `idSeed = -1`)
+để **Làm đất / Phá bỏ cây cũ**. Sau lệnh này, ô trở về trống sạch (`idTree = -1`) và server
+sẵn sàng nhận lệnh gieo hạt giống mới.
 
 ### ✓ Section 3 gói kho = NÔNG SẢN (nơi thu hoạch đổ vào)
 
@@ -376,7 +377,7 @@ phẩm chờ thu**, không phải `harvestPer`.
 Farm có 46 ô nên "ô thứ 47" là ô kế tiếp. Tên method trong `FarmService` dễ gây
 hiểu nhầm; nó đi cặp với `doOpenLand` (cmd 60), không liên quan tới việc gieo hạt.
 
-### ⚠ Ô đã thu hoạch: CÂY VẪN CÒN, không trồng đè được
+### ✓ ĐÃ GIẢI MÃ: Làm đất / Dọn cây cũ = cmd 66 với idSeed = -1 (0xFF)
 
 Byte thô của ô 43 (offset 349 trong gói 69) sau khi thu:
 
@@ -385,16 +386,11 @@ Byte thô của ô 43 (offset 349 trong gói 69) sau khi thu:
 ```
 
 `nAnimal` đọc ngay sau vùng ô vẫn ra đúng 16 → decode **không** lệch, `idTree=6`
-là thật: **cây lúa vẫn nằm trên ô**, đây không phải ô trống. Sau 7 giờ vẫn y
-nguyên, không tự về trạng thái trồng được.
+là thật: **gốc cây lúa vẫn nằm trên ô**.
 
-Đã thử và đều bị bỏ qua im lặng: `doHervest` lại (cả ngay sau lẫn sau 7 giờ),
-`doPlantSeed` hạt #6 / #10 / #5, cmd 66 với `idSeed` rộng i16, và `doJoinFarm`
-trước khi trồng. Trong dải 51–103 **không có** lệnh nào mang nghĩa "nhổ/dọn cây".
-
-→ Cách đưa ô đã thu về trạng thái trồng được **vẫn chưa tìm ra**. Điều kiện ô
-trống `idTree === -1` nhiều khả năng vẫn đúng cho ô trống thật (mở bằng
-`doOpenLand`), chỉ là chưa có ô nào như vậy để thử.
+→ **Giải pháp**: Gửi `doPlantSeed(idFarm, indexCell, -1)` (cmd 66 với `idSeed = -1`, tức byte `0xFF`).
+Server xác nhận phá bỏ gốc cây cũ, đưa ô về `idTree = -1`, sau đó có thể gieo hạt giống mới
+bằng `doPlantSeed(idFarm, indexCell, newSeedId)` bình thường.
 
 ### ✓ Tuổi lớn / tuổi thọ nằm trong `desc` bảng vật nuôi
 

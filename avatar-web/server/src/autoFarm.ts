@@ -188,6 +188,7 @@ export interface AutoFarmClient {
     buyItem(id: number, num: number, typeShop: number): void;
     buyAnimal(idAnimal: number, typeBuy: number): void;
     plantSeed(idFarm: number, cellIndex: number, seedId: number): void;
+    clearCell?(idFarm: number, cellIndex: number): void;
     harvestAnimal(idFarm: number, index: number): void;
     sellAnimal(idFarm: number, index: number): void;
   };
@@ -805,11 +806,27 @@ export class AutoFarm extends EventEmitter {
         }
         // Server keeps the harvested tree id and marks the cell as spent with
         // time=-1; treat both representations as available for replanting.
-        if (c.idTree === -1 || isCellSpent(c) || (harvest && cellRipe(c))) {
+        const isSpent = c.idTree !== -1 && (isCellSpent(c) || c.time === -1);
+        if (c.idTree === -1 || isSpent || (harvest && cellRipe(c))) {
           const plan = planByCell.get(c.index);
           const plannedSeedId = plan?.action === 'seed'
             ? plan.seedId
             : (seedId ?? (previousTreeId !== -1 && knownSeeds.has(previousTreeId) ? previousTreeId : undefined));
+
+          // Nếu ô còn cây cũ (vừa thu hoạch hoặc spent time=-1), PHẢI làm đất phá bỏ cây cũ trước
+          if (c.idTree !== -1) {
+            if (this.client.farm.clearCell) {
+              this.client.farm.clearCell(idFarm, c.index);
+            } else {
+              this.client.farm.plantSeed(idFarm, c.index, -1);
+            }
+            sent += 1;
+            seen.push(isSpent ? 'vừa thu' : 'cây cũ');
+            did.push('làm đất');
+            await confirm(66, `làm đất ô ${c.index}`);
+            await tick();
+          }
+
           if (plan?.action === 'skip') {
             seen.push('trống');
             did.push('bỏ qua theo kế hoạch');

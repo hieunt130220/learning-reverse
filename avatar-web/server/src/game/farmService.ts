@@ -72,6 +72,14 @@ export class FarmService {
     this.send(66, (m) => m.writer!.writeInt(idUser).writeByte(indexCell).writeByte(idSeed));
   }
 
+  /**
+   * doPlantSeed @0x5d1290 với idSeed = -1 (0xFF) — làm đất / phá bỏ cây cũ,
+   * đưa ô đã thu hoạch / cây tàn về trạng thái trống sạch để gieo hạt mới.
+   */
+  clearCell(idFarm: number, indexCell: number): void {
+    this.plantSeed(idFarm, indexCell, -1);
+  }
+
   /** doHervest @0x5d1548 — thu hoạch ô. */
   harvest(idFarm: number, indexCell: number): void {
     this.send(64, (m) => m.writer!.writeInt(idFarm).writeByte(indexCell));
