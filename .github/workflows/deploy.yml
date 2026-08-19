@@ -27,10 +27,12 @@ jobs:
           CLEAN_USER=$(echo "$RAW_USER" | tr -d '[:space:]')
           CLEAN_HOST=$(echo "$RAW_HOST" | tr -d '[:space:]')
           CLEAN_PORT=$(echo "$RAW_PORT" | tr -d '[:space:]')
+          CLEAN_PATH=$(echo "$DEPLOY_PATH" | tr -d '[:space:]')
 
           TARGET_USER="${CLEAN_USER:-dev_nguyentrunghieu}"
           TARGET_HOST="${CLEAN_HOST:-34.46.208.67}"
           TARGET_PORT="${CLEAN_PORT:-22}"
+          TARGET_DIR="${CLEAN_PATH:-/var/www/avatar-web}"
 
           echo "🚀 Đang kết nối tới máy chủ $TARGET_HOST với user $TARGET_USER qua cổng $TARGET_PORT..."
 
@@ -43,11 +45,14 @@ jobs:
           echo "🔑 Fingerprint chìa khóa SSH tại GitHub Runner:"
           ssh-keygen -lf ~/.ssh/deploy_key
 
+          echo "📋 Public Key tương ứng (cần thêm vào ~/.ssh/authorized_keys trên VPS nếu chưa có):"
+          ssh-keygen -y -f ~/.ssh/deploy_key
+
           # 3. Tự động nhận diện host key
           ssh-keyscan -p "$TARGET_PORT" "$TARGET_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
           # 4. Kết nối SSH và chạy script deploy
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p "$TARGET_PORT" "$TARGET_USER@$TARGET_HOST" << 'EOF'
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p "$TARGET_PORT" "$TARGET_USER@$TARGET_HOST" "TARGET_DIR='$TARGET_DIR' bash -s" << 'EOF'
             set -e
 
             echo "========================================="
@@ -55,7 +60,7 @@ jobs:
             echo "========================================="
 
             # 1. Điều hướng tới thư mục chứa dự án
-            TARGET_DIR="/var/www/avatar-web"
+            TARGET_DIR="${TARGET_DIR:-/var/www/avatar-web}"
             if [ ! -d "$TARGET_DIR" ]; then
               echo "❌ Thư mục $TARGET_DIR không tồn tại trên máy chủ!"
               exit 1
