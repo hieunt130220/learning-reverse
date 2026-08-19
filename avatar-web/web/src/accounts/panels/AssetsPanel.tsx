@@ -22,7 +22,7 @@ export function isCellRipe(c: FarmCell, trees: TreeInfo[]): boolean {
 }
 
 export function cellNeeds(c: FarmCell, trees: TreeInfo[]): string[] {
-  if (c.idTree === -1) return ['trống'];
+  if (c.idTree === -1 || c.time === -1) return ['trống'];
   const n: string[] = [];
   if (c.isArid) n.push('tưới');
   if (c.isGrass) n.push('cỏ');
@@ -66,8 +66,8 @@ function FarmSection({
   const [sel, setSel] = useState<FarmCell | null>(null);
   const treeName = (id: number) => trees.find((t) => t.id === id)?.name ?? `#${id}`;
 
-  const planted = farm?.cells.filter((c) => c.idTree !== -1).length ?? 0;
-  const ready = farm?.cells.filter((c) => c.idTree !== -1 && c.time === 0).length ?? 0;
+  const planted = farm?.cells.filter((c) => c.idTree !== -1 && c.time !== -1).length ?? 0;
+  const ready = farm?.cells.filter((c) => isCellRipe(c, trees)).length ?? 0;
   const care = farm?.cells.filter((c) => c.isArid || c.isGrass || c.isWorm).length ?? 0;
 
   return (
@@ -113,9 +113,10 @@ function FarmSection({
         <div className="grid">
           {farm.cells.map((c) => {
             const needs = cellNeeds(c, trees);
+            const isEmpty = c.idTree === -1 || c.time === -1;
             const cls = [
               'cell',
-              c.idTree === -1 ? 'empty' : '',
+              isEmpty ? 'empty' : '',
               isCellRipe(c, trees) ? 'ready' : '',
               c.isArid || c.isGrass || c.isWorm ? 'care' : '',
               sel?.index === c.index ? 'sel' : '',
@@ -125,7 +126,7 @@ function FarmSection({
             return (
               <button key={c.index} className={cls} onClick={() => setSel(c)} title={needs.join(', ')}>
                 <span className="idx">{c.index}</span>
-                {c.idTree !== -1 && <span className="tree">{treeName(c.idTree)}</span>}
+                {!isEmpty && <span className="tree">{treeName(c.idTree)}</span>}
               </button>
             );
           })}
@@ -134,8 +135,8 @@ function FarmSection({
 
       {sel && (
         <div className="cell-detail">
-          <b>Ô {sel.index}</b> — {sel.idTree === -1 ? 'trống' : treeName(sel.idTree)}
-          {sel.idTree !== -1 && (
+          <b>Ô {sel.index}</b> — {sel.idTree === -1 || sel.time === -1 ? 'trống' : treeName(sel.idTree)}
+          {sel.idTree !== -1 && sel.time !== -1 && (
             <>
               {' '}· đã trồng {sel.time} phút
               {(() => {
@@ -145,6 +146,9 @@ function FarmSection({
               {' '}· sức sống {sel.vitalityPer}% · thu hoạch {sel.hervestPer}%
               {sel.level !== undefined && ` · level ${sel.level}`}
             </>
+          )}
+          {sel.time === -1 && sel.idTree !== -1 && (
+            <span> (vừa thu hoạch {treeName(sel.idTree)})</span>
           )}
           <div className="hint">cần: {cellNeeds(sel, trees).join(', ') || 'không'}</div>
         </div>

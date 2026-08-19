@@ -36,8 +36,9 @@ describe('cellNeeds', () => {
     expect(cellNeeds(cell({ time: 2836 }), [LUA])).not.toContain('thu hoạch');
   });
 
-  it('ô vừa thu xong (time = -1) không báo thu hoạch nữa', () => {
+  it('ô vừa thu xong (time = -1) không báo thu hoạch nữa và báo cần trồng lại', () => {
     expect(cellNeeds(cell({ time: -1, hervestPer: 100 }), [LUA])).not.toContain('thu hoạch');
+    expect(cellNeeds(cell({ time: -1, hervestPer: 100 }), [LUA])).toEqual(['trống']);
   });
 
   it('chưa có bảng cây thì không đoán, chỉ tin hervestPer', () => {

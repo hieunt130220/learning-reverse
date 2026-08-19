@@ -427,8 +427,13 @@ export class AutoFarm extends EventEmitter {
       await this.refreshInventory();
       const idFarm = farm.idFarm;
 
+      const knownSeeds = new Set<number>([
+        ...DEFAULT_SEED_CATALOG.map((s) => s.id),
+        ...this.client.trees.map((tree) => tree.id),
+      ]);
       const plantingConfigured = cfg.seedId !== undefined
-        || cfg.treeCellPlan?.some((entry) => entry.action === 'seed') === true;
+        || cfg.treeCellPlan?.some((entry) => entry.action === 'seed') === true
+        || farm.cells.some((c) => c.idTree !== -1 && knownSeeds.has(c.idTree));
       // Thu hoạch cần bảng cây: điều kiện chín là `time >= growHours × 60`.
       // Với DEFAULT_SEED_CATALOG, các cây mặc định luôn có sẵn thông tin thời gian lớn.
       // fetchTreeCatalog chỉ cần nếu bật bán vật nuôi hoặc mua vật phẩm tự động.
@@ -538,10 +543,6 @@ export class AutoFarm extends EventEmitter {
       // Bản đồ kế hoạch ô và bộ hạt đã biết dùng chung cho cả bước mua bù lẫn
       // giai đoạn trồng — hai bước phải nhìn cùng một sự thật.
       const planByCell = new Map(cfg.treeCellPlan?.map((entry) => [entry.cellIndex, entry]));
-      const knownSeeds = new Set<number>([
-        ...DEFAULT_SEED_CATALOG.map((s) => s.id),
-        ...this.client.trees.map((tree) => tree.id),
-      ]);
       const need = new Map<number, number>();
       const want = (id: number, n = 1) => need.set(id, (need.get(id) ?? 0) + n);
 
@@ -582,20 +583,16 @@ export class AutoFarm extends EventEmitter {
         if (tree !== undefined) return tree.category !== 'premium';
         return XU_SEED_IDS.has(id);
       };
-      const plannedSeedsToStock = new Set<number>();
       for (const c of farm.cells) {
         const plan = planByCell.get(c.index);
-        const plannedSeedId = plan?.action === 'seed' ? plan.seedId : seedId;
+        const plannedSeedId = plan?.action === 'seed'
+          ? plan.seedId
+          : (seedId ?? (c.idTree !== -1 && knownSeeds.has(c.idTree) ? c.idTree : undefined));
         if (plan?.action === 'skip') continue;
         if (plannedSeedId === undefined || !knownSeeds.has(plannedSeedId)) continue;
         if (!seedBuyableWithXu(plannedSeedId)) continue;
         const willBeEmpty = c.idTree === -1 || isCellSpent(c) || (harvest && cellRipe(c));
-        if (willBeEmpty) plannedSeedsToStock.add(plannedSeedId);
-      }
-      // Kế hoạch cây dùng lâu dài: duy trì sẵn 99 hạt cho mỗi loại sắp trồng,
-      // thay vì chỉ mua đúng số ô của vòng hiện tại.
-      for (const plannedSeedId of plannedSeedsToStock) {
-        need.set(plannedSeedId, Math.max(need.get(plannedSeedId) ?? 0, 99));
+        if (willBeEmpty) want(plannedSeedId);
       }
 
       // --- Mua bù phần thiếu ----------------------------------------------
@@ -781,14 +778,14 @@ export class AutoFarm extends EventEmitter {
         if (this.aborted) return;
         const seen: string[] = [];
         const did: string[] = [];
+        const previousTreeId = c.idTree;
 
         if (harvest && cellRipe(c)) {
           this.client.farm.harvest(idFarm, c.index);
-          c.idTree = -1;
           sent += 1;
           // `hervestPer` thường là 0 kể cả trên ô chín, nên nói theo thời gian
           // lớn — số đó mới là căn cứ thật để quyết định thu.
-          const need = growHours.get(c.idTree);
+          const need = growHours.get(previousTreeId);
           seen.push(need === undefined ? `chín ${c.hervestPer}%` : `đủ tuổi ${c.time}/${need * 60} phút`);
           did.push('thu hoạch');
           await confirm(64, `thu hoạch ô ${c.index}`);
@@ -808,9 +805,11 @@ export class AutoFarm extends EventEmitter {
         }
         // Server keeps the harvested tree id and marks the cell as spent with
         // time=-1; treat both representations as available for replanting.
-        if (c.idTree === -1 || isCellSpent(c)) {
+        if (c.idTree === -1 || isCellSpent(c) || (harvest && cellRipe(c))) {
           const plan = planByCell.get(c.index);
-          const plannedSeedId = plan?.action === 'seed' ? plan.seedId : seedId;
+          const plannedSeedId = plan?.action === 'seed'
+            ? plan.seedId
+            : (seedId ?? (previousTreeId !== -1 && knownSeeds.has(previousTreeId) ? previousTreeId : undefined));
           if (plan?.action === 'skip') {
             seen.push('trống');
             did.push('bỏ qua theo kế hoạch');

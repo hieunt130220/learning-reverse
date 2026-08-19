@@ -126,15 +126,15 @@ export function QuestsPanel({
   const handleClaimReward = () => runAction(`/api/accounts/${accountId}/quests/daily/claim`, 'nhận thưởng nhiệm vụ');
   const handleClaimBox = () => runAction(`/api/accounts/${accountId}/quests/daily/box`, 'mở rương quà');
 
-  const completedDailyCount = daily?.missions.filter((m) => m.isDone).length ?? 0;
-  const totalDailyCount = daily?.missions.length ?? 0;
-  const canClaimAnyBox = daily?.boxes.some((b) => b.canClaim) ?? false;
+  const completedDailyCount = daily?.missions?.filter((m) => m.isDone).length ?? 0;
+  const totalDailyCount = daily?.missions?.length ?? 0;
+  const canClaimAnyBox = daily?.boxes?.some((b) => b.canClaim) ?? false;
 
-  const completedBeginnerCount = beginner?.conditions.filter((c) => c.isDone).length ?? 0;
-  const totalBeginnerCount = beginner?.conditions.length ?? 0;
+  const completedBeginnerCount = beginner?.conditions?.filter((c) => c.isDone).length ?? 0;
+  const totalBeginnerCount = beginner?.conditions?.length ?? 0;
 
-  const completedFarmerCount = farmer?.conditions.filter((c) => c.isDone).length ?? 0;
-  const totalFarmerCount = farmer?.conditions.length ?? 0;
+  const completedFarmerCount = farmer?.conditions?.filter((c) => c.isDone).length ?? 0;
+  const totalFarmerCount = farmer?.conditions?.length ?? 0;
 
   return (
     <section className="card drawer-panel quests-panel">
