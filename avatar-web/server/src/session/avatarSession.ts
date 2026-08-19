@@ -159,21 +159,26 @@ export class AvatarSession {
   getQuestOverview(): QuestOverviewState {
     const c = this.client;
     const daily = c?.dailyQuestState ?? null;
-    if (!daily && c && c.status === 'online') {
-      try {
-        c.farm.getDailyQuest(0);
-      } catch {
-        /* bỏ qua */
-      }
-    }
+    const beginner = c?.beginnerQuestState ?? null;
+    const farmer = c?.farmerQuestState ?? null;
+    const updatedAt = Math.max(
+      daily?.updatedAt ?? 0,
+      beginner?.updatedAt ?? 0,
+      farmer?.updatedAt ?? 0,
+    ) || Date.now();
+
     return {
       daily,
-      // Game không có packet “tân thủ” hoặc “nhiệm vụ chung”. Hai danh sách
-      // trước đây được dựng cứng từ state local nên gây hiểu nhầm là dữ liệu NPC.
-      beginner: [],
-      general: [],
-      updatedAt: daily?.updatedAt ?? Date.now(),
+      beginner,
+      farmer,
+      updatedAt,
     };
+  }
+
+  refreshProgressQuests(): void {
+    if (this.client?.status === 'online') {
+      void this.client.refreshProgressQuests();
+    }
   }
 
   private setWanted(wanted: boolean): void {

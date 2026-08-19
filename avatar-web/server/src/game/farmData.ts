@@ -1770,33 +1770,24 @@ export interface DailyQuestState {
   updatedAt: number;
 }
 
-export interface BeginnerQuest {
-  id: string;
-  title: string;
-  description: string;
-  category: 'farming' | 'cattle' | 'cooking' | 'social';
-  target: number;
-  current: number;
-  isDone: boolean;
-  rewardText: string;
-}
+import type {
+  ProgressQuestChain,
+  ProgressQuestCondition,
+  ProgressQuestReward,
+  ProgressQuestKind,
+} from './progressQuests.js';
 
-export interface GeneralQuest {
-  id: string;
-  title: string;
-  description: string;
-  category: 'land_upgrade' | 'storage' | 'barn_pond' | 'kitchen_slot';
-  level: number;
-  target: number;
-  current: number;
-  isDone: boolean;
-  rewardText: string;
-}
+export type {
+  ProgressQuestChain,
+  ProgressQuestCondition,
+  ProgressQuestReward,
+  ProgressQuestKind,
+};
 
 export interface QuestOverviewState {
   daily: DailyQuestState | null;
-  beginner: BeginnerQuest[];
-  general: GeneralQuest[];
+  beginner: ProgressQuestChain | null;
+  farmer: ProgressQuestChain | null;
   updatedAt: number;
 }
 
@@ -2132,144 +2123,4 @@ export function createEmptyDailyQuestState(): DailyQuestState {
   };
 }
 
-/**
- * Tạo danh sách nhiệm vụ tân thủ (Beginner Quests) với tiến độ được tính toán
- * từ trạng thái hiện tại của tài khoản nông trại.
- */
-export function buildBeginnerQuests(
-  farm?: FarmState | null,
-  inventory?: InventoryItem[],
-  produce?: InventoryItem[],
-  cooking?: CookingState | null,
-  metrics?: { farmLevel?: number; playerLevel?: number },
-): BeginnerQuest[] {
-  const numCells = farm?.cells.length ?? 0;
-  const numAnimals = farm?.animals.length ?? 0;
-  const numCookSlots = cooking?.numSlot ?? 0;
-  const farmLevel = metrics?.farmLevel ?? 1;
-  const totalProduce = (produce ?? []).reduce((acc, cur) => acc + cur.num, 0);
 
-  return [
-    {
-      id: 'bg_1',
-      title: 'Khai hoang mở đất',
-      description: 'Mở rộng nông trại đạt ít nhất 10 ô đất trồng',
-      category: 'farming',
-      target: 10,
-      current: Math.min(numCells, 10),
-      isDone: numCells >= 10,
-      rewardText: '500 Xu, 10 EXP',
-    },
-    {
-      id: 'bg_2',
-      title: 'Nông dân chăm chỉ',
-      description: 'Nâng cấp trang trại đạt cấp độ Farm level 3',
-      category: 'farming',
-      target: 3,
-      current: Math.min(farmLevel, 3),
-      isDone: farmLevel >= 3,
-      rewardText: '1.000 Xu, 20 EXP',
-    },
-    {
-      id: 'bg_3',
-      title: 'Mùa màng bội thu',
-      description: 'Thu hoạch và tích lũy ít nhất 50 nông sản trong kho',
-      category: 'farming',
-      target: 50,
-      current: Math.min(totalProduce, 50),
-      isDone: totalProduce >= 50,
-      rewardText: '1.200 Xu, 25 EXP',
-    },
-    {
-      id: 'bg_4',
-      title: 'Gầy dựng đàn vật nuôi',
-      description: 'Nuôi ít nhất 2 vật nuôi trong chuồng gia súc hoặc ao cá',
-      category: 'cattle',
-      target: 2,
-      current: Math.min(numAnimals, 2),
-      isDone: numAnimals >= 2,
-      rewardText: '1.500 Xu, 30 EXP',
-    },
-    {
-      id: 'bg_5',
-      title: 'Đầu bếp tập sự',
-      description: 'Mở khóa và sử dụng nhà bếp nông trại',
-      category: 'cooking',
-      target: 1,
-      current: numCookSlots > 0 ? 1 : 0,
-      isDone: numCookSlots > 0,
-      rewardText: '2.000 Xu, 1 Lượng khoá',
-    },
-  ];
-}
-
-/**
- * Tạo danh sách nhiệm vụ chung & thành tích (General Quests) phát triển nông trại.
- */
-export function buildGeneralQuests(
-  farm?: FarmState | null,
-  inventory?: InventoryItem[],
-  produce?: InventoryItem[],
-  cooking?: CookingState | null,
-  metrics?: { farmLevel?: number; playerLevel?: number },
-): GeneralQuest[] {
-  const cells = farm?.cells ?? [];
-  const upgradedCells = cells.filter((c) => (c.level ?? 0) > 0).length;
-  const cookingMissions = cooking?.missions ?? [];
-  const totalSlots = cells.length || 48;
-  const farmLevel = metrics?.farmLevel ?? 1;
-
-  const quests: GeneralQuest[] = [
-    {
-      id: 'gen_land_all',
-      title: 'Trang trại trù phú',
-      description: 'Khai khẩn toàn bộ 48 ô đất nông trại',
-      category: 'land_upgrade',
-      level: 1,
-      target: 48,
-      current: cells.length,
-      isDone: cells.length >= 48,
-      rewardText: 'Danh hiệu Nông Trại Trù Phú, 5.000 Xu',
-    },
-    {
-      id: 'gen_land_up',
-      title: 'Quy hoạch đất cấp cao',
-      description: 'Nâng cấp toàn bộ ô đất lên Đất Đỏ / Đất Cấp 2',
-      category: 'land_upgrade',
-      level: 2,
-      target: totalSlots,
-      current: upgradedCells,
-      isDone: totalSlots > 0 && upgradedCells >= totalSlots,
-      rewardText: 'Tăng 20% tốc độ phát triển cây trồng',
-    },
-    {
-      id: 'gen_farm_master',
-      title: 'Đại gia nông nghiệp',
-      description: 'Đạt cấp độ nông trại Farm level 10',
-      category: 'storage',
-      level: 1,
-      target: 10,
-      current: Math.min(farmLevel, 10),
-      isDone: farmLevel >= 10,
-      rewardText: '10.000 Xu, 5 Lượng khoá',
-    },
-  ];
-
-  // Tích hợp tiến độ nhiệm vụ mở ô bếp Master nếu có
-  if (cookingMissions.length > 0) {
-    const doneCount = cookingMissions.filter((m) => m.isDone).length;
-    quests.push({
-      id: 'gen_kitchen_master',
-      title: 'Thử thách Bếp trưởng Master',
-      description: `Nấu hoàn thành các công thức món ăn để mở ô bếp cuối cùng (${doneCount}/${cookingMissions.length} món)`,
-      category: 'kitchen_slot',
-      level: 1,
-      target: cookingMissions.length,
-      current: doneCount,
-      isDone: doneCount >= cookingMissions.length,
-      rewardText: 'Mở vĩnh viễn Ô Bếp Master thứ 6',
-    });
-  }
-
-  return quests;
-}

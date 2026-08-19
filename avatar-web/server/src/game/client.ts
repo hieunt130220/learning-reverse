@@ -29,6 +29,13 @@ import {
   type ItemInfo,
   type TreeInfo,
 } from './farmData.js';
+import {
+  decodeProgressQuestPacket,
+  parseQuestDialogText,
+  type ProgressQuestChain,
+  type ProgressQuestMapping,
+  DEFAULT_PROGRESS_QUEST_MAPPINGS,
+} from './progressQuests.js';
 import { FarmService } from './farmService.js';
 import { cmdName } from './opcodes.js';
 
@@ -143,6 +150,12 @@ export class GameClient extends EventEmitter {
   cookingState?: CookingState;
   /** Trạng thái nhiệm vụ hàng ngày (cmd -87 sub 2). */
   dailyQuestState: DailyQuestState | null = null;
+  /** Trạng thái nhiệm vụ tân thủ (cmd 104). */
+  beginnerQuestState: ProgressQuestChain | null = null;
+  /** Trạng thái nhiệm vụ nhà nông (cmd 104). */
+  farmerQuestState: ProgressQuestChain | null = null;
+  /** Danh sách mapping giải mã tiến trình nhiệm vụ. */
+  progressQuestMappings: readonly ProgressQuestMapping[] = DEFAULT_PROGRESS_QUEST_MAPPINGS;
   /** Số dư xu, cập nhật từ UPDATE_MONEY (-3), type 1. */
   money?: number;
   /** Số dư lượng mở, cập nhật từ UPDATE_MONEY (-3). */
@@ -459,6 +472,38 @@ export class GameClient extends EventEmitter {
     this.farm.claimDailyQuestBox();
   }
 
+  private lastProgressRefreshAt = 0;
+
+  /** Làm mới chuỗi nhiệm vụ tiến trình (Tân Thủ và Nhà Nông) từ game qua Cmd 104 & NPC Lái buôn. */
+  async refreshProgressQuests(force = false): Promise<void> {
+    if (this.status !== 'online') {
+      this.emit('log', `không thể làm mới nhiệm vụ: client ${this.status}`);
+      return;
+    }
+    const now = Date.now();
+    if (!force && now - this.lastProgressRefreshAt < 5000) {
+      return;
+    }
+    this.lastProgressRefreshAt = now;
+    try {
+      this.emit('log', 'gửi yêu cầu lấy nhiệm vụ tiến trình & tương tác NPC Lái buôn...');
+      // 1. Tương tác với NPC Lái buôn trong nông trại (id -1) để lấy dialog nhiệm vụ
+      this.farm.communicate(-1);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      this.farm.doMenuOption(-1, 0, 0);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      this.farm.doMenuOption(-1, 1, 0);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // 2. Gửi các gói UpgradeFarm tiến trình
+      this.farm.getInfoUpgradeFarm(1);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      this.farm.getInfoUpgradeFarm(5);
+    } catch (err) {
+      this.emit('log', `làm mới nhiệm vụ tiến trình lỗi: ${(err as Error).message}`);
+    }
+  }
+
   private onMessage(msg: Message): void {
     this.lastRxAt = Date.now();
     this.lastPacket.set(msg.command, msg.getData().toString('hex'));
@@ -514,7 +559,7 @@ export class GameClient extends EventEmitter {
       case -37: // VERSION — server báo sai phiên bản
         this.emit('log', `server trả VERSION: ${safeUtf(msg)}`);
         break;
-      case -40: { // hộp thoại thông báo chung của server (lỗi login, giục update…)
+      case -40: { // hộp thoại thông báo chung của server (lỗi login, nhiệm vụ NPC, giục update…)
         const reason = safeUtf(msg);
         this.emit('log', `server: ${reason}`);
         this.emit('dialog', reason);
@@ -523,6 +568,49 @@ export class GameClient extends EventEmitter {
         }
         const rejection = parseTemporaryLoginRejection(reason);
         if (rejection) this.emit('temporary-rejection', rejection);
+
+        const questState = parseQuestDialogText(reason);
+        if (questState) {
+          if (questState.kind === 'beginner') {
+            this.beginnerQuestState = questState;
+            this.emit(
+              'log',
+              `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+            );
+          } else if (questState.kind === 'farmer') {
+            this.farmerQuestState = questState;
+            this.emit(
+              'log',
+              `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+            );
+          }
+          this.emit('quests', this.dailyQuestState);
+        }
+        break;
+      }
+      case -88: { // LETTER / TEXT_POPUP (@0x5e99c4)
+        try {
+          const reason = safeUtf(msg);
+          const questState = parseQuestDialogText(reason);
+          if (questState) {
+            if (questState.kind === 'beginner') {
+              this.beginnerQuestState = questState;
+              this.emit(
+                'log',
+                `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+              );
+            } else if (questState.kind === 'farmer') {
+              this.farmerQuestState = questState;
+              this.emit(
+                'log',
+                `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+              );
+            }
+            this.emit('quests', this.dailyQuestState);
+          }
+        } catch {
+          /* bỏ qua */
+        }
         break;
       }
       case -87: {
@@ -620,6 +708,37 @@ export class GameClient extends EventEmitter {
           this.emit('farm', this.farmState);
         }
         this.emit('log', `ô ${cell.index} cập nhật: hạn=${cell.isArid} cỏ=${cell.isGrass} sâu=${cell.isWorm}`);
+        break;
+      }
+      case 104: {
+        // OPEN_INFO_FARM — thông tin chuỗi nhiệm vụ tiến trình (Tân Thủ / Nhà Nông)
+        try {
+          const data = msg.getData();
+          this.emit('log', `nhận gói 104: length=${data.length}, hex=${data.toString('hex')}`);
+          const res = decodeProgressQuestPacket(data, this.progressQuestMappings);
+          if (res.status === 'ok') {
+            if (res.state.kind === 'beginner') {
+              this.beginnerQuestState = res.state;
+              this.emit(
+                'log',
+                `cập nhật ${res.state.title}: ${res.state.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+              );
+            } else if (res.state.kind === 'farmer') {
+              this.farmerQuestState = res.state;
+              this.emit(
+                'log',
+                `cập nhật ${res.state.title}: ${res.state.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+              );
+            }
+            this.emit('quests');
+          } else if (res.status === 'unsupported') {
+            this.emit('log', `gói 104 chưa hỗ trợ: ${res.reason} (hex=${res.remainingHex})`);
+          } else if (res.status === 'ignored') {
+            this.emit('log', `gói 104 bị bỏ qua do action=${res.action}`);
+          }
+        } catch (err) {
+          this.emit('log', `giải mã gói 104 lỗi: ${(err as Error).message}`);
+        }
         break;
       }
       case -94: {

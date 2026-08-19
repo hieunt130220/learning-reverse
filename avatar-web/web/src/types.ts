@@ -157,33 +157,38 @@ export interface DailyQuestState {
   updatedAt: number;
 }
 
-export interface BeginnerQuest {
-  id: string;
-  title: string;
-  description: string;
-  category: 'farming' | 'cattle' | 'cooking' | 'social';
-  target: number;
+export type ProgressQuestKind = 'beginner' | 'farmer';
+
+export interface ProgressQuestCondition {
+  name: string;
   current: number;
+  total: number;
   isDone: boolean;
-  rewardText: string;
 }
 
-export interface GeneralQuest {
-  id: string;
+export interface ProgressQuestReward {
+  type: number;
+  amount: number;
+  value: number;
+  extra?: number;
+  displayName?: string;
+}
+
+export interface ProgressQuestChain {
+  kind: ProgressQuestKind;
+  screenType: number;
   title: string;
-  description: string;
-  category: 'land_upgrade' | 'storage' | 'barn_pond' | 'kitchen_slot';
-  level: number;
-  target: number;
-  current: number;
-  isDone: boolean;
-  rewardText: string;
+  step: number | null;
+  conditions: ProgressQuestCondition[];
+  rewards: ProgressQuestReward[];
+  source: 'game-packet';
+  updatedAt: number;
 }
 
 export interface QuestOverviewState {
   daily: DailyQuestState | null;
-  beginner: BeginnerQuest[];
-  general: GeneralQuest[];
+  beginner: ProgressQuestChain | null;
+  farmer: ProgressQuestChain | null;
   updatedAt: number;
 }
 

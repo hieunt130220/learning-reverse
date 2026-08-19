@@ -42,8 +42,27 @@ export class FarmService {
   }
 
   /** getInfoUpgradeFarm @0x5d405c */
-  getInfoUpgradeFarm(type: number, step: number): void {
-    this.send(104, (m) => m.writer!.writeByte(type).writeByte(step));
+  getInfoUpgradeFarm(type: number, idType = -1): void {
+    this.send(104, (m) => {
+      m.writer!.writeByte(type);
+      if (idType !== -1) {
+        m.writer!.writeByte(idType);
+      }
+    });
+  }
+
+  /** doCommunicate @0x69d070 — tương tác với NPC / Avatar trên bản đồ (ví dụ NPC Lái buôn = -1). */
+  communicate(idUser: number): void {
+    this.send(-59, (m) => m.writer!.writeInt(idUser));
+  }
+
+  /** doMenuOption @0x69c8b0 — chọn mục menu của NPC (ví dụ mục Nhiệm vụ = 1 hoặc 0). */
+  doMenuOption(idUser: number, menuIndex: number, subIndex = -1): void {
+    this.send(-61, (m) => {
+      m.writer!.writeInt(idUser);
+      m.writer!.writeByte(menuIndex);
+      m.writer!.writeByte(subIndex);
+    });
   }
 
   // ---- thao tác trên ô đất ----------------------------------------------

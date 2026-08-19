@@ -709,49 +709,67 @@ button.ghost {
   border-radius: 12px;
 }
 
-.quests-tabs {
+.quests-tabs-nav {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   background: #161b22;
-  padding: 3px;
-  border-radius: 6px;
+  padding: 4px;
+  border-radius: 8px;
   border: 1px solid var(--line);
 }
 
-.quests-tab {
+.quests-tab-btn {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 7px 10px;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: all 0.15s ease;
 }
 
-.quests-tab:hover {
+.quests-tab-btn:hover {
   color: var(--fg);
   background: rgba(255, 255, 255, 0.05);
 }
 
-.quests-tab--active {
+.quests-tab-btn.active {
   background: #21262d;
   color: #fff;
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
+.tab-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+}
+
+.tab-badge--done {
+  background: rgba(63, 185, 80, 0.25);
+  color: #3fb950;
+  font-weight: 700;
+}
+
 .tab-pill {
   font-size: 10px;
-  padding: 1px 5px;
+  padding: 1px 6px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
+}
+
+.tab-pill.pill-done {
+  background: rgba(63, 185, 80, 0.2);
+  color: #3fb950;
 }
 
 .quests-tab-content {
@@ -1029,6 +1047,54 @@ button.ghost {
 
 .btn-change-quest {
   font-size: 11px;
+}
+
+/* Progress Quests (Tân Thủ & Nhà Nông) */
+.progress-quest-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.progress-quest-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-quest-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-quest-title h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.badge--step {
+  font-size: 11px;
+  padding: 1px 6px;
+  background: rgba(88, 166, 255, 0.15);
+  color: #58a6ff;
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 8px;
+}
+
+.progress-quest-conditions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reward-pill--progress {
+  color: #ffd700;
+  background: rgba(255, 215, 0, 0.1);
+  border: 1px solid rgba(255, 215, 0, 0.25);
 }
 
 /* Quest Cards for Beginner & General */

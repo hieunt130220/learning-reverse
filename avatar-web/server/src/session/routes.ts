@@ -269,12 +269,21 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
       if (!sess) {
         return res.json({
           daily: null,
-          beginner: [],
-          general: [],
+          beginner: null,
+          farmer: null,
           updatedAt: Date.now(),
         });
       }
       res.json(sess.getQuestOverview());
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post('/:id/quests/progress/refresh', owned, (req, res) => {
+    try {
+      sessions.require(accountId(req)).refreshProgressQuests();
+      res.json({ ok: true });
     } catch (err) {
       fail(res, err);
     }
