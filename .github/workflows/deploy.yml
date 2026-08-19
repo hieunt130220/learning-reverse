@@ -39,8 +39,42 @@ jobs:
           # 2. Khởi tạo và kiểm tra Private SSH Key
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf "%s\n" "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+
+          if [ -z "$SSH_KEY" ]; then
+            echo "❌ ERROR: Secret SERVER_SSH_KEY đang rỗng hoặc chưa được khai báo trong GitHub Repository Secrets!"
+            echo "👉 Vui lòng vào Repository Settings -> Secrets and variables -> Actions -> kiểm tra lại SERVER_SSH_KEY."
+            exit 1
+          fi
+
+          KEY_CONTENT="$SSH_KEY"
+          # Tự động chuyển đổi nếu secret bị dán dưới dạng literal \n
+          if echo "$KEY_CONTENT" | grep -q '\\n'; then
+            echo "ℹ️ Phát hiện literal \n trong secret, đang tự động format lại..."
+            KEY_CONTENT=$(printf "%b" "$KEY_CONTENT")
+          fi
+
+          printf "%s\n" "$KEY_CONTENT" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+
+          # Kiểm tra tính hợp lệ của Private SSH Key
+          if ! ssh-keygen -lf ~/.ssh/deploy_key > /dev/null 2>&1; then
+            echo "❌ ERROR: Secret SERVER_SSH_KEY không phải là Private SSH Key hợp lệ!"
+            echo "=========================================================================="
+            echo "⚠️ HƯỚNG DẪN KHẮC PHỤC:"
+            echo "1. Bạn có thể đã dán nhầm PUBLIC KEY (bắt đầu bằng ssh-ed25519 hoặc ssh-rsa)."
+            echo "   -> Secret SERVER_SSH_KEY PHẢI là PRIVATE KEY, bắt đầu bằng:"
+            echo "      -----BEGIN OPENSSH PRIVATE KEY-----"
+            echo "      hoặc"
+            echo "      -----BEGIN RSA PRIVATE KEY-----"
+            echo "   -> và kết thúc bằng:"
+            echo "      -----END OPENSSH PRIVATE KEY-----"
+            echo "      hoặc"
+            echo "      -----END RSA PRIVATE KEY-----"
+            echo "2. Hãy copy toàn bộ file private key (ví dụ: ~/.ssh/id_ed25519 hoặc ~/deploy_key)"
+            echo "   và dán lại vào GitHub Secret SERVER_SSH_KEY."
+            echo "=========================================================================="
+            exit 1
+          fi
 
           echo "🔑 Fingerprint chìa khóa SSH tại GitHub Runner:"
           ssh-keygen -lf ~/.ssh/deploy_key
