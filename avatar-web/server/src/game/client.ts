@@ -35,6 +35,8 @@ import {
   type ProgressQuestChain,
   type ProgressQuestMapping,
   DEFAULT_PROGRESS_QUEST_MAPPINGS,
+  DEFAULT_BEGINNER_QUEST_STATE,
+  DEFAULT_FARMER_QUEST_STATE,
 } from './progressQuests.js';
 import { FarmService } from './farmService.js';
 import { cmdName } from './opcodes.js';
@@ -150,10 +152,10 @@ export class GameClient extends EventEmitter {
   cookingState?: CookingState;
   /** Trạng thái nhiệm vụ hàng ngày (cmd -87 sub 2). */
   dailyQuestState: DailyQuestState | null = null;
-  /** Trạng thái nhiệm vụ tân thủ (cmd 104). */
-  beginnerQuestState: ProgressQuestChain | null = null;
-  /** Trạng thái nhiệm vụ nhà nông (cmd 104). */
-  farmerQuestState: ProgressQuestChain | null = null;
+  /** Trạng thái nhiệm vụ tân thủ (cmd 104 / dialog NPC). */
+  beginnerQuestState: ProgressQuestChain | null = DEFAULT_BEGINNER_QUEST_STATE;
+  /** Trạng thái nhiệm vụ nhà nông (cmd 104 / dialog NPC). */
+  farmerQuestState: ProgressQuestChain | null = DEFAULT_FARMER_QUEST_STATE;
   /** Danh sách mapping giải mã tiến trình nhiệm vụ. */
   progressQuestMappings: readonly ProgressQuestMapping[] = DEFAULT_PROGRESS_QUEST_MAPPINGS;
   /** Số dư xu, cập nhật từ UPDATE_MONEY (-3), type 1. */
@@ -481,21 +483,31 @@ export class GameClient extends EventEmitter {
       return;
     }
     const now = Date.now();
-    if (!force && now - this.lastProgressRefreshAt < 5000) {
+    if (!force && now - this.lastProgressRefreshAt < 2000) {
       return;
     }
     this.lastProgressRefreshAt = now;
     try {
       this.emit('log', 'gửi yêu cầu lấy nhiệm vụ tiến trình & tương tác NPC Lái buôn...');
-      // 1. Tương tác với NPC Lái buôn trong nông trại (id -1) để lấy dialog nhiệm vụ
-      this.farm.communicate(-1);
+
+      // 1. Gửi các gói UpgradeFarm tiến trình Tân Thủ (3, 1) và Nhà Nông (3, 0)
+      this.farm.getInfoUpgradeFarm(3, 1);
       await new Promise((resolve) => setTimeout(resolve, 200));
-      this.farm.doMenuOption(-1, 0, 0);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      this.farm.doMenuOption(-1, 1, 0);
+      this.farm.getInfoUpgradeFarm(3, 0);
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      // 2. Gửi các gói UpgradeFarm tiến trình
+      // 2. Tương tác với NPC Lái buôn trong nông trại (id -1) để lấy dialog nhiệm vụ
+      this.farm.communicate(-1);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      this.farm.doMenuOption(-1, 0, 1); // Menu option 1: Nhiệm Vụ Tân Thủ
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      this.farm.communicate(-1);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      this.farm.doMenuOption(-1, 0, 0); // Menu option 0: Nhiệm Vụ Nhà Nông
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // 3. Gửi các gói UpgradeFarm tiến trình
       this.farm.getInfoUpgradeFarm(1);
       await new Promise((resolve) => setTimeout(resolve, 200));
       this.farm.getInfoUpgradeFarm(5);
@@ -559,6 +571,35 @@ export class GameClient extends EventEmitter {
       case -37: // VERSION — server báo sai phiên bản
         this.emit('log', `server trả VERSION: ${safeUtf(msg)}`);
         break;
+      case -38: // SERVER_INFO
+      case -39: // SERVER_MESSAGE
+      case -70: // TEXT_BOX
+      case -77: { // CUSTOM_POPUP
+        try {
+          const reason = safeUtf(msg);
+          this.emit('log', `server (${msg.command}): ${reason}`);
+          const questState = parseQuestDialogText(reason);
+          if (questState) {
+            if (questState.kind === 'beginner') {
+              this.beginnerQuestState = questState;
+              this.emit(
+                'log',
+                `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+              );
+            } else if (questState.kind === 'farmer') {
+              this.farmerQuestState = questState;
+              this.emit(
+                'log',
+                `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+              );
+            }
+            this.emit('quests');
+          }
+        } catch {
+          /* bỏ qua */
+        }
+        break;
+      }
       case -40: { // hộp thoại thông báo chung của server (lỗi login, nhiệm vụ NPC, giục update…)
         const reason = safeUtf(msg);
         this.emit('log', `server: ${reason}`);
@@ -584,7 +625,7 @@ export class GameClient extends EventEmitter {
               `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
             );
           }
-          this.emit('quests', this.dailyQuestState);
+          this.emit('quests');
         }
         break;
       }
@@ -606,7 +647,7 @@ export class GameClient extends EventEmitter {
                 `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
               );
             }
-            this.emit('quests', this.dailyQuestState);
+            this.emit('quests');
           }
         } catch {
           /* bỏ qua */

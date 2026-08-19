@@ -84,6 +84,21 @@ export function QuestsPanel({
     }
   };
 
+  useEffect(() => {
+    if (activeTab === 'beginner' && !beginner && !busy) {
+      void apiPost(`/api/accounts/${accountId}/quests/progress/refresh`).then(() => {
+        [600, 1500, 3000].forEach((delay) => {
+          setTimeout(async () => {
+            try {
+              const res = await apiGet<QuestOverviewState>(`/api/accounts/${accountId}/quests`);
+              if (res) setLocalQuests(res);
+            } catch {}
+          }, delay);
+        });
+      }).catch(() => {});
+    }
+  }, [activeTab, accountId, beginner, busy]);
+
   const handleRefreshDaily = () => runAction(`/api/accounts/${accountId}/quests/daily/refresh`, 'làm mới nhiệm vụ ngày');
   const handleRefreshProgress = async () => {
     try {
@@ -93,12 +108,14 @@ export function QuestsPanel({
       await apiPost(`/api/accounts/${accountId}/quests/progress/refresh`);
       setStatusMsg('Đã gửi yêu cầu tải nhiệm vụ!');
       setTimeout(() => setStatusMsg(null), 3000);
-      setTimeout(async () => {
-        try {
-          const res = await apiGet<QuestOverviewState>(`/api/accounts/${accountId}/quests`);
-          if (res) setLocalQuests(res);
-        } catch {}
-      }, 1000);
+      [500, 1200, 2500].forEach((delay) => {
+        setTimeout(async () => {
+          try {
+            const res = await apiGet<QuestOverviewState>(`/api/accounts/${accountId}/quests`);
+            if (res) setLocalQuests(res);
+          } catch {}
+        }, delay);
+      });
     } catch (err) {
       setErrorMsg((err as Error).message);
     } finally {

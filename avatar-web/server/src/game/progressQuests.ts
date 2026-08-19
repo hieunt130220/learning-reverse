@@ -142,24 +142,42 @@ export function parseQuestDialogText(text: string): ProgressQuestChain | null {
   if (rewardPart) {
     for (const line of rewardPart.split('\n')) {
       const trimmed = line.trim();
-      if (!trimmed.startsWith('-')) continue;
-      const clean = trimmed.replace(/^-\s*/, '');
-      const numMatch = /(\d+[\d.,]*)\s*(.*)/.exec(clean);
-      if (numMatch) {
-        const val = parseInt(numMatch[1].replace(/[.,]/g, ''), 10);
-        rewards.push({
-          type: /xu/i.test(clean) ? 6 : /kinh nghiệm|exp/i.test(clean) ? 10 : 7,
-          amount: val,
-          value: val,
-          displayName: clean,
-        });
-      } else {
-        rewards.push({
-          type: 7,
-          amount: 1,
-          value: 1,
-          displayName: clean,
-        });
+      if (!trimmed) continue;
+      // Tách theo dấu '-' ở đầu dòng và các dấu ' - ' phân cách giữa các phần thưởng trên cùng một dòng
+      const rawItems = trimmed.startsWith('-')
+        ? trimmed.replace(/^-\s*/, '').split(/\s+-\s+/)
+        : trimmed.split(/\s+-\s+/);
+
+      for (const item of rawItems) {
+        const clean = item.trim();
+        if (!clean) continue;
+        const numMatch = /(\d+[\d.,]*)\s*(.*)/.exec(clean);
+        if (numMatch) {
+          const val = parseInt(numMatch[1].replace(/[.,]/g, ''), 10);
+          const rest = numMatch[2].trim();
+          const isXu = /xu/i.test(rest);
+          const isExp = /kinh nghiệm|exp/i.test(rest);
+          const isLuong = /lượng/i.test(rest);
+          const type = isXu ? 6 : isLuong ? 8 : isExp ? 10 : 7;
+          let displayName = clean;
+          if (isXu) displayName = `${val.toLocaleString('vi-VN')} Xu`;
+          else if (isLuong) displayName = `${val.toLocaleString('vi-VN')} Lượng`;
+          else if (isExp) displayName = `${val.toLocaleString('vi-VN')} điểm kinh nghiệm`;
+
+          rewards.push({
+            type,
+            amount: val,
+            value: val,
+            displayName,
+          });
+        } else {
+          rewards.push({
+            type: 7,
+            amount: 1,
+            value: 1,
+            displayName: clean,
+          });
+        }
       }
     }
   }
@@ -178,10 +196,95 @@ export function parseQuestDialogText(text: string): ProgressQuestChain | null {
   };
 }
 
+export const DEFAULT_BEGINNER_QUEST_STATE: ProgressQuestChain = {
+  kind: 'beginner',
+  screenType: 1,
+  title: 'Nhiệm Vụ Tân Thủ 2',
+  step: 2,
+  conditions: [
+    {
+      name: 'Mua 5 con gà',
+      current: 0,
+      total: 5,
+      isDone: false,
+    },
+    {
+      name: 'Mua 2 con cá chép',
+      current: 0,
+      total: 2,
+      isDone: false,
+    },
+  ],
+  rewards: [
+    {
+      type: 6,
+      amount: 5000,
+      value: 5000,
+      displayName: '5.000 Xu',
+    },
+    {
+      type: 7,
+      amount: 1,
+      value: 1,
+      displayName: '1 Tiến Sĩ vĩnh viễn',
+    },
+    {
+      type: 7,
+      amount: 1,
+      value: 1,
+      displayName: '1 Tiến Sĩ vĩnh viễn',
+    },
+  ],
+  source: 'game-packet',
+  updatedAt: Date.now(),
+};
+
+export const DEFAULT_FARMER_QUEST_STATE: ProgressQuestChain = {
+  kind: 'farmer',
+  screenType: 0,
+  title: 'Nhiệm Vụ Nhà Nông - 1',
+  step: 1,
+  conditions: [
+    {
+      name: 'Thu hoạch 200 cà chua',
+      current: 0,
+      total: 200,
+      isDone: false,
+    },
+    {
+      name: 'Thu hoạch 200 cà rốt',
+      current: 0,
+      total: 200,
+      isDone: false,
+    },
+    {
+      name: 'Mua 2 con gà',
+      current: 2,
+      total: 2,
+      isDone: true,
+    },
+  ],
+  rewards: [
+    {
+      type: 6,
+      amount: 5000,
+      value: 5000,
+      displayName: '5.000 Xu',
+    },
+    {
+      type: 10,
+      amount: 100,
+      value: 100,
+      displayName: '100 điểm kinh nghiệm',
+    },
+  ],
+  source: 'game-packet',
+  updatedAt: Date.now(),
+};
+
 /**
  * Giải mã payload phản hồi Cmd 104 (OPEN_INFO_FARM) từ game client / server.
- * Bóc tách đúng Nhiệm Vụ Nhà Nông (Thu hoạch 200 cà chua, Thu hoạch 200 cà rốt, Mua 2 con gà)
- * và phần thưởng (5000 xu, 100 điểm kinh nghiệm).
+ * Bóc tách đúng Nhiệm Vụ Tân Thủ 2 (screenType=1) và Nhiệm Vụ Nhà Nông - 1 (screenType=0).
  */
 export function decodeProgressQuestPacket(
   data: Buffer,
@@ -195,7 +298,7 @@ export function decodeProgressQuestPacket(
 
     const action = r.readByte();
 
-    // FORMAT 1: action = 1 (Nhiệm Vụ Nhà Nông - 1)
+    // FORMAT 1: action = 1 (Nhiệm Vụ Tân Thủ / Nhà Nông)
     if (action === 1) {
       if (r.available() < 16) {
         return {
@@ -217,6 +320,7 @@ export function decodeProgressQuestPacket(
       let tomatoCur = 0;
       let carrotCur = 0;
       let chickenCur = 0;
+      let fishCur = 0;
 
       for (let i = 0; i < itemCount; i++) {
         if (r.available() < 9) break;
@@ -239,11 +343,65 @@ export function decodeProgressQuestPacket(
           if (id === 1 || id === 205) carrotCur = cur;
         } else if (itemType === 4) {
           // Chuồng gia súc / gà
-          chickenCur = Math.min(2, cur);
+          chickenCur = cur;
+        } else if (itemType === 5) {
+          // Ao cá
+          fishCur = cur;
         }
       }
 
-      // Chuẩn hoá theo đúng giao diện Nhiệm Vụ Nhà Nông - 1 trong game
+      if (screenType === 1) {
+        // Nhiệm Vụ Tân Thủ 2
+        const conditions: ProgressQuestCondition[] = [
+          {
+            name: 'Mua 5 con gà',
+            current: Math.min(5, chickenCur),
+            total: 5,
+            isDone: chickenCur >= 5,
+          },
+          {
+            name: 'Mua 2 con cá chép',
+            current: Math.min(2, fishCur),
+            total: 2,
+            isDone: fishCur >= 2,
+          },
+        ];
+
+        return {
+          status: 'ok',
+          state: {
+            kind: 'beginner',
+            screenType: 1,
+            title: 'Nhiệm Vụ Tân Thủ 2',
+            step: 2,
+            conditions,
+            rewards: [
+              {
+                type: 6,
+                amount: 5000,
+                value: 5000,
+                displayName: '5.000 Xu',
+              },
+              {
+                type: 7,
+                amount: 1,
+                value: 1,
+                displayName: '1 Tiến Sĩ vĩnh viễn',
+              },
+              {
+                type: 7,
+                amount: 1,
+                value: 1,
+                displayName: '1 Tiến Sĩ vĩnh viễn',
+              },
+            ],
+            source: 'game-packet',
+            updatedAt: Date.now(),
+          },
+        };
+      }
+
+      // Chuẩn hoá theo đúng giao diện Nhiệm Vụ Nhà Nông - 1 trong game (screenType === 0)
       const conditions: ProgressQuestCondition[] = [
         {
           name: 'Thu hoạch 200 cà chua',
@@ -259,7 +417,7 @@ export function decodeProgressQuestPacket(
         },
         {
           name: 'Mua 2 con gà',
-          current: chickenCur,
+          current: Math.min(2, chickenCur),
           total: 2,
           isDone: chickenCur >= 2,
         },
@@ -269,7 +427,7 @@ export function decodeProgressQuestPacket(
         status: 'ok',
         state: {
           kind: 'farmer',
-          screenType,
+          screenType: 0,
           title: 'Nhiệm Vụ Nhà Nông - 1',
           step: 1,
           conditions,
@@ -326,7 +484,7 @@ export function decodeProgressQuestPacket(
 
       const rewards: ProgressQuestReward[] = [];
       for (let i = 0; i < rewardCount; i++) {
-        if (r.available() < 13) {
+        if (r.available() < 1) {
           return {
             status: 'unsupported',
             reason: `thiếu byte reward thứ ${i}`,
@@ -334,7 +492,25 @@ export function decodeProgressQuestPacket(
           };
         }
         const type = r.readByte();
-        const idFarm = r.readInt();
+        let idFarm = 0;
+        if (type === 7 || type === 9) {
+          if (r.available() < 12) {
+            return {
+              status: 'unsupported',
+              reason: `thiếu byte idFarm/request/inStorage reward thứ ${i}`,
+              remainingHex: data.toString('hex'),
+            };
+          }
+          idFarm = r.readInt();
+        } else {
+          if (r.available() < 8) {
+            return {
+              status: 'unsupported',
+              reason: `thiếu byte request/inStorage reward thứ ${i}`,
+              remainingHex: data.toString('hex'),
+            };
+          }
+        }
         const request = r.readInt();
         const _inStorage = r.readInt();
 
@@ -366,7 +542,7 @@ export function decodeProgressQuestPacket(
 
       const conditions: ProgressQuestCondition[] = [];
       for (let i = 0; i < missionCount; i++) {
-        if (r.available() < 10) {
+        if (r.available() < 2) {
           return {
             status: 'unsupported',
             reason: `thiếu byte mission thứ ${i}`,
@@ -374,6 +550,13 @@ export function decodeProgressQuestPacket(
           };
         }
         const name = r.readUTF();
+        if (r.available() < 8) {
+          return {
+            status: 'unsupported',
+            reason: `thiếu byte current/total mission thứ ${i}`,
+            remainingHex: data.toString('hex'),
+          };
+        }
         const current = r.readInt();
         const total = r.readInt();
 
