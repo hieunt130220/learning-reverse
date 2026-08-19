@@ -36,31 +36,35 @@ jobs:
 
           echo "🚀 Đang kết nối tới máy chủ $TARGET_HOST với user $TARGET_USER qua cổng $TARGET_PORT..."
 
-          # 2. Khởi tạo và ghi trực tiếp Private SSH Key
+          # 2. Khởi tạo và kiểm tra Private SSH Key từ Secret
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          printf "%s\n" \
-            "-----BEGIN OPENSSH PRIVATE KEY-----" \
-            "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW" \
-            "QyNTUxOQAAACCFuBXBgZz5Hxaloqjn2SybL83nU8qWjgeU2UKFa/lwywAAAJit1025rddN" \
-            "uQAAAAtzc2gtZWQyNTUxOQAAACCFuBXBgZz5Hxaloqjn2SybL83nU8qWjgeU2UKFa/lwyw" \
-            "AAAECCf4TCednrLS85befY+c+Rvx4VX5X43+UL3PhYkDshwoW4FcGBnPkfFqWiqOfZLJsv" \
-            "zedTypaOB5TZQoVr+XDLAAAAFWdpdGh1Yi1hY3Rpb25zLWRlcGxveQ==" \
-            "-----END OPENSSH PRIVATE KEY-----" > ~/.ssh/deploy_key
+          if [ -z "$SSH_KEY" ]; then
+            echo "❌ ERROR: Secret SERVER_SSH_KEY đang rỗng hoặc chưa được khai báo trong GitHub Repository Secrets!"
+            exit 1
+          fi
 
+          KEY_CONTENT="$SSH_KEY"
+          # Tự động format nếu secret bị dán dưới dạng literal \n
+          if echo "$KEY_CONTENT" | grep -q '\\n'; then
+            echo "ℹ️ Phát hiện literal \n trong secret, đang tự động format lại..."
+            KEY_CONTENT=$(printf "%b" "$KEY_CONTENT")
+          fi
+
+          printf "%s\n" "$KEY_CONTENT" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
           # Kiểm tra tính hợp lệ của Private SSH Key
           if ! ssh-keygen -lf ~/.ssh/deploy_key > /dev/null 2>&1; then
-            echo "❌ ERROR: File Private SSH Key không hợp lệ!"
+            echo "❌ ERROR: Secret SERVER_SSH_KEY không phải là Private SSH Key hợp lệ!"
             exit 1
           fi
 
           echo "🔑 Fingerprint chìa khóa SSH tại GitHub Runner:"
           ssh-keygen -lf ~/.ssh/deploy_key
 
-          echo "📋 Public Key tương ứng (cần thêm vào ~/.ssh/authorized_keys trên VPS nếu chưa có):"
+          echo "📋 Public Key tương ứng (cần có trong ~/.ssh/authorized_keys trên VPS):"
           ssh-keygen -y -f ~/.ssh/deploy_key
 
           # 3. Tự động nhận diện host key
