@@ -109,36 +109,14 @@ export function KitchenPlanEditor({
       <summary className="tree-plan-heading">{title}</summary>
 
       <div className="tree-plan-palette" aria-label="Chọn món để tô" style={{ marginTop: 10 }}>
-        <button
-          type="button"
-          className="tree-plan-palette-item tree-plan-palette-item--default"
-          aria-pressed={paint.kind === 'default'}
-          disabled={disabled}
-          onClick={() => setPaint({ kind: 'default' })}
-        >
-          ◇ Mặc định
-        </button>
-        <button
-          type="button"
-          className="tree-plan-palette-item tree-plan-palette-item--skip"
-          aria-pressed={paint.kind === 'skip'}
-          disabled={disabled}
-          onClick={() => setPaint({ kind: 'skip' })}
-        >
-          ⛔ Không nấu
-        </button>
-        {KITCHEN_FOOD_CATALOG.map((item) => (
-          <button
-            type="button"
-            key={item.id}
-            className="tree-plan-palette-item tree-plan-palette-item--seed"
-            aria-pressed={paint.kind === 'cook' && paint.recipeId === item.id}
-            disabled={disabled}
-            onClick={() => setPaint({ kind: 'cook', recipeId: item.id })}
-          >
-            {item.name} <small>#{item.id}</small>
-          </button>
-        ))}
+        <select aria-label="Chọn món để tô" value={paint.kind === 'cook' ? `cook:${paint.recipeId}` : paint.kind} disabled={disabled} onChange={(event) => {
+          const value = event.target.value;
+          setPaint(value === 'default' ? { kind: 'default' } : value === 'skip' ? { kind: 'skip' } : { kind: 'cook', recipeId: Number(value.slice(5)) });
+        }}>
+          <option value="default">◇ Mặc định</option>
+          <option value="skip">⛔ Không nấu</option>
+          {KITCHEN_FOOD_CATALOG.map((item) => <option key={item.id} value={`cook:${item.id}`}>{item.name} #{item.id}</option>)}
+        </select>
       </div>
 
       <div

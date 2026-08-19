@@ -554,6 +554,17 @@ button.ghost {
 .tree-plan-palette-item--skip[aria-pressed='true'] { color: #ffbc76; }
 .tree-plan-palette-item--seed[aria-pressed='true'] { color: var(--ok); }
 
+.tree-plan-palette select {
+  width: min(100%, 420px);
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111722;
+  color: var(--fg);
+  font: inherit;
+}
+
 .tree-plan-grid {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
@@ -1158,5 +1169,4 @@ button.ghost {
   color: var(--muted);
   line-height: 1.4;
 }
-
 

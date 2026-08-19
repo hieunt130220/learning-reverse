@@ -141,36 +141,21 @@ export function TreeCellPlanEditor({
       <summary className="tree-plan-heading">Kế hoạch cây theo ô</summary>
 
       <div className="tree-plan-palette" aria-label="Chọn trạng thái để tô">
-        <button
-          type="button"
-          className="tree-plan-palette-item tree-plan-palette-item--default"
-          aria-pressed={paint.kind === 'default'}
+        <select
+          aria-label="Chọn trạng thái để tô"
+          value={paint.kind === 'seed' ? `seed:${paint.seedId}` : paint.kind}
           disabled={disabled}
-          onClick={() => setPaint({ kind: 'default' })}
+          onChange={(event) => {
+            const value = event.target.value;
+            setPaint(value === 'default' ? { kind: 'default' } : value === 'skip'
+              ? { kind: 'skip' }
+              : { kind: 'seed', seedId: Number(value.slice(5)) });
+          }}
         >
-          ◇ Mặc định
-        </button>
-        <button
-          type="button"
-          className="tree-plan-palette-item tree-plan-palette-item--skip"
-          aria-pressed={paint.kind === 'skip'}
-          disabled={disabled}
-          onClick={() => setPaint({ kind: 'skip' })}
-        >
-          ⛔ Không trồng
-        </button>
-        {seeds.map((seed) => (
-          <button
-            type="button"
-            key={seed.id}
-            className="tree-plan-palette-item tree-plan-palette-item--seed"
-            aria-pressed={paint.kind === 'seed' && paint.seedId === seed.id}
-            disabled={disabled}
-            onClick={() => setPaint({ kind: 'seed', seedId: seed.id })}
-          >
-            🌱 {seed.name} <small>#{seed.id}</small>
-          </button>
-        ))}
+          <option value="default">◇ Mặc định</option>
+          <option value="skip">⛔ Không trồng</option>
+          {seeds.map((seed) => <option key={seed.id} value={`seed:${seed.id}`}>🌱 {seed.name} #{seed.id}</option>)}
+        </select>
       </div>
 
       <div

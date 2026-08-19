@@ -1865,11 +1865,11 @@ export const KNOWN_PRODUCE_NAME_MAP: Record<number, string> = {
   48: 'Cây dừa',
   50: 'Trứng gà',
   51: 'Sữa bò',
-  52: 'Trứng vịt',
+  52: 'Thịt heo',
   53: 'Thịt heo',
   54: 'Cá chép',
-  55: 'Lông cừu',
-  56: 'Sữa dê',
+  55: 'Trứng vịt',
+  56: 'Lông cừu',
   57: 'Mật ong',
   58: 'Thịt trâu',
   59: 'Rùa / Ba ba',
@@ -1884,6 +1884,22 @@ export const KNOWN_PRODUCE_NAME_MAP: Record<number, string> = {
   125: 'Thuốc diệt cỏ',
   126: 'Thức ăn gia súc',
 };
+
+// Daily quest packets use the animal species id for livestock targets
+// (55 = Vịt, 56 = Cừu). Keep this explicit table as a guard for packets whose
+// catalog has not loaded yet; the generic product map carries the same IDs.
+const DAILY_LIVESTOCK_TARGET_NAME_MAP: Record<number, string> = {
+  55: 'Trứng vịt',
+  56: 'Lông cừu',
+};
+
+function getDailyMissionItemName(
+  id: number,
+  trees?: TreeInfo[],
+  items?: ItemInfo[],
+): string {
+  return DAILY_LIVESTOCK_TARGET_NAME_MAP[id] ?? getProduceOrItemName(id, trees, items);
+}
 
 export function getProduceOrItemName(
   id: number,
@@ -2001,7 +2017,7 @@ export function decodeDailyQuestPacket(
 
         missions.push({
           idItem,
-          name: getProduceOrItemName(idItem, catalog?.trees, catalog?.items),
+          name: getDailyMissionItemName(idItem, catalog?.trees, catalog?.items),
           numRequired,
           numCurrent,
           isDone: numCurrent >= numRequired,
