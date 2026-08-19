@@ -790,7 +790,9 @@ export class AutoFarm extends EventEmitter {
           await confirm(64, `thu hoạch ô ${c.index}`);
           await tick();
         }
-        if (c.idTree === -1) {
+        // Server keeps the harvested tree id and marks the cell as spent with
+        // time=-1; treat both representations as available for replanting.
+        if (c.idTree === -1 || isCellSpent(c)) {
           const plan = planByCell.get(c.index);
           const plannedSeedId = plan?.action === 'seed' ? plan.seedId : seedId;
           if (plan?.action === 'skip') {
