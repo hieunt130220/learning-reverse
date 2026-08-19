@@ -235,7 +235,7 @@ const DEFAULTS: AutoFarmConfig = {
   minVitality: 100,
   autoBuy: false,
   buyBudgetXu: 5_000,
-  maxBuyPerItem: 50,
+  maxBuyPerItem: 99,
   stepDelayMs: 700,
   intervalMs: DEFAULT_AUTO_INTERVAL_MS,
   startDelayMs: 3_000,
@@ -505,7 +505,7 @@ export class AutoFarm extends EventEmitter {
       // Việc bị tắt bằng config trông hệt như việc bị lỗi — nói thẳng ra.
       const off: string[] = [];
       if (!harvest) off.push('thu hoạch ô');
-      if (seedId === undefined) off.push('trồng (chưa chọn id hạt)');
+      if (seedId === undefined && !plantingConfigured) off.push('trồng (chưa chọn id hạt)');
       if (!cfg.harvestAnimals) off.push('thu sản phẩm vật nuôi');
       if (!cfg.sellAnimals) off.push('bán vật nuôi');
       if (!cfg.healAnimals) off.push('chữa bệnh');
@@ -582,22 +582,26 @@ export class AutoFarm extends EventEmitter {
         if (tree !== undefined) return tree.category !== 'premium';
         return XU_SEED_IDS.has(id);
       };
+      const plannedSeedsToStock = new Set<number>();
       for (const c of farm.cells) {
         const plan = planByCell.get(c.index);
         const plannedSeedId = plan?.action === 'seed' ? plan.seedId : seedId;
         if (plan?.action === 'skip') continue;
         if (plannedSeedId === undefined || !knownSeeds.has(plannedSeedId)) continue;
         if (!seedBuyableWithXu(plannedSeedId)) continue;
-        const willBeEmpty = c.idTree === -1 || (harvest && cellRipe(c));
-        if (willBeEmpty) want(plannedSeedId);
+        const willBeEmpty = c.idTree === -1 || isCellSpent(c) || (harvest && cellRipe(c));
+        if (willBeEmpty) plannedSeedsToStock.add(plannedSeedId);
+      }
+      // Kế hoạch cây dùng lâu dài: duy trì sẵn 99 hạt cho mỗi loại sắp trồng,
+      // thay vì chỉ mua đúng số ô của vòng hiện tại.
+      for (const plannedSeedId of plannedSeedsToStock) {
+        need.set(plannedSeedId, Math.max(need.get(plannedSeedId) ?? 0, 99));
       }
 
       // --- Mua bù phần thiếu ----------------------------------------------
       // Đi TRƯỚC các bước dùng vật phẩm (chữa bệnh/cho ăn) để có hàng trong
       // kho trước khi dùng — không đổi vị trí bước này.
-      if (cfg.autoBuy && this.client.inventory.length === 0) {
-        note('bỏ qua tự mua: chưa đọc được kho');
-      } else if (cfg.autoBuy) {
+      if (cfg.autoBuy) {
         const have = new Map(this.client.inventory.map((i) => [i.id, i.num]));
         let spent = 0;
         for (const [id, qty] of need) {
@@ -789,6 +793,18 @@ export class AutoFarm extends EventEmitter {
           did.push('thu hoạch');
           await confirm(64, `thu hoạch ô ${c.index}`);
           await tick();
+          // Harvest responses can leave the local cell snapshot one message
+          // behind (`time=-1`). Refresh farm state before replanting so the
+          // server has completed the harvest transition.
+          const farmSynced = new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, 5_000);
+            this.client.once('farm', () => {
+              clearTimeout(timer);
+              resolve();
+            });
+          });
+          this.client.enterFarm();
+          await farmSynced;
         }
         // Server keeps the harvested tree id and marks the cell as spent with
         // time=-1; treat both representations as available for replanting.
@@ -1200,6 +1216,7 @@ function makeConfig(input: Partial<AutoFarmConfig>): AutoFarmConfig {
     autoBuy: true,
     buyBudgetXu: Number.MAX_SAFE_INTEGER,
     maxSellsPerCycle: 0,
+    maxBuyPerItem: 99,
     sellWhenGrownSpecies: SPECIES_SELL_WHEN_GROWN,
     sellNearDeathSpecies: SPECIES_SELL_NEAR_DEATH,
     treeCellPlan: validateTreeCellPlan(input.treeCellPlan),
