@@ -14,6 +14,7 @@ import {
 import type { AutoFarmConfig } from '../autoFarm.js';
 import { makeRequireAuth } from '../auth/middleware.js';
 import type { Db } from '../db/index.js';
+import type { ShopPolicy } from '../config.js';
 import type { Macro } from '../macro.js';
 import type { SessionManager } from './manager.js';
 
@@ -21,7 +22,18 @@ export interface SessionRoutesDeps {
   db: Db;
   isProduction: boolean;
   sessions: SessionManager;
+  shopPolicy?: ShopPolicy;
 }
+
+const SHOP_FARM_ACTIONS = new Set([
+  'openShop',
+  'unlockShopSlot',
+  'addItemToShop',
+  'takeItemBack',
+  'buyFromShop',
+  'refreshShop',
+  'getShopItems',
+]);
 
 /**
  * "Chưa kết nối" là trạng thái hợp lệ của tài nguyên, không phải lỗi máy chủ —
@@ -86,7 +98,7 @@ function validateProfile(config: Partial<AutoFarmConfig>, profile: AutoConfigPro
 }
 
 export function sessionRouter(deps: SessionRoutesDeps): Router {
-  const { db, isProduction, sessions } = deps;
+  const { db, isProduction, sessions, shopPolicy } = deps;
   const router = Router();
   router.use(makeRequireAuth(db, isProduction));
 
@@ -243,6 +255,14 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
   router.post('/:id/farm', owned, (req, res) => {
     const { name, args } = (req.body ?? {}) as { name?: string; args?: unknown[] };
     if (typeof name !== 'string') return res.status(400).json({ error: 'thiếu tên action' });
+    if (SHOP_FARM_ACTIONS.has(name)) {
+      return res.status(403).json({
+        error: {
+          code: 'SHOP_CAPABILITY_DISABLED',
+          message: 'Lệnh cmd 103 chỉ được gọi qua API sạp có kiểm soát',
+        },
+      });
+    }
     try {
       sessions.require(accountId(req)).callFarm(name, args ?? []);
       res.json({ ok: true });
@@ -328,8 +348,17 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
 
   router.post('/:id/raw', owned, (req, res) => {
     const { cmd, fields } = (req.body ?? {}) as { cmd?: unknown; fields?: Array<{ t: string; v: string }> };
+    const parsedCmd = Number(cmd);
+    if (parsedCmd === 103 && (isProduction || !shopPolicy?.protocolDebugEnabled)) {
+      return res.status(403).json({
+        error: {
+          code: 'SHOP_CAPABILITY_DISABLED',
+          message: 'Raw cmd 103 bị tắt ngoài chế độ protocol debug cục bộ',
+        },
+      });
+    }
     try {
-      sessions.require(accountId(req)).sendRaw(Number(cmd), fields ?? []);
+      sessions.require(accountId(req)).sendRaw(parsedCmd, fields ?? []);
       res.json({ ok: true });
     } catch (err) {
       fail(res, err);

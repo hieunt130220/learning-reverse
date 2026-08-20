@@ -547,15 +547,15 @@ interface ShopApiErrorBody {
 - Consumes: authenticated account ownership middleware/pattern, `SessionManager`, `ShopError`, `ShopPolicy`.
 - Produces: typed `/api/accounts/:id/shop` endpoints and explicit denial of generic cmd 103 access.
 
-- [ ] **Step 1: Run impact analysis**
+- [x] **Step 1: Run impact analysis**
 
   Run GitNexus impact for `sessionRouter`, `SessionManager`, and server bootstrap in `index.ts`. Confirm auth/ownership lookup behavior used by existing account routes.
 
-- [ ] **Step 2: Implement request parsing and error mapping**
+- [x] **Step 2: Implement request parsing and error mapping**
 
   `shopRoutes.ts` must parse integer account/slot/body fields without coercing decimals or NaN, cap transaction history limit to `1..100`, and map `ShopError` status/code into `ShopApiErrorBody`. Unexpected errors log stack server-side without request body and return `SHOP_PROTOCOL_ERROR`.
 
-- [ ] **Step 3: Add read endpoints**
+- [x] **Step 3: Add read endpoints**
 
   Implement:
 
@@ -568,7 +568,7 @@ interface ShopApiErrorBody {
 
   GET returns live state or persisted cache after ownership verification. Sync/browse require an online session and return the updated `ShopRuntimeState`.
 
-- [ ] **Step 4: Add write endpoints returning 202**
+- [x] **Step 4: Add write endpoints returning 202**
 
   Implement:
 
@@ -582,15 +582,15 @@ interface ShopApiErrorBody {
 
   All write bodies require `idempotencyKey`; a newly accepted write returns HTTP 202 and the persisted `ShopTransaction`. A replay returns the same record without resending, using 202 while non-terminal and 200 when already terminal.
 
-- [ ] **Step 5: Deny generic bypasses**
+- [x] **Step 5: Deny generic bypasses**
 
   In `/:id/farm`, reject these action names with `SHOP_CAPABILITY_DISABLED`: `openShop`, `unlockShopSlot`, `addItemToShop`, `takeItemBack`, `buyFromShop`, `refreshShop`, `getShopItems`. In `/:id/raw`, reject `cmd === 103` unless non-production protocol debug is explicitly enabled; even debug mode must still require account ownership and must not be exposed in production.
 
-- [ ] **Step 6: Wire bootstrap dependencies**
+- [x] **Step 6: Wire bootstrap dependencies**
 
   Instantiate one `ShopRepository`, call recovery, pass repository/policy into `SessionManager`, mount `shopRouter` under `/api/accounts`, and pass policy into `sessionRouter` for raw-command gating. Do not change WebSocket subscription isolation.
 
-- [ ] **Step 7: Verify routes and commit**
+- [x] **Step 7: Verify routes and commit**
 
   Run server typecheck/tests/build. With an ephemeral DB and fake manager in an inline harness, verify validation/error status, idempotent replay status and cmd103 bypass denial. Stage only the three files, run `gitnexus_detect_changes({ scope: "staged" })` and cached diff check, then commit:
 

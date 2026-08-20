@@ -2,12 +2,14 @@ import http from 'node:http';
 import express from 'express';
 
 import { accountsRouter } from './accounts/routes.js';
+import { ShopRepository } from './accounts/shopRepo.js';
 import { authRouter } from './auth/routes.js';
 import { purgeExpiredSessions } from './auth/sessions.js';
 import { loadConfig } from './config.js';
 import { openDb } from './db/index.js';
 import { SessionManager } from './session/manager.js';
 import { sessionRouter } from './session/routes.js';
+import { shopRouter } from './session/shopRoutes.js';
 import { attachWebSocket, type WsHub } from './ws.js';
 
 // Ném ngay nếu thiếu MASTER_KEY / INVITE_CODE — dừng còn hơn lặng lẽ chạy bằng
@@ -23,10 +25,13 @@ app.set('trust proxy', true);
 app.use(express.json());
 
 let hub: WsHub;
+const shopRepository = new ShopRepository(db);
 const sessions = new SessionManager({
   db,
   masterKey: config.masterKey,
   maxSessions: config.maxSessions,
+  shopRepository,
+  shopPolicy: config.shopPolicy,
   broadcast: (userId, accountId, type, payload) => hub.broadcast(userId, accountId, type, payload),
 });
 
@@ -35,7 +40,18 @@ app.use(
   '/api/accounts',
   accountsRouter({ db, masterKey: config.masterKey, isProduction: config.isProduction, sessions }),
 );
-app.use('/api/accounts', sessionRouter({ db, isProduction: config.isProduction, sessions }));
+app.use('/api/accounts', shopRouter({
+  db,
+  isProduction: config.isProduction,
+  sessions,
+  repository: shopRepository,
+}));
+app.use('/api/accounts', sessionRouter({
+  db,
+  isProduction: config.isProduction,
+  sessions,
+  shopPolicy: config.shopPolicy,
+}));
 
 const server = http.createServer(app);
 hub = attachWebSocket(server, { db, sessions });
