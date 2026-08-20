@@ -4,13 +4,15 @@ import { fileURLToPath } from 'node:url';
 /** Server game mặc định — chỉ .120 xử lý đăng nhập, xem `avatar-re/notes/protocol.md`. */
 export const DEFAULT_GAME_SERVER = { host: '27.0.14.120', port: 19129 };
 
+export type LiveAccountAllowlist = ReadonlySet<number> | 'all';
+
 export interface ShopPolicy {
   readEnabled: boolean;
   writeEnabled: boolean;
   purchaseEnabled: boolean;
   slotUnlockEnabled: boolean;
   marketRefreshEnabled: boolean;
-  liveAccountAllowlist: ReadonlySet<number>;
+  liveAccountAllowlist: LiveAccountAllowlist;
   protocolDebugEnabled: boolean;
 }
 
@@ -34,9 +36,13 @@ function envFlag(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/i.test(value?.trim() ?? '');
 }
 
-function parseAccountAllowlist(value: string | undefined): ReadonlySet<number> {
+function parseAccountAllowlist(value: string | undefined): LiveAccountAllowlist {
   const raw = value?.trim();
   if (!raw) return new Set<number>();
+  if (raw === '*') return 'all';
+  if (raw.includes('*')) {
+    throw new Error('SHOP_LIVE_ACCOUNT_ALLOWLIST không được trộn wildcard với account id');
+  }
   const accountIds = raw.split(',').map((token) => {
     const normalized = token.trim();
     if (!/^[1-9]\d*$/.test(normalized)) {

@@ -213,7 +213,7 @@ export class ShopCoordinator {
       purchaseEnabled: this.policy.purchaseEnabled,
       slotUnlockEnabled: this.policy.slotUnlockEnabled,
       marketRefreshEnabled: this.policy.marketRefreshEnabled,
-      liveAccountAllowed: this.policy.liveAccountAllowlist.has(this.accountId),
+      liveAccountAllowed: this.isLiveAccountAllowed(),
     };
     this.runtime = {
       syncStatus: cache ? 'stale' : 'idle',
@@ -1205,13 +1205,18 @@ export class ShopCoordinator {
     }
   }
 
+  private isLiveAccountAllowed(): boolean {
+    return this.policy.liveAccountAllowlist === 'all'
+      || this.policy.liveAccountAllowlist.has(this.accountId);
+  }
+
   private assertWriteAllowed(
     capability: 'writeEnabled' | 'purchaseEnabled' | 'slotUnlockEnabled' | 'marketRefreshEnabled',
   ): void {
     if (!this.policy.writeEnabled || !this.policy[capability]) {
       throw new ShopError(403, 'SHOP_CAPABILITY_DISABLED', 'Capability giao dịch sạp chưa được bật');
     }
-    if (!this.policy.liveAccountAllowlist.has(this.accountId)) {
+    if (!this.isLiveAccountAllowed()) {
       throw new ShopError(403, 'SHOP_CAPABILITY_DISABLED', 'Tài khoản chưa thuộc allowlist giao dịch live');
     }
   }

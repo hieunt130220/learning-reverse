@@ -36,6 +36,17 @@ Server **từ chối khởi động** nếu thiếu `MASTER_KEY` hoặc `INVITE_
 | `MAX_SESSIONS` | trần số phiên game cùng lúc, mặc định 20 |
 | `DB_PATH` | mặc định `server/data/avatar-web.db` |
 | `NODE_ENV` | `production` bật cookie `Secure` |
+| `SHOP_READ_ENABLED` | bật đọc và browse dữ liệu sạp; mặc định tắt |
+| `SHOP_WRITE_ENABLED` | master gate cho đăng bán, rút hàng và các shop write; mặc định tắt |
+| `SHOP_PURCHASE_ENABLED` | gate bổ sung cho mua listing; chỉ có hiệu lực khi write đã bật |
+| `SHOP_SLOT_UNLOCK_ENABLED` | gate riêng cho mở slot; mặc định tắt |
+| `SHOP_MARKET_REFRESH_ENABLED` | gate riêng cho refresh chợ trả phí; mặc định tắt |
+| `SHOP_LIVE_ACCOUNT_ALLOWLIST` | ID account phân tách bằng dấu phẩy, hoặc `*` để cho phép mọi account; không được trộn hai dạng |
+| `SHOP_PROTOCOL_DEBUG_ENABLED` | debug protocol chỉ ở non-production; mặc định tắt |
+
+`SHOP_LIVE_ACCOUNT_ALLOWLIST=*` là quyền live-write toàn cục cho cả tài khoản thêm
+mới. Chỉ dùng cùng các capability đã chủ động phê duyệt; wildcard không tự bật bất
+kỳ capability nào.
 
 Mở `http://localhost:5173`, đăng ký bằng mã mời, rồi thêm tài khoản game ở trang
 danh sách.
