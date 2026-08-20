@@ -736,7 +736,7 @@ interface ShopApiErrorBody {
 
   If no controlled account/server is available, record these checks as not executed rather than claiming success.
 
-  **Result:** Not executed. The automated browser surface could not reach the existing local web server and no controlled game account/server was available, so no live read-only success is claimed.
+  **Result (2026-08-20):** Partially executed against controlled account 2 with every write flag still disabled. Browser runtime confirmed both read actions are enabled: own-shop sync changed the panel from `stale` to `ready` and advanced revision 1 -> 2; market browse returned `ready`, revision 1, with no paid sub7 action. Cross-owner, reconnect, offline-cache and raw-bypass cases were not rerun live, so Gate C and Gate D remain closed pending explicit approval.
 
 - [x] **Step 6: Run live-write acceptance only after explicit user authorization**
 
