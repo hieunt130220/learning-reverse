@@ -622,91 +622,20 @@ export function decodeProgressQuestPacket(
 }
 
 /**
- * Đồng bộ tiến trình nhiệm vụ (Tân Thủ, Nhà Nông) với dữ liệu thực tế của nông trại:
- * - Đếm số lượng vật nuôi hiện có (Cá chép 54, Rùa 59, Gà 50, Vịt 55, Bò 51, Heo 52, Cừu 56, Trâu 58, Thỏ 61...).
- * - Đếm số lượng ô đất (`cells.length`).
- * - Đếm số lượng nông sản hiện có trong kho (`produce`, `inventory`).
- *
- * Cập nhật an toàn không làm giảm tiến độ: `current = Math.min(total, Math.max(cond.current, derivedCount))`.
+ * Đồng bộ tiến trình nhiệm vụ (Tân Thủ, Nhà Nông) với dữ liệu từ server:
+ * Dữ liệu tiến trình giải mã từ hộp thoại NPC (`parseQuestDialogText`) và gói tin
+ * Cmd 104 (`decodeProgressQuestPacket`) là nguồn chân lý chính xác nhất của server.
+ * Hàm này bảo toàn nguyên vẹn tiến trình của server, không tự ý ghi đè tiến trình bằng
+ * số lượng vật nuôi có sẵn trong chuồng/ao.
  */
 export function syncQuestStateWithFarm(
   quest: ProgressQuestChain | null | undefined,
-  farmState: FarmState | null | undefined,
-  inventory?: readonly InventoryItem[] | null,
-  produce?: readonly InventoryItem[] | null,
+  _farmState?: FarmState | null | undefined,
+  _inventory?: readonly InventoryItem[] | null,
+  _produce?: readonly InventoryItem[] | null,
 ): ProgressQuestChain | null {
   if (!quest || !quest.conditions || quest.conditions.length === 0) return quest ?? null;
-
-  let hasChanged = false;
-  const newConditions = quest.conditions.map((cond) => {
-    const nameLower = cond.name.toLowerCase();
-    let derivedCount: number | null = null;
-
-    // 1. Kiểm tra vật nuôi trong FarmState
-    if (farmState?.animals) {
-      if (nameLower.includes('cá chép') || nameLower.includes('ca chep')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 54).length;
-      } else if (nameLower.includes('rùa') || nameLower.includes('rua') || nameLower.includes('ba ba')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 59).length;
-      } else if ((nameLower.includes('gà') || nameLower.includes('ga')) && !nameLower.includes('trứng') && !nameLower.includes('trung')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 50).length;
-      } else if ((nameLower.includes('vịt') || nameLower.includes('vit')) && !nameLower.includes('trứng') && !nameLower.includes('trung')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 55).length;
-      } else if ((nameLower.includes('bò') || nameLower.includes('bo')) && !nameLower.includes('sữa') && !nameLower.includes('sua')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 51).length;
-      } else if ((nameLower.includes('heo') || nameLower.includes('lợn') || nameLower.includes('lon')) && !nameLower.includes('thịt') && !nameLower.includes('thit')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 52).length;
-      } else if ((nameLower.includes('cừu') || nameLower.includes('cuu')) && !nameLower.includes('lông') && !nameLower.includes('long')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 56).length;
-      } else if ((nameLower.includes('trâu') || nameLower.includes('trau')) && !nameLower.includes('thịt') && !nameLower.includes('thit')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 58).length;
-      } else if (nameLower.includes('thỏ') || nameLower.includes('tho')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 61).length;
-      } else if ((nameLower.includes('dê') || nameLower.includes('de')) && !nameLower.includes('sữa') && !nameLower.includes('sua')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 60).length;
-      } else if (nameLower.includes('chó') || nameLower.includes('cho')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 53).length;
-      } else if (nameLower.includes('mèo') || nameLower.includes('meo')) {
-        derivedCount = farmState.animals.filter((a) => a.species === 57).length;
-      }
-    }
-
-    // 2. Kiểm tra ô đất
-    if (farmState?.cells && (nameLower.includes('ô đất') || nameLower.includes('o dat') || nameLower.includes('mở đất') || nameLower.includes('mo dat'))) {
-      derivedCount = farmState.cells.length;
-    }
-
-    // 3. Kiểm tra nông sản trong kho
-    const allStock = [...(produce ?? []), ...(inventory ?? [])];
-    if (nameLower.includes('cà chua') || nameLower.includes('ca chua')) {
-      const stock = allStock.filter((i) => i.id === 206 || i.id === 0).reduce((sum, i) => sum + i.num, 0);
-      if (stock > 0) derivedCount = Math.max(derivedCount ?? 0, stock);
-    } else if (nameLower.includes('cà rốt') || nameLower.includes('ca rot')) {
-      const stock = allStock.filter((i) => i.id === 205 || i.id === 1).reduce((sum, i) => sum + i.num, 0);
-      if (stock > 0) derivedCount = Math.max(derivedCount ?? 0, stock);
-    }
-
-    if (derivedCount !== null) {
-      const newCurrent = Math.min(cond.total, Math.max(cond.current, derivedCount));
-      const newIsDone = newCurrent >= cond.total;
-      if (newCurrent !== cond.current || newIsDone !== cond.isDone) {
-        hasChanged = true;
-        return {
-          ...cond,
-          current: newCurrent,
-          isDone: newIsDone,
-        };
-      }
-    }
-    return cond;
-  });
-
-  if (!hasChanged) return quest;
-
-  return {
-    ...quest,
-    conditions: newConditions,
-    updatedAt: Date.now(),
-  };
+  return quest;
 }
+
 
