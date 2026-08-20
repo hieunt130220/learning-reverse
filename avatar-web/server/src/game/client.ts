@@ -549,12 +549,6 @@ export class GameClient extends EventEmitter {
       this.farm.communicate(-1);
       await new Promise((resolve) => setTimeout(resolve, 300));
       this.farm.doMenuOption(-1, 0, 0); // Menu option 0: Nhiệm Vụ Nhà Nông
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      // 3. Gửi các gói UpgradeFarm tiến trình
-      this.farm.getInfoUpgradeFarm(1);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      this.farm.getInfoUpgradeFarm(5);
     } catch (err) {
       this.emit('log', `làm mới nhiệm vụ tiến trình lỗi: ${(err as Error).message}`);
     }
