@@ -11,7 +11,7 @@ import {
 test('đọc JSON legacy thành revision 0', () => {
   assert.deepEqual(readStoredAutoConfig({ harvest: true, intervalMs: 60_000 }), {
     revision: 0,
-    config: { harvest: true, intervalMs: 60_000 },
+    config: { harvest: true, intervalMs: 60_000, autoHarvestCook: true },
   });
 });
 
@@ -45,6 +45,7 @@ test('merge patch cũ không xóa treeCellPlan', () => {
   const current = { treeCellPlan: [{ cellIndex: 2, action: 'skip' as const }] };
 
   assert.deepEqual(mergeAutoConfig(current, { harvest: false }), {
+    autoHarvestCook: true,
     harvest: false,
     treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
   });
@@ -53,7 +54,7 @@ test('merge patch cũ không xóa treeCellPlan', () => {
 test('merge bỏ qua field undefined thay vì xóa cấu hình hiện có', () => {
   assert.deepEqual(
     mergeAutoConfig({ seedId: 6, treeCellPlan: [] }, { seedId: undefined }),
-    { seedId: 6, treeCellPlan: [] },
+    { seedId: 6, treeCellPlan: [], autoHarvestCook: true },
   );
 });
 

@@ -134,7 +134,10 @@ async function openPlanEditor() {
 
 async function paintSkip(cellIndex: number) {
   await openPlanEditor();
-  await userEvent.click(screen.getByRole('button', { name: /^⛔ Không trồng$/i }));
+  await userEvent.selectOptions(
+    screen.getByRole('combobox', { name: 'Chọn trạng thái để tô' }),
+    'skip',
+  );
   await userEvent.click(screen.getByRole('button', { name: new RegExp(`Ô ${cellIndex}(?:\\D|$)`, 'i') }));
 }
 
@@ -293,12 +296,12 @@ test('response muộn của account cũ không ghi đè account mới', async ()
   });
   const view = renderPanel({ accountId: 1 });
   view.rerender(<AutoFarmPanel accountId={2} />);
-  expect(await screen.findByRole('button', { name: /Hạt mới/ })).toBeInTheDocument();
+  expect(await screen.findByRole('option', { name: /Hạt mới/ })).toBeInTheDocument();
 
   resolveOldConfig({ revision: 1, config: { seedId: 11 } });
   resolveOldProfile(profileWithSeed(11, 'Hạt cũ'));
   await Promise.all([oldConfig, oldProfile]);
 
-  expect(screen.getByRole('button', { name: /Hạt mới/ })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /Hạt cũ/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('option', { name: /Hạt mới/ })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /Hạt cũ/ })).not.toBeInTheDocument();
 });

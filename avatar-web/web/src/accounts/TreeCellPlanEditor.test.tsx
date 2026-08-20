@@ -59,7 +59,7 @@ describe('TreeCellPlanEditor', () => {
     const user = userEvent.setup();
     render(<ControlledEditor onChange={onChange} cellIndices={[2, 7, 19]} />);
 
-    await user.click(screen.getByRole('button', { name: /Hoa hồng/ }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Chọn trạng thái để tô' }), 'seed:6');
     await user.click(screen.getByRole('button', { name: /Ô 2/ }));
     expect(onChange).toHaveBeenLastCalledWith([{ cellIndex: 2, action: 'seed', seedId: 6 }]);
 
@@ -79,7 +79,7 @@ describe('TreeCellPlanEditor', () => {
     const user = userEvent.setup();
     render(<ControlledEditor onChange={onChange} cellIndices={[2, 7, 19]} />);
 
-    await user.click(screen.getByRole('button', { name: /Không trồng/ }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Chọn trạng thái để tô' }), 'skip');
     fireEvent.pointerDown(screen.getByRole('button', { name: /Ô 2/ }), {
       button: 0,
       isPrimary: true,
@@ -118,7 +118,7 @@ describe('TreeCellPlanEditor', () => {
     });
 
     try {
-      await user.click(screen.getByRole('button', { name: /Không trồng/ }));
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Chọn trạng thái để tô' }), 'skip');
       fireEvent.pointerDown(firstCell, { button: 0, isPrimary: true });
       const pointerMove = createEvent.pointerMove(firstCell, { isPrimary: true });
       Object.defineProperties(pointerMove, {
@@ -171,9 +171,9 @@ describe('TreeCellPlanEditor', () => {
     expect(screen.getByRole('button', { name: /Ô 0/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Ô 47/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Ô 48/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^◇ Mặc định$/ })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /⛔ Không trồng/ })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /Lúa/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /^◇ Mặc định$/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /⛔ Không trồng/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Lúa/ })).toBeInTheDocument();
   });
 
   test('cache không có catalog vẫn có đầy đủ hạt từ DEFAULT_SEED_CATALOG và tô màu ô được', async () => {
@@ -181,15 +181,15 @@ describe('TreeCellPlanEditor', () => {
     const user = userEvent.setup();
     render(<ControlledEditor farmProfile={profile([4, 21], [])} onChange={onChange} />);
 
-    expect(screen.getByRole('button', { name: /^◇ Mặc định$/ })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /Không trồng/ })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /Lúa/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /^◇ Mặc định$/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Không trồng/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Lúa/ })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Không trồng/ }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Chọn trạng thái để tô' }), 'skip');
     await user.click(screen.getByRole('button', { name: /Ô 21/ }));
     expect(onChange).toHaveBeenLastCalledWith([{ cellIndex: 21, action: 'skip' }]);
 
-    await user.click(screen.getByRole('button', { name: /^◇ Mặc định$/ }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Chọn trạng thái để tô' }), 'default');
     await user.click(screen.getByRole('button', { name: /Ô 21/ }));
     expect(onChange).toHaveBeenLastCalledWith([]);
   });

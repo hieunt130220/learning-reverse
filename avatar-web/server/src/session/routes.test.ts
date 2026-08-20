@@ -143,8 +143,9 @@ test('auto/start ghi DB trước rồi mới áp vào phiên', async () => {
 
   const row = getAccountById(db, id)!;
   assert.equal(row.autoEnabled, true);
-  assert.deepEqual(row.autoConfig, cfg);
-  assert.deepEqual(made[0].calls.at(-1), { name: 'startAuto', args: [cfg] });
+  const normalizedCfg = { ...cfg, autoHarvestCook: true };
+  assert.deepEqual(row.autoConfig, normalizedCfg);
+  assert.deepEqual(made[0].calls.at(-1), { name: 'startAuto', args: [normalizedCfg] });
   await server.close();
   db.close();
 });
@@ -207,11 +208,11 @@ test('GET/PUT config dùng revision và queue sau khi DB đã ghi', async () => 
   assert.equal(put.body.application, 'next-cycle');
   assert.deepEqual(made[0].calls.at(-1), {
     name: 'updateAutoConfig',
-    args: [{ treeCellPlan: [{ cellIndex: 2, action: 'seed', seedId: 6 }] }],
+    args: [{ treeCellPlan: [{ cellIndex: 2, action: 'seed', seedId: 6 }], autoHarvestCook: true }],
   });
   assert.deepEqual((await server.fetch(`/api/accounts/${id}/auto/config`)).body, {
     revision: 1,
-    config: { treeCellPlan: [{ cellIndex: 2, action: 'seed', seedId: 6 }] },
+    config: { treeCellPlan: [{ cellIndex: 2, action: 'seed', seedId: 6 }], autoHarvestCook: true },
   });
   await server.close();
   db.close();
@@ -229,7 +230,10 @@ test('revision cũ trả 409 kèm current, không queue runtime', async () => {
   });
   assert.equal(stale.status, 409);
   assert.equal(stale.body.code, 'revision-conflict');
-  assert.deepEqual(stale.body.current, { revision: 1, config: { harvest: true } });
+  assert.deepEqual(stale.body.current, {
+    revision: 1,
+    config: { harvest: true, autoHarvestCook: true },
+  });
   assert.deepEqual(made[0].calls.map((call) => call.name), ['start']);
   await server.close();
   db.close();
@@ -251,19 +255,31 @@ test('start body cũ merge không xóa plan, stop giữ config', async () => {
   assert.equal(start.status, 200);
   assert.deepEqual(getAutoConfig(db, userId, id), {
     revision: 2,
-    config: { harvest: false, treeCellPlan: [{ cellIndex: 2, action: 'skip' }] },
+    config: {
+      harvest: false,
+      treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
+      autoHarvestCook: true,
+    },
   });
   assert.equal(getAccountById(db, id)!.autoEnabled, true);
   assert.deepEqual(made[0].calls.at(-1), {
     name: 'startAuto',
-    args: [{ harvest: false, treeCellPlan: [{ cellIndex: 2, action: 'skip' }] }],
+    args: [{
+      harvest: false,
+      treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
+      autoHarvestCook: true,
+    }],
   });
 
   await server.fetch(`/api/accounts/${id}/auto/stop`, { method: 'POST', json: {} });
   assert.equal(getAccountById(db, id)!.autoEnabled, false);
   assert.deepEqual(getAutoConfig(db, userId, id), {
     revision: 2,
-    config: { harvest: false, treeCellPlan: [{ cellIndex: 2, action: 'skip' }] },
+    config: {
+      harvest: false,
+      treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
+      autoHarvestCook: true,
+    },
   });
   const callsBeforeConflict = made[0].calls.length;
   const stale = await server.fetch(`/api/accounts/${id}/auto/config`, {
@@ -290,9 +306,12 @@ test('start body rỗng chỉ bật config đã lưu, không tăng revision', as
   assert.equal(start.status, 200);
   assert.deepEqual(getAutoConfig(db, userId, id), {
     revision: 1,
-    config: { harvest: true },
+    config: { harvest: true, autoHarvestCook: true },
   });
-  assert.deepEqual(made[0].calls.at(-1), { name: 'startAuto', args: [{ harvest: true }] });
+  assert.deepEqual(made[0].calls.at(-1), {
+    name: 'startAuto',
+    args: [{ harvest: true, autoHarvestCook: true }],
+  });
   await server.close();
   db.close();
 });
@@ -350,7 +369,7 @@ test('PUT config khi chưa có session trả application next-start', async () =
   });
   assert.equal(response.status, 200);
   assert.equal(response.body.application, 'next-start');
-  assert.deepEqual(response.body.config, { harvest: true });
+  assert.deepEqual(response.body.config, { harvest: true, autoHarvestCook: true });
   await server.close();
   db.close();
 });
@@ -407,7 +426,10 @@ test('chưa có profile cache vẫn chấp nhận plan hợp lệ trong 48 ô v�
       json: { expectedRevision: 0, config },
     });
     assert.equal(response.status, 200);
-    assert.deepEqual(getAutoConfig(db, getAccountById(db, id)!.userId, id)?.config, config);
+    assert.deepEqual(getAutoConfig(db, getAccountById(db, id)!.userId, id)?.config, {
+      ...config,
+      autoHarvestCook: true,
+    });
     await server.close();
     db.close();
   }
@@ -494,7 +516,7 @@ test('runtime lỗi sau khi PUT commit trả 500 nhưng giữ config đã persis
   assert.equal(response.status, 500);
   assert.deepEqual(getAutoConfig(db, getAccountById(db, id)!.userId, id), {
     revision: 1,
-    config: { harvest: true },
+    config: { harvest: true, autoHarvestCook: true },
   });
   await server.close();
   db.close();

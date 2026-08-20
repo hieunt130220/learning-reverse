@@ -192,6 +192,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
   router.post('/:id/auto/start', owned, async (req, res) => {
     const id = accountId(req);
     let patch: Partial<AutoFarmConfig>;
+    const hasConfigPatch = Object.keys(req.body ?? {}).length > 0;
     try {
       patch = normalizeAutoConfig(req.body ?? {});
     } catch (err) {
@@ -200,7 +201,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     }
     try {
       let cfg: Partial<AutoFarmConfig>;
-      if (Object.keys(patch).length === 0) {
+      if (!hasConfigPatch) {
         setAutoEnabled(db, id, true);
         cfg = getAutoConfig(db, userId(req), id)!.config;
       } else {

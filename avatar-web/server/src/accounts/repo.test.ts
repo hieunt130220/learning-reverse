@@ -143,7 +143,7 @@ test('config null được chuẩn hóa và account không lộ envelope raw', (
     acc.id,
   );
   const reread = getAccount(db, a.id, acc.id)!;
-  assert.deepEqual(reread.autoConfig, { harvest: true });
+  assert.deepEqual(reread.autoConfig, { harvest: true, autoHarvestCook: true });
   assert.equal(reread.autoConfigRevision, 3);
   assert.equal('version' in reread.autoConfig, false);
   db.close();
@@ -158,13 +158,13 @@ test('đọc config JSON legacy với revision 0 và save CAS ghi envelope revis
   );
   assert.deepEqual(getAutoConfig(db, a.id, acc.id), {
     revision: 0,
-    config: { harvest: true },
+    config: { harvest: true, autoHarvestCook: true },
   });
 
   const saved = saveAutoConfig(db, a.id, acc.id, 0, { harvest: false }, 10);
   assert.deepEqual(saved, {
     status: 'saved',
-    state: { revision: 1, config: { harvest: false } },
+    state: { revision: 1, config: { harvest: false, autoHarvestCook: true } },
   });
   const raw = db
     .prepare<[number], { auto_config_json: string }>(
@@ -174,7 +174,7 @@ test('đọc config JSON legacy với revision 0 và save CAS ghi envelope revis
   assert.deepEqual(JSON.parse(raw.auto_config_json), {
     version: 1,
     revision: 1,
-    config: { harvest: false },
+    config: { harvest: false, autoHarvestCook: true },
   });
   db.close();
 });
@@ -189,7 +189,7 @@ test('CAS config phát hiện revision xung đột và ownership/missing', () =>
   const stale = saveAutoConfig(db, a.id, acc.id, 0, { harvest: false }, 11);
   assert.deepEqual(stale, {
     status: 'conflict',
-    current: { revision: 1, config: { harvest: true } },
+    current: { revision: 1, config: { harvest: true, autoHarvestCook: true } },
   });
   assert.equal(getAutoConfig(db, b.id, acc.id), null);
   assert.deepEqual(saveAutoConfig(db, b.id, acc.id, 1, {}, 12), { status: 'missing' });
@@ -206,7 +206,7 @@ test('setAutoEnabled chỉ đổi cờ, giữ config và revision', () => {
   const on = listAutoEnabled(db);
   assert.equal(on.length, 1);
   assert.equal(on[0].id, acc.id);
-  assert.deepEqual(on[0].autoConfig, { harvest: true, intervalMs: 60000 });
+  assert.deepEqual(on[0].autoConfig, { harvest: true, intervalMs: 60000, autoHarvestCook: true });
   assert.equal(on[0].autoConfigRevision, 1);
 
   setAutoEnabled(db, acc.id, false, 30);
@@ -214,7 +214,7 @@ test('setAutoEnabled chỉ đổi cờ, giữ config và revision', () => {
   assert.equal(getAccount(db, a.id, acc.id)!.autoEnabled, false);
   assert.deepEqual(getAutoConfig(db, a.id, acc.id), {
     revision: 1,
-    config: { harvest: true, intervalMs: 60000 },
+    config: { harvest: true, intervalMs: 60000, autoHarvestCook: true },
   });
   db.close();
 });
@@ -239,6 +239,7 @@ test('legacy start merge config, tăng revision và bật auto cùng transaction
     state: {
       revision: 2,
       config: {
+        autoHarvestCook: true,
         harvest: false,
         treeCellPlan: [{ cellIndex: 2, action: 'skip' }],
       },

@@ -78,7 +78,10 @@ beforeEach(() => {
 async function makePlanDirty() {
   const summary = await screen.findByText(/Kế hoạch cây theo ô/i);
   if (summary.closest('summary')) await userEvent.click(summary);
-  await userEvent.click(screen.getByRole('button', { name: /Không trồng/i }));
+  await userEvent.selectOptions(
+    screen.getByRole('combobox', { name: 'Chọn trạng thái để tô' }),
+    'skip',
+  );
   await userEvent.click(screen.getByRole('button', { name: /Ô 2(?:\D|$)/i }));
 }
 
