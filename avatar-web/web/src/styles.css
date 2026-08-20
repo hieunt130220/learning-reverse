@@ -1236,3 +1236,250 @@ button.ghost {
   line-height: 1.4;
 }
 
+/* --- Sạp nông sản ------------------------------------------------------- */
+.shop-panel {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.shop-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shop-heading h2 { margin-bottom: 2px; }
+
+.shop-actions,
+.shop-read-actions,
+.shop-paid-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shop-read-actions { margin-top: 0; }
+
+.shop-empty {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.shop-empty p { margin: 0; }
+
+.shop-active-note,
+.shop-unknown-warning {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid #8c6f2f;
+  border-radius: 6px;
+  color: #e4bb61;
+  background: rgba(217, 164, 65, 0.08);
+  font-size: 12px;
+}
+
+.shop-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.shop-tabs button {
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.shop-tabs button.active {
+  border-color: var(--line);
+  background: #0d1017;
+  color: var(--fg);
+}
+
+.shop-tabs button:focus-visible,
+.shop-table button:focus-visible,
+.shop-panel > .shop-heading button:focus-visible,
+.shop-paid-action button:focus-visible,
+.shop-modal button:focus-visible,
+.shop-modal input:focus-visible,
+.shop-modal select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.shop-tab-content {
+  min-width: 0;
+  padding-top: 12px;
+}
+
+.shop-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.shop-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.shop-table {
+  width: 100%;
+  min-width: 590px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.shop-table th,
+.shop-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.shop-table th {
+  color: var(--muted);
+  background: #111722;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.shop-table tbody tr:last-child td { border-bottom: 0; }
+.shop-table tbody tr:hover { background: rgba(255, 255, 255, 0.025); }
+
+.shop-panel button.compact {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.shop-panel button.danger { color: var(--err); }
+
+.shop-paid-action {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.shop-paid-action label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+}
+
+.shop-paid-action input {
+  width: 72px;
+  margin: 0;
+}
+
+.shop-transaction-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.shop-transaction {
+  position: relative;
+  padding: 10px 12px 10px 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111722;
+}
+
+.shop-transaction::before {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-content: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  content: '…';
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.shop-transaction > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shop-transaction-status { color: var(--muted); font-size: 12px; }
+
+.shop-status-succeeded,
+.shop-transaction.status-succeeded { border-color: #347d68; }
+.shop-status-succeeded::before,
+.shop-transaction.status-succeeded::before { color: var(--ok); content: '✓'; }
+
+.shop-status-failed,
+.shop-transaction.status-failed { border-color: #8f4745; }
+.shop-status-failed::before,
+.shop-transaction.status-failed::before { color: var(--err); content: '×'; }
+
+.shop-status-unknown,
+.shop-transaction.status-unknown { border-color: #8c6f2f; }
+.shop-status-unknown::before,
+.shop-transaction.status-unknown::before { color: #e4bb61; content: '?'; }
+
+.shop-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(3, 6, 12, 0.78);
+}
+
+.shop-modal {
+  width: min(100%, 440px);
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.shop-modal h3 {
+  margin: 0 0 14px;
+  color: var(--fg);
+  font-size: 16px;
+}
+
+.shop-modal .dialog-actions {
+  justify-content: flex-end;
+  margin: 16px -18px -18px;
+}
+
+@media (max-width: 679px) {
+  .shop-heading { display: block; }
+  .shop-read-actions { margin-top: 10px; }
+  .shop-tabs { overflow-x: auto; }
+  .shop-tabs button { flex: 1 0 auto; }
+  .shop-paid-action { align-items: stretch; flex-direction: column; }
+  .shop-paid-action label { justify-content: space-between; }
+  .shop-paid-action input { width: 96px; }
+  .shop-transaction > div:first-child { display: grid; gap: 2px; }
+}

@@ -10,6 +10,7 @@ import { AutoFarmPanel } from './panels/AutoFarmPanel.js';
 import { CookingPanel } from './panels/CookingPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
 import { QuestsPanel } from './panels/QuestsPanel.js';
+import { ShopPanel } from './panels/ShopPanel.js';
 import { StatusPanel } from './panels/StatusPanel.js';
 
 export function AccountOperationsDrawer() {
@@ -102,6 +103,17 @@ function LoadedOperations({
         animals={snapshot?.animals ?? []}
       />
       <AssetsPanel accountId={account.id} farm={snapshot?.farm ?? null} inventory={snapshot?.inventory ?? []} trees={snapshot?.trees ?? []} animals={snapshot?.animals ?? []} />
+      <ShopPanel
+        accountId={account.id}
+        accountName={account.label}
+        online={snapshot?.status === 'online'}
+        shop={snapshot?.shop}
+        produce={snapshot?.produce}
+        trees={snapshot?.trees ?? []}
+        animals={snapshot?.animals ?? []}
+        items={snapshot?.items ?? []}
+        foods={snapshot?.foods ?? []}
+      />
       <LogPanel logs={snapshot?.logs ?? []} />
       <Link className="btn-link drawer-debug-link" to={`/accounts/${account.id}/debug`} onClick={onOpenDebug}>
         Debug chuyên sâu →

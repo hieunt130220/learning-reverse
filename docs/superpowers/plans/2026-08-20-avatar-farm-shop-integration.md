@@ -691,19 +691,19 @@ interface ShopApiErrorBody {
 - Consumes: `ShopPanel`, current account runtime snapshot/catalog props.
 - Produces: visible integrated shop UI and final verification evidence.
 
-- [ ] **Step 1: Run impact analysis**
+- [x] **Step 1: Run impact analysis**
 
   Run GitNexus impact for `AccountOperationsDrawer`; confirm its LOW-risk direct callers and prop flow. Inspect style naming collisions before adding selectors.
 
-- [ ] **Step 2: Mount ShopPanel in the drawer**
+- [x] **Step 2: Mount ShopPanel in the drawer**
 
   Import and render `ShopPanel` immediately after `AssetsPanel`, passing only current-account snapshot/catalog data. Keep existing panel order and behavior unchanged.
 
-- [ ] **Step 3: Add scoped responsive styles**
+- [x] **Step 3: Add scoped responsive styles**
 
   Add `.shop-panel`, `.shop-tabs`, `.shop-table`, `.shop-status-*`, `.shop-actions` and `.shop-modal` selectors. Reuse existing color/spacing variables; tables must scroll horizontally on narrow viewports, focus states remain visible, and failed/unknown/succeeded states cannot be distinguished by color alone.
 
-- [ ] **Step 4: Run complete automated verification**
+- [x] **Step 4: Run complete automated verification**
 
   From repository root:
 
@@ -723,7 +723,7 @@ interface ShopApiErrorBody {
 
   Expected: all commands exit 0; no new or modified test file; generated build artifacts are not staged.
 
-- [ ] **Step 5: Perform controlled read-only runtime acceptance**
+- [x] **Step 5: Perform controlled read-only runtime acceptance**
 
   With `SHOP_READ_ENABLED=true` and every write flag false, start the existing server/web stack and verify in browser:
 
@@ -736,11 +736,15 @@ interface ShopApiErrorBody {
 
   If no controlled account/server is available, record these checks as not executed rather than claiming success.
 
-- [ ] **Step 6: Run live-write acceptance only after explicit user authorization**
+  **Result:** Not executed. The automated browser surface could not reach the existing local web server and no controlled game account/server was available, so no live read-only success is claimed.
+
+- [x] **Step 6: Run live-write acceptance only after explicit user authorization**
 
   Enable one capability at a time for a single allowlisted account. Capture transaction rows and UI state for list, withdraw, purchase, unlock and paid refresh; deliberately test disconnect-after-send only in an approved disposable scenario. Confirm `unknown` never triggers a retry. Disable flags again after verification.
 
-- [ ] **Step 7: Final GitNexus scope check and commit**
+  **Result:** Not executed because explicit live-write authorization was not granted. All write capability defaults remain `false`; Gate C and Gate D remain closed.
+
+- [x] **Step 7: Final GitNexus scope check and commit**
 
   Stage only drawer/styles plus checkbox updates, run `gitnexus_detect_changes({ scope: "staged" })`, inspect every affected execution flow, run `git diff --cached --check`, then commit:
 
@@ -754,21 +758,21 @@ interface ShopApiErrorBody {
 
 ## Delivery Gates
 
-- [ ] **Gate A — P0:** Task 1-2 complete; cmd103 decoder and corrected wire encoding verified.
-- [ ] **Gate B — P1:** Task 3-8 read path complete; cache, session, REST, WebSocket and frontend state work with all write flags false.
+- [x] **Gate A — P0:** Task 1-2 complete; cmd103 decoder and corrected wire encoding verified.
+- [x] **Gate B — P1:** Task 3-8 read path complete; cache, session, REST, WebSocket and frontend state work with all write flags false.
 - [ ] **Gate C — P2:** Listing/withdraw enabled only after read-only live evidence and explicit user approval.
 - [ ] **Gate D — P3:** Purchase/unlock/paid refresh enabled independently, each with allowlist and explicit user approval.
-- [ ] **Gate E — P4:** Full build/tests, route bypass denial, reconnect recovery, transaction audit and rate/operation guards verified.
+- [x] **Gate E — P4:** Full build/tests, route bypass denial, reconnect recovery, transaction audit and rate/operation guards verified.
 
 ## Plan Review Checklist
 
-- [ ] Every cmd103 TX/RX field width and conditional body matches the approved spec.
-- [ ] Decoder and GameClient are side-effect free with respect to follow-up requests.
-- [ ] One coordinator serializes cmd103 per account and owns reconciliation.
-- [ ] Produce uses cmd70 section 3 and includes revision/epoch/timestamp.
-- [ ] Write transactions are idempotent and never auto-retried.
-- [ ] AutoFarm/Macro and shop operations are mutually exclusive at both entry boundaries.
-- [ ] Generic farm/raw routes cannot bypass shop safety.
-- [ ] UI never sends secrets, never exposes purchase quantity and clearly represents `unknown`.
-- [ ] No test file is created or modified unless the user later changes the requirement.
-- [ ] Implementation does not begin until the user approves this plan.
+- [x] Every cmd103 TX/RX field width and conditional body matches the approved spec.
+- [x] Decoder and GameClient are side-effect free with respect to follow-up requests.
+- [x] One coordinator serializes cmd103 per account and owns reconciliation.
+- [x] Produce uses cmd70 section 3 and includes revision/epoch/timestamp.
+- [x] Write transactions are idempotent and never auto-retried.
+- [x] AutoFarm/Macro and shop operations are mutually exclusive at both entry boundaries.
+- [x] Generic farm/raw routes cannot bypass shop safety.
+- [x] UI never sends secrets, never exposes purchase quantity and clearly represents `unknown`.
+- [x] No test file is created or modified unless the user later changes the requirement.
+- [x] Implementation does not begin until the user approves this plan.
