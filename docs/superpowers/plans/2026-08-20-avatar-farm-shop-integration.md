@@ -646,33 +646,33 @@ interface ShopApiErrorBody {
 - Consumes: `apiGet`, `apiPost`, account/session snapshot, item catalogs, shop capabilities.
 - Produces: read-only views, confirmation forms and typed REST mutations; no direct WebSocket or game protocol access.
 
-- [ ] **Step 1: Define component inputs and safe defaults**
+- [x] **Step 1: Define component inputs and safe defaults**
 
   Accept account id/name, online state, `shop`, `produce`, and existing tree/animal/item/food catalogs. If shop data is absent, render a cache-empty state and a capability-aware sync button. Resolve names by catalog IDs/product IDs; unknown values render `#<itemId>` rather than a guessed Vietnamese name.
 
-- [ ] **Step 2: Implement three tabs**
+- [x] **Step 2: Implement three tabs**
 
   - `Sạp của tôi`: slot, item, quantity, price, sale/timeout state, `canOpenSlot`, eligible produce and latest revision/time.
   - `Chợ`: listing identity, item, quantity, price, refresh/browse controls and stale timestamp.
   - `Giao dịch`: newest-first transaction status, kind, timestamps and error; `unknown` is visually explicit and has no retry button.
 
-- [ ] **Step 3: Implement read actions**
+- [x] **Step 3: Implement read actions**
 
   Sync calls `POST /shop/sync`; browse calls `POST /shop/browse`; history calls `GET /shop/transactions?limit=50`. Disable concurrent buttons locally and rely on WebSocket as the authoritative subsequent state.
 
-- [ ] **Step 4: Implement listing modal and validation**
+- [x] **Step 4: Implement listing modal and validation**
 
   The item dropdown is the intersection of latest produce and latest price-rule item IDs. Quantity may not exceed produce quantity. Price must be within inclusive min/max. Submit body includes `slot`, `expectedShopRevision`, `expectedProduceRevision` and `crypto.randomUUID()` as `idempotencyKey`.
 
-- [ ] **Step 5: Implement destructive confirmations**
+- [x] **Step 5: Implement destructive confirmations**
 
   Withdraw confirmation submits `expectedShopRevision`, `expectedItemId`, `expectedQuantity` and `expectedPrice`. Purchase confirmation includes listing/item/quantity/price but no editable quantity input, and submits exact `idShop`, `verShop`, `expectedItemId`, `expectedQuantity`, `expectedPrice`, `expectedMarketRevision`. Unlock and paid refresh show separate cost/capability warnings and never share the read-only browse button.
 
-- [ ] **Step 6: Enforce capability and online UX**
+- [x] **Step 6: Enforce capability and online UX**
 
   Hide or disable write controls based on backend capabilities, online state and active transaction; never infer permission solely from frontend env. Surface structured API error code/message and keep cached tables visible on error/offline.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
   Run web tests/build. Perform a static DOM review of empty, offline-cache, active, failed and unknown states using the existing dev environment if available; do not send live writes. Stage `ShopPanel.tsx`, run `gitnexus_detect_changes({ scope: "staged" })` and cached diff check, then commit:
 
