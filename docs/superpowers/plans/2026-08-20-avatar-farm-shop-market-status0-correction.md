@@ -203,7 +203,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Expected: first event matches all three catalog records plus `1561/10`; second event contains one listing; neither event has `TRAILING_BYTES`. Also run a second inline invocation with unsupported status and truncated status0/status1 bodies and assert each throws `ShopProtocolDecodeError` before any state mutation.
 
-- [ ] **Step 5: Detect scope, mark task steps, and commit**
+- [x] **Step 5: Detect scope, mark task steps, and commit**
 
   Mark Task 1 steps complete in this plan, stage only Task 1 files plus this plan, run staged GitNexus change detection and diff checks, then commit:
 
@@ -364,7 +364,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Expected: no production match. Use a one-off inline repository harness against a temporary SQLite database to insert one legacy market snapshot, call `loadCache()`, and assert its normalized data equals empty `MarketData`; do not add the harness to Git.
 
-- [ ] **Step 8: Detect scope, mark task steps, and commit**
+- [x] **Step 8: Detect scope, mark task steps, and commit**
 
   Mark Task 2 complete only after all checks pass. Stage `shopRepo.ts`, `shopCoordinator.ts` and this plan; run `gitnexus_detect_changes({ scope: "staged" })`, review d=1 processes, then:
 
@@ -453,7 +453,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Expected: exit 0. Inspect the route table/source to confirm catalog and item endpoints coexist, both use ownership middleware, and neither uses live-write capability checks.
 
-- [ ] **Step 6: Detect scope, mark task steps, and commit**
+- [x] **Step 6: Detect scope, mark task steps, and commit**
 
   Mark Task 3 complete, stage only the three production files plus this plan, run staged GitNexus change detection, then:
 
@@ -562,7 +562,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Expected: exit 0, no test file changes. With a populated state, inspect the DOM to confirm all catalog controls are real enabled `button` elements, no invisible overlay intercepts pointer events, and busy state disables only the active read action rather than the whole shop panel.
 
-- [ ] **Step 6: Detect scope, mark task steps, and commit**
+- [x] **Step 6: Detect scope, mark task steps, and commit**
 
   Mark Task 4 complete, stage the panel, scoped CSS if changed, and this plan; run staged GitNexus change detection, then:
 
@@ -640,7 +640,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   **Result (2026-08-20):** Added the correction addendum without rewriting prior task history. It links the correction spec/plan and records both verified schemas, native offsets `0x637980`/`0x800928`, automated packet/DOM evidence, the live-acceptance blocker and the still-closed Gate C/Gate D.
 
-- [ ] **Step 6: Run final GitNexus scope check and close the plan**
+- [x] **Step 6: Run final GitNexus scope check and close the plan**
 
   Mark Task 5 and every genuinely completed step `- [x]`. Run:
 
@@ -655,12 +655,16 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
   git commit -m "docs(shop): record corrected market verification"
   ```
 
-- [ ] **Step 7: Refresh GitNexus without dropping embeddings**
+  **Result (2026-08-20):** Staged detection covered exactly the ten task files and excluded `AGENTS.md`/`CLAUDE.md`. GitNexus reported CRITICAL because the production diff touches broad `ShopCoordinator`, repository, route and UI execution flows; focused impact reviews plus the complete server/web verification matrix found no missed direct dependent. Per the user-approved consolidated handoff, Tasks 1-5 were committed together as `cdd3f24` (`fix(shop): correct market catalog and listings flow`) after `git diff --cached --check` passed.
+
+- [x] **Step 7: Refresh GitNexus without dropping embeddings**
 
   Inspect `.gitnexus/meta.json` `stats.embeddings`. Run `npx gitnexus analyze --embeddings` if count is nonzero; otherwise run `npx gitnexus analyze`. Expected: index is fresh at final commit and contains no loss of an existing embeddings index.
 
-**Task 5 verification/blocker note (2026-08-20):** Automated verification and non-live packet/cache/coordinator/DOM harnesses are complete. The DOM harness confirmed three catalog buttons, `#200` fallback rendering, catalog/detail/local-back behavior, catalog/account reset and disabled purchase on listing mismatch. Live Steps 2-4 remain unchecked: although the server was started with `SHOP_READ_ENABLED=true` and all write/purchase/unlock/market-refresh flags absent (`false`), browser policy denied `http://localhost:5173/accounts/2` and the user permission chooser returned no selection; therefore no live click, packet, money/inventory, SQLite or WebSocket evidence is claimed. Step 6 remains unchecked: all-scope GitNexus detection ran but returned CRITICAL with 78 changed symbols and 58 affected symbols because pre-existing `AGENTS.md`/`CLAUDE.md` edits and broad class hunks were included; decoder, coordinator persistence/reconnect, routes and `ShopPanel` flows were reviewed separately, but staged detection/commit could not run because `.git` is read-only and the approval backend returned 404. Step 7 remains unchecked until a commit exists and the index can be refreshed.
+  **Result (2026-08-20):** `.gitnexus/meta.json` reported zero embeddings. Ran `node .gitnexus/run.cjs analyze` after the production commit, producing 3,811 nodes, 9,192 edges and 300 flows; the same command is rerun after the ledger-only closure commit so the index points to final `HEAD`.
+
+**Task 5 verification/blocker note (2026-08-20):** Automated verification, non-live packet/cache/coordinator/DOM harnesses, the consolidated Git handoff and post-commit GitNexus refresh are complete. The DOM harness confirmed three catalog buttons, `#200` fallback rendering, catalog/detail/local-back behavior, catalog/account reset and disabled purchase on listing mismatch. Live Steps 2-4 remain unchecked: although the server was started with `SHOP_READ_ENABLED=true` and all write/purchase/unlock/market-refresh flags absent (`false`), browser policy denied `http://localhost:5173/accounts/2`; therefore no live click, packet, money/inventory, SQLite or WebSocket evidence is claimed.
 
 ## User Review Gate
 
-User đã duyệt triển khai và cho phép thực hiện trực tiếp trên `main`. Tasks 1-4 đã được implement và verify theo các checkbox/evidence ở trên; Task 5 chưa hoàn tất vì live acceptance Steps 2-4 và Git handoff/index refresh Steps 6-7 vẫn pending đúng như blocker note đã ghi nhận.
+User đã duyệt triển khai và cho phép thực hiện trực tiếp trên `main`. Tasks 1-4 và các bước automated/Git closure của Task 5 đã được implement, verify và commit; Task 5 chưa hoàn tất duy nhất vì live acceptance Steps 2-4 vẫn pending đúng như blocker note đã ghi nhận.
