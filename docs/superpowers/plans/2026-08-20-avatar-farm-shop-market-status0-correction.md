@@ -600,7 +600,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   **Result (2026-08-20):** Passed: server typecheck exit 0, 254/254 server tests, server build exit 0, 72/72 web tests, web build exit 0 and `git diff --check` clean. No test file changed. Production search found no remaining `market-snapshot`, `market.data.status` or legacy market-shape match. The positive decoder fixture, unsupported/truncated negative harness, cache/coordinator safety harnesses and DOM one-off harness also passed; these harnesses are not live account evidence.
 
-- [ ] **Step 2: Perform live account 2 catalog acceptance**
+- [x] **Step 2: Perform live account 2 catalog acceptance**
 
   With `SHOP_READ_ENABLED=true` and all write flags false:
 
@@ -611,7 +611,9 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
   5. confirm runtime log has no `cmd 103 sub1 còn ... byte chưa đọc` for this valid packet;
   6. confirm all three **Xem sạp bán** buttons are clickable.
 
-- [ ] **Step 3: Perform live item-selection and local-back acceptance**
+  **Result (2026-08-20):** Live account 2 sent exactly one TX `01 00 ff ff` at 13:36:12 and received `0100000300320000000300c800000003003700000002000007080000000a`. The current server-dynamic catalog decoded as `(50,3)`, `(200,3)`, `(55,2)`, `timeRefresh=1800`, `priceRefresh=10`; the historical `(2,5)`, `(200,2)`, `(7,1)` fixture remains decoder evidence rather than a fixed catalog invariant. DOM showed three enabled **Xem sạp bán** buttons with `#200` fallback, and runtime UI contained zero trailing-byte/protocol-error warnings.
+
+- [x] **Step 3: Perform live item-selection and local-back acceptance**
 
   For each catalog item, click **Xem sạp bán** and confirm exactly one corresponding TX:
 
@@ -623,7 +625,9 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Confirm each status1 response updates `selectedItemId` and only that item's listings. Click **Quay lại danh mục** and verify no new cmd 103 TX occurs. A zero-listing response must render the correct empty detail state.
 
-- [ ] **Step 4: Verify safety invariants and persisted/realtime state**
+  **Result (2026-08-20):** The current catalog produced exactly one TX/RX pair per selection: item 50 -> TX `01 01 00 32`, three listings, revision 5; item 200 -> TX `01 01 00 c8`, three listings, revision 6; item 55 -> TX `01 01 00 37`, two listings, revision 7. Each detail heading and every returned listing matched the selected item. Three local-back clicks restored the same catalog without TX: final traffic remained four cmd103 TX and four RX total (one catalog plus three item requests). The existing DOM harness covers the zero-listing detail message.
+
+- [x] **Step 4: Verify safety invariants and persisted/realtime state**
 
   Confirm:
 
@@ -633,6 +637,8 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
   - WebSocket/DOM revision advances once per accepted catalog/listings response;
   - unsolicited listings without pending item context are rejected and do not mutate the persisted snapshot;
   - reconnect marks the last aggregate stale until the next valid read.
+
+  **Result (2026-08-20):** Debug traffic contained only `0100ffff`, `01010032`, `010100c8` and `01010037`; no sub7 or cmd103 write subtype was sent. Cached balances stayed `xu=4705`, `luong=0`, `luongKhoa=100`; produce quantities stayed unchanged despite the independent periodic inventory poll advancing its revision. SQLite persisted aggregate market revision 7 with the three catalog entries, `selectedItemId=55` and only item-55 listings. DOM/WebSocket advanced exactly once per accepted response (3 stale -> 4 catalog -> 5/6/7 listings), and the initial stale snapshot became ready after the valid catalog read. The coordinator safety harness remains the evidence that unsolicited context-free listings cannot mutate state.
 
 - [x] **Step 5: Record correction evidence in the parent plan**
 
@@ -663,8 +669,8 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   **Result (2026-08-20):** `.gitnexus/meta.json` reported zero embeddings. Ran `node .gitnexus/run.cjs analyze` after the production commit, producing 3,811 nodes, 9,192 edges and 300 flows; the same command is rerun after the ledger-only closure commit so the index points to final `HEAD`.
 
-**Task 5 verification/blocker note (2026-08-20):** Automated verification, non-live packet/cache/coordinator/DOM harnesses, the consolidated Git handoff and post-commit GitNexus refresh are complete. The DOM harness confirmed three catalog buttons, `#200` fallback rendering, catalog/detail/local-back behavior, catalog/account reset and disabled purchase on listing mismatch. Live Steps 2-4 remain unchecked: although the server was started with `SHOP_READ_ENABLED=true` and all write/purchase/unlock/market-refresh flags absent (`false`), browser policy denied `http://localhost:5173/accounts/2`; therefore no live click, packet, money/inventory, SQLite or WebSocket evidence is claimed.
+**Task 5 verification closure (2026-08-20):** Automated verification, packet/cache/coordinator/DOM harnesses, live read-only account 2 acceptance, the consolidated Git handoff and post-commit GitNexus refresh are complete. Live evidence confirms catalog/listings TX/RX correlation, packet-free local back, aggregate SQLite persistence, one revision advance per response and unchanged balances/inventory quantities. The catalog contents are server-dynamic; the current live values differ from the earlier fixture while preserving the verified status0 wire schema. Gate C and Gate D remain closed because no live-write capability was enabled or exercised.
 
 ## User Review Gate
 
-User đã duyệt triển khai và cho phép thực hiện trực tiếp trên `main`. Tasks 1-4 và các bước automated/Git closure của Task 5 đã được implement, verify và commit; Task 5 chưa hoàn tất duy nhất vì live acceptance Steps 2-4 vẫn pending đúng như blocker note đã ghi nhận.
+User đã duyệt triển khai và cho phép thực hiện trực tiếp trên `main`. Tasks 1-5 đã được implement và verify theo toàn bộ checkbox/evidence ở trên. Read-only correction hoàn tất; Gate C/Gate D vẫn đóng cho đến khi có phê duyệt live-write riêng.
