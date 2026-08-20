@@ -76,6 +76,17 @@ function routeSlot(value: string): number {
   return slot;
 }
 
+function routeItemId(value: string): number {
+  if (!/^(0|[1-9]\d*)$/.test(value)) {
+    throw new ShopError(400, 'INVALID_SHOP_REQUEST', 'itemId phải là số nguyên không âm');
+  }
+  const itemId = Number(value);
+  if (!Number.isSafeInteger(itemId) || itemId > 32_767) {
+    throw new ShopError(400, 'INVALID_SHOP_REQUEST', 'itemId phải nằm trong [0, 32767]');
+  }
+  return itemId;
+}
+
 function historyLimit(value: unknown): number {
   if (value === undefined) return 50;
   if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) {
@@ -135,7 +146,20 @@ export function shopRouter(deps: ShopRoutesDeps): Router {
   router.post('/:id/shop/browse', owned, async (req, res) => {
     try {
       const session = requireLiveSession(sessions, accountId(req));
-      const shop = await session.browseShop();
+      const shop = await session.browseShopCatalog();
+      res.json({ shop, produce: session.shopProduceState() });
+    } catch (error) {
+      apiError(res, error);
+    }
+  });
+
+  router.post('/:id/shop/browse/:itemId', owned, async (req, res) => {
+    try {
+      const itemId = routeItemId(req.params.itemId);
+      const body = bodyObject(req.body);
+      const expectedMarketRevision = integerField(body, 'expectedMarketRevision');
+      const session = requireLiveSession(sessions, accountId(req));
+      const shop = await session.browseShopItem({ itemId, expectedMarketRevision });
       res.json({ shop, produce: session.shopProduceState() });
     } catch (error) {
       apiError(res, error);

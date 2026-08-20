@@ -1,6 +1,11 @@
 import type { Db } from '../db/index.js';
 import type { InventoryItem } from '../game/farmData.js';
-import type { MarketListing, OwnShopSlot, ShopPriceRule } from '../game/shopProtocol.js';
+import type {
+  MarketCatalogItem,
+  MarketListing,
+  OwnShopSlot,
+  ShopPriceRule,
+} from '../game/shopProtocol.js';
 
 export type ShopTransactionKind =
   | 'list'
@@ -64,7 +69,10 @@ export interface OwnShopData {
 }
 
 export interface MarketData {
-  status: number;
+  catalog: MarketCatalogItem[];
+  timeRefresh: number | null;
+  priceRefresh: number | null;
+  selectedItemId: number | null;
   listings: MarketListing[];
 }
 
@@ -130,6 +138,102 @@ interface TransactionRow {
 }
 
 const TERMINAL_STATUSES = new Set<ShopTransactionStatus>(['succeeded', 'failed', 'unknown']);
+const MAX_MARKET_RECORDS = 4096;
+const MAX_SHORT = 32_767;
+const MAX_INT = 2_147_483_647;
+
+export const emptyMarketData = (): MarketData => ({
+  catalog: [],
+  timeRefresh: null,
+  priceRefresh: null,
+  selectedItemId: null,
+  listings: [],
+});
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isBoundedInteger(value: unknown, minimum: number, maximum: number): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= minimum && (value as number) <= maximum;
+}
+
+function isSnapshotMetadata(value: Record<string, unknown>): boolean {
+  return isBoundedInteger(value.revision, 0, Number.MAX_SAFE_INTEGER)
+    && isBoundedInteger(value.connectionEpoch, 0, Number.MAX_SAFE_INTEGER)
+    && isBoundedInteger(value.capturedAt, 0, Number.MAX_SAFE_INTEGER);
+}
+
+function isMarketCatalogItem(value: unknown): value is MarketCatalogItem {
+  return isRecord(value)
+    && isBoundedInteger(value.itemId, 0, MAX_SHORT)
+    && isBoundedInteger(value.price, 0, MAX_INT);
+}
+
+function isMarketListing(value: unknown): value is MarketListing {
+  return isRecord(value)
+    && isBoundedInteger(value.index, 0, MAX_MARKET_RECORDS - 1)
+    && isBoundedInteger(value.idShop, 0, MAX_INT)
+    && isBoundedInteger(value.verShop, 0, MAX_SHORT)
+    && isBoundedInteger(value.itemId, 0, MAX_SHORT)
+    && isBoundedInteger(value.quantity, 0, MAX_INT)
+    && isBoundedInteger(value.price, 0, MAX_INT);
+}
+
+function isBoundedArray<T>(
+  value: unknown,
+  guard: (item: unknown) => item is T,
+): value is T[] {
+  return Array.isArray(value)
+    && value.length <= MAX_MARKET_RECORDS
+    && value.every(guard);
+}
+
+function isNullableInteger(value: unknown, maximum: number): value is number | null {
+  return value === null || isBoundedInteger(value, 0, maximum);
+}
+
+function decodeMarketSnapshot(raw: string | null): ShopSnapshot<MarketData> | null {
+  if (raw === null) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isRecord(value) || !isSnapshotMetadata(value) || !isRecord(value.data)) return null;
+
+  const data = value.data;
+  const metadata = {
+    revision: value.revision as number,
+    connectionEpoch: value.connectionEpoch as number,
+    capturedAt: value.capturedAt as number,
+  };
+  if ('status' in data) {
+    if (
+      !isBoundedInteger(data.status, 0, MAX_INT)
+      || !isBoundedArray(data.listings, isMarketListing)
+    ) return null;
+    return { ...metadata, data: emptyMarketData() };
+  }
+  if (
+    !isBoundedArray(data.catalog, isMarketCatalogItem)
+    || !isNullableInteger(data.timeRefresh, MAX_INT)
+    || !isNullableInteger(data.priceRefresh, MAX_INT)
+    || !isNullableInteger(data.selectedItemId, MAX_SHORT)
+    || !isBoundedArray(data.listings, isMarketListing)
+  ) return null;
+  return {
+    ...metadata,
+    data: {
+      catalog: data.catalog.map((item) => ({ ...item })),
+      timeRefresh: data.timeRefresh,
+      priceRefresh: data.priceRefresh,
+      selectedItemId: data.selectedItemId,
+      listings: data.listings.map((listing) => ({ ...listing })),
+    },
+  };
+}
 
 function parseJson<T>(raw: string | null, table: string, column: string, owner: string): T | null {
   if (raw === null) return null;
@@ -194,7 +298,7 @@ export class ShopRepository {
     const owner = `account ${row.account_id}`;
     return {
       own: parseJson(row.own_snapshot_json, 'avatar_shop_cache', 'own_snapshot_json', owner),
-      market: parseJson(row.market_snapshot_json, 'avatar_shop_cache', 'market_snapshot_json', owner),
+      market: decodeMarketSnapshot(row.market_snapshot_json),
       priceRules: parseJson(row.price_rules_json, 'avatar_shop_cache', 'price_rules_json', owner),
       produce: parseJson(row.produce_json, 'avatar_shop_cache', 'produce_json', owner),
       ownObservedAt: row.own_observed_at,

@@ -22,6 +22,7 @@ import type { ShopPolicy } from '../config.js';
 import {
   ShopCoordinator,
   ShopError,
+  type BrowseMarketItemInput,
   type CreateListingInput,
   type PurchaseListingInput,
   type RefreshMarketInput,
@@ -321,8 +322,12 @@ export class AvatarSession {
     return this.requireShop().syncOwnShop();
   }
 
-  browseShop(): Promise<ShopRuntimeState> {
-    return this.requireShop().browseMarket();
+  browseShopCatalog(): Promise<ShopRuntimeState> {
+    return this.requireShop().browseMarketCatalog();
+  }
+
+  browseShopItem(input: BrowseMarketItemInput): Promise<ShopRuntimeState> {
+    return this.requireShop().browseMarketItem(input);
   }
 
   createShopListing(input: CreateListingInput): ShopTransaction {

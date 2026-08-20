@@ -113,7 +113,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 - Consumes: `MyReader`, `validateCount`, cmd 103 sub1 raw body.
 - Produces: `MarketCatalogItem`, discriminated `market-catalog`/`market-listings` events, accurate status0/status1 technical documentation.
 
-- [ ] **Step 1: Run GitNexus impact before decoder edits**
+- [x] **Step 1: Run GitNexus impact before decoder edits**
 
   Run impact for `decodeShopPacket` and inspect context for `ShopProtocolEvent`:
 
@@ -124,7 +124,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Record all d=1 consumers, especially `GameClient.handleShopMessage`, `ShopCoordinator.onShopProtocol`, and any exhaustive event switches. If risk is HIGH/CRITICAL, report it before continuing.
 
-- [ ] **Step 2: Split sub1 into two exact decoder branches**
+- [x] **Step 2: Split sub1 into two exact decoder branches**
 
   Add `MarketCatalogItem`, replace the old `market-snapshot` union member, and implement sub1 with explicit status validation:
 
@@ -180,7 +180,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Reuse the existing bounded read helpers and existing listing record semantics. Do not infer `selectedItemId` inside the decoder.
 
-- [ ] **Step 3: Update cmd 103 analysis with verified wire evidence**
+- [x] **Step 3: Update cmd 103 analysis with verified wire evidence**
 
   Replace the obsolete statement “status0 has no extra data” with both schemas:
 
@@ -191,7 +191,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Include the live packet fixture, decoded values, native evidence at `0x637980`, and action evidence at `0x800928`. Label `priceRefresh=10` as an opaque server value, not a confirmed currency price.
 
-- [ ] **Step 4: Verify decoder after production code**
+- [x] **Step 4: Verify decoder after production code**
 
   Run a one-off TypeScript harness without creating a test file:
 
@@ -223,7 +223,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 - Consumes: discriminated protocol events from Task 1, current connection epoch, `ShopSnapshot`, persisted `market_snapshot_json`.
 - Produces: `MarketData`, legacy-cache normalization, `browseMarketCatalog()`, `browseMarketItem()`, pending request context safe for seller listings.
 
-- [ ] **Step 1: Run impact analysis for every state/coordinator symbol to edit**
+- [x] **Step 1: Run impact analysis for every state/coordinator symbol to edit**
 
   ```text
   gitnexus_impact({ target: "ShopRuntimeState", direction: "upstream" })
@@ -236,7 +236,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Inspect each returned d=1 caller. Coordinator changes touch request correlation and transaction reconciliation, so any HIGH/CRITICAL result must be shown to the user before edit.
 
-- [ ] **Step 2: Replace legacy market shape and normalize persisted JSON**
+- [x] **Step 2: Replace legacy market shape and normalize persisted JSON**
 
   Define `MarketData` in `shopRepo.ts` using the shared contract. Add a bounded shape guard for `market_snapshot_json` rather than blindly casting `JSON.parse()`.
 
@@ -258,7 +258,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   `loadCache()` must continue loading valid own/rules snapshots independently if market cache is invalid. Reconnect continues marking cached state stale through the existing epoch path.
 
-- [ ] **Step 3: Add typed pending request context without changing unrelated requests**
+- [x] **Step 3: Add typed pending request context without changing unrelated requests**
 
   Extend the existing pending request record and request helpers with an optional fourth argument:
 
@@ -285,7 +285,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Preserve every existing call by keeping matcher and context optional. Do not store `lastSelectedItemId` as implicit global correlation state.
 
-- [ ] **Step 4: Implement catalog and item browse operations**
+- [x] **Step 4: Implement catalog and item browse operations**
 
   Replace the public market read seam with:
 
@@ -311,7 +311,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Stale revision/item must throw the existing `STALE_SHOP_STATE` error before any packet is sent.
 
-- [ ] **Step 5: Apply protocol events atomically with verified context**
+- [x] **Step 5: Apply protocol events atomically with verified context**
 
   In `onShopProtocol`, resolve current pending request and compute epoch/subtype/discriminator match before calling `applyProtocolEvent`. Pass context only for a fully matching pending response.
 
@@ -341,11 +341,11 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   An unsolicited/mismatched listings event must not persist, increment revision or emit a trusted market snapshot. It must produce the existing structured protocol error/log path without rejecting an unrelated pending subtype.
 
-- [ ] **Step 6: Update purchase and paid-refresh reconciliation to the aggregate**
+- [x] **Step 6: Update purchase and paid-refresh reconciliation to the aggregate**
 
   All code that reads `market.data.listings` must also require `market.data.selectedItemId === expectedItemId` before using a listing. Purchase reconciliation step1 must request `openShop(1,1,expectedItemId)` with matching context. Paid refresh step0 must match `market-catalog`; it remains capability-gated and disabled by default. Unknown-outcome evidence must never use legacy/unselected listings.
 
-- [ ] **Step 7: Verify server state/coordinator production code**
+- [x] **Step 7: Verify server state/coordinator production code**
 
   Run:
 
@@ -384,7 +384,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 - Consumes: coordinator operations and `MarketData` from Task 2.
 - Produces: typed session methods, `POST /shop/browse/:itemId`, matching frontend DTO.
 
-- [ ] **Step 1: Run impact analysis for session, route, and frontend DTO symbols**
+- [x] **Step 1: Run impact analysis for session, route, and frontend DTO symbols**
 
   ```text
   gitnexus_impact({ target: "AvatarSession.browseShop", direction: "upstream" })
@@ -394,7 +394,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Inspect direct consumers before edits and report HIGH/CRITICAL risk if returned.
 
-- [ ] **Step 2: Add explicit session methods**
+- [x] **Step 2: Add explicit session methods**
 
   Expose coordinator methods without protocol logic in `AvatarSession`:
 
@@ -410,7 +410,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Update the existing catalog route caller from `browseShop()` to `browseShopCatalog()`; remove the ambiguous method only after all d=1 callers are migrated.
 
-- [ ] **Step 3: Add and validate the item browse endpoint**
+- [x] **Step 3: Add and validate the item browse endpoint**
 
   Keep `POST /:id/shop/browse` unchanged externally. Add:
 
@@ -431,7 +431,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Implement `routeItemId()` beside `routeSlot()` using decimal-only parsing and range `[0, 32_767]`. Reuse the route's existing account ownership/session lookup and `apiError()` rather than introducing parallel mapping. Reject negative/out-of-range item IDs and negative revision as `INVALID_SHOP_REQUEST`; stale coordinator errors must retain HTTP 409 mapping.
 
-- [ ] **Step 4: Mirror the aggregate DTO in web types**
+- [x] **Step 4: Mirror the aggregate DTO in web types**
 
   Add `MarketCatalogItem` and `MarketData` to `avatar-web/web/src/types.ts`, then change only:
 
@@ -441,7 +441,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Keep every other shop/transaction/capability field binary-compatible with current WebSocket snapshots.
 
-- [ ] **Step 5: Verify API and type contracts**
+- [x] **Step 5: Verify API and type contracts**
 
   ```bash
   cd avatar-web/server
@@ -472,7 +472,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 - Consumes: `ShopRuntimeState.market.data.catalog`, refresh metadata, selected item/listings, catalog/item REST endpoints.
 - Produces: catalog view, user-triggered seller detail view, packet-free local back navigation.
 
-- [ ] **Step 1: Run impact analysis before editing the panel**
+- [x] **Step 1: Run impact analysis before editing the panel**
 
   ```text
   gitnexus_impact({ target: "ShopPanel", direction: "upstream" })
@@ -480,7 +480,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Review account-drawer consumers and report HIGH/CRITICAL risk before edit.
 
-- [ ] **Step 2: Make read actions return success and accept an optional body**
+- [x] **Step 2: Make read actions return success and accept an optional body**
 
   Refine the existing helper without changing write helpers:
 
@@ -506,7 +506,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Existing no-body read calls must continue working.
 
-- [ ] **Step 3: Add explicit local catalog/detail navigation**
+- [x] **Step 3: Add explicit local catalog/detail navigation**
 
   Add state and handlers scoped to the Chợ tab:
 
@@ -532,7 +532,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Wire **Cập nhật chợ** to `browseCatalog()`. **Quay lại danh mục** must only call `setMarketView('catalog')`; it must not call REST or alter the server snapshot.
 
-- [ ] **Step 4: Render catalog and seller listings from the new aggregate**
+- [x] **Step 4: Render catalog and seller listings from the new aggregate**
 
   Catalog view requirements:
 
@@ -552,7 +552,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Preserve the disabled paid sub7 area and explanatory text. Use scoped CSS only if needed; do not change drawer backdrop/z-index behavior unrelated to the shop panel.
 
-- [ ] **Step 5: Verify web production code and visible DOM**
+- [x] **Step 5: Verify web production code and visible DOM**
 
   ```bash
   cd avatar-web/web
@@ -582,7 +582,7 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 - Consumes: complete server/web correction from Tasks 1-4 and live account 2 read flow.
 - Produces: full verification evidence, corrected parent-plan record, completed checkbox ledger.
 
-- [ ] **Step 1: Run the complete existing automated verification matrix**
+- [x] **Step 1: Run the complete existing automated verification matrix**
 
   ```bash
   cd avatar-web/server
@@ -597,6 +597,8 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
   ```
 
   Expected: every command exits 0. Run `git diff --name-only -- avatar-web | rg '(^|/)(__tests__|tests?/|[^/]+\.(test|spec)\.)'` and expect no output, confirming no test file was created or modified.
+
+  **Result (2026-08-20):** Passed: server typecheck exit 0, 254/254 server tests, server build exit 0, 72/72 web tests, web build exit 0 and `git diff --check` clean. No test file changed. Production search found no remaining `market-snapshot`, `market.data.status` or legacy market-shape match. The positive decoder fixture, unsupported/truncated negative harness, cache/coordinator safety harnesses and DOM one-off harness also passed; these harnesses are not live account evidence.
 
 - [ ] **Step 2: Perform live account 2 catalog acceptance**
 
@@ -632,9 +634,11 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
   - unsolicited listings without pending item context are rejected and do not mutate the persisted snapshot;
   - reconnect marks the last aggregate stale until the next valid read.
 
-- [ ] **Step 5: Record correction evidence in the parent plan**
+- [x] **Step 5: Record correction evidence in the parent plan**
 
   Add a dated correction addendum to `2026-08-20-avatar-farm-shop-integration.md` linking this spec/plan. Record the original false assumption, the verified status0 schema, native offsets, final packet/UI evidence and the fact that Gate C/D remain closed. Do not rewrite previously completed task history.
+
+  **Result (2026-08-20):** Added the correction addendum without rewriting prior task history. It links the correction spec/plan and records both verified schemas, native offsets `0x637980`/`0x800928`, automated packet/DOM evidence, the live-acceptance blocker and the still-closed Gate C/Gate D.
 
 - [ ] **Step 6: Run final GitNexus scope check and close the plan**
 
@@ -655,6 +659,8 @@ Expected listing: `{idShop:5, verShop:200, itemId:2, quantity:7, price:10}` và 
 
   Inspect `.gitnexus/meta.json` `stats.embeddings`. Run `npx gitnexus analyze --embeddings` if count is nonzero; otherwise run `npx gitnexus analyze`. Expected: index is fresh at final commit and contains no loss of an existing embeddings index.
 
+**Task 5 verification/blocker note (2026-08-20):** Automated verification and non-live packet/cache/coordinator/DOM harnesses are complete. The DOM harness confirmed three catalog buttons, `#200` fallback rendering, catalog/detail/local-back behavior, catalog/account reset and disabled purchase on listing mismatch. Live Steps 2-4 remain unchecked: although the server was started with `SHOP_READ_ENABLED=true` and all write/purchase/unlock/market-refresh flags absent (`false`), browser policy denied `http://localhost:5173/accounts/2` and the user permission chooser returned no selection; therefore no live click, packet, money/inventory, SQLite or WebSocket evidence is claimed. Step 6 remains unchecked: all-scope GitNexus detection ran but returned CRITICAL with 78 changed symbols and 58 affected symbols because pre-existing `AGENTS.md`/`CLAUDE.md` edits and broad class hunks were included; decoder, coordinator persistence/reconnect, routes and `ShopPanel` flows were reviewed separately, but staged detection/commit could not run because `.git` is read-only and the approval backend returned 404. Step 7 remains unchecked until a commit exists and the index can be refreshed.
+
 ## User Review Gate
 
-Plan này chưa cho phép sửa production code cho đến khi user duyệt. Sau khi được duyệt, thực thi Task 1 → Task 5 theo thứ tự và cập nhật checkbox ngay khi mỗi step hoàn thành.
+User đã duyệt triển khai và cho phép thực hiện trực tiếp trên `main`. Tasks 1-4 đã được implement và verify theo các checkbox/evidence ở trên; Task 5 chưa hoàn tất vì live acceptance Steps 2-4 và Git handoff/index refresh Steps 6-7 vẫn pending đúng như blocker note đã ghi nhận.

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
 import { ApiError, apiGet, apiPost } from '../../api.js';
 import type {
@@ -97,6 +97,21 @@ export function ShopPanel({
   const [history, setHistory] = useState<ShopTransaction[] | null>(null);
   const [draft, setDraft] = useState<ListingDraft | null>(null);
   const [unlockType, setUnlockType] = useState('0');
+  const [marketView, setMarketView] = useState<'catalog' | 'listings'>('catalog');
+  const inFlightOperation = useRef<symbol | null>(null);
+
+  useEffect(() => {
+    inFlightOperation.current = null;
+    setBusy(null);
+    setError(null);
+    setMarketView('catalog');
+  }, [accountId]);
+
+  useEffect(() => {
+    if (shop?.market?.data.selectedItemId == null) {
+      setMarketView('catalog');
+    }
+  }, [shop?.market?.data.selectedItemId]);
 
   const nameById = useMemo(() => {
     const names = new Map<number, string>();
@@ -110,6 +125,7 @@ export function ShopPanel({
   }, [animals, foods, items, trees]);
 
   const itemName = (itemId: number) => nameById.get(itemId) ?? `#${itemId}`;
+  const shopPath = (suffix: string) => `/api/accounts/${accountId}/shop/${suffix}`;
   const capabilities = shop?.capabilities;
   const active = shop?.activeTransaction !== null && shop?.activeTransaction !== undefined;
   const readReady = online && capabilities?.readEnabled === true && busy === null;
@@ -124,31 +140,76 @@ export function ShopPanel({
   const eligibleProduce = produceItems.filter(
     (entry) => entry.num > 0 && priceRules.some((rule) => rule.itemId === entry.id),
   );
+  const selectedMarketItemId = shop?.market?.data.selectedItemId ?? null;
+  const visibleMarketView = selectedMarketItemId === null
+    ? 'catalog'
+    : marketView;
 
-  async function runRead(label: string, path: string) {
+  function beginOperation(label: string): symbol | null {
+    if (inFlightOperation.current !== null) return null;
+    const operation = Symbol(label);
+    inFlightOperation.current = operation;
     setBusy(label);
     setError(null);
+    return operation;
+  }
+
+  function ownsOperation(operation: symbol): boolean {
+    return inFlightOperation.current === operation;
+  }
+
+  function finishOperation(operation: symbol): void {
+    if (!ownsOperation(operation)) return;
+    inFlightOperation.current = null;
+    setBusy(null);
+  }
+
+  async function runRead(
+    label: string,
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<boolean> {
+    const operation = beginOperation(label);
+    if (!operation) return false;
     try {
-      await apiPost<ShopViewResponse>(path);
+      await apiPost<ShopViewResponse>(path, body);
+      return ownsOperation(operation);
     } catch (caught) {
-      setError(errorDetails(caught));
+      if (ownsOperation(operation)) setError(errorDetails(caught));
+      return false;
     } finally {
-      setBusy(null);
+      finishOperation(operation);
+    }
+  }
+
+  async function browseCatalog(): Promise<void> {
+    if (await runRead('browse-market', shopPath('browse'))) {
+      setMarketView('catalog');
+    }
+  }
+
+  async function browseItem(itemId: number): Promise<void> {
+    const revision = shop?.market?.revision;
+    if (revision === undefined) return;
+    if (await runRead(`browse-market-${itemId}`, shopPath(`browse/${itemId}`), {
+      expectedMarketRevision: revision,
+    })) {
+      setMarketView('listings');
     }
   }
 
   async function loadHistory() {
-    setBusy('history');
-    setError(null);
+    const operation = beginOperation('history');
+    if (!operation) return;
     try {
       const loaded = await apiGet<ShopTransaction[]>(
         `/api/accounts/${accountId}/shop/transactions?limit=50`,
       );
-      setHistory(loaded);
+      if (ownsOperation(operation)) setHistory(loaded);
     } catch (caught) {
-      setError(errorDetails(caught));
+      if (ownsOperation(operation)) setError(errorDetails(caught));
     } finally {
-      setBusy(null);
+      finishOperation(operation);
     }
   }
 
@@ -160,18 +221,19 @@ export function ShopPanel({
   }
 
   async function submitWrite(path: string, body: Record<string, unknown>) {
-    setBusy('write');
-    setError(null);
+    const operation = beginOperation('write');
+    if (!operation) return false;
     try {
       const transaction = await apiPost<ShopTransaction>(path, body);
+      if (!ownsOperation(operation)) return false;
       rememberTransaction(transaction);
       setTab('transactions');
       return true;
     } catch (caught) {
-      setError(errorDetails(caught));
+      if (ownsOperation(operation)) setError(errorDetails(caught));
       return false;
     } finally {
-      setBusy(null);
+      finishOperation(operation);
     }
   }
 
@@ -290,7 +352,7 @@ export function ShopPanel({
             type="button"
             className="ghost"
             disabled={!readReady}
-            onClick={() => void runRead('sync', `/api/accounts/${accountId}/shop/sync`)}
+            onClick={() => void runRead('sync', shopPath('sync'))}
           >
             {busy === 'sync' ? 'Đang đồng bộ…' : 'Đồng bộ sạp'}
           </button>
@@ -298,9 +360,9 @@ export function ShopPanel({
             type="button"
             className="ghost"
             disabled={!readReady}
-            onClick={() => void runRead('browse', `/api/accounts/${accountId}/shop/browse`)}
+            onClick={() => void browseCatalog()}
           >
-            {busy === 'browse' ? 'Đang cập nhật…' : 'Cập nhật chợ'}
+            {busy === 'browse-market' ? 'Đang cập nhật…' : 'Cập nhật chợ'}
           </button>
         </div>
       </div>
@@ -419,35 +481,91 @@ export function ShopPanel({
       {tab === 'market' && (
         <div className="shop-tab-content">
           <div className="shop-meta">
-            <span>{shop?.market?.data.listings.length ?? 0} listing</span>
+            <span>{shop?.market?.data.catalog.length ?? 0} nông sản</span>
             <span>revision {shop?.market?.revision ?? '—'}</span>
             <span>lúc {formatTime(shop?.market?.capturedAt)}</span>
+            <span>
+              Thời gian làm mới server: {shop?.market?.data.timeRefresh ?? '—'} giây
+            </span>
+            <span>
+              Giá làm mới server (chưa xác định loại tiền):{' '}
+              {shop?.market?.data.priceRefresh ?? '—'}
+            </span>
           </div>
-          {shop?.market ? (
+          {shop?.market && visibleMarketView === 'catalog' ? (
             <div className="shop-table-wrap">
               <table className="shop-table">
-                <thead><tr><th>ID sạp</th><th>Nông sản</th><th>SL</th><th>Giá</th><th /></tr></thead>
+                <thead><tr><th>ID</th><th>Nông sản</th><th>Giá server</th><th /></tr></thead>
                 <tbody>
-                  {shop.market.data.listings.map((listing) => (
-                    <tr key={`${listing.idShop}:${listing.verShop}:${listing.index}`}>
-                      <td>{listing.idShop}/{listing.verShop}</td>
-                      <td>{itemName(listing.itemId)}</td>
-                      <td>{listing.quantity}</td>
-                      <td>{listing.price} xu</td>
-                      <td><button
-                        type="button"
-                        className="compact"
-                        disabled={!baseWriteReady || capabilities?.purchaseEnabled !== true}
-                        onClick={() => void purchase(listing)}
-                      >Mua toàn bộ</button></td>
+                  {shop.market.data.catalog.map((entry) => (
+                    <tr key={entry.itemId}>
+                      <td>{entry.itemId}</td>
+                      <td>{itemName(entry.itemId)}</td>
+                      <td>{entry.price}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="ghost compact"
+                          disabled={!readReady}
+                          onClick={() => void browseItem(entry.itemId)}
+                        >
+                          {busy === `browse-market-${entry.itemId}` ? 'Đang tải…' : 'Xem sạp bán'}
+                        </button>
+                      </td>
                     </tr>
                   ))}
-                  {shop.market.data.listings.length === 0 && (
-                    <tr><td colSpan={5} className="hint">Chợ hiện không có listing.</td></tr>
+                  {shop.market.data.catalog.length === 0 && (
+                    <tr><td colSpan={4} className="hint">Chợ chưa có danh mục nông sản.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
+          ) : shop?.market && visibleMarketView === 'listings' ? (
+            <>
+              <div className="row">
+                <button
+                  type="button"
+                  className="ghost compact"
+                  onClick={() => setMarketView('catalog')}
+                >Quay lại danh mục</button>
+                <h3>
+                  Sạp bán{' '}
+                  {selectedMarketItemId === null
+                    ? 'nông sản chưa xác định'
+                    : `${itemName(selectedMarketItemId)} · ID ${selectedMarketItemId}`}
+                </h3>
+              </div>
+              <div className="shop-table-wrap">
+                <table className="shop-table">
+                  <thead><tr><th>ID sạp</th><th>Số lượng</th><th>Giá</th><th /></tr></thead>
+                  <tbody>
+                    {shop.market.data.listings.map((listing) => (
+                      <tr key={`${listing.idShop}:${listing.verShop}:${listing.index}`}>
+                        <td>{listing.idShop}/{listing.verShop}</td>
+                        <td>{listing.quantity}</td>
+                        <td>{listing.price} xu</td>
+                        <td><button
+                          type="button"
+                          className="compact"
+                          disabled={
+                            !baseWriteReady
+                            || capabilities?.purchaseEnabled !== true
+                            || selectedMarketItemId === null
+                            || listing.itemId !== selectedMarketItemId
+                          }
+                          onClick={() => void purchase(listing)}
+                        >Mua toàn bộ</button></td>
+                      </tr>
+                    ))}
+                    {shop.market.data.listings.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="hint">Chưa có sạp bán nông sản này</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
           ) : <p className="hint">Chưa tải chợ. Nút Cập nhật chợ chỉ browse, không gọi làm mới trả phí.</p>}
           <div className="shop-paid-action">
             <button

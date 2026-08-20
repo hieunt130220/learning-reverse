@@ -22,6 +22,7 @@ export type ShopErrorCode =
   | 'SHOP_CAPABILITY_DISABLED'
   | 'SESSION_OFFLINE'
   | 'STALE_STATE'
+  | 'STALE_SHOP_STATE'
   | 'OPERATION_CONFLICT'
   | 'PRICE_OUT_OF_RANGE'
   | 'SHOP_RESPONSE_TIMEOUT'
@@ -77,6 +78,11 @@ export interface RefreshMarketInput extends BaseWriteInput {
   expectedMarketRevision: number;
 }
 
+export interface BrowseMarketItemInput {
+  itemId: number;
+  expectedMarketRevision: number;
+}
+
 export interface ShopCoordinatorDeps {
   accountId: number;
   repository: ShopRepository;
@@ -89,11 +95,17 @@ export interface ShopCoordinatorDeps {
   queueLimit?: number;
 }
 
-interface PendingShopResponse {
+interface ShopRequestContext {
+  marketItemId?: number;
+  expectedMarketRevision?: number;
+}
+
+interface PendingShopResponse<T extends ShopProtocolEvent = ShopProtocolEvent> {
   epoch: number;
-  expectedSubTypes: ReadonlySet<number>;
-  matches?: (event: ShopProtocolEvent) => boolean;
-  resolve: (event: ShopProtocolEvent) => void;
+  expectedSubTypes: ReadonlySet<ShopProtocolEvent['subType']>;
+  matches?: (event: ShopProtocolEvent) => event is T;
+  context: ShopRequestContext;
+  resolve: (event: T) => void;
   reject: (error: Error) => void;
   timer: NodeJS.Timeout;
 }
@@ -176,6 +188,9 @@ export class ShopCoordinator {
   private queueDepth = 0;
   private lastShopSendAt = 0;
   private readonly syncedEpochs = new Set<number>();
+  private attachmentGeneration = 0;
+  private marketFreshAttachmentGeneration: number | null = null;
+  private shopChannelBlockedReason: string | null = null;
   private produce: ProduceSnapshot | null;
   private runtime: ShopRuntimeState;
 
@@ -216,6 +231,9 @@ export class ShopCoordinator {
     if (this.client) this.detachClient('Thay thế game client');
     this.client = client;
     this.connectionEpoch = connectionEpoch;
+    this.attachmentGeneration += 1;
+    this.marketFreshAttachmentGeneration = null;
+    this.shopChannelBlockedReason = null;
     const shop = (payload: DecodedShopPacket) => this.onShopProtocol(client, connectionEpoch, payload);
     const shopError = (error: Error) => this.onShopProtocolError(client, connectionEpoch, error);
     const produce = (items: InventoryItem[]) => this.onProduce(client, connectionEpoch, items);
@@ -234,6 +252,7 @@ export class ShopCoordinator {
   detachClient(reason: string): void {
     this.removeClientListeners();
     this.client = null;
+    this.marketFreshAttachmentGeneration = null;
     const error = new ShopError(409, 'SESSION_OFFLINE', reason || 'Phiên game đã ngắt kết nối');
     this.rejectPending(error);
     const active = this.runtime.activeTransaction;
@@ -301,18 +320,43 @@ export class ShopCoordinator {
     }
   }
 
-  async browseMarket(): Promise<ShopRuntimeState> {
+  async browseMarketCatalog(): Promise<ShopRuntimeState> {
     this.assertReadAllowed();
     const epoch = this.assertOnlineAndIdle();
     try {
-      return await this.enqueue('browse-market', async () => {
+      return await this.enqueue('browse-market-catalog', async () => {
         this.assertEpoch(epoch);
-        await this.browseMarketInLane(0, -1);
+        await this.browseMarketCatalogInLane();
         this.setSyncStatus('ready');
         return this.state();
       });
     } catch (error) {
       this.setRuntimeError(asShopError(error));
+      throw error;
+    }
+  }
+
+  browseMarket(): Promise<ShopRuntimeState> {
+    return this.browseMarketCatalog();
+  }
+
+  async browseMarketItem(input: BrowseMarketItemInput): Promise<ShopRuntimeState> {
+    requireInteger(input.itemId, 'itemId', 0, 32_767);
+    requireInteger(input.expectedMarketRevision, 'expectedMarketRevision');
+    this.assertReadAllowed();
+    const epoch = this.assertOnlineAndIdle();
+    this.requireBrowseMarketItem(input);
+    try {
+      return await this.enqueue('browse-market-item', async () => {
+        this.assertEpoch(epoch);
+        this.requireBrowseMarketItem(input);
+        await this.browseMarketItemInLane(input);
+        this.setSyncStatus('ready');
+        return this.state();
+      });
+    } catch (error) {
+      const normalized = asShopError(error);
+      if (normalized.code !== 'STALE_SHOP_STATE') this.setRuntimeError(normalized);
       throw error;
     }
   }
@@ -375,6 +419,9 @@ export class ShopCoordinator {
     this.assertWriteAllowed('purchaseEnabled');
     const epoch = this.assertOnlineAndIdle();
     const market = this.requireMarketRevision(input.expectedMarketRevision);
+    if (market.data.selectedItemId !== input.expectedItemId) {
+      this.stale('Listing cần mua không thuộc nông sản đang chọn');
+    }
     const listing = market.data.listings.find(
       (candidate) => candidate.idShop === input.idShop && candidate.verShop === input.verShop,
     );
@@ -434,19 +481,28 @@ export class ShopCoordinator {
     expectedSubType: T['subType'],
     send: (farm: FarmService) => void,
     matches?: (event: T) => boolean,
+    context: ShopRequestContext = {},
   ): Promise<T> {
+    const typedMatches = matches
+      ? (event: ShopProtocolEvent): event is T => (
+        event.subType === expectedSubType && matches(event as T)
+      )
+      : undefined;
     return this.requestForSubTypes(
       new Set([expectedSubType]),
       send,
-      matches as ((event: ShopProtocolEvent) => boolean) | undefined,
+      typedMatches,
+      context,
     ) as Promise<T>;
   }
 
   private async requestForSubTypes(
-    expectedSubTypes: ReadonlySet<number>,
+    expectedSubTypes: ReadonlySet<ShopProtocolEvent['subType']>,
     send: (farm: FarmService) => void,
-    matches?: (event: ShopProtocolEvent) => boolean,
+    matches?: (event: ShopProtocolEvent) => event is ShopProtocolEvent,
+    context: ShopRequestContext = {},
   ): Promise<ShopProtocolEvent> {
+    this.assertShopChannelSynchronized();
     if (this.pendingShop) {
       throw new ShopError(409, 'OPERATION_CONFLICT', 'Đã có cmd 103 đang chờ phản hồi');
     }
@@ -454,15 +510,20 @@ export class ShopCoordinator {
     const epoch = this.connectionEpoch;
     await this.waitForShopSendWindow();
     this.assertEpoch(epoch);
+    this.assertShopChannelSynchronized();
     return new Promise<ShopProtocolEvent>((resolve, reject) => {
+      let sent = false;
       const timer = setTimeout(() => {
         if (this.pendingShop?.timer !== timer) return;
         this.pendingShop = null;
-        reject(new ShopError(504, 'SHOP_RESPONSE_TIMEOUT', 'Hết thời gian chờ phản hồi cmd 103'));
+        const error = new ShopError(504, 'SHOP_RESPONSE_TIMEOUT', 'Hết thời gian chờ phản hồi cmd 103');
+        if (sent) this.blockShopChannel(error);
+        reject(error);
       }, this.responseTimeoutMs);
-      this.pendingShop = { epoch, expectedSubTypes, matches, resolve, reject, timer };
+      this.pendingShop = { epoch, expectedSubTypes, matches, context, resolve, reject, timer };
       try {
         send(client.farm);
+        sent = true;
         this.lastShopSendAt = this.now();
       } catch (error) {
         clearTimeout(timer);
@@ -503,17 +564,35 @@ export class ShopCoordinator {
     );
     await this.request<Extract<ShopProtocolEvent, { subType: 8 }>>(8, (farm) => farm.getShopItems());
     await this.requestProduce((farm) => farm.getInventory());
-    this.setSyncStatus('ready');
+    this.setSyncStatus(
+      this.runtime.market && !this.isMarketFreshForCurrentAttachment() ? 'stale' : 'ready',
+    );
     if (!this.syncedEpochs.has(this.connectionEpoch)) {
       this.syncedEpochs.add(this.connectionEpoch);
       this.reconcileUnknownTransactions();
     }
   }
 
-  private async browseMarketInLane(step: 0 | 1, itemId: number): Promise<void> {
-    await this.request<Extract<ShopProtocolEvent, { subType: 1 }>>(
+  private async browseMarketCatalogInLane(): Promise<void> {
+    await this.request<Extract<ShopProtocolEvent, { kind: 'market-catalog' }>>(
       1,
-      (farm) => farm.openShop(1, step, itemId),
+      (farm) => farm.openShop(1, 0, -1),
+      (event) => event.kind === 'market-catalog',
+    );
+  }
+
+  private async browseMarketItemInLane(input: BrowseMarketItemInput): Promise<void> {
+    await this.request<Extract<ShopProtocolEvent, { kind: 'market-listings' }>>(
+      1,
+      (farm) => {
+        this.requireBrowseMarketItem(input);
+        farm.openShop(1, 1, input.itemId);
+      },
+      (event) => event.kind === 'market-listings',
+      {
+        marketItemId: input.itemId,
+        expectedMarketRevision: input.expectedMarketRevision,
+      },
     );
   }
 
@@ -634,11 +713,17 @@ export class ShopCoordinator {
       (event) => event.itemId === input.expectedItemId,
     );
     this.transition(id, 'reconciling', { result: { ack } });
-    await this.browseMarketInLane(1, input.expectedItemId);
+    await this.browseMarketItemInLane({
+      itemId: input.expectedItemId,
+      expectedMarketRevision: input.expectedMarketRevision,
+    });
     await this.requestProduce((farm) => farm.getInventory());
-    const listingStillPresent = this.runtime.market?.data.listings.some(
-      (listing) => listing.idShop === input.idShop && listing.verShop === input.verShop,
-    );
+    const market = this.runtime.market;
+    const listingStillPresent = market?.data.selectedItemId === input.expectedItemId
+      ? market.data.listings.some(
+        (listing) => listing.idShop === input.idShop && listing.verShop === input.verShop,
+      )
+      : true;
     const afterProduce = countItem(this.produce?.items ?? [], input.expectedItemId);
     if (listingStillPresent || afterProduce < beforeProduce + input.expectedQuantity) {
       throw new ShopError(500, 'SHOP_PROTOCOL_ERROR', 'Chưa đủ bằng chứng xác nhận mua listing');
@@ -685,7 +770,7 @@ export class ShopCoordinator {
     });
     const ack = await ackPromise;
     this.transition(id, 'reconciling', { result: { ack } });
-    await this.browseMarketInLane(0, -1);
+    await this.browseMarketCatalogInLane();
     await this.requestProduce((farm) => farm.getInventory());
     if ((this.runtime.market?.revision ?? 0) <= beforeRevision) {
       throw new ShopError(500, 'SHOP_PROTOCOL_ERROR', 'Market chưa đổi revision sau refresh');
@@ -699,21 +784,39 @@ export class ShopCoordinator {
     payload: DecodedShopPacket,
   ): void {
     if (client !== this.client || epoch !== this.connectionEpoch) return;
-    try {
-      this.applyProtocolEvent(payload.event, epoch);
-    } catch (error) {
-      this.rejectShopPending(asShopError(error));
+    if (this.shopChannelBlockedReason !== null) {
+      client.emit('log', JSON.stringify({
+        scope: 'shop-protocol',
+        code: 'SHOP_PROTOCOL_ERROR',
+        message: 'Bỏ qua cmd 103 vì channel đang mất đồng bộ',
+      }));
       return;
     }
     const pending = this.pendingShop;
-    if (
-      !pending
-      || pending.epoch !== epoch
-      || !pending.expectedSubTypes.has(payload.event.subType)
-      || (pending.matches && !pending.matches(payload.event))
-    ) {
+    const matchesPending = pending !== null
+      && pending.epoch === epoch
+      && pending.expectedSubTypes.has(payload.event.subType)
+      && (!pending.matches || pending.matches(payload.event));
+    try {
+      this.applyProtocolEvent(
+        payload.event,
+        epoch,
+        matchesPending ? pending.context : undefined,
+      );
+    } catch (error) {
+      const normalized = asShopError(error);
+      client.emit('log', JSON.stringify({
+        scope: 'shop-protocol',
+        code: normalized.code,
+        message: normalized.message,
+      }));
+      if (matchesPending) {
+        if (normalized.code === 'SHOP_PROTOCOL_ERROR') this.blockShopChannel(normalized);
+        this.rejectShopPending(normalized);
+      }
       return;
     }
+    if (!matchesPending) return;
     clearTimeout(pending.timer);
     this.pendingShop = null;
     pending.resolve(payload.event);
@@ -721,9 +824,13 @@ export class ShopCoordinator {
 
   private onShopProtocolError(client: GameClient, epoch: number, error: Error): void {
     if (client !== this.client || epoch !== this.connectionEpoch) return;
-    this.rejectShopPending(
-      new ShopError(500, 'SHOP_PROTOCOL_ERROR', error.message || 'Packet cmd 103 không hợp lệ'),
+    const normalized = new ShopError(
+      500,
+      'SHOP_PROTOCOL_ERROR',
+      error.message || 'Packet cmd 103 không hợp lệ',
     );
+    this.blockShopChannel(normalized);
+    this.rejectShopPending(normalized);
   }
 
   private onProduce(client: GameClient, epoch: number, items: InventoryItem[]): void {
@@ -744,7 +851,11 @@ export class ShopCoordinator {
     pending.resolve(defensiveClone(snapshot));
   }
 
-  private applyProtocolEvent(event: ShopProtocolEvent, epoch: number): void {
+  private applyProtocolEvent(
+    event: ShopProtocolEvent,
+    epoch: number,
+    context?: ShopRequestContext,
+  ): void {
     const capturedAt = this.now();
     let next = this.runtime;
     if (event.kind === 'own-snapshot') {
@@ -761,14 +872,55 @@ export class ShopCoordinator {
           },
         },
       };
-    } else if (event.kind === 'market-snapshot') {
+    } else if (event.kind === 'market-catalog') {
       next = {
         ...next,
         market: {
           revision: (next.market?.revision ?? 0) + 1,
           connectionEpoch: epoch,
           capturedAt,
-          data: { status: event.status, listings: event.listings.map((listing) => ({ ...listing })) },
+          data: {
+            catalog: event.items.map((item) => ({ ...item })),
+            timeRefresh: event.timeRefresh,
+            priceRefresh: event.priceRefresh,
+            selectedItemId: null,
+            listings: [],
+          },
+        },
+      };
+    } else if (event.kind === 'market-listings') {
+      const selectedItemId = context?.marketItemId;
+      const expectedMarketRevision = context?.expectedMarketRevision;
+      if (selectedItemId === undefined || expectedMarketRevision === undefined) {
+        throw new ShopError(
+          500,
+          'SHOP_PROTOCOL_ERROR',
+          'Seller listings thiếu market item/revision context',
+        );
+      }
+      const previousMarket = next.market;
+      if (
+        !previousMarket
+        || !this.isMarketFreshForCurrentAttachment()
+        || previousMarket.revision !== expectedMarketRevision
+        || previousMarket.connectionEpoch !== epoch
+        || !previousMarket.data.catalog.some((item) => item.itemId === selectedItemId)
+      ) {
+        this.staleShop('Snapshot chợ đã đổi trước khi nhận seller listings');
+      }
+      const previous = previousMarket.data;
+      next = {
+        ...next,
+        market: {
+          revision: (next.market?.revision ?? 0) + 1,
+          connectionEpoch: epoch,
+          capturedAt,
+          data: {
+            ...previous,
+            catalog: previous.catalog.map((item) => ({ ...item })),
+            selectedItemId,
+            listings: event.listings.map((listing) => ({ ...listing })),
+          },
         },
       };
     } else if (event.kind === 'price-rules') {
@@ -785,6 +937,9 @@ export class ShopCoordinator {
     if (next !== this.runtime) {
       this.persist(next, this.produce);
       this.runtime = next;
+      if (event.kind === 'market-catalog') {
+        this.marketFreshAttachmentGeneration = this.attachmentGeneration;
+      }
       this.emitShop();
     }
   }
@@ -833,7 +988,10 @@ export class ShopCoordinator {
       ) return { ownRevision: this.runtime.own?.revision, produceRevision: this.produce?.revision };
     }
     if (transaction.kind === 'purchase') {
-      const listing = this.runtime.market?.data.listings.find(
+      if (!this.isMarketFreshForCurrentAttachment()) return null;
+      const market = this.runtime.market;
+      if (market?.data.selectedItemId !== itemId) return null;
+      const listing = market.data.listings.find(
         (candidate) => candidate.idShop === Number(request.idShop)
           && candidate.verShop === Number(request.verShop),
       );
@@ -978,8 +1136,31 @@ export class ShopCoordinator {
 
   private requireMarketRevision(expected: number): NonNullable<ShopRuntimeState['market']> {
     const market = this.runtime.market;
-    if (!market || market.revision !== expected || market.connectionEpoch !== this.connectionEpoch) {
+    if (
+      !market
+      || !this.isMarketFreshForCurrentAttachment()
+      || market.revision !== expected
+      || market.connectionEpoch !== this.connectionEpoch
+    ) {
       this.stale('Snapshot chợ đã cũ');
+    }
+    return market;
+  }
+
+  private requireBrowseMarketItem(
+    input: BrowseMarketItemInput,
+  ): NonNullable<ShopRuntimeState['market']> {
+    const market = this.runtime.market;
+    if (
+      !market
+      || !this.isMarketFreshForCurrentAttachment()
+      || market.revision !== input.expectedMarketRevision
+      || market.connectionEpoch !== this.connectionEpoch
+    ) {
+      this.staleShop('Snapshot chợ đã cũ');
+    }
+    if (!market.data.catalog.some((item) => item.itemId === input.itemId)) {
+      this.staleShop('Nông sản không còn trong danh mục chợ');
     }
     return market;
   }
@@ -994,6 +1175,28 @@ export class ShopCoordinator {
 
   private stale(message: string): never {
     throw new ShopError(409, 'STALE_STATE', message);
+  }
+
+  private staleShop(message: string): never {
+    throw new ShopError(409, 'STALE_SHOP_STATE', message);
+  }
+
+  private isMarketFreshForCurrentAttachment(): boolean {
+    return this.client !== null
+      && this.marketFreshAttachmentGeneration === this.attachmentGeneration;
+  }
+
+  private blockShopChannel(error: ShopError): void {
+    this.shopChannelBlockedReason ??= error.message;
+  }
+
+  private assertShopChannelSynchronized(): void {
+    if (this.shopChannelBlockedReason === null) return;
+    throw new ShopError(
+      409,
+      'SHOP_PROTOCOL_ERROR',
+      `Kênh cmd 103 mất đồng bộ; cần reconnect trước khi gửi lệnh mới: ${this.shopChannelBlockedReason}`,
+    );
   }
 
   private assertReadAllowed(): void {

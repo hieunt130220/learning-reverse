@@ -240,6 +240,19 @@ export interface MarketListing {
   price: number;
 }
 
+export interface MarketCatalogItem {
+  itemId: number;
+  price: number;
+}
+
+export interface MarketData {
+  catalog: MarketCatalogItem[];
+  timeRefresh: number | null;
+  priceRefresh: number | null;
+  selectedItemId: number | null;
+  listings: MarketListing[];
+}
+
 export interface ShopPriceRule {
   itemId: number;
   minPrice: number;
@@ -298,7 +311,7 @@ export interface ShopCapabilities {
 export interface ShopRuntimeState {
   syncStatus: 'idle' | 'syncing' | 'ready' | 'stale' | 'error';
   own: ShopSnapshot<{ numSlot: number; canOpenSlot: boolean; slots: OwnShopSlot[] }> | null;
-  market: ShopSnapshot<{ status: number; listings: MarketListing[] }> | null;
+  market: ShopSnapshot<MarketData> | null;
   priceRules: ShopSnapshot<ShopPriceRule[]> | null;
   activeTransaction: ShopTransaction | null;
   recentTransactions: ShopTransaction[];

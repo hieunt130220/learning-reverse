@@ -18,6 +18,11 @@ export interface MarketListing {
   price: number;
 }
 
+export interface MarketCatalogItem {
+  itemId: number;
+  price: number;
+}
+
 export interface ShopPriceRule {
   itemId: number;
   minPrice: number;
@@ -26,7 +31,15 @@ export interface ShopPriceRule {
 
 export type ShopProtocolEvent =
   | { subType: 0; kind: 'own-snapshot'; slots: OwnShopSlot[]; numSlot: number; canOpenSlot: boolean }
-  | { subType: 1; kind: 'market-snapshot'; status: number; listings: MarketListing[] }
+  | {
+      subType: 1;
+      kind: 'market-catalog';
+      status: 0;
+      items: MarketCatalogItem[];
+      timeRefresh: number;
+      priceRefresh: number;
+    }
+  | { subType: 1; kind: 'market-listings'; status: 1; listings: MarketListing[] }
   | { subType: 2; kind: 'slot-info'; state: 0; type: number; value: number }
   | { subType: 2; kind: 'slot-opened'; state: 1; type: number; value: number; numSlot: number; canOpenSlot: boolean }
   | { subType: 3; kind: 'listing-added'; slot: number; itemId: number; quantity: number; price: number }
@@ -144,28 +157,49 @@ function decodeEvent(reader: MyReader, body: Buffer): ShopProtocolEvent {
     case 1: {
       const status = readByte(reader, 'market.status', body);
       const count = readShort(reader, 'market.count', body);
-      validateCount(
-        count,
-        MAX_MARKET_LISTINGS,
-        'market.count',
-        reader,
-        body,
-        status === 1 ? 16 : 0,
-      );
-      const listings: MarketListing[] = [];
+
+      if (status === 0) {
+        validateCount(count, MAX_MARKET_LISTINGS, 'market.catalog.count', reader, body, 6, 8);
+        const items: MarketCatalogItem[] = [];
+        for (let index = 0; index < count; index += 1) {
+          items.push({
+            itemId: readShort(reader, `market.catalog[${index}].itemId`, body),
+            price: readInt(reader, `market.catalog[${index}].price`, body),
+          });
+        }
+        const timeRefresh = readInt(reader, 'market.timeRefresh', body);
+        const priceRefresh = readInt(reader, 'market.priceRefresh', body);
+        return {
+          subType: 1,
+          kind: 'market-catalog',
+          status: 0,
+          items,
+          timeRefresh,
+          priceRefresh,
+        };
+      }
+
       if (status === 1) {
+        validateCount(count, MAX_MARKET_LISTINGS, 'market.listings.count', reader, body, 16);
+        const listings: MarketListing[] = [];
         for (let index = 0; index < count; index += 1) {
           listings.push({
             index,
-            idShop: readInt(reader, `market[${index}].idShop`, body),
-            verShop: readShort(reader, `market[${index}].verShop`, body),
-            itemId: readShort(reader, `market[${index}].itemId`, body),
-            quantity: readInt(reader, `market[${index}].quantity`, body),
-            price: readInt(reader, `market[${index}].price`, body),
+            idShop: readInt(reader, `market.listings[${index}].idShop`, body),
+            verShop: readShort(reader, `market.listings[${index}].verShop`, body),
+            itemId: readShort(reader, `market.listings[${index}].itemId`, body),
+            quantity: readInt(reader, `market.listings[${index}].quantity`, body),
+            price: readInt(reader, `market.listings[${index}].price`, body),
           });
         }
+        return { subType: 1, kind: 'market-listings', status: 1, listings };
       }
-      return { subType: 1, kind: 'market-snapshot', status, listings };
+
+      throw new ShopProtocolDecodeError(
+        `market.status không hỗ trợ: ${status}`,
+        reader.position - 3,
+        body,
+      );
     }
     case 2: {
       const state = readByte(reader, 'slot.state', body);

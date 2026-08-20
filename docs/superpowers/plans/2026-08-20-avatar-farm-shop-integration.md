@@ -756,6 +756,15 @@ interface ShopApiErrorBody {
 
   Inspect `.gitnexus/meta.json` first. If `stats.embeddings > 0`, run `npx gitnexus analyze --embeddings`; otherwise run `npx gitnexus analyze`. Expected: index reports current commit and no stale warning.
 
+## Correction Addendum (2026-08-20): Market `status=0`
+
+- **Correction source:** See `docs/superpowers/specs/2026-08-20-avatar-farm-shop-market-status0-correction-design.md` and `docs/superpowers/plans/2026-08-20-avatar-farm-shop-market-status0-correction.md`. The original integration assumed cmd 103 sub1 `status=0` had no body and represented the market as one listings snapshot; verified packet/native evidence shows that assumption was false.
+- **Verified wire contract:** `status=0` is the catalog body `i16 count; repeat(i16 itemId, i32 price); i32 timeRefresh; i32 priceRefresh`. `status=1` is the selected-item seller body `i16 count; repeat(i32 idShop, i16 verShop, i16 itemId, i32 quantity, i32 price)`. Native evidence is recorded at `0x637980` for parsing and `0x800928` for the item-selection action; `priceRefresh` remains an opaque server value.
+- **Automated and packet evidence:** The final matrix passed server typecheck, 254/254 server tests, server build, 72/72 web tests, web build and `git diff --check`. No test file changed, and production search found no remaining `market-snapshot`, `market.data.status` or legacy market-shape match. Positive catalog/listing fixtures, negative unsupported/truncated decoder cases, cache/coordinator safety harnesses and a one-off DOM harness all passed.
+- **DOM evidence (non-live):** The one-off harness rendered three catalog buttons, including the `#200` fallback label; catalog -> detail -> local back worked; catalog/account changes reset local detail state; and a mismatched listing kept purchase disabled. This evidence does not substitute for a live account packet/SQLite/WebSocket trace.
+- **Live acceptance pending:** The stack was started read-only with `SHOP_READ_ENABLED=true`; purchase/list/withdraw/unlock/market-refresh flags were absent and therefore `false`. Browser policy denied `http://localhost:5173/accounts/2`, and the permission chooser returned no selection, so no live clicks, packet capture, SQLite assertion or WebSocket assertion is claimed. Gate C and Gate D remain closed.
+- **Git handoff pending:** `gitnexus_detect_changes({ scope: "all" })` reported CRITICAL with 78 changed symbols and 58 affected symbols because it included pre-existing user edits in `AGENTS.md`/`CLAUDE.md` and broad class hunks. The decoder, coordinator persistence/reconnect, routes and `ShopPanel` flows were reviewed separately, but staged detection, commit and index refresh remain pending because `.git` is read-only and the approval backend returned 404.
+
 ## Delivery Gates
 
 - [x] **Gate A — P0:** Task 1-2 complete; cmd103 decoder and corrected wire encoding verified.

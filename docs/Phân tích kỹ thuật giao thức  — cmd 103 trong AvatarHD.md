@@ -51,11 +51,11 @@ body:
 Các call site RX cho thấy ít nhất một nhánh dùng:
 
 ```text
-03? type=1, step=0, idItem=-1   // mở/xem danh sách sạp
-03? type=1, step=1, idItem=<id> // yêu cầu cập nhật một mặt hàng sau mua
+type=1, step=0, idItem=-1   // lấy catalog nông sản
+type=1, step=1, idItem=<id> // lấy seller listings của nông sản đã chọn
 ```
 
-Trong mã hiện có chưa có đủ tên miền để khẳng định toàn bộ bảng nghĩa của `type` và `step`. Vì vậy `type=1/step=0` nên gọi là **đường mở danh sách đã quan sát**, không nên khẳng định đó là mọi trường hợp mở sạp.
+Action handler `ShopScr.IActionShop.perform` tại `0x800928` xác nhận UI gửi `doOpenShop(1,0,-1)` khi item đại diện catalog có `itemId=-1`, và gửi `doOpenShop(1,1,itemId)` khi người dùng chọn một nông sản cụ thể. Hai step này lần lượt yêu cầu catalog và seller listings; không phải cùng một snapshot.
 
 ### 3.2. Mở khóa slot — `unlockShopSlot(type)`
 
@@ -171,20 +171,52 @@ FarmService.getItemShop()
 
 Điều kiện đọc `isTimeOut` là bất đối xứng: khi `isSale=true`, native code đặt `isTimeOut=0` mà không đọc thêm byte; khi `isSale=false`, native code đọc thêm một boolean. Đây là điểm phải giữ nguyên khi viết parser, nếu đọc luôn boolean thứ hai sẽ làm lệch toàn bộ body tiếp theo.
 
-### 4.2. RX sub-type 1 — danh sách sạp khác
+### 4.2. RX sub-type 1 — catalog và seller listings
 
-Schema thành công được khôi phục như sau:
+Nhánh native tại `0x637980` đọc `status` để phân biệt hai schema khác nhau.
+
+Với `status=0`, body là catalog nông sản cùng metadata refresh:
 
 ```text
-i8  status
+i8  status = 0
 i16 count
-if status == 1:
-  repeat count:
-    i32 idShop
-    i16 verShop
-    i16 idItem
-    i32 num
-    i32 price
+repeat count:
+  i16 itemId
+  i32 price
+i32 timeRefresh
+i32 priceRefresh
+```
+
+Packet live trước XOR từ account 2:
+
+```text
+0100000300020000000500c800000002000700000001000006190000000a
+```
+
+Giải mã đủ, không còn trailing bytes:
+
+```text
+subType      = 1
+status       = 0
+count        = 3
+items        = [(2, 5), (200, 2), (7, 1)]
+timeRefresh  = 1561
+priceRefresh = 10
+```
+
+Mỗi record catalog tạo `ShopScr.ItemShop(itemId, -1, price, false, false)`. Sau vòng lặp, client đọc hai `int` và gọi `ShopScr.setRefesh(timeRefresh, priceRefresh)`. `priceRefresh=10` chỉ là giá trị opaque do server trả về; chưa có bằng chứng nó là giá theo bất kỳ loại tiền nào.
+
+Với `status=1`, body là seller listings của item đã yêu cầu:
+
+```text
+i8  status = 1
+i16 count
+repeat count:
+  i32 idShop
+  i16 verShop
+  i16 idItem
+  i32 num
+  i32 price
 ```
 
 Mỗi record dùng constructor thứ hai của `ShopScr.ItemShop`:
@@ -193,7 +225,7 @@ Mỗi record dùng constructor thứ hai của `ShopScr.ItemShop`:
 ItemShop(idShop, verShop, idItem, num, price)
 ```
 
-Sau đó client chuyển danh sách vào `ShopScr.setInfo(list, count, false)`. Constructor thứ hai đặc biệt quan trọng vì nó chứng minh mặt hàng của sạp ngoài có **hai định danh riêng**: ID sạp và version/ID mặt hàng. Khi danh sách rỗng, một call site phát sinh `doOpenShop(type=1, step=0, idItem=-1)` để yêu cầu/khởi tạo lại danh sách; đây là cơ chế retry hoặc bước chuyển trạng thái, chưa đủ bằng chứng để gọi là retry chắc chắn.
+Sau đó client chuyển danh sách vào `ShopScr.setInfo(list, count, false)`. Constructor thứ hai đặc biệt quan trọng vì nó chứng minh mặt hàng của sạp ngoài có **hai định danh riêng**: ID sạp và version/ID mặt hàng. Packet `status=1` không có `selectedItemId` riêng ngoài `itemId` trong từng listing; phía web phải gắn response với item đã chọn bằng request context, không suy diễn trong decoder.
 
 ### 4.3. RX sub-type 2 — thông tin hoặc kết quả slot
 
