@@ -33,7 +33,7 @@
 - Consumes: `NodeJS.ProcessEnv`, the existing `ShopPolicy` consumers, and the `SHOP_LIVE_ACCOUNT_ALLOWLIST` environment variable.
 - Produces: `LiveAccountAllowlist = ReadonlySet<number> | 'all'` and a documented exact `*` wildcard contract.
 
-- [ ] **Step 1: Run GitNexus impact analysis for the configuration symbols**
+- [x] **Step 1: Run GitNexus impact analysis for the configuration symbols**
 
 Run:
 
@@ -45,7 +45,9 @@ gitnexus_impact({ target: "loadConfig", direction: "upstream", repo: "learning-r
 
 Expected: direct consumers include `SessionManager`, `AvatarSession`, `ShopCoordinator`, session route assembly, and server startup. Record the returned risk and update all d=1 dependents that TypeScript identifies. If any result is HIGH or CRITICAL, report it and wait for user confirmation before editing.
 
-- [ ] **Step 2: Extend the policy type and parser in `config.ts`**
+**Actual:** `ShopPolicy` LOW (1 direct), `parseAccountAllowlist` LOW (1 direct: `loadConfig`), and `loadConfig` MEDIUM (13 direct). No HIGH/CRITICAL configuration result blocked implementation.
+
+- [x] **Step 2: Extend the policy type and parser in `config.ts`**
 
 Add the exported union immediately above `ShopPolicy`, then change the policy field and parser return type:
 
@@ -90,7 +92,7 @@ function parseAccountAllowlist(value: string | undefined): LiveAccountAllowlist 
 
 Do not change the existing defaults in `SessionManager`; `new Set<number>()` remains a valid deny-all value of the union.
 
-- [ ] **Step 3: Document every shop environment flag in `avatar-web/README.md`**
+- [x] **Step 3: Document every shop environment flag in `avatar-web/README.md`**
 
 Extend the environment-variable table after `NODE_ENV` with these exact rows:
 
@@ -112,7 +114,7 @@ mới. Chỉ dùng cùng các capability đã chủ động phê duyệt; wildca
 kỳ capability nào.
 ```
 
-- [ ] **Step 4: Verify parser behavior with an inline production-code harness**
+- [x] **Step 4: Verify parser behavior with an inline production-code harness**
 
 Run from `avatar-web/server`:
 
@@ -126,7 +128,9 @@ Expected:
 shop allowlist config OK
 ```
 
-- [ ] **Step 5: Run server typecheck**
+**Actual:** Harness exited 0 and printed `shop allowlist config OK`.
+
+- [x] **Step 5: Run server typecheck**
 
 Run:
 
@@ -136,7 +140,9 @@ cd avatar-web/server && npm run typecheck
 
 Expected: TypeScript exits 0 with no errors. A failure in `ShopCoordinator` because `.has()` is no longer valid is expected to be resolved in Task 2, so do not commit Task 1 until Task 2's runtime narrowing is included if the compiler requires the tasks to land together.
 
-- [ ] **Step 6: Commit the configuration contract and documentation**
+**Actual:** Typecheck and build passed after combining Task 1 with Task 2 for compile-safe narrowing. The existing server suite also passed 254/254; no tests were added.
+
+- [x] **Step 6: Commit the configuration contract and documentation**
 
 Stage only:
 
@@ -160,6 +166,8 @@ git commit -m "feat(shop): support all-account live write scope"
 
 Expected staged names are exactly `avatar-web/server/src/config.ts` and `avatar-web/README.md`. If Task 1 cannot typecheck independently due to the typed union, defer this commit and combine its files with Task 2 rather than weakening the type.
 
+**Actual:** Intentionally combined with Task 2 for type consistency in commit `744a9c7701a4adb5ecadf6338439b861931fc93a`. The compile-safe unit changed `config.ts`, `shopCoordinator.ts`, and `README.md`; `manager.ts` remained unchanged.
+
 ### Task 2: Enforce Wildcard Entitlement at the Shop Runtime Boundary
 
 **Files:**
@@ -171,7 +179,7 @@ Expected staged names are exactly `avatar-web/server/src/config.ts` and `avatar-
 - Consumes: `ShopPolicy.liveAccountAllowlist` from Task 1.
 - Produces: one authoritative `isLiveAccountAllowed()` decision used by both UI capabilities and `assertWriteAllowed()`.
 
-- [ ] **Step 1: Run GitNexus impact analysis for every modified runtime symbol**
+- [x] **Step 1: Run GitNexus impact analysis for every modified runtime symbol**
 
 Run:
 
@@ -182,7 +190,9 @@ gitnexus_impact({ target: "assertWriteAllowed", direction: "upstream", repo: "le
 
 Expected: direct behavior affects all shop write entry points and the shop capability view. Report risk/direct callers. Stop for user confirmation if HIGH or CRITICAL.
 
-- [ ] **Step 2: Add the centralized entitlement helper**
+**Actual:** `ShopCoordinator` LOW (2 direct, including the `shopRouter` flow). `assertWriteAllowed` was CRITICAL with 5 direct write methods and 6 affected processes; the user explicitly approved this CRITICAL gate before edits.
+
+- [x] **Step 2: Add the centralized entitlement helper**
 
 Add this private method near the existing capability assertions:
 
@@ -195,7 +205,7 @@ private isLiveAccountAllowed(): boolean {
 
 This helper is the only new policy interpretation. Do not add wildcard checks in routes or React.
 
-- [ ] **Step 3: Use the helper when constructing runtime capabilities**
+- [x] **Step 3: Use the helper when constructing runtime capabilities**
 
 Change the capability field in the constructor from the direct set lookup to:
 
@@ -205,7 +215,7 @@ liveAccountAllowed: this.isLiveAccountAllowed(),
 
 Do not change the public `ShopCapabilities` shape; clients still receive a boolean.
 
-- [ ] **Step 4: Use the same helper in `assertWriteAllowed()`**
+- [x] **Step 4: Use the same helper in `assertWriteAllowed()`**
 
 Keep the existing capability checks, and replace only the direct set lookup:
 
@@ -224,7 +234,7 @@ private assertWriteAllowed(
 
 Do not alter `assertOnlineAndIdle()`, `assertNoAutomation()`, `purchaseListing()`, transaction scheduling, or reconciliation.
 
-- [ ] **Step 5: Verify server compilation and builds**
+- [x] **Step 5: Verify server compilation and builds**
 
 Run:
 
@@ -234,7 +244,9 @@ cd avatar-web/server && npm run typecheck && npm run build
 
 Expected: both commands exit 0. No `.has()` error remains for the union type.
 
-- [ ] **Step 6: Commit the runtime entitlement change**
+**Actual:** Server typecheck and build exited 0. The existing server suite passed 254/254 with no new test files.
+
+- [x] **Step 6: Commit the runtime entitlement change**
 
 If Task 1 was already committed, stage only the coordinator (and manager only if it genuinely changed):
 
@@ -263,6 +275,8 @@ git commit -m "feat(shop): allow explicit global live writes"
 ```
 
 Expected: GitNexus reports only configuration-to-shop-runtime capability/write flows; no farm protocol decoder or AutoFarm symbols should change.
+
+**Actual:** Intentionally combined with Task 1 for type consistency in commit `744a9c7701a4adb5ecadf6338439b861931fc93a`. Staged GitNexus detection was HIGH as expected: 3 files, 9 symbols, and 7 shop processes; no protocol decoder or AutoFarm changes.
 
 ### Task 3: Require Explicit Confirmation Before Listing
 

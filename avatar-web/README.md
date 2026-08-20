@@ -41,7 +41,7 @@ Server **từ chối khởi động** nếu thiếu `MASTER_KEY` hoặc `INVITE_
 | `SHOP_PURCHASE_ENABLED` | gate bổ sung cho mua listing; chỉ có hiệu lực khi write đã bật |
 | `SHOP_SLOT_UNLOCK_ENABLED` | gate riêng cho mở slot; mặc định tắt |
 | `SHOP_MARKET_REFRESH_ENABLED` | gate riêng cho refresh chợ trả phí; mặc định tắt |
-| `SHOP_LIVE_ACCOUNT_ALLOWLIST` | ID account phân tách bằng dấu phẩy, hoặc `*` để cho phép mọi account; không được trộn hai dạng |
+| `SHOP_LIVE_ACCOUNT_ALLOWLIST` | các `avatar_accounts.id` nội bộ, phân tách bằng dấu phẩy; ID là số `:id` trong `/accounts/:id` hoặc `/api/accounts/:id`; dùng `*` cho mọi account và không trộn hai dạng |
 | `SHOP_PROTOCOL_DEBUG_ENABLED` | debug protocol chỉ ở non-production; mặc định tắt |
 
 `SHOP_LIVE_ACCOUNT_ALLOWLIST=*` là quyền live-write toàn cục cho cả tài khoản thêm
