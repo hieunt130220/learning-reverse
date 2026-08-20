@@ -260,6 +260,9 @@ export function ShopPanel({
       });
       return;
     }
+    if (!window.confirm(
+      `Đăng bán ${itemName(itemId)} × ${quantity} với giá ${price} xu?`,
+    )) return;
     const accepted = await submitWrite(`/api/accounts/${accountId}/shop/listings`, {
       idempotencyKey: crypto.randomUUID(),
       slot: draft.slot,
