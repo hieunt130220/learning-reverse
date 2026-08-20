@@ -111,11 +111,11 @@ interface ShopApiErrorBody {
 - Consumes: `MyReader`, `Message`, `FarmService.session.send()`.
 - Produces: `ShopProtocolEvent`, `ShopProtocolWarning`, `ShopProtocolDecodeError`, `decodeShopPacket(body)`, corrected `openShop()` and `buyFromShop()` encoders.
 
-- [ ] **Step 1: Run impact analysis before existing-symbol edits**
+- [x] **Step 1: Run impact analysis before existing-symbol edits**
 
   Run GitNexus impact for `FarmService`, `openShop`, and `buyFromShop`. Record d=1 callers. Expected: `FarmService` is low-risk but all direct callers must be checked for the renamed `verShop` parameter semantics.
 
-- [ ] **Step 2: Define the exact discriminated protocol union**
+- [x] **Step 2: Define the exact discriminated protocol union**
 
   Create exported record types and this union in `shopProtocol.ts`:
 
@@ -146,7 +146,7 @@ interface ShopApiErrorBody {
 
   `OwnShopSlot` giữ `slot`, `itemId`, `quantity`, `price`, `isSale`, `isTimeOut`; `MarketListing` giữ `index`, `idShop`, `verShop`, `itemId`, `quantity`, `price`; `ShopPriceRule` giữ `itemId`, `minPrice`, `maxPrice`.
 
-- [ ] **Step 3: Implement a bounded, atomic decoder**
+- [x] **Step 3: Implement a bounded, atomic decoder**
 
   Implement `need(reader, byteCount, field)` before every primitive read; validate all signed counts are `>= 0` and below a conservative upper bound (`own <= 127`, `market/rules <= 4096`). Decode into local variables and return only after the complete body is valid. Reject unknown subtype, invalid state/result and truncated bodies with `ShopProtocolDecodeError` carrying offset plus a bounded hex prefix; return `TRAILING_BYTES` instead of silently discarding unread data.
 
@@ -163,7 +163,7 @@ interface ShopApiErrorBody {
   sub8: i16 count; repeat(i16 itemId,i32 minPrice,i32 maxPrice)
   ```
 
-- [ ] **Step 4: Correct `FarmService` wire bodies**
+- [x] **Step 4: Correct `FarmService` wire bodies**
 
   Update `openShop` so `type=0` writes one byte only, while `type=1` writes `type + step + itemId`. Reject any other type before sending. Rename `buyFromShop(idShop, idItem)` to `buyFromShop(idShop, verShop)` without changing binary widths:
 
@@ -189,7 +189,7 @@ interface ShopApiErrorBody {
 
   Add pre-encode integer/width validation to every cmd 103 method: type/step/slot fit i8, item/version fit i16 (only the documented `-1` sentinel is allowed), idShop/quantity/price fit signed i32, quantity is positive and price is non-negative. Invalid values throw before `session.send()`.
 
-- [ ] **Step 5: Verify protocol code after production implementation**
+- [x] **Step 5: Verify protocol code after production implementation**
 
   Run an inline `node --import tsx --input-type=module -e "..."` harness that asserts:
 
@@ -210,7 +210,7 @@ interface ShopApiErrorBody {
 
   Expected: harness exits 0; TypeScript and build exit 0.
 
-- [ ] **Step 6: Scope check and commit**
+- [x] **Step 6: Scope check and commit**
 
   Stage only the two task files, run `gitnexus_detect_changes({ scope: "staged" })` and `git diff --cached --check`, then commit:
 

@@ -19,6 +19,25 @@ export class FarmService {
     this.session.send(m);
   }
 
+  private signedInteger(value: number, min: number, max: number, label: string): number {
+    if (!Number.isSafeInteger(value) || value < min || value > max) {
+      throw new RangeError(`${label} phải là số nguyên trong [${min}, ${max}]`);
+    }
+    return value;
+  }
+
+  private byte(value: number, label: string): number {
+    return this.signedInteger(value, -128, 127, label);
+  }
+
+  private short(value: number, label: string): number {
+    return this.signedInteger(value, -32_768, 32_767, label);
+  }
+
+  private int(value: number, label: string): number {
+    return this.signedInteger(value, -2_147_483_648, 2_147_483_647, label);
+  }
+
   // ---- vào farm & lấy dữ liệu -------------------------------------------
 
   /** doJoinFarm @0x5d0c08 — vào nông trại của idUser (của mình hoặc bạn bè). */
@@ -221,30 +240,59 @@ export class FarmService {
   // ---- cửa hàng cá nhân (cmd 103, byte đầu = sub-type) -------------------
 
   /** doOpenShop @0x5d33e0 */
-  openShop(type: number, step: number, idItem: number): void {
-    this.send(103, (m) => m.writer!.writeByte(type).writeByte(step).writeShort(idItem));
+  openShop(type: 0 | 1, step: number, idItem: number): void {
+    if (type !== 0 && type !== 1) throw new RangeError('type sạp chỉ nhận 0 hoặc 1');
+    this.send(103, (m) => {
+      m.writer!.writeByte(type);
+      if (type === 1) {
+        if (step !== 0 && step !== 1) throw new RangeError('step sạp chỉ nhận 0 hoặc 1');
+        if ((step === 0 && idItem !== -1) || (step === 1 && idItem < 0)) {
+          throw new RangeError('idItem sạp không khớp step (browse dùng -1, refresh dùng id không âm)');
+        }
+        m.writer!.writeByte(this.byte(step, 'step sạp'));
+        m.writer!.writeShort(this.short(idItem, 'idItem sạp'));
+      }
+    });
   }
 
   /** requestUnlockSlotShop @0x5d375c — sub-type 2. */
   unlockShopSlot(type: number): void {
-    this.send(103, (m) => m.writer!.writeByte(2).writeByte(type));
+    if (type < 0) throw new RangeError('type mở slot phải không âm');
+    this.send(103, (m) => m.writer!.writeByte(2).writeByte(this.byte(type, 'type mở slot')));
   }
 
   /** doAddItemShop @0x5d3888 — sub-type 3. */
   addItemToShop(slot: number, idItem: number, num: number, price: number): void {
+    if (slot < 0) throw new RangeError('slot đăng bán phải không âm');
+    if (idItem < 0) throw new RangeError('idItem đăng bán phải không âm');
+    if (num <= 0) throw new RangeError('số lượng đăng bán phải dương');
+    if (price < 0) throw new RangeError('giá đăng bán phải không âm');
     this.send(103, (m) =>
-      m.writer!.writeByte(3).writeByte(slot).writeShort(idItem).writeInt(num).writeInt(price),
+      m.writer!
+        .writeByte(3)
+        .writeByte(this.byte(slot, 'slot đăng bán'))
+        .writeShort(this.short(idItem, 'idItem đăng bán'))
+        .writeInt(this.int(num, 'số lượng đăng bán'))
+        .writeInt(this.int(price, 'giá đăng bán')),
     );
   }
 
   /** getItemShopBack @0x5d3b84 — sub-type 4. */
   takeItemBack(slot: number): void {
-    this.send(103, (m) => m.writer!.writeByte(4).writeByte(slot));
+    if (slot < 0) throw new RangeError('slot rút hàng phải không âm');
+    this.send(103, (m) => m.writer!.writeByte(4).writeByte(this.byte(slot, 'slot rút hàng')));
   }
 
   /** doBuyItemShop @0x5d3a2c — sub-type 5. */
-  buyFromShop(idShop: number, idItem: number): void {
-    this.send(103, (m) => m.writer!.writeByte(5).writeInt(idShop).writeShort(idItem));
+  buyFromShop(idShop: number, verShop: number): void {
+    if (idShop < 0) throw new RangeError('idShop phải không âm');
+    if (verShop < 0) throw new RangeError('verShop phải không âm');
+    this.send(103, (m) =>
+      m.writer!
+        .writeByte(5)
+        .writeInt(this.int(idShop, 'idShop'))
+        .writeShort(this.short(verShop, 'verShop')),
+    );
   }
 
   /** doTransMoney @0x5d1f0c — chuyển tiền vào/ra farm. */
