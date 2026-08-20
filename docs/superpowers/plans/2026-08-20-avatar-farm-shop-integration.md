@@ -266,11 +266,11 @@ interface ShopApiErrorBody {
 - Consumes: `Db` from the existing database module and shared shop runtime/transaction types.
 - Produces: `ShopRepository`, persisted cache records, idempotent transaction records, startup recovery.
 
-- [ ] **Step 1: Run impact analysis before schema edits**
+- [x] **Step 1: Run impact analysis before schema edits**
 
   Run GitNexus impact for `openDb` and inspect all schema consumers. Confirm schema execution is idempotent and no destructive migration is needed.
 
-- [ ] **Step 2: Add idempotent schema objects**
+- [x] **Step 2: Add idempotent schema objects**
 
   Append `CREATE TABLE IF NOT EXISTS avatar_shop_cache` with `account_id` primary/foreign key to `avatar_accounts(id)`, four JSON columns (`own_snapshot_json`, `market_snapshot_json`, `price_rules_json`, `produce_json`), `own_observed_at`, `market_observed_at`, `rules_observed_at`, `produce_observed_at` and `updated_at`.
 
@@ -295,7 +295,7 @@ interface ShopApiErrorBody {
 
   Add indexes on `(account_id, created_at DESC)` and `(account_id, status)`.
 
-- [ ] **Step 3: Implement the repository contract**
+- [x] **Step 3: Implement the repository contract**
 
   Export a concrete `ShopRepository` class with synchronous better-sqlite3 operations:
 
@@ -311,11 +311,11 @@ interface ShopApiErrorBody {
 
   JSON parse failures must throw an error naming only the table/column/account, never dump raw JSON. `recoverInterruptedTransactions()` maps `queued` to `failed` with an explicit restart error and maps `sending|awaiting_response|reconciling` to `unknown`.
 
-- [ ] **Step 4: Verify repository behavior after implementation**
+- [x] **Step 4: Verify repository behavior after implementation**
 
   Use an inline in-memory DB harness through `openDb(':memory:')` to insert/load cache, prove the per-account idempotency uniqueness, order/limit transaction history, and verify recovery mappings. Then run server typecheck/build.
 
-- [ ] **Step 5: Scope check and commit**
+- [x] **Step 5: Scope check and commit**
 
   Stage schema and repository only, run `gitnexus_detect_changes({ scope: "staged" })` and cached diff check, then commit:
 
@@ -332,11 +332,11 @@ interface ShopApiErrorBody {
 - Consumes: `NodeJS.ProcessEnv`, `NODE_ENV`.
 - Produces: `ShopPolicy` at `Config.shopPolicy`.
 
-- [ ] **Step 1: Run impact analysis**
+- [x] **Step 1: Run impact analysis**
 
   Run GitNexus impact for `Config` and `loadConfig`; enumerate all config construction/use sites.
 
-- [ ] **Step 2: Add explicit policy parsing**
+- [x] **Step 2: Add explicit policy parsing**
 
   Export:
 
@@ -366,7 +366,7 @@ interface ShopApiErrorBody {
 
   Set `protocolDebugEnabled` to `false` whenever `isProduction` is true, regardless of env.
 
-- [ ] **Step 3: Verify and commit**
+- [x] **Step 3: Verify and commit**
 
   Run an inline `loadConfig` harness for defaults, each flag, invalid allowlist and production debug override; reuse a generated 32-byte base64 key only inside the process. Run server typecheck/build. Stage `config.ts`, run `gitnexus_detect_changes({ scope: "staged" })` and cached diff check, then commit:
 
@@ -383,7 +383,7 @@ interface ShopApiErrorBody {
 - Consumes: `GameClient` events, `FarmService`, `ShopRepository`, `ShopPolicy`, `InventoryItem`, protocol event types.
 - Produces: serialized read methods, async transaction methods, cache/snapshot access, lifecycle attach/detach and operation guard.
 
-- [ ] **Step 1: Define coordinator errors and request inputs**
+- [x] **Step 1: Define coordinator errors and request inputs**
 
   Implement `ShopError` with `status`, `code`, `message`. Export validated input types:
 
@@ -397,7 +397,7 @@ interface ShopApiErrorBody {
 
   Validate all numeric inputs with `Number.isSafeInteger`, positive quantity/price, non-negative slot, non-empty idempotency key capped at 128 chars.
 
-- [ ] **Step 2: Build a permanent coordinator with reconnect epochs**
+- [x] **Step 2: Build a permanent coordinator with reconnect epochs**
 
   Constructor dependencies:
 
@@ -415,7 +415,7 @@ interface ShopApiErrorBody {
 
   After the first successful read sync of a new connection epoch, inspect recent `unknown` transactions and perform evidence-only reconciliation from fresh snapshots. Recovery may update status/result but must never resend the original write.
 
-- [ ] **Step 3: Implement one serialized command lane**
+- [x] **Step 3: Implement one serialized command lane**
 
   Add a private promise queue for all cmd 103 operations, one pending matcher at a time, a 10-second response timeout, queue limit 8 and minimum 300 ms between sends. Correlate using expected subtype plus optional predicate; discard stale events from older connection epochs. A timeout for read throws `SHOP_RESPONSE_TIMEOUT`; a protocol decode failure throws `SHOP_PROTOCOL_ERROR` and must not mutate state.
 
@@ -430,7 +430,7 @@ interface ShopApiErrorBody {
   ): Promise<T>;
   ```
 
-- [ ] **Step 4: Implement read-only synchronization**
+- [x] **Step 4: Implement read-only synchronization**
 
   `syncOwnShop()` sets `syncStatus='syncing'` and performs, in one queue entry:
 
@@ -443,11 +443,11 @@ interface ShopApiErrorBody {
 
   `browseMarket()` performs `openShop(1,0,-1) -> await sub1`, persists market and emits shop. Neither method may call sub7. Read methods require `readEnabled` and an online client but do not require the live write allowlist.
 
-- [ ] **Step 5: Implement the account operation guard**
+- [x] **Step 5: Implement the account operation guard**
 
   Expose `isBusy()`, `assertIdleForAutomation()` and `hasInFlightShopOperation()`. Any queued/in-flight shop command causes AutoFarm/Macro start to fail with `OPERATION_CONFLICT`; any running AutoFarm/Macro state supplied by session causes new shop commands to fail. Viewing `state()` and cached history remains available.
 
-- [ ] **Step 6: Implement persisted transaction state transitions**
+- [x] **Step 6: Implement persisted transaction state transitions**
 
   For each write, first resolve `(accountId,idempotencyKey)` and return an existing transaction unchanged on replay. Otherwise persist `queued`, enqueue work, and return the record immediately. The background runner persists every transition:
 
@@ -457,7 +457,7 @@ interface ShopApiErrorBody {
 
   Transition to `failed` only for a definitive server rejection/validation failure before send; transition to `unknown` for disconnect/timeout after send. Never resubmit the write.
 
-- [ ] **Step 7: Implement exact reconciliation per transaction kind**
+- [x] **Step 7: Implement exact reconciliation per transaction kind**
 
   - `list`: validate expected own/produce revisions, slot, item, quantity and latest sub8 price range; send `addItemToShop`; await sub3; run own-shop plus cmd70 sync; succeed only when slot and produce delta agree.
   - `withdraw`: validate slot plus all expected listing fields; send `takeItemBack`; await sub4; run own-shop plus cmd70 sync; compare slot/inventory before succeeding.
@@ -467,7 +467,7 @@ interface ShopApiErrorBody {
 
   Listing/withdraw require `writeEnabled` plus allowlist. Purchase requires `writeEnabled`, `purchaseEnabled` and allowlist. Unlock and paid refresh require their dedicated capability plus allowlist, and remain disabled until their live type/cost/response evidence has been approved.
 
-- [ ] **Step 8: Provide snapshot/history access**
+- [x] **Step 8: Provide snapshot/history access**
 
   Implement:
 
@@ -486,11 +486,11 @@ interface ShopApiErrorBody {
 
   Increment each section's `revision` on accepted state changes, stamp `connectionEpoch/capturedAt`, maintain `syncStatus`, `recentTransactions` and `lastError`, return defensive copies and persist before broadcasting.
 
-- [ ] **Step 9: Verify coordinator with an inline fake-client harness**
+- [x] **Step 9: Verify coordinator with an inline fake-client harness**
 
   After implementation, create fakes only inside `node --import tsx --input-type=module -e`: feed protocol events, reconnect epochs and produce events; assert sequencing, queue serialization, idempotency replay, stale revision rejection, price/stock rejection, capability gates, timeout, disconnect-to-unknown and no retry. Do not add a test file. Run server typecheck/build.
 
-- [ ] **Step 10: Scope check and commit**
+- [x] **Step 10: Scope check and commit**
 
   Stage only `shopCoordinator.ts`, run `gitnexus_detect_changes({ scope: "staged" })` and cached diff check, then commit:
 
