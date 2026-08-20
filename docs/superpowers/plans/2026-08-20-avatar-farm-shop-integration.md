@@ -227,11 +227,11 @@ interface ShopApiErrorBody {
 - Consumes: `decodeShopPacket`, `ShopProtocolEvent`, decoded cmd 70 inventory sections.
 - Produces: GameClient events `shop-protocol` and `produce`; `lastShopEvent` diagnostic state without side effects.
 
-- [ ] **Step 1: Run impact analysis and honor the HIGH-risk gate**
+- [x] **Step 1: Run impact analysis and honor the HIGH-risk gate**
 
   Run GitNexus impact for `GameClient` and `onMessage`. Expected: HIGH because session/bootstrap/tools instantiate `GameClient`. Report the direct dependents before editing and ensure constructor/public method compatibility remains unchanged.
 
-- [ ] **Step 2: Add protocol event state**
+- [x] **Step 2: Add protocol event state**
 
   Add typed properties without changing constructor arguments:
 
@@ -240,15 +240,15 @@ interface ShopApiErrorBody {
   lastShopWarning: ShopProtocolWarning | null = null;
   ```
 
-- [ ] **Step 3: Decode cmd 103 without issuing follow-up packets**
+- [x] **Step 3: Decode cmd 103 without issuing follow-up packets**
 
   Add `case 103` in `onMessage`: call `decodeShopPacket(message.getData())`, atomically set the two properties, emit `shop-protocol` with `{ event, warning }`, and catch `ShopProtocolDecodeError` only to emit a typed `shop-protocol-error`. Re-throw unexpected programming errors. Do not call any `FarmService` method in this branch.
 
-- [ ] **Step 4: Publish the produce section of cmd 70**
+- [x] **Step 4: Publish the produce section of cmd 70**
 
   Preserve the existing `inventory` event. After assigning `this.produce = inv.other[0] ?? []`, emit a separate `produce` event containing a copied array so listeners cannot mutate `GameClient.produce`.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
   Run `npm run typecheck`, `npm test`, and `npm run build` in `avatar-web/server`. Expected: current test suite remains green and no constructor call sites require edits. Stage only `client.ts`, run `gitnexus_detect_changes({ scope: "staged" })` plus cached diff check, then commit:
 

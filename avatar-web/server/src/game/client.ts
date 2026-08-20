@@ -40,6 +40,12 @@ import {
 } from './progressQuests.js';
 import { FarmService } from './farmService.js';
 import { cmdName } from './opcodes.js';
+import {
+  decodeShopPacket,
+  ShopProtocolDecodeError,
+  type ShopProtocolEvent,
+  type ShopProtocolWarning,
+} from './shopProtocol.js';
 
 /**
  * Giá trị handler cho `GET_HANDLER (-1)`. `GlobalLogicHandler.doGetHandler`
@@ -148,6 +154,10 @@ export class GameClient extends EventEmitter {
   foods: FoodRecipe[] = [];
   /** Chỉ true sau khi decode được một block Food[] hoàn chỉnh từ Cmd 76. */
   foodCatalogReady = false;
+  /** Event cmd 103 hợp lệ gần nhất; decoder lỗi không được ghi đè state này. */
+  lastShopEvent: ShopProtocolEvent | null = null;
+  /** Cảnh báo trailing bytes của event cmd 103 hợp lệ gần nhất. */
+  lastShopWarning: ShopProtocolWarning | null = null;
   /** Trạng thái bếp nấu ăn (cmd 91). */
   cookingState?: CookingState;
   /** Trạng thái nhiệm vụ hàng ngày (cmd -87 sub 2). */
@@ -721,6 +731,7 @@ export class GameClient extends EventEmitter {
             (inv.farmLevel !== undefined ? ` · farmLevel: ${inv.farmLevel}` : ''),
         );
         this.emit('inventory', this.inventory);
+        this.emit('produce', [...this.produce]);
 
         // Cập nhật lại tiến độ kho nông sản cho các nhiệm vụ ngày hiện có
         if (this.dailyQuestState && this.dailyQuestState.missions.length > 0) {
@@ -749,6 +760,25 @@ export class GameClient extends EventEmitter {
           this.emit('farm', this.farmState);
         }
         this.emit('log', `ô ${cell.index} cập nhật: hạn=${cell.isArid} cỏ=${cell.isGrass} sâu=${cell.isWorm}`);
+        break;
+      }
+      case 103: {
+        try {
+          const decoded = decodeShopPacket(msg.getData());
+          this.lastShopEvent = decoded.event;
+          this.lastShopWarning = decoded.warning ?? null;
+          this.emit('shop-protocol', decoded);
+          if (decoded.warning) {
+            this.emit(
+              'log',
+              `cmd 103 sub${decoded.event.subType} còn ${decoded.warning.remaining} byte chưa đọc`,
+            );
+          }
+        } catch (err) {
+          if (!(err instanceof ShopProtocolDecodeError)) throw err;
+          this.emit('shop-protocol-error', err);
+          this.emit('log', `giải mã cmd 103 lỗi: ${err.message}`);
+        }
         break;
       }
       case 104: {
