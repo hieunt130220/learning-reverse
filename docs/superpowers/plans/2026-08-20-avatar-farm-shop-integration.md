@@ -508,27 +508,27 @@ interface ShopApiErrorBody {
 - Consumes: `ShopCoordinator`, `ShopRepository`, `ShopPolicy`.
 - Produces: snapshot fields `shop`/`produce`, typed session shop methods, lifecycle-safe reconnect behavior and AutoFarm/Macro mutual exclusion.
 
-- [ ] **Step 1: Run HIGH-risk impact analyses**
+- [x] **Step 1: Run HIGH-risk impact analyses**
 
   Run GitNexus impact for `AvatarSession`, its constructor, `connect`, `teardown`, `snapshot`, `startAuto`, `startMacro`, and `SessionManager.getOrCreate`. Report all d=1 dependents before editing; keep existing constructor call sites source-compatible by updating them in the same task.
 
-- [ ] **Step 2: Compose one coordinator per AvatarSession**
+- [x] **Step 2: Compose one coordinator per AvatarSession**
 
   Extend session options with repository/policy, create the coordinator once in the `AvatarSession` constructor, and route its `shop`/`produce` events through the session’s existing account-scoped emitter. Attach the current `GameClient` with the current connection epoch during connection setup; detach before removing client listeners in every teardown/disconnect path.
 
-- [ ] **Step 3: Extend snapshots and typed methods**
+- [x] **Step 3: Extend snapshots and typed methods**
 
   Add `shop: ShopRuntimeState` and `produce: ProduceSnapshot | null` to `AvatarSessionSnapshot`, always populated from the coordinator (including offline cache). Add direct wrapper methods for all read/write/history operations listed in Task 5; routes must not access `FarmService` for shop operations.
 
-- [ ] **Step 4: Enforce mutual exclusion at both boundaries**
+- [x] **Step 4: Enforce mutual exclusion at both boundaries**
 
   Before `startAuto()` or `startMacro()` changes desired/runtime state, call `shop.assertIdleForAutomation()`. Before every coordinator command, pass current `autoRunning || macroRunning` to the guard. Return `OPERATION_CONFLICT` without partially starting either side.
 
-- [ ] **Step 5: Inject repository/policy from SessionManager**
+- [x] **Step 5: Inject repository/policy from SessionManager**
 
   Extend `SessionManager` dependencies and `getOrCreate()` construction. Add a cache-backed `getShopView(userId, accountId)` path that preserves current ownership checks and can return persisted state when no live session exists. Recovery of interrupted transactions runs once at manager/bootstrap startup.
 
-- [ ] **Step 6: Verify lifecycle behavior and commit**
+- [x] **Step 6: Verify lifecycle behavior and commit**
 
   Run server typecheck, current tests and build. Use an inline fake session harness to confirm no duplicate listeners after reconnect and that snapshot remains readable offline. Stage the two files, run `gitnexus_detect_changes({ scope: "staged" })` and cached diff check, then commit:
 

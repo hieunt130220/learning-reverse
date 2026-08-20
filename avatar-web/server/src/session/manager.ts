@@ -1,4 +1,6 @@
-import { getAccountById, listAutoEnabled, readGamePass, setAutoEnabled, updateCachedMetrics } from '../accounts/repo.js';
+import { getAccount, getAccountById, listAutoEnabled, readGamePass, setAutoEnabled, updateCachedMetrics } from '../accounts/repo.js';
+import { ShopRepository, type ProduceSnapshot, type ShopRuntimeState } from '../accounts/shopRepo.js';
+import type { ShopPolicy } from '../config.js';
 import { updateFarmCells } from '../accounts/farmProfileRepo.js';
 import type { AutoFarmConfig } from '../autoFarm.js';
 import type { Db } from '../db/index.js';
@@ -9,6 +11,7 @@ import {
   type AvatarSessionOptions,
   type AvatarSessionSnapshot,
 } from './avatarSession.js';
+import { ShopCoordinator } from './shopCoordinator.js';
 
 /** Giãn cách giữa các lần đăng nhập lúc khởi động. */
 export const BOOTSTRAP_STAGGER_MS = 5_000;
@@ -18,9 +21,26 @@ export interface SessionManagerDeps {
   masterKey: Buffer;
   maxSessions: number;
   broadcast(userId: number, accountId: number, type: string, payload: unknown): void;
+  shopRepository?: ShopRepository;
+  shopPolicy?: ShopPolicy;
   createSession?(opts: AvatarSessionOptions): AvatarSession;
   setTimeoutFn?: typeof setTimeout;
 }
+
+export interface ShopView {
+  shop: ShopRuntimeState;
+  produce: ProduceSnapshot | null;
+}
+
+const DISABLED_SHOP_POLICY: ShopPolicy = {
+  readEnabled: false,
+  writeEnabled: false,
+  purchaseEnabled: false,
+  slotUnlockEnabled: false,
+  marketRefreshEnabled: false,
+  liveAccountAllowlist: new Set<number>(),
+  protocolDebugEnabled: false,
+};
 
 interface FarmProfileEvent {
   idFarm: number;
@@ -70,9 +90,14 @@ function farmProfileEvent(payload: unknown): FarmProfileEvent | null {
 export class SessionManager {
   private readonly sessions = new Map<number, AvatarSession>();
   private readonly setTimeoutFn: typeof setTimeout;
+  private readonly shopRepository: ShopRepository;
+  private readonly shopPolicy: ShopPolicy;
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.setTimeoutFn = deps.setTimeoutFn ?? setTimeout;
+    this.shopRepository = deps.shopRepository ?? new ShopRepository(deps.db);
+    this.shopPolicy = deps.shopPolicy ?? DISABLED_SHOP_POLICY;
+    this.shopRepository.recoverInterruptedTransactions();
   }
 
   size(): number {
@@ -91,6 +116,21 @@ export class SessionManager {
 
   snapshot(accountId: number): AvatarSessionSnapshot | null {
     return this.sessions.get(accountId)?.snapshot() ?? null;
+  }
+
+  getShopView(userId: number, accountId: number): ShopView | null {
+    if (!getAccount(this.deps.db, userId, accountId)) return null;
+    const live = this.sessions.get(accountId);
+    if (live) {
+      return { shop: live.shopState(), produce: live.shopProduceState() };
+    }
+    const cached = new ShopCoordinator({
+      accountId,
+      repository: this.shopRepository,
+      policy: this.shopPolicy,
+      emit: () => undefined,
+    });
+    return { shop: cached.state(), produce: cached.produceState() };
   }
 
   async connect(accountId: number): Promise<void> {
@@ -155,6 +195,8 @@ export class SessionManager {
 
     const opts: AvatarSessionOptions = {
       accountId,
+      shopRepository: this.shopRepository,
+      shopPolicy: this.shopPolicy,
       cachedMetrics: account.cachedMetrics,
       onMetrics: (patch) => updateCachedMetrics(db, accountId, patch),
       // Đọc lại DB mỗi lần kết nối: mật khẩu hoặc cấu hình auto có thể đã đổi

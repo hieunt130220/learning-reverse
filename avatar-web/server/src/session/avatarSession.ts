@@ -17,6 +17,17 @@ import {
 import { type QuestOverviewState } from '../game/farmData.js';
 import { MacroRunner, type Macro, type MacroState } from '../macro.js';
 import type { AccountMetricsPatch, CachedAccountMetrics } from '../accounts/repo.js';
+import type { ShopRepository, ProduceSnapshot, ShopRuntimeState, ShopTransaction } from '../accounts/shopRepo.js';
+import type { ShopPolicy } from '../config.js';
+import {
+  ShopCoordinator,
+  ShopError,
+  type CreateListingInput,
+  type PurchaseListingInput,
+  type RefreshMarketInput,
+  type UnlockSlotInput,
+  type WithdrawListingInput,
+} from './shopCoordinator.js';
 
 export const RETRY_BASE_MS = 10_000;
 export const RETRY_MAX_MS = 5 * 60 * 1000;
@@ -67,6 +78,8 @@ export interface AvatarSessionSnapshot {
   farmSync: FarmSyncState;
   auto: AutoFarmState;
   macro: MacroState;
+  shop: ShopRuntimeState;
+  produce: ProduceSnapshot | null;
   inventory: unknown[];
   trees: unknown[];
   items: unknown[];
@@ -87,6 +100,9 @@ export interface AvatarSessionOptions {
   onPermanentFailure: (reason: string) => void;
   onMetrics?: (patch: AccountMetricsPatch) => void;
   cachedMetrics?: CachedAccountMetrics;
+  /** Production luôn truyền đủ hai dependency; optional giữ tương thích cho harness cũ. */
+  shopRepository?: ShopRepository;
+  shopPolicy?: ShopPolicy;
   createClient?: () => GameClient;
   createAutoFarm?: (client: GameClient) => AutoFarm;
   createMacroRunner?: (client: GameClient) => MacroRunner;
@@ -99,6 +115,22 @@ export interface AvatarSessionOptions {
 const EMPTY_AUTO: AutoFarmState = { running: false, cycle: 0, lastActions: [] };
 const EMPTY_MACRO: MacroState = { running: false, cycle: 0 };
 const EMPTY_FARM_SYNC: FarmSyncState = { status: 'idle' };
+const DISABLED_SHOP_STATE: ShopRuntimeState = {
+  syncStatus: 'idle',
+  own: null,
+  market: null,
+  priceRules: null,
+  activeTransaction: null,
+  recentTransactions: [],
+  capabilities: {
+    readEnabled: false,
+    writeEnabled: false,
+    purchaseEnabled: false,
+    slotUnlockEnabled: false,
+    marketRefreshEnabled: false,
+    liveAccountAllowed: false,
+  },
+};
 
 /**
  * Một tài khoản avatar đang sống trên server: giữ `GameClient` + `AutoFarm` +
@@ -127,6 +159,8 @@ export class AvatarSession {
   private farmSync: FarmSyncState = EMPTY_FARM_SYNC;
   private cachedMetrics: CachedAccountMetrics;
   private autoSyncKickoff?: NodeJS.Immediate;
+  private readonly shop?: ShopCoordinator;
+  private shopClientAttached = false;
 
   private readonly logs: LogLine[] = [];
   private readonly traffic: TrafficEntry[] = [];
@@ -142,6 +176,18 @@ export class AvatarSession {
     this.now = opts.now ?? Date.now;
     this.random = opts.random ?? Math.random;
     this.cachedMetrics = { ...opts.cachedMetrics };
+    if (opts.shopRepository && opts.shopPolicy) {
+      this.shop = new ShopCoordinator({
+        accountId: opts.accountId,
+        repository: opts.shopRepository,
+        policy: opts.shopPolicy,
+        emit: (type, payload) => this.emit(type, payload),
+        now: this.now,
+        isAutomationRunning: () => (
+          (this.auto?.state().running ?? false) || (this.macros?.state().running ?? false)
+        ),
+      });
+    }
   }
 
   get status(): ClientStatus {
@@ -208,6 +254,7 @@ export class AvatarSession {
   }
 
   async startAuto(cfg: Partial<AutoFarmConfig>): Promise<void> {
+    this.shop?.assertIdleForAutomation();
     this.cancelAutoCycleTimer();
     this.wantAuto = true;
     this.lastAutoConfig = cfg;
@@ -238,6 +285,7 @@ export class AvatarSession {
   }
 
   startMacro(macro: Macro): void {
+    this.shop?.assertIdleForAutomation();
     this.requireClient();
     this.macros!.start(macro);
   }
@@ -255,6 +303,46 @@ export class AvatarSession {
 
   sendRaw(cmd: number, fields: Array<{ t: string; v: string }>): void {
     this.requireClient().sendRaw(cmd, fields);
+  }
+
+  shopState(): ShopRuntimeState {
+    return this.shop?.state() ?? defensiveDisabledShopState();
+  }
+
+  shopProduceState(): ProduceSnapshot | null {
+    return this.shop?.produceState() ?? null;
+  }
+
+  listShopTransactions(limit: number): ShopTransaction[] {
+    return this.requireShop().listTransactions(limit);
+  }
+
+  syncShop(): Promise<ShopRuntimeState> {
+    return this.requireShop().syncOwnShop();
+  }
+
+  browseShop(): Promise<ShopRuntimeState> {
+    return this.requireShop().browseMarket();
+  }
+
+  createShopListing(input: CreateListingInput): ShopTransaction {
+    return this.requireShop().createListing(input);
+  }
+
+  withdrawShopListing(input: WithdrawListingInput): ShopTransaction {
+    return this.requireShop().withdrawListing(input);
+  }
+
+  purchaseShopListing(input: PurchaseListingInput): ShopTransaction {
+    return this.requireShop().purchaseListing(input);
+  }
+
+  unlockShopSlot(input: UnlockSlotInput): ShopTransaction {
+    return this.requireShop().unlockSlot(input);
+  }
+
+  refreshShopMarket(input: RefreshMarketInput): ShopTransaction {
+    return this.requireShop().refreshMarket(input);
   }
 
   enterFarm(): void {
@@ -330,6 +418,8 @@ export class AvatarSession {
       farmSync: this.farmSync,
       auto: this.auto?.state() ?? EMPTY_AUTO,
       macro: this.macros?.state() ?? EMPTY_MACRO,
+      shop: this.shopState(),
+      produce: this.shopProduceState(),
       inventory: c?.inventory ?? [],
       trees: c?.trees ?? [],
       items: c?.items ?? [],
@@ -347,6 +437,13 @@ export class AvatarSession {
   private requireClient(): GameClient {
     if (!this.client) throw new Error('phiên chưa kết nối');
     return this.client;
+  }
+
+  private requireShop(): ShopCoordinator {
+    if (!this.shop) {
+      throw new ShopError(403, 'SHOP_CAPABILITY_DISABLED', 'Coordinator sạp chưa được cấu hình');
+    }
+    return this.shop;
   }
 
   /** Mọi lời gọi ra ngoài đều bọc: một WS đã đóng không được giết cả phiên. */
@@ -380,6 +477,8 @@ export class AvatarSession {
     this.macros = this.opts.createMacroRunner
       ? this.opts.createMacroRunner(client)
       : new MacroRunner(client);
+    this.shop?.attachClient(client, epoch);
+    this.shopClientAttached = this.shop !== undefined;
     this.wire(client, epoch);
 
     try {
@@ -558,6 +657,7 @@ export class AvatarSession {
 
   private tryStartAuto(): void {
     try {
+      this.shop?.assertIdleForAutomation();
       this.auto!.start(this.lastAutoConfig);
     } catch (err) {
       this.pushLog(`không bật được tự động: ${(err as Error).message}`);
@@ -650,6 +750,7 @@ export class AvatarSession {
 
   private onDisconnected(epoch: number): void {
     this.cancelAutoSyncKickoff();
+    this.detachShop('Phiên game đã ngắt kết nối');
     this.auto?.stop();
     this.macros?.stop();
     if (this.autoCycleTimer || !this.wanted || this.permanentlyFailed || epoch !== this.connectionEpoch) return;
@@ -691,6 +792,7 @@ export class AvatarSession {
 
   private teardown(): void {
     this.cancelAutoSyncKickoff();
+    this.detachShop('Phiên game đã teardown');
     this.connectionEpoch += 1;
     this.auto?.stop();
     this.macros?.stop();
@@ -706,4 +808,14 @@ export class AvatarSession {
       /* bỏ qua */
     }
   }
+
+  private detachShop(reason: string): void {
+    if (!this.shop || !this.shopClientAttached) return;
+    this.shopClientAttached = false;
+    this.shop.detachClient(reason);
+  }
+}
+
+function defensiveDisabledShopState(): ShopRuntimeState {
+  return structuredClone(DISABLED_SHOP_STATE);
 }
