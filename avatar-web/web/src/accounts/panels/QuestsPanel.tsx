@@ -70,13 +70,15 @@ export function QuestsPanel({
         apiPost(`/api/accounts/${accountId}/quests/progress/refresh`),
       ]);
       setStatusMsg('Đã gửi yêu cầu làm mới!');
-      setTimeout(() => setStatusMsg(null), 3000);
-      setTimeout(async () => {
-        try {
-          const res = await apiGet<QuestOverviewState>(`/api/accounts/${accountId}/quests`);
-          if (res) setLocalQuests(res);
-        } catch {}
-      }, 800);
+      setTimeout(() => setStatusMsg(null), 3500);
+      [800, 1800, 3200].forEach((delay) => {
+        setTimeout(async () => {
+          try {
+            const res = await apiGet<QuestOverviewState>(`/api/accounts/${accountId}/quests`);
+            if (res) setLocalQuests(res);
+          } catch {}
+        }, delay);
+      });
     } catch (err) {
       setErrorMsg((err as Error).message);
     } finally {

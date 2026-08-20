@@ -534,21 +534,23 @@ export class GameClient extends EventEmitter {
     try {
       this.emit('log', 'gửi yêu cầu lấy nhiệm vụ tiến trình & tương tác NPC Lái buôn...');
 
-      // 1. Gửi các gói UpgradeFarm tiến trình Tân Thủ (3, 1) và Nhà Nông (3, 0)
+      // 1. Tương tác với NPC Lái buôn trong nông trại (id -1) để lấy dialog nhiệm vụ Tân Thủ
+      this.farm.communicate(-1);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      this.farm.doMenuOption(-1, 1, 0); // Menu 1 (Tân Thủ)
+      this.farm.doMenuOption(-1, 0, 1); // Menu 0, sub 1
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      // 2. Tương tác với NPC Lái buôn trong nông trại (id -1) để lấy dialog nhiệm vụ Nhà Nông
+      this.farm.communicate(-1);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      this.farm.doMenuOption(-1, 0, 0); // Menu 0 (Nhà Nông)
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      // 3. Gửi các gói UpgradeFarm tiến trình Tân Thủ (3, 1) và Nhà Nông (3, 0)
       this.farm.getInfoUpgradeFarm(3, 1);
       await new Promise((resolve) => setTimeout(resolve, 200));
       this.farm.getInfoUpgradeFarm(3, 0);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      // 2. Tương tác với NPC Lái buôn trong nông trại (id -1) để lấy dialog nhiệm vụ
-      this.farm.communicate(-1);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      this.farm.doMenuOption(-1, 0, 1); // Menu option 1: Nhiệm Vụ Tân Thủ
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      this.farm.communicate(-1);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      this.farm.doMenuOption(-1, 0, 0); // Menu option 0: Nhiệm Vụ Nhà Nông
     } catch (err) {
       this.emit('log', `làm mới nhiệm vụ tiến trình lỗi: ${(err as Error).message}`);
     }
@@ -1002,6 +1004,8 @@ export class GameClient extends EventEmitter {
           this.farm.getTreeInfo();
           this.farm.getCook(0);
           this.farm.getDailyQuest(0);
+          // Tự động tương tác với NPC Lái buôn để lấy hộp thoại nhiệm vụ tiến trình mới nhất
+          void this.refreshProgressQuests();
           // INFO_ANIMAL (cmd 101) chỉ có index mà không có species-ngữ-cảnh —
           // nếu gói 101 về trước gói 69 thì vùng phân loại (đã lưu trong farmState)
           // chưa có để chia ao/chuồng.

@@ -231,9 +231,9 @@ export const DEFAULT_BEGINNER_QUEST_STATE: ProgressQuestChain = {
     },
     {
       name: 'Mua 2 con cá chép',
-      current: 0,
+      current: 2,
       total: 2,
-      isDone: false,
+      isDone: true,
     },
   ],
   rewards: [
