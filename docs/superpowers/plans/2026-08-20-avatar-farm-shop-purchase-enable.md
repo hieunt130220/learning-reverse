@@ -461,7 +461,7 @@ Expected: all commands exit 0.
 
 **Actual:** Server typecheck and build passed; the web TypeScript/Vite build also passed with 61 modules transformed.
 
-- [ ] **Step 7: Run final GitNexus and Git scope checks**
+- [x] **Step 7: Run final GitNexus and Git scope checks**
 
 Run:
 
@@ -483,6 +483,8 @@ Expected:
 - `.env` is absent because it is ignored.
 - `AGENTS.md` and `CLAUDE.md` remain unstaged user changes.
 - GitNexus reports only expected configuration, shop entitlement, and UI submission flows.
+
+**Actual:** GitNexus compare from `d37e68c` returned HIGH with 19 changed symbols, 12 affected processes, and 7 files because compare scope also included the user's unstaged `AGENTS.md` and `CLAUDE.md`. The intended task files are exactly `avatar-web/README.md`, `avatar-web/server/src/config.ts`, `avatar-web/server/src/session/shopCoordinator.ts`, `avatar-web/web/src/accounts/panels/ShopPanel.tsx`, and this plan. Intended affected flows cover create/withdraw/purchase entitlement, unlock entitlement remaining capability-gated, and `ShopPanel` submission flows. `git diff --check` passed; status showed only unstaged `AGENTS.md` and `CLAUDE.md`. Commits since `d37e68c` were `a6baf5a`, `744a9c7`, `587c91d`, `f1e29ee`, `9f34736`, and `d8fb3c6`.
 
 - [ ] **Step 8: Update the plan checkboxes and commit plan closure**
 
