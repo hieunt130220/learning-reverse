@@ -1,7 +1,7 @@
 # Thiết Kế Sửa Luồng Chợ Sạp Nông Sản Cmd 103 Sub1 Status 0
 
 **Ngày tạo:** 2026-08-20
-**Trạng thái:** Chờ duyệt (Pending Review)
+**Trạng thái:** Đã duyệt (Approved)
 **Spec gốc:** `docs/superpowers/specs/2026-08-20-avatar-farm-shop-integration-design.md`
 **Phạm vi hệ thống:** `avatar-web` trong repository `learning-reverse`
 
