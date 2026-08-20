@@ -752,7 +752,7 @@ interface ShopApiErrorBody {
   git commit -m "feat(shop): integrate farm shop into account drawer"
   ```
 
-- [ ] **Step 8: Refresh the GitNexus index after the final commit**
+- [x] **Step 8: Refresh the GitNexus index after the final commit**
 
   Inspect `.gitnexus/meta.json` first. If `stats.embeddings > 0`, run `npx gitnexus analyze --embeddings`; otherwise run `npx gitnexus analyze`. Expected: index reports current commit and no stale warning.
 
