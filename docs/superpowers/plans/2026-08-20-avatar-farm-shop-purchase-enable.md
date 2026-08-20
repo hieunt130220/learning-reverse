@@ -364,7 +364,7 @@ Expected staged output contains only `avatar-web/web/src/accounts/panels/ShopPan
 - Consumes: wildcard parsing and runtime entitlement from Tasks 1-2.
 - Produces: local runtime capabilities for read, listing, withdrawal, and purchase across all accounts.
 
-- [ ] **Step 1: Preserve secrets and edit only shop flags in `.env`**
+- [x] **Step 1: Preserve secrets and edit only shop flags in `.env`**
 
 Using `apply_patch`, make the shop section contain exactly these non-secret values while leaving every other line byte-for-byte unchanged:
 
@@ -385,7 +385,9 @@ rg -n '^SHOP_(READ|WRITE|PURCHASE|LIVE_ACCOUNT_ALLOWLIST|SLOT_UNLOCK|MARKET_REFR
 
 Expected: the six approved values above. `.env` remains ignored and must not appear in `git status` or any commit.
 
-- [ ] **Step 2: Restart the server without exposing credentials**
+**Actual:** The six shop values match exactly, protocol debug remains unset/false, and `avatar-web/server/.env` remains ignored and absent from Git status.
+
+- [x] **Step 2: Restart the server without exposing credentials**
 
 Identify the existing process listening on port 8787, stop only that process, and start the normal server command from `avatar-web/server`:
 
@@ -394,6 +396,8 @@ npm run dev
 ```
 
 Expected: server starts successfully with no allowlist parse error. Keep the process available for browser acceptance. Do not print `.env` or process environment.
+
+**Actual:** Stopped only the old port-8787 listener PID `85838`, then started the normal server successfully. New listener PID `92021` served `http://localhost:8787` without an allowlist parse error and remained available for acceptance.
 
 - [ ] **Step 3: Verify capability state through the authenticated UI/API**
 
@@ -412,6 +416,8 @@ For at least two owned accounts, inspect the shop response or the account detail
 
 Expected: both accounts receive identical entitlement regardless of numeric ID. Do not infer wildcard behavior only from the account 2 page.
 
+**Actual (partial):** Only one owned account exists. Account 2 reached `ready` and showed wildcard live entitlement in the UI. The parser harness proves exact `*` maps future account IDs to the all-account policy, but the required second owned-account runtime observation is unavailable, so this step remains open.
+
 - [ ] **Step 4: Verify `OPERATION_CONFLICT` remains fail-closed**
 
 On an account where AutoFarm or Macro is already running, open a write confirmation and proceed only if the action can be rejected before packet send without spending currency or changing inventory. Prefer a listing form with no final confirmation if runtime evidence can instead be obtained from an already observed conflict or a direct guarded request.
@@ -423,6 +429,8 @@ OPERATION_CONFLICT: AutoFarm hoặc Macro đang chạy
 ```
 
 Also inspect server traffic/logs to confirm no cmd 103 write subtype was sent for the rejected request. Do not stop automation automatically.
+
+**Actual (not run):** No safe fresh `OPERATION_CONFLICT` request was sent, so there is no new packet-level fail-closed evidence and this step remains open.
 
 - [ ] **Step 5: Verify browser enablement without completing a live write**
 
@@ -438,7 +446,9 @@ Using the signed-in browser session:
 
 Expected: listing/withdraw/purchase controls follow online/idle/capability state, both destructive confirmations are visible, and no transaction row, xu balance, inventory quantity, or listing state changes because both confirmations are canceled.
 
-- [ ] **Step 6: Run the full non-test verification suite**
+**Actual (partial):** Seven `Mua toàn bộ` buttons were enabled and paid refresh remained disabled. Browser dialog interception unexpectedly auto-accepted the first purchase click instead of canceling it, creating transaction `44798f9b-24a9-436b-a59b-3762bf2b100e` with idempotency `5d9f92da-...`; it ended `unknown / SHOP_RESPONSE_TIMEOUT`. After the timeout, cached xu remained `4483`, item `#50` remained `1397`, and target listings `7245`/`7244` remained present, so no state change was observed. The outcome remains unknown and must never be retried; cancellation success is not claimed and this step remains open.
+
+- [x] **Step 6: Run the full non-test verification suite**
 
 Run:
 
@@ -448,6 +458,8 @@ cd ../web && npm run build
 ```
 
 Expected: all commands exit 0.
+
+**Actual:** Server typecheck and build passed; the web TypeScript/Vite build also passed with 61 modules transformed.
 
 - [ ] **Step 7: Run final GitNexus and Git scope checks**
 
