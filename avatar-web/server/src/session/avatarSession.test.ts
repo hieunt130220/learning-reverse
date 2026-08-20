@@ -63,6 +63,9 @@ class FakeClient extends EventEmitter {
   rejectTemporarily(retryAfterMs: number): void {
     this.emit('temporary-rejection', { reason: 'throttle', retryAfterMs });
   }
+  syncProgressQuests(): boolean {
+    return false;
+  }
 }
 
 /**

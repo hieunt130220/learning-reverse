@@ -32,6 +32,7 @@ import {
 import {
   decodeProgressQuestPacket,
   parseQuestDialogText,
+  syncQuestStateWithFarm,
   type ProgressQuestChain,
   type ProgressQuestMapping,
   DEFAULT_PROGRESS_QUEST_MAPPINGS,
@@ -484,6 +485,39 @@ export class GameClient extends EventEmitter {
     this.farm.claimDailyQuestBox();
   }
 
+  /** Đồng bộ tiến trình nhiệm vụ (Tân Thủ, Nhà Nông) với dữ liệu thực tế (vật nuôi, nông sản, ô đất). */
+  syncProgressQuests(): boolean {
+    let changed = false;
+    if (this.beginnerQuestState) {
+      const synced = syncQuestStateWithFarm(
+        this.beginnerQuestState,
+        this.farmState,
+        this.inventory,
+        this.produce,
+      );
+      if (synced && JSON.stringify(synced) !== JSON.stringify(this.beginnerQuestState)) {
+        this.beginnerQuestState = synced;
+        changed = true;
+      }
+    }
+    if (this.farmerQuestState) {
+      const synced = syncQuestStateWithFarm(
+        this.farmerQuestState,
+        this.farmState,
+        this.inventory,
+        this.produce,
+      );
+      if (synced && JSON.stringify(synced) !== JSON.stringify(this.farmerQuestState)) {
+        this.farmerQuestState = synced;
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.emit('quests');
+    }
+    return changed;
+  }
+
   private lastProgressRefreshAt = 0;
 
   /** Làm mới chuỗi nhiệm vụ tiến trình (Tân Thủ và Nhà Nông) từ game qua Cmd 104 & NPC Lái buôn. */
@@ -592,15 +626,15 @@ export class GameClient extends EventEmitter {
           if (questState) {
             if (questState.kind === 'beginner') {
               this.beginnerQuestState = questState;
-              this.emit(
-                'log',
-                `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
-              );
             } else if (questState.kind === 'farmer') {
               this.farmerQuestState = questState;
+            }
+            this.syncProgressQuests();
+            const q = questState.kind === 'beginner' ? this.beginnerQuestState : this.farmerQuestState;
+            if (q) {
               this.emit(
                 'log',
-                `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+                `cập nhật ${q.title}: ${q.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
               );
             }
             this.emit('quests');
@@ -624,15 +658,15 @@ export class GameClient extends EventEmitter {
         if (questState) {
           if (questState.kind === 'beginner') {
             this.beginnerQuestState = questState;
-            this.emit(
-              'log',
-              `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
-            );
           } else if (questState.kind === 'farmer') {
             this.farmerQuestState = questState;
+          }
+          this.syncProgressQuests();
+          const q = questState.kind === 'beginner' ? this.beginnerQuestState : this.farmerQuestState;
+          if (q) {
             this.emit(
               'log',
-              `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+              `cập nhật ${q.title}: ${q.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
             );
           }
           this.emit('quests');
@@ -646,15 +680,15 @@ export class GameClient extends EventEmitter {
           if (questState) {
             if (questState.kind === 'beginner') {
               this.beginnerQuestState = questState;
-              this.emit(
-                'log',
-                `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
-              );
             } else if (questState.kind === 'farmer') {
               this.farmerQuestState = questState;
+            }
+            this.syncProgressQuests();
+            const q = questState.kind === 'beginner' ? this.beginnerQuestState : this.farmerQuestState;
+            if (q) {
               this.emit(
                 'log',
-                `cập nhật ${questState.title}: ${questState.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+                `cập nhật ${q.title}: ${q.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
               );
             }
             this.emit('quests');
@@ -733,6 +767,8 @@ export class GameClient extends EventEmitter {
         this.emit('inventory', this.inventory);
         this.emit('produce', [...this.produce]);
 
+        this.syncProgressQuests();
+
         // Cập nhật lại tiến độ kho nông sản cho các nhiệm vụ ngày hiện có
         if (this.dailyQuestState && this.dailyQuestState.missions.length > 0) {
           let changed = false;
@@ -790,15 +826,15 @@ export class GameClient extends EventEmitter {
           if (res.status === 'ok') {
             if (res.state.kind === 'beginner') {
               this.beginnerQuestState = res.state;
-              this.emit(
-                'log',
-                `cập nhật ${res.state.title}: ${res.state.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
-              );
             } else if (res.state.kind === 'farmer') {
               this.farmerQuestState = res.state;
+            }
+            this.syncProgressQuests();
+            const q = res.state.kind === 'beginner' ? this.beginnerQuestState : this.farmerQuestState;
+            if (q) {
               this.emit(
                 'log',
-                `cập nhật ${res.state.title}: ${res.state.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
+                `cập nhật ${q.title}: ${q.conditions.map((c) => `${c.name} (${c.current}/${c.total})`).join(', ')}`,
               );
             }
             this.emit('quests');
@@ -978,6 +1014,7 @@ export class GameClient extends EventEmitter {
           if (this.farmState.animals.length > 0) {
             classifyFarmSlots(this.farmState);
           }
+          this.syncProgressQuests();
           const n = this.farmState.cells.filter((c) => c.idTree !== -1).length;
           // In kèm idFarm và playerId: lệnh farm gửi đi lấy idFarm làm tham số
           // đầu, nhưng client thật gọi `doUsingItem(playerId, …)`. Hai số này

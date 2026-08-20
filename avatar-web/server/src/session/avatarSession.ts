@@ -205,6 +205,9 @@ export class AvatarSession {
 
   getQuestOverview(): QuestOverviewState {
     const c = this.client;
+    if (typeof c?.syncProgressQuests === 'function') {
+      c.syncProgressQuests();
+    }
     const daily = c?.dailyQuestState ?? null;
     const beginner = c?.beginnerQuestState ?? null;
     const farmer = c?.farmerQuestState ?? null;
