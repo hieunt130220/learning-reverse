@@ -118,6 +118,23 @@ export function parseQuestDialogText(text: string): ProgressQuestChain | null {
     const trimmed = line.trim();
     if (!trimmed.startsWith('-')) continue;
     const clean = trimmed.replace(/^-\s*/, '');
+
+    // 1. Nhận diện điều kiện đã hoàn thành dạng "-Xong", "- Xong", "- Hoàn thành"
+    const doneMatch = /^(.*?)\s*-\s*(?:xong|hoàn thành|hoan thanh|done)\s*$/i.exec(clean);
+    if (doneMatch) {
+      const name = doneMatch[1].trim();
+      const numMatch = /\b(\d+)\b/.exec(name);
+      const total = numMatch ? parseInt(numMatch[1], 10) : 1;
+      conditions.push({
+        name,
+        current: total,
+        total,
+        isDone: true,
+      });
+      continue;
+    }
+
+    // 2. Nhận diện điều kiện dạng phân số: "Mua 5 con gà  - 0/5"
     const m = /^(.*?)\s*-\s*(\d+)\s*\/\s*(\d+)$/.exec(clean);
     if (m) {
       const name = m[1].trim();
@@ -129,7 +146,10 @@ export function parseQuestDialogText(text: string): ProgressQuestChain | null {
         total,
         isDone: current >= total,
       });
-    } else if (clean) {
+      continue;
+    }
+
+    if (clean) {
       conditions.push({
         name: clean,
         current: 0,
