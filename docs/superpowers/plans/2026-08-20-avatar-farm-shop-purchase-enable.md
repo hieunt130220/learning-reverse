@@ -287,7 +287,7 @@ Expected: GitNexus reports only configuration-to-shop-runtime capability/write f
 - Consumes: validated `itemId`, `quantity`, `price`, `itemName()`, and the existing listing request body.
 - Produces: an explicit user confirmation gate before the listing POST; withdrawal and purchase confirmations remain unchanged.
 
-- [ ] **Step 1: Run GitNexus impact analysis for `submitListing`**
+- [x] **Step 1: Run GitNexus impact analysis for `submitListing`**
 
 Run:
 
@@ -297,7 +297,9 @@ gitnexus_impact({ target: "submitListing", direction: "upstream", repo: "learnin
 
 Expected: impact is limited to `ShopPanel` form submission. Report risk/direct callers and stop for confirmation if HIGH or CRITICAL.
 
-- [ ] **Step 2: Add confirmation after validation and before `submitWrite()`**
+**Actual:** `submitListing` impact was LOW and limited to the listing form submission path; approval to proceed was already provided.
+
+- [x] **Step 2: Add confirmation after validation and before `submitWrite()`**
 
 Insert this exact guard after the price-range validation block and before `const accepted = await submitWrite(...)`:
 
@@ -313,7 +315,9 @@ Do not change the purchase prompt:
 `Mua toàn bộ listing ${itemName(listing.itemId)} × ${listing.quantity} giá ${listing.price} xu?`
 ```
 
-- [ ] **Step 3: Build the web client**
+**Actual:** Added the exact listing confirmation after validation and before `submitWrite()`; withdrawal and purchase prompts were unchanged.
+
+- [x] **Step 3: Build the web client**
 
 Run:
 
@@ -323,7 +327,9 @@ cd avatar-web/web && npm run build
 
 Expected: TypeScript and Vite build complete successfully.
 
-- [ ] **Step 4: Commit the UI confirmation**
+**Actual:** `npm run build` exited 0; TypeScript passed and Vite built 61 modules successfully.
+
+- [x] **Step 4: Commit the UI confirmation**
 
 Stage only:
 
@@ -346,6 +352,8 @@ git commit -m "feat(shop): confirm live listing writes"
 ```
 
 Expected staged output contains only `avatar-web/web/src/accounts/panels/ShopPanel.tsx`.
+
+**Actual:** Commit `f1e29ee` (`feat(shop): confirm live listing writes`) contains only `ShopPanel.tsx`. Staged GitNexus detection reported MEDIUM: 1 file, 2 symbols, and 4 UI processes; no server, protocol, or AutoFarm changes.
 
 ### Task 4: Activate the Approved Local Runtime Policy
 
