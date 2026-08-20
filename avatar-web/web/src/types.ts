@@ -181,7 +181,7 @@ export interface ProgressQuestChain {
   step: number | null;
   conditions: ProgressQuestCondition[];
   rewards: ProgressQuestReward[];
-  source: 'game-packet';
+  source: 'game-dialog' | 'game-packet' | 'default';
   updatedAt: number;
 }
 

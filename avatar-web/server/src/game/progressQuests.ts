@@ -25,7 +25,7 @@ export interface ProgressQuestChain {
   step: number | null;
   conditions: ProgressQuestCondition[];
   rewards: ProgressQuestReward[];
-  source: 'game-packet';
+  source: 'game-dialog' | 'game-packet' | 'default';
   updatedAt: number;
 }
 
@@ -212,7 +212,7 @@ export function parseQuestDialogText(text: string): ProgressQuestChain | null {
     step,
     conditions,
     rewards,
-    source: 'game-packet',
+    source: 'game-dialog',
     updatedAt: Date.now(),
   };
 }
@@ -220,43 +220,18 @@ export function parseQuestDialogText(text: string): ProgressQuestChain | null {
 export const DEFAULT_BEGINNER_QUEST_STATE: ProgressQuestChain = {
   kind: 'beginner',
   screenType: 1,
-  title: 'Nhiệm Vụ Tân Thủ 2',
-  step: 2,
+  title: 'Nhiệm Vụ Tân Thủ 1',
+  step: 1,
   conditions: [
     {
-      name: 'Mua 5 con gà',
+      name: 'Trồng 6 cây hoa hồng',
       current: 0,
-      total: 5,
+      total: 6,
       isDone: false,
     },
-    {
-      name: 'Mua 2 con cá chép',
-      current: 2,
-      total: 2,
-      isDone: true,
-    },
   ],
-  rewards: [
-    {
-      type: 6,
-      amount: 5000,
-      value: 5000,
-      displayName: '5.000 Xu',
-    },
-    {
-      type: 7,
-      amount: 1,
-      value: 1,
-      displayName: '1 Tiến Sĩ vĩnh viễn',
-    },
-    {
-      type: 7,
-      amount: 1,
-      value: 1,
-      displayName: '1 Tiến Sĩ vĩnh viễn',
-    },
-  ],
-  source: 'game-packet',
+  rewards: [],
+  source: 'default',
   updatedAt: Date.now(),
 };
 
@@ -489,5 +464,3 @@ export function syncQuestStateWithFarm(
   if (!quest || !quest.conditions || quest.conditions.length === 0) return quest ?? null;
   return quest;
 }
-
-

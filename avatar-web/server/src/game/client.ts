@@ -164,6 +164,7 @@ export class GameClient extends EventEmitter {
   /** Trạng thái nhiệm vụ hàng ngày (cmd -87 sub 2). */
   dailyQuestState: DailyQuestState | null = null;
   /** Trạng thái nhiệm vụ tân thủ (cmd 104 / dialog NPC). */
+  // Keep the user-confirmed current quest visible until the game sends a newer snapshot.
   beginnerQuestState: ProgressQuestChain | null = DEFAULT_BEGINNER_QUEST_STATE;
   /** Trạng thái nhiệm vụ nhà nông (cmd 104 / dialog NPC). */
   farmerQuestState: ProgressQuestChain | null = DEFAULT_FARMER_QUEST_STATE;
@@ -534,23 +535,22 @@ export class GameClient extends EventEmitter {
     try {
       this.emit('log', 'gửi yêu cầu lấy nhiệm vụ tiến trình & tương tác NPC Lái buôn...');
 
-      // 1. Tương tác với NPC Lái buôn trong nông trại (id -1) để lấy dialog nhiệm vụ Tân Thủ
+      // 1. Gửi request OPEN_INFO_FARM hợp lệ đã xác nhận trên server hiện tại.
+      // Body chỉ gồm type=1; biến thể type=3 + idType không trả response.
+      this.farm.getInfoUpgradeFarm(1);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // 2. Hỏi tuần tự từng mục của NPC; server không xử lý hai menu option
+      // liên tiếp khi chưa nhận lại lượt tương tác trước đó.
       this.farm.communicate(-1);
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      this.farm.doMenuOption(-1, 1, 0); // Menu 1 (Tân Thủ)
-      this.farm.doMenuOption(-1, 0, 1); // Menu 0, sub 1
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      this.farm.doMenuOption(-1, 0, 1); // Nhiệm Vụ Tân Thủ
       await new Promise((resolve) => setTimeout(resolve, 400));
 
-      // 2. Tương tác với NPC Lái buôn trong nông trại (id -1) để lấy dialog nhiệm vụ Nhà Nông
       this.farm.communicate(-1);
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      this.farm.doMenuOption(-1, 0, 0); // Menu 0 (Nhà Nông)
       await new Promise((resolve) => setTimeout(resolve, 400));
-
-      // 3. Gửi các gói UpgradeFarm tiến trình Tân Thủ (3, 1) và Nhà Nông (3, 0)
-      this.farm.getInfoUpgradeFarm(3, 1);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      this.farm.getInfoUpgradeFarm(3, 0);
+      this.farm.doMenuOption(-1, 0, 0); // Nhiệm Vụ Nhà Nông
+      await new Promise((resolve) => setTimeout(resolve, 400));
     } catch (err) {
       this.emit('log', `làm mới nhiệm vụ tiến trình lỗi: ${(err as Error).message}`);
     }
