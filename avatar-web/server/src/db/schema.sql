@@ -52,3 +52,41 @@ CREATE TABLE IF NOT EXISTS avatar_farm_profile_cache (
   seeds_observed_at INTEGER,
   updated_at        INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS avatar_shop_cache (
+  account_id          INTEGER PRIMARY KEY
+                      REFERENCES avatar_accounts(id) ON DELETE CASCADE,
+  own_snapshot_json   TEXT,
+  market_snapshot_json TEXT,
+  price_rules_json    TEXT,
+  produce_json        TEXT,
+  own_observed_at     INTEGER,
+  market_observed_at  INTEGER,
+  rules_observed_at   INTEGER,
+  produce_observed_at INTEGER,
+  updated_at          INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS avatar_shop_transactions (
+  id              TEXT PRIMARY KEY,
+  account_id      INTEGER NOT NULL
+                  REFERENCES avatar_accounts(id) ON DELETE CASCADE,
+  idempotency_key TEXT NOT NULL,
+  kind            TEXT NOT NULL,
+  status          TEXT NOT NULL,
+  request_json    TEXT NOT NULL,
+  before_json     TEXT,
+  result_json     TEXT,
+  error_code      TEXT,
+  error_message   TEXT,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL,
+  completed_at    INTEGER,
+  UNIQUE(account_id, idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_avatar_shop_transactions_account_created
+  ON avatar_shop_transactions(account_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_avatar_shop_transactions_account_status
+  ON avatar_shop_transactions(account_id, status);
