@@ -608,15 +608,15 @@ interface ShopApiErrorBody {
 - Consumes: server `ShopRuntimeState`, `ProduceSnapshot`, `ShopTransaction` JSON and WebSocket envelopes.
 - Produces: frontend DTOs and reducer handling for `shop`/`produce`.
 
-- [ ] **Step 1: Run impact analysis**
+- [x] **Step 1: Run impact analysis**
 
   Run GitNexus impact for `SessionSnapshot` and `reduceAccountRuntimeEvent`. Inspect all fixture/object-literal callers so the migration does not force edits to existing test files.
 
-- [ ] **Step 2: Mirror server DTOs exactly**
+- [x] **Step 2: Mirror server DTOs exactly**
 
   Add TypeScript interfaces for own slots, market listings, price rules, capabilities, produce, runtime state and transactions. Add `shop?: ShopRuntimeState` and `produce?: ProduceSnapshot | null` to `SessionSnapshot` for rolling compatibility; backend is still required to populate them. Use `connectionEpoch` throughout, matching the server contract.
 
-- [ ] **Step 3: Reduce realtime events atomically**
+- [x] **Step 3: Reduce realtime events atomically**
 
   Add:
 
@@ -629,7 +629,7 @@ interface ShopApiErrorBody {
 
   Preserve all unrelated snapshot fields. For `produce`, reject an older `connectionEpoch` directly; for a full `shop` event, compare the maximum epoch present in `own`, `market` and `priceRules` against the current shop state before replacement.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
   Run `npm test` and `npm run build` in `avatar-web/web`. Stage the two files, run `gitnexus_detect_changes({ scope: "staged" })` and cached diff check, then commit:
 

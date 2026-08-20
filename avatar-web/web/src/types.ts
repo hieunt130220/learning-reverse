@@ -222,6 +222,90 @@ export interface CachedAccountMetrics {
   syncedAt?: number;
 }
 
+export interface OwnShopSlot {
+  slot: number;
+  itemId: number;
+  quantity: number;
+  price: number;
+  isSale: boolean;
+  isTimeOut: boolean;
+}
+
+export interface MarketListing {
+  index: number;
+  idShop: number;
+  verShop: number;
+  itemId: number;
+  quantity: number;
+  price: number;
+}
+
+export interface ShopPriceRule {
+  itemId: number;
+  minPrice: number;
+  maxPrice: number;
+}
+
+export interface ShopSnapshot<T> {
+  revision: number;
+  connectionEpoch: number;
+  capturedAt: number;
+  data: T;
+}
+
+export interface ProduceSnapshot {
+  revision: number;
+  connectionEpoch: number;
+  capturedAt: number;
+  items: InventoryItem[];
+}
+
+export type ShopTransactionKind = 'list' | 'withdraw' | 'purchase' | 'unlock' | 'refresh-market';
+export type ShopTransactionStatus =
+  | 'queued'
+  | 'sending'
+  | 'awaiting_response'
+  | 'reconciling'
+  | 'succeeded'
+  | 'failed'
+  | 'unknown';
+
+export interface ShopTransaction {
+  id: string;
+  accountId: number;
+  idempotencyKey: string;
+  kind: ShopTransactionKind;
+  status: ShopTransactionStatus;
+  request: Record<string, unknown>;
+  before: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  errorCode?: string;
+  errorMessage?: string;
+  createdAt: number;
+  updatedAt: number;
+  completedAt?: number;
+}
+
+export interface ShopCapabilities {
+  readEnabled: boolean;
+  writeEnabled: boolean;
+  purchaseEnabled: boolean;
+  slotUnlockEnabled: boolean;
+  marketRefreshEnabled: boolean;
+  liveAccountAllowed: boolean;
+}
+
+export interface ShopRuntimeState {
+  syncStatus: 'idle' | 'syncing' | 'ready' | 'stale' | 'error';
+  own: ShopSnapshot<{ numSlot: number; canOpenSlot: boolean; slots: OwnShopSlot[] }> | null;
+  market: ShopSnapshot<{ status: number; listings: MarketListing[] }> | null;
+  priceRules: ShopSnapshot<ShopPriceRule[]> | null;
+  activeTransaction: ShopTransaction | null;
+  recentTransactions: ShopTransaction[];
+  capabilities: ShopCapabilities;
+  lastError?: { code: string; message: string };
+}
+
 export interface SessionSnapshot {
   accountId: number;
   status: ClientStatus;
@@ -242,6 +326,9 @@ export interface SessionSnapshot {
   farmSync?: FarmSyncState;
   auto: AutoState;
   macro: MacroState;
+  /** Optional trong rolling deploy; backend mới luôn phát đủ hai field. */
+  shop?: ShopRuntimeState;
+  produce?: ProduceSnapshot | null;
   inventory: InventoryItem[];
   trees: TreeInfo[];
   items: ItemInfo[];

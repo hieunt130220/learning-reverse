@@ -1,5 +1,14 @@
-import type { SessionSnapshot } from '../types.js';
+import type { SessionSnapshot, ShopRuntimeState } from '../types.js';
 import type { WsMessage } from '../ws.js';
+
+function shopEpoch(shop: ShopRuntimeState | undefined): number {
+  if (!shop) return 0;
+  return Math.max(
+    shop.own?.connectionEpoch ?? 0,
+    shop.market?.connectionEpoch ?? 0,
+    shop.priceRules?.connectionEpoch ?? 0,
+  );
+}
 
 /**
  * Gộp một sự kiện WebSocket vào snapshot đang hiển thị. Hàm thuần để drawer và
@@ -24,6 +33,17 @@ export function reduceAccountRuntime(
       return { ...current, auto: message.payload };
     case 'macro':
       return { ...current, macro: message.payload };
+    case 'shop': {
+      const incoming = message.payload as ShopRuntimeState;
+      if (shopEpoch(incoming) < shopEpoch(current.shop)) return current;
+      return { ...current, shop: incoming };
+    }
+    case 'produce':
+      if (
+        current.produce
+        && message.payload.connectionEpoch < current.produce.connectionEpoch
+      ) return current;
+      return { ...current, produce: message.payload };
     case 'farm':
       return { ...current, farm: message.payload };
     case 'farm-sync':
