@@ -872,7 +872,10 @@ export class GameClient extends EventEmitter {
         try {
           const data = msg.getData();
           this.emit('log', `nhận gói 104: length=${data.length}, hex=${data.toString('hex')}`);
-          const res = decodeProgressQuestPacket(data, this.progressQuestMappings);
+          const res = decodeProgressQuestPacket(data, this.progressQuestMappings, {
+            trees: this.trees,
+            items: this.items,
+          });
           if (res.status === 'ok-upgrade') {
             this.farmUpgradeRequirements = res.requirements;
             this.emit(

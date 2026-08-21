@@ -1,5 +1,10 @@
 import { MyReader } from '../proto/reader.js';
-import type { FarmState, InventoryItem } from './farmData.js';
+import type {
+  FarmState,
+  InventoryItem,
+  ItemInfo,
+  TreeInfo,
+} from './farmData.js';
 
 export type ProgressQuestKind = 'beginner' | 'farmer';
 
@@ -107,7 +112,11 @@ export function getRewardDisplayName(type: number, value: number, extra?: number
   }
 }
 
-export function getRequirementDisplayName(type: number, idFarm?: number): string {
+export function getRequirementDisplayName(
+  type: number,
+  idFarm?: number,
+  catalog?: { trees?: TreeInfo[]; items?: ItemInfo[] },
+): string {
   switch (type) {
     case 1: return 'Nâng cấp Nông Trại';
     case 2: return 'Ô đất';
@@ -115,9 +124,18 @@ export function getRequirementDisplayName(type: number, idFarm?: number): string
     case 4: return 'Chuồng trại';
     case 5: return 'Ao cá';
     case 6: return 'Xu';
-    case 7: return idFarm !== undefined ? `Nông sản #${idFarm}` : 'Nông sản';
+    case 7: {
+      if (idFarm === undefined || idFarm <= 0) return 'Nông sản';
+      const name = catalog?.trees?.find((tree) => tree.id === idFarm)?.name
+        ?? catalog?.items?.find((item) => item.id === idFarm)?.name;
+      return name ?? `Nông sản #${idFarm}`;
+    }
     case 8: return 'Lượng';
-    case 9: return idFarm !== undefined ? `Thuốc #${idFarm}` : 'Thuốc tăng trưởng';
+    case 9: {
+      if (idFarm === undefined || idFarm <= 0) return 'Thuốc tăng trưởng';
+      const name = catalog?.items?.find((item) => item.id === idFarm)?.name;
+      return name ?? `Thuốc #${idFarm}`;
+    }
     default: return `Yêu cầu #${type}`;
   }
 }
@@ -314,6 +332,7 @@ export const DEFAULT_FARMER_QUEST_STATE: ProgressQuestChain = {
 export function decodeProgressQuestPacket(
   data: Buffer,
   mappings: readonly ProgressQuestMapping[] = DEFAULT_PROGRESS_QUEST_MAPPINGS,
+  catalog?: { trees?: TreeInfo[]; items?: ItemInfo[] },
 ): ProgressQuestDecodeResult {
   try {
     const r = new MyReader(data);
@@ -362,7 +381,13 @@ export function decodeProgressQuestPacket(
         }
         const request = r.readInt();
         const inStorage = r.readInt();
-        requirements.push({ type, idFarm, request, inStorage, displayName: getRequirementDisplayName(type, idFarm) });
+        requirements.push({
+          type,
+          idFarm,
+          request,
+          inStorage,
+          displayName: getRequirementDisplayName(type, idFarm, catalog),
+        });
       }
       return { status: 'ok-upgrade', requirements: { imageId, requirements } };
     }
@@ -589,4 +614,3 @@ export function syncQuestStateWithFarm(
   if (!quest || !quest.conditions || quest.conditions.length === 0) return quest ?? null;
   return quest;
 }
-

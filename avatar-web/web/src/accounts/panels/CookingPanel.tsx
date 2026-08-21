@@ -41,7 +41,7 @@ const FALLBACK_RECIPES: FoodRecipe[] = [
   { id: 35, name: 'Thịt Kho Trứng', productID: 159, cookTimeMinutes: 240, level: 4, iconId: 302, materials: [{ itemId: 52, count: 1 }, { itemId: 50, count: 5 }] },
 ];
 
-const ANIMAL_PRODUCT_NAMES: Record<number, string> = {
+export const ANIMAL_PRODUCT_NAMES: Record<number, string> = {
   50: 'Trứng gà',
   51: 'Sữa bò',
   52: 'Thịt heo',

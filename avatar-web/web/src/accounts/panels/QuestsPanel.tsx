@@ -5,6 +5,8 @@ import type { QuestOverviewState, ProgressQuestChain, FarmUpgradeRequirements } 
 
 type QuestTab = 'daily' | 'beginner' | 'farmer' | 'upgrade';
 
+const SHOW_UPGRADE_TAB = false;
+
 export function QuestsPanel({
   accountId,
   quests,
@@ -23,6 +25,12 @@ export function QuestsPanel({
       setLocalQuests(quests);
     }
   }, [quests]);
+
+  useEffect(() => {
+    if (!SHOW_UPGRADE_TAB && activeTab === 'upgrade') {
+      setActiveTab('daily');
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!quests?.daily && !quests?.beginner && !quests?.farmer) {
@@ -199,16 +207,18 @@ export function QuestsPanel({
             </span>
           )}
         </button>
-        <button
-          type="button"
-          className={`quests-tab-btn ${activeTab === 'upgrade' ? 'active' : ''}`}
-          onClick={() => setActiveTab('upgrade')}
-        >
-          🚜 Nâng Cấp
-          {upgrade && upgrade.requirements.length > 0 && (
-            <span className="tab-badge">{upgrade.requirements.length}</span>
-          )}
-        </button>
+        {SHOW_UPGRADE_TAB && (
+          <button
+            type="button"
+            className={`quests-tab-btn ${activeTab === 'upgrade' ? 'active' : ''}`}
+            onClick={() => setActiveTab('upgrade')}
+          >
+            🚜 Nâng Cấp
+            {upgrade && upgrade.requirements.length > 0 && (
+              <span className="tab-badge">{upgrade.requirements.length}</span>
+            )}
+          </button>
+        )}
       </div>
 
       <div className="quests-tab-content">
@@ -422,7 +432,7 @@ export function QuestsPanel({
         )}
 
         {/* TAB 4: YÊU CẦU NÂNG CẤP NÔNG TRẠI */}
-        {activeTab === 'upgrade' && (
+        {SHOW_UPGRADE_TAB && activeTab === 'upgrade' && (
           <UpgradeRequirementsSection requirements={upgrade} busy={busy} onRefresh={handleRefreshProgress} />
         )}
       </div>

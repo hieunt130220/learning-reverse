@@ -15,6 +15,7 @@ import {
   isCellRipe,
   parseAnimalSpec,
   isCellSpent,
+  DEFAULT_FOOD_CATALOG,
   type CookingState,
   type DailyQuestState,
   type FoodRecipe,
@@ -191,6 +192,7 @@ export interface AutoFarmClient {
     clearCell?(idFarm: number, cellIndex: number): void;
     harvestAnimal(idFarm: number, index: number): void;
     sellAnimal(idFarm: number, index: number): void;
+    sellItem(idItem: number, num: number): void;
   };
 }
 
@@ -1046,19 +1048,32 @@ export class AutoFarm extends EventEmitter {
 
         const cookState = this.client.cookingState;
         if (cookState && cookState.slots.length > 0) {
-          // 1. Tự động thu hoạch món chín
+          // 1. Tự động thu hoạch món chín và bán ngay
           if (cfg.autoHarvestCook !== false) {
+            const foodCatalog: FoodRecipe[] = this.client.foods && this.client.foods.length > 0
+              ? this.client.foods
+              : DEFAULT_FOOD_CATALOG;
             for (const slot of cookState.slots) {
               if (this.aborted) break;
               if (slot.idFood !== -1 && (slot.isDone || slot.remainTime <= 0)) {
+                const foodId = slot.idFood;
                 this.client.farm.harvestCook(slot.slot);
                 sent += 1;
-                note(`[bếp] thu hoạch món #${slot.idFood} ở ô ${slot.slot}`);
+                note(`[bếp] thu hoạch món #${foodId} ở ô ${slot.slot}`);
                 slot.idFood = -1;
                 slot.isDone = false;
                 slot.remainTime = 0;
                 await confirm(92, `thu hoạch món ô ${slot.slot}`);
                 await tick();
+
+                // Bán ngay món ăn vừa thu hoạch
+                const recipe = foodCatalog.find((r) => r.id === foodId);
+                if (recipe && recipe.productID > 0) {
+                  this.client.farm.sellItem(recipe.productID, 1);
+                  sent += 1;
+                  note(`[bếp] bán ngay món "${recipe.name}" (vật phẩm #${recipe.productID})`);
+                  await tick();
+                }
               }
             }
           }

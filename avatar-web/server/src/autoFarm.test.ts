@@ -181,6 +181,10 @@ class FakeClient extends EventEmitter {
       this.calls.push(`harvestCook:${id}`);
       this.echo(92);
     },
+    sellItem: (idItem: number, num: number): void => {
+      this.calls.push(`sellItem:${idItem}:${num}`);
+      this.echo(67);
+    },
   };
 
   constructor(farmState: FarmState) {
@@ -1004,7 +1008,7 @@ test('thu hoạch tự động hoạt động với thời gian lớn từ DEFAU
   assert.ok(client.calls.includes('harvest:41'), 'ô 41 đủ tuổi phải được thu theo DEFAULT_SEED_CATALOG');
 });
 
-test('bếp: tự động thu hoạch món đã chín khi autoHarvestCook bật', async () => {
+test('bếp: tự động thu hoạch món đã chín và bán ngay khi autoHarvestCook bật', async () => {
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
@@ -1028,6 +1032,7 @@ test('bếp: tự động thu hoạch món đã chín khi autoHarvestCook bật'
 
   assert.ok(client.calls.includes('getCook:0'), 'phải xin thông tin bếp');
   assert.ok(client.calls.includes('harvestCook:0'), 'phải thu hoạch món chín ở ô 0');
+  assert.ok(client.calls.includes('sellItem:118:1'), 'phải bán ngay Cơm (productID 118) số lượng 1');
   assert.equal(client.calls.includes('harvestCook:1'), false, 'ô 1 đang nấu chưa chín không được thu');
 });
 

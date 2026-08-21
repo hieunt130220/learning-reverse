@@ -356,6 +356,8 @@ export interface SessionSnapshot {
   /** Optional trong rolling deploy; backend mới luôn phát đủ hai field. */
   shop?: ShopRuntimeState;
   produce?: ProduceSnapshot | null;
+  /** Nông sản thu hoạch (section 3 gói kho cmd 70) — riêng với `produce` của sạp. */
+  farmProduce?: InventoryItem[];
   inventory: InventoryItem[];
   trees: TreeInfo[];
   items: ItemInfo[];

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 
 import { apiPost } from '../../api.js';
-import type { AnimalInfo, FarmAnimal, FarmCell, FarmState, InventoryItem, TreeInfo } from '../../types.js';
+import type { AnimalInfo, FarmAnimal, FarmCell, FarmState, InventoryItem, ItemInfo, TreeInfo } from '../../types.js';
 import { fmtDuration, parseAnimalSpec } from '../animalSpec.js';
+import { ANIMAL_PRODUCT_NAMES } from './CookingPanel.js';
 
 /**
  * Ô đã chín chưa — giữ ĐÚNG điều kiện của server (`isCellRipe` trong
@@ -36,34 +37,114 @@ export function AssetsPanel({
   accountId,
   farm,
   inventory,
+  produce,
   trees,
   animals,
+  items,
 }: {
   accountId: number;
   farm: FarmState | null;
   inventory: InventoryItem[];
+  produce: InventoryItem[];
   trees: TreeInfo[];
   animals: AnimalInfo[];
+  items: ItemInfo[];
 }) {
   return (
     <>
-      <FarmSection accountId={accountId} farm={farm} inventory={inventory} trees={trees} />
+      <FarmSection farm={farm} trees={trees} />
+      <KhoSection
+        accountId={accountId}
+        inventory={inventory}
+        produce={produce}
+        trees={trees}
+        items={items}
+        animals={animals}
+      />
       <AnimalSection farm={farm} catalog={animals} />
     </>
   );
 }
 
-function FarmSection({
+type KhoTab = 'nong-san' | 'vat-pham';
+
+function KhoSection({
   accountId,
-  farm,
   inventory,
+  produce,
   trees,
+  items,
+  animals,
 }: {
   accountId: number;
-  farm: FarmState | null;
   inventory: InventoryItem[];
+  produce: InventoryItem[];
   trees: TreeInfo[];
+  items: ItemInfo[];
+  animals: AnimalInfo[];
 }) {
+  const [tab, setTab] = useState<KhoTab>('nong-san');
+  const itemNames = new Map<number, string>();
+  for (const item of items) itemNames.set(item.id, item.name);
+  for (const tree of trees) itemNames.set(tree.id, tree.name);
+  for (const animal of animals) itemNames.set(animal.id, animal.name);
+  for (const [id, name] of Object.entries(ANIMAL_PRODUCT_NAMES)) itemNames.set(Number(id), name);
+  const name = (id: number) => itemNames.get(id) ?? `#${id}`;
+  const rows = tab === 'nong-san' ? produce : inventory;
+
+  return (
+    <section className="card">
+      <h2>Kho</h2>
+      <div className="tabs">
+        <button
+          type="button"
+          className={tab === 'nong-san' ? 'tab active' : 'tab'}
+          onClick={() => setTab('nong-san')}
+        >
+          Nông sản
+        </button>
+        <button
+          type="button"
+          className={tab === 'vat-pham' ? 'tab active' : 'tab'}
+          onClick={() => setTab('vat-pham')}
+        >
+          Vật phẩm & Hạt giống
+        </button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="hint">trống</p>
+      ) : (
+        <div className="row">
+          {rows.map((it) => (
+            <span key={it.id} className="chip">
+              {name(it.id)} × {it.num}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="row">
+        <button
+          className="ghost"
+          onClick={() =>
+            void apiPost(`/api/accounts/${accountId}/farm`, { name: 'getInventory', args: [] })
+          }
+        >
+          làm mới kho
+        </button>
+        <button
+          className="ghost"
+          onClick={() =>
+            void apiPost(`/api/accounts/${accountId}/farm`, { name: 'getTreeInfo', args: [] })
+          }
+        >
+          tải bảng cây
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function FarmSection({ farm, trees }: { farm: FarmState | null; trees: TreeInfo[] }) {
   const [sel, setSel] = useState<FarmCell | null>(null);
   const treeName = (id: number) => trees.find((t) => t.id === id)?.name ?? `#${id}`;
 
@@ -81,33 +162,6 @@ function FarmSection({
         </p>
       ) : (
         <p className="hint">Chưa có dữ liệu nông trại. Hãy kết nối tài khoản.</p>
-      )}
-
-      {inventory.length > 0 && (
-        <div className="row">
-          <span className="hint">kho:</span>
-          {inventory.map((it) => (
-            <span key={it.id} className="chip">
-              {treeName(it.id)} × {it.num}
-            </span>
-          ))}
-          <button
-            className="ghost"
-            onClick={() =>
-              void apiPost(`/api/accounts/${accountId}/farm`, { name: 'getInventory', args: [] })
-            }
-          >
-            làm mới kho
-          </button>
-          <button
-            className="ghost"
-            onClick={() =>
-              void apiPost(`/api/accounts/${accountId}/farm`, { name: 'getTreeInfo', args: [] })
-            }
-          >
-            tải bảng cây
-          </button>
-        </div>
       )}
 
       {farm && (
@@ -236,8 +290,10 @@ function AnimalSection({ farm, catalog }: { farm: FarmState | null; catalog: Ani
 
       {selected && (
         <div className="cell-detail">
-          <b>IDDB {selected.index}</b> — {name(selected.species)} · máu {selected.health} · thu hoạch{' '}
-          {selected.harvestPer}% · sản phẩm {selected.numEggOne}
+          <b>{selected.index}</b> — {name(selected.species)} · máu {selected.health}
+          {specOf(selected).hasProduct && (
+            <> · thu hoạch {selected.harvestPer}% · sản phẩm {selected.numEggOne}</>
+          )}
           <div className="hint">trạng thái: {statusText(selected)}</div>
           {timeText(selected) && <div className="hint">⏳ {timeText(selected)}</div>}
         </div>

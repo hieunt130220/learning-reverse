@@ -50,6 +50,8 @@ export function reduceAccountRuntime(
       return { ...current, farmSync: message.payload };
     case 'inventory':
       return { ...current, inventory: message.payload };
+    case 'farm-produce':
+      return { ...current, farmProduce: message.payload };
     case 'money': {
       const hasDetailed = typeof message.payload.xu === 'number'
         || typeof message.payload.luong === 'number'
