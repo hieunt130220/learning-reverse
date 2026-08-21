@@ -1775,6 +1775,8 @@ import type {
   ProgressQuestCondition,
   ProgressQuestReward,
   ProgressQuestKind,
+  FarmUpgradeRequirement,
+  FarmUpgradeRequirements,
 } from './progressQuests.js';
 
 export type {
@@ -1782,12 +1784,15 @@ export type {
   ProgressQuestCondition,
   ProgressQuestReward,
   ProgressQuestKind,
+  FarmUpgradeRequirement,
+  FarmUpgradeRequirements,
 };
 
 export interface QuestOverviewState {
   daily: DailyQuestState | null;
   beginner: ProgressQuestChain | null;
   farmer: ProgressQuestChain | null;
+  upgradeRequirements?: FarmUpgradeRequirements | null;
   updatedAt: number;
 }
 
