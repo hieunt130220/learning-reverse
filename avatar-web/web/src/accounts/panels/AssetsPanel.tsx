@@ -164,17 +164,30 @@ function AnimalSection({ farm, catalog }: { farm: FarmState | null; catalog: Ani
   if (!farm || farm.animals.length === 0) return null;
   const hungry = farm.animals.filter((a) => a.hunger).length;
   const needsCare = (animal: FarmAnimal) => animal.hunger || animal.hasFlu || animal.hasDiarrhea;
-  const isReady = (animal: FarmAnimal) => animal.harvestPer > 0 || animal.numEggOne > 0;
+  const specOf = (animal: FarmAnimal) =>
+    parseAnimalSpec(catalog.find((a) => a.id === animal.species)?.desc ?? '');
+  // "Đã lớn" tính theo `bornTime` (phút kể từ lúc sinh) so với `Thời gian lớn` trong
+  // desc — KHÔNG dùng `harvestPer`: đo trên server thật thấy harvestPer = 100 ngay cả
+  // khi con vật chưa đủ tuổi lớn (khớp logic bán trong autoFarm.ts).
+  const isGrown = (animal: FarmAnimal) => {
+    const growMinutes = specOf(animal).growMinutes;
+    return growMinutes !== undefined && animal.bornTime >= growMinutes;
+  };
+  const isReady = (animal: FarmAnimal) =>
+    specOf(animal).hasProduct ? animal.numEggOne > 0 : isGrown(animal);
   const statusText = (animal: FarmAnimal) => {
     const statuses: string[] = [];
     if (animal.hunger) statuses.push('đói');
     if (animal.hasFlu) statuses.push('cúm');
     if (animal.hasDiarrhea) statuses.push('tiêu chảy');
-    if (isReady(animal)) statuses.push('có thể thu hoạch');
+    if (specOf(animal).hasProduct) {
+      if (animal.numEggOne > 0) statuses.push('có thể thu hoạch');
+      else if (isGrown(animal)) statuses.push('đã lớn');
+    } else if (isGrown(animal)) {
+      statuses.push('đã lớn');
+    }
     return statuses.join(', ') || 'bình thường';
   };
-  const specOf = (animal: FarmAnimal) =>
-    parseAnimalSpec(catalog.find((a) => a.id === animal.species)?.desc ?? '');
   const timeText = (animal: FarmAnimal): string | undefined => {
     const s = specOf(animal);
     if (s.hasProduct && s.lifeMinutes !== undefined) {
