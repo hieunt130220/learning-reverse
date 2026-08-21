@@ -60,14 +60,9 @@ export class FarmService {
     this.send(104, (m) => m.writer!.writeByte(type));
   }
 
-  /** getInfoUpgradeFarm @0x5d405c */
+  /** getInfoUpgradeFarm @0x5d405c — luôn gửi 2 byte (i8 type, i8 idType) như client thật. */
   getInfoUpgradeFarm(type: number, idType = -1): void {
-    this.send(104, (m) => {
-      m.writer!.writeByte(type);
-      if (idType !== -1) {
-        m.writer!.writeByte(idType);
-      }
-    });
+    this.send(104, (m) => m.writer!.writeByte(type).writeByte(idType));
   }
 
   /** doCommunicate @0x69d070 — tương tác với NPC / Avatar trên bản đồ (ví dụ NPC Lái buôn = -1). */
