@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { apiPost } from '../../api.js';
 import type { AnimalInfo, FarmAnimal, FarmCell, FarmState, InventoryItem, TreeInfo } from '../../types.js';
+import { fmtDuration, parseAnimalSpec } from '../animalSpec.js';
 
 /**
  * Ô đã chín chưa — giữ ĐÚNG điều kiện của server (`isCellRipe` trong
@@ -172,6 +173,22 @@ function AnimalSection({ farm, catalog }: { farm: FarmState | null; catalog: Ani
     if (isReady(animal)) statuses.push('có thể thu hoạch');
     return statuses.join(', ') || 'bình thường';
   };
+  const specOf = (animal: FarmAnimal) =>
+    parseAnimalSpec(catalog.find((a) => a.id === animal.species)?.desc ?? '');
+  const timeText = (animal: FarmAnimal): string | undefined => {
+    const s = specOf(animal);
+    if (s.hasProduct && s.lifeMinutes !== undefined) {
+      return `còn sống ${fmtDuration(s.lifeMinutes - animal.bornTime)}`;
+    }
+    if (!s.hasProduct && s.growMinutes !== undefined) {
+      const remaining = s.growMinutes - animal.bornTime;
+      return remaining > 0 ? `còn ${fmtDuration(remaining)} đến lúc lớn` : 'đã lớn';
+    }
+    if (s.lifeMinutes !== undefined) {
+      return `còn sống ${fmtDuration(s.lifeMinutes - animal.bornTime)}`;
+    }
+    return undefined;
+  };
 
   return (
     <section className="card">
@@ -209,6 +226,7 @@ function AnimalSection({ farm, catalog }: { farm: FarmState | null; catalog: Ani
           <b>IDDB {selected.index}</b> — {name(selected.species)} · máu {selected.health} · thu hoạch{' '}
           {selected.harvestPer}% · sản phẩm {selected.numEggOne}
           <div className="hint">trạng thái: {statusText(selected)}</div>
+          {timeText(selected) && <div className="hint">⏳ {timeText(selected)}</div>}
         </div>
       )}
     </section>
