@@ -211,6 +211,7 @@ export class AvatarSession {
     const daily = c?.dailyQuestState ?? null;
     const beginner = c?.beginnerQuestState ?? null;
     const farmer = c?.farmerQuestState ?? null;
+    const upgradeRequirements = c?.farmUpgradeRequirements ?? null;
     const updatedAt = Math.max(
       daily?.updatedAt ?? 0,
       beginner?.updatedAt ?? 0,
@@ -221,6 +222,7 @@ export class AvatarSession {
       daily,
       beginner,
       farmer,
+      upgradeRequirements,
       updatedAt,
     };
   }
