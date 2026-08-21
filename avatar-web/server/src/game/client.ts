@@ -33,8 +33,11 @@ import {
   decodeProgressQuestPacket,
   parseQuestDialogText,
   syncQuestStateWithFarm,
+  markQuestCompleted,
+  isQuestCompleted,
   type ProgressQuestChain,
   type ProgressQuestMapping,
+  type FarmUpgradeRequirements,
   DEFAULT_PROGRESS_QUEST_MAPPINGS,
   DEFAULT_BEGINNER_QUEST_STATE,
   DEFAULT_FARMER_QUEST_STATE,
@@ -180,6 +183,8 @@ export class GameClient extends EventEmitter {
   playerLevel?: number;
   /** Để dành cho parser farm-info đã xác minh. */
   farmLevel?: number;
+  /** Yêu cầu nâng cấp nông trại (decode action=1 của cmd 104). */
+  farmUpgradeRequirements?: FarmUpgradeRequirements | null;
   /**
    * Body đầy đủ của gói RX gần nhất theo từng cmd, dạng hex.
    * Log gói tin trên UI cắt còn 64 byte, cái này giữ nguyên để còn giải mã tiếp
@@ -486,9 +491,24 @@ export class GameClient extends EventEmitter {
     this.farm.claimDailyQuestBox();
   }
 
+  /** Đánh dấu Tân Thủ/Nhà Nông là đã hoàn thành khi farm level ≥ 2 (quest là nội dung level 1→2). */
+  private markQuestsCompletedForFarmLevel(): boolean {
+    if (this.farmLevel === undefined || this.farmLevel < 2) return false;
+    let changed = false;
+    if (this.beginnerQuestState && !isQuestCompleted(this.beginnerQuestState)) {
+      this.beginnerQuestState = markQuestCompleted(this.beginnerQuestState);
+      changed = true;
+    }
+    if (this.farmerQuestState && !isQuestCompleted(this.farmerQuestState)) {
+      this.farmerQuestState = markQuestCompleted(this.farmerQuestState);
+      changed = true;
+    }
+    return changed;
+  }
+
   /** Đồng bộ tiến trình nhiệm vụ (Tân Thủ, Nhà Nông) với dữ liệu thực tế (vật nuôi, nông sản, ô đất). */
   syncProgressQuests(): boolean {
-    let changed = false;
+    let changed = this.markQuestsCompletedForFarmLevel();
     if (this.beginnerQuestState) {
       const synced = syncQuestStateWithFarm(
         this.beginnerQuestState,
@@ -819,7 +839,14 @@ export class GameClient extends EventEmitter {
           const data = msg.getData();
           this.emit('log', `nhận gói 104: length=${data.length}, hex=${data.toString('hex')}`);
           const res = decodeProgressQuestPacket(data, this.progressQuestMappings);
-          if (res.status === 'ok') {
+          if (res.status === 'ok-upgrade') {
+            this.farmUpgradeRequirements = res.requirements;
+            this.emit(
+              'log',
+              `cập nhật yêu cầu nâng cấp nông trại: ${res.requirements.requirements.length} mục (imageId=${res.requirements.imageId})`,
+            );
+            this.emit('quests');
+          } else if (res.status === 'ok') {
             if (res.state.kind === 'beginner') {
               this.beginnerQuestState = res.state;
             } else if (res.state.kind === 'farmer') {
