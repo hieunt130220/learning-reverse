@@ -181,14 +181,28 @@ export interface ProgressQuestChain {
   step: number | null;
   conditions: ProgressQuestCondition[];
   rewards: ProgressQuestReward[];
-  source: 'game-dialog' | 'game-packet' | 'default';
+  source: 'game-dialog' | 'game-packet' | 'default' | 'completed';
   updatedAt: number;
+}
+
+export interface FarmUpgradeRequirement {
+  type: number;
+  idFarm?: number;
+  request: number;
+  inStorage: number;
+  displayName: string;
+}
+
+export interface FarmUpgradeRequirements {
+  imageId: number;
+  requirements: FarmUpgradeRequirement[];
 }
 
 export interface QuestOverviewState {
   daily: DailyQuestState | null;
   beginner: ProgressQuestChain | null;
   farmer: ProgressQuestChain | null;
+  upgradeRequirements?: FarmUpgradeRequirements | null;
   updatedAt: number;
 }
 
