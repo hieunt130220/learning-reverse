@@ -25,8 +25,21 @@ export interface ProgressQuestChain {
   step: number | null;
   conditions: ProgressQuestCondition[];
   rewards: ProgressQuestReward[];
-  source: 'game-dialog' | 'game-packet' | 'default';
+  source: 'game-dialog' | 'game-packet' | 'default' | 'completed';
   updatedAt: number;
+}
+
+export interface FarmUpgradeRequirement {
+  type: number;         // 1=FARM,2=SLOT_LAND,3=COOKING,4=BARN,5=POND,6=XU,7=PRODUCT,8=LUONG,9=POTION
+  idFarm?: number;      // chỉ type 7/9
+  request: number;      // yêu cầu
+  inStorage: number;    // đang có
+  displayName: string;
+}
+
+export interface FarmUpgradeRequirements {
+  imageId: number;
+  requirements: FarmUpgradeRequirement[];
 }
 
 export interface ProgressQuestMapping {
@@ -45,6 +58,7 @@ export const DEFAULT_PROGRESS_QUEST_MAPPINGS: readonly ProgressQuestMapping[] = 
 
 export type ProgressQuestDecodeResult =
   | { status: 'ok'; state: ProgressQuestChain }
+  | { status: 'ok-upgrade'; requirements: FarmUpgradeRequirements }
   | { status: 'ignored'; action: number }
   | { status: 'unknown-screen'; action: number; screenType: number }
   | { status: 'unsupported'; reason: string; remainingHex: string };
@@ -90,6 +104,21 @@ export function getRewardDisplayName(type: number, value: number, extra?: number
       return `${value.toLocaleString('vi-VN')} điểm kinh nghiệm`;
     default:
       return value > 0 ? `Phần thưởng #${type} (x${value})` : `Phần thưởng #${type}`;
+  }
+}
+
+export function getRequirementDisplayName(type: number, idFarm?: number): string {
+  switch (type) {
+    case 1: return 'Nâng cấp Nông Trại';
+    case 2: return 'Ô đất';
+    case 3: return 'Ô bếp nấu ăn';
+    case 4: return 'Chuồng trại';
+    case 5: return 'Ao cá';
+    case 6: return 'Xu';
+    case 7: return idFarm !== undefined ? `Nông sản #${idFarm}` : 'Nông sản';
+    case 8: return 'Lượng';
+    case 9: return idFarm !== undefined ? `Thuốc #${idFarm}` : 'Thuốc tăng trưởng';
+    default: return `Yêu cầu #${type}`;
   }
 }
 
@@ -294,9 +323,48 @@ export function decodeProgressQuestPacket(
 
     const action = r.readByte();
 
-    // action = 1 là màn hình thông tin Nâng Cấp Nông Trại Cấp 2, không phải nhiệm vụ
+    // action = 1: InfoFarmScr — yêu cầu nâng cấp nông trại.
+    // Format đã xác minh từ sample hex 249 byte:
+    //   bool(1) + 7 short(14) + count(1) + count×[type(1), (idFarm(4) nếu 7/9), request(4), inStorage(4)]
     if (action === 1) {
-      return { status: 'ignored', action: 1 };
+      if (r.available() < 1) {
+        return { status: 'unsupported', reason: 'payload action=1 thiếu byte bool', remainingHex: data.toString('hex') };
+      }
+      r.readBoolean(); // có danh sách hay không (sample = true)
+      if (r.available() < 14) {
+        return { status: 'unsupported', reason: 'payload action=1 thiếu 7 short header', remainingHex: data.toString('hex') };
+      }
+      const imageId = r.readShort();
+      for (let i = 0; i < 6; i++) r.readShort(); // 6 short còn lại (chưa dùng)
+      if (r.available() < 1) {
+        return { status: 'unsupported', reason: 'payload action=1 thiếu byte count', remainingHex: data.toString('hex') };
+      }
+      const reqCount = r.readUnsignedByte();
+      if (reqCount < 0 || reqCount > MAX_REWARDS) {
+        return { status: 'unsupported', reason: `reqCount action=1 không hợp lệ: ${reqCount}`, remainingHex: data.toString('hex') };
+      }
+      const requirements: FarmUpgradeRequirement[] = [];
+      for (let i = 0; i < reqCount; i++) {
+        if (r.available() < 1) {
+          return { status: 'unsupported', reason: `thiếu byte type yêu cầu thứ ${i}`, remainingHex: data.toString('hex') };
+        }
+        const type = r.readByte();
+        let idFarm: number | undefined;
+        if (type === 7 || type === 9) {
+          if (r.available() < 12) {
+            return { status: 'unsupported', reason: `thiếu byte idFarm/request/inStorage yêu cầu thứ ${i}`, remainingHex: data.toString('hex') };
+          }
+          idFarm = r.readInt();
+        } else {
+          if (r.available() < 8) {
+            return { status: 'unsupported', reason: `thiếu byte request/inStorage yêu cầu thứ ${i}`, remainingHex: data.toString('hex') };
+          }
+        }
+        const request = r.readInt();
+        const inStorage = r.readInt();
+        requirements.push({ type, idFarm, request, inStorage, displayName: getRequirementDisplayName(type, idFarm) });
+      }
+      return { status: 'ok-upgrade', requirements: { imageId, requirements } };
     }
 
     // FORMAT 2: action = 2 hoặc 3 (UpgradeFarmLvl2Scr — MissionInfo và UpgradeInfo)
@@ -463,4 +531,23 @@ export function syncQuestStateWithFarm(
 ): ProgressQuestChain | null {
   if (!quest || !quest.conditions || quest.conditions.length === 0) return quest ?? null;
   return quest;
+}
+
+/** Đánh dấu chuỗi nhiệm vụ là đã hoàn thành (mọi điều kiện current=total, isDone=true). */
+export function markQuestCompleted(quest: ProgressQuestChain | null): ProgressQuestChain | null {
+  if (!quest || !quest.conditions || quest.conditions.length === 0) return quest ?? null;
+  return {
+    ...quest,
+    conditions: quest.conditions.map((c) => ({
+      ...c,
+      current: c.total,
+      isDone: true,
+    })),
+    source: 'completed',
+    updatedAt: Date.now(),
+  };
+}
+
+export function isQuestCompleted(quest: ProgressQuestChain | null): boolean {
+  return !!quest && quest.source === 'completed';
 }
