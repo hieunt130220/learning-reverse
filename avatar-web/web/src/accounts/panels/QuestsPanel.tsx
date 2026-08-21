@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 
 import { apiGet, apiPost } from '../../api.js';
-import type { QuestOverviewState, ProgressQuestChain } from '../../types.js';
+import type { QuestOverviewState, ProgressQuestChain, FarmUpgradeRequirements } from '../../types.js';
 
-type QuestTab = 'daily' | 'beginner' | 'farmer';
+type QuestTab = 'daily' | 'beginner' | 'farmer' | 'upgrade';
 
 export function QuestsPanel({
   accountId,
@@ -38,6 +38,7 @@ export function QuestsPanel({
   const daily = effectiveQuests?.daily ?? null;
   const beginner = effectiveQuests?.beginner ?? null;
   const farmer = effectiveQuests?.farmer ?? null;
+  const upgrade = effectiveQuests?.upgradeRequirements ?? null;
 
   const runAction = async (endpoint: string, label: string) => {
     try {
@@ -196,6 +197,16 @@ export function QuestsPanel({
             <span className={`tab-badge ${completedFarmerCount >= totalFarmerCount ? 'tab-badge--done' : ''}`}>
               {completedFarmerCount}/{totalFarmerCount}
             </span>
+          )}
+        </button>
+        <button
+          type="button"
+          className={`quests-tab-btn ${activeTab === 'upgrade' ? 'active' : ''}`}
+          onClick={() => setActiveTab('upgrade')}
+        >
+          🚜 Nâng Cấp
+          {upgrade && upgrade.requirements.length > 0 && (
+            <span className="tab-badge">{upgrade.requirements.length}</span>
           )}
         </button>
       </div>
@@ -409,6 +420,11 @@ export function QuestsPanel({
             onRefresh={handleRefreshProgress}
           />
         )}
+
+        {/* TAB 4: YÊU CẦU NÂNG CẤP NÔNG TRẠI */}
+        {activeTab === 'upgrade' && (
+          <UpgradeRequirementsSection requirements={upgrade} busy={busy} onRefresh={handleRefreshProgress} />
+        )}
       </div>
     </section>
   );
@@ -456,6 +472,16 @@ function ProgressQuestSection({
         </span>
       </div>
 
+      {quest.source === 'completed' && (
+        <div className="daily-completed-banner">
+          <span className="banner-icon">🎉</span>
+          <div className="banner-text">
+            <h5>Đã hoàn thành chuỗi nhiệm vụ!</h5>
+            <p>Tài khoản đã nâng cấp nông trại lên cấp 2 — nhiệm vụ này dành cho người mới (cấp 1 → 2).</p>
+          </div>
+        </div>
+      )}
+
       <div className="progress-quest-conditions-list">
         {quest.conditions.length === 0 ? (
           <p className="hint">Không có điều kiện nhiệm vụ nào.</p>
@@ -500,6 +526,64 @@ function ProgressQuestSection({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function UpgradeRequirementsSection({
+  requirements,
+  busy,
+  onRefresh,
+}: {
+  requirements: FarmUpgradeRequirements | null;
+  busy: boolean;
+  onRefresh: () => void;
+}) {
+  if (!requirements || requirements.requirements.length === 0) {
+    return (
+      <div className="quests-empty-state">
+        <span className="empty-icon">🚜</span>
+        <p className="hint">Chưa có dữ liệu yêu cầu nâng cấp nông trại. Bấm tải để lấy từ game.</p>
+        <button type="button" className="btn-secondary" onClick={onRefresh} disabled={busy}>
+          🔄 Tải yêu cầu nâng cấp từ game
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="progress-quest-section">
+      <div className="progress-quest-header">
+        <div className="progress-quest-title">
+          <h4>Yêu Cầu Nâng Cấp Nông Trại</h4>
+          <span className="badge badge--step">Cấp 2 → 3</span>
+        </div>
+        <span className="tab-pill">{requirements.requirements.length} mục</span>
+      </div>
+      <div className="progress-quest-conditions-list">
+        {requirements.requirements.map((req, idx) => {
+          const pct = req.request > 0 ? Math.min(100, Math.round((req.inStorage / req.request) * 100)) : 0;
+          const done = req.inStorage >= req.request;
+          return (
+            <div key={idx} className={`mission-item-card ${done ? 'mission-item-card--done' : ''}`}>
+              <div className="mission-item-header">
+                <div className="mission-item-title">
+                  <span className="mission-bullet">{done ? '✅' : '📌'}</span>
+                  <span className="mission-name">{req.displayName}</span>
+                </div>
+                <span className={`mission-badge ${done ? 'badge-success' : 'badge-pending'}`}>
+                  {req.inStorage.toLocaleString('vi-VN')} / {req.request.toLocaleString('vi-VN')} ({pct}%)
+                </span>
+              </div>
+              <div className="mission-mini-bar">
+                <div
+                  className={`mission-mini-bar-fill ${done ? 'bar-done' : ''}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
