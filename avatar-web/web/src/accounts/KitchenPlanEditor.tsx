@@ -14,6 +14,7 @@ export interface KitchenPlanEditorProps {
   entries: KitchenPlanEntry[];
   foods: KitchenFoodInfo[];
   disabled: boolean;
+  defaultOpen?: boolean;
   onChange(entries: KitchenPlanEntry[]): void;
 }
 
@@ -43,6 +44,7 @@ export function KitchenPlanEditor({
   entries,
   foods,
   disabled,
+  defaultOpen = false,
   onChange,
 }: KitchenPlanEditorProps) {
   const [paint, setPaint] = useState<KitchenPaint>({ kind: 'default' });
@@ -107,7 +109,7 @@ export function KitchenPlanEditor({
   };
 
   return (
-    <details className="tree-plan-editor" open>
+    <details className="tree-plan-editor" open={defaultOpen ? true : undefined}>
       <summary className="tree-plan-heading">{title}</summary>
 
       <div className="tree-plan-palette" aria-label="Chọn món để tô" style={{ marginTop: 10 }}>

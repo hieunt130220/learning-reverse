@@ -15,6 +15,7 @@ export interface AnimalPlanEditorProps {
   slotIndices?: number[];
   entries: AnimalPlanEntry[];
   disabled: boolean;
+  defaultOpen?: boolean;
   onChange(entries: AnimalPlanEntry[]): void;
 }
 
@@ -45,6 +46,7 @@ export function AnimalPlanEditor({
   slotIndices = DEFAULT_ANIMAL_SLOTS,
   entries,
   disabled,
+  defaultOpen = false,
   onChange,
 }: AnimalPlanEditorProps) {
   const [paint, setPaint] = useState<AnimalPaint>({ kind: 'default' });
@@ -109,7 +111,7 @@ export function AnimalPlanEditor({
   };
 
   return (
-    <details className="tree-plan-editor" open>
+    <details className="tree-plan-editor" open={defaultOpen ? true : undefined}>
       <summary className="tree-plan-heading">{title}</summary>
 
       <div className="tree-plan-palette" aria-label="Chọn loài để tô" style={{ marginTop: 10 }}>

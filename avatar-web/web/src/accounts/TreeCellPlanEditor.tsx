@@ -16,6 +16,7 @@ export interface TreeCellPlanEditorProps {
   cellIndices?: number[];
   disabled: boolean;
   refreshing?: boolean;
+  defaultOpen?: boolean;
   onChange(entries: TreeCellPlanEntry[]): void;
   onRefresh?(): void;
 }
@@ -47,6 +48,7 @@ export function TreeCellPlanEditor({
   cellIndices = DEFAULT_TREE_CELL_SLOTS,
   disabled,
   refreshing,
+  defaultOpen = false,
   onChange,
   onRefresh,
 }: TreeCellPlanEditorProps) {
@@ -137,7 +139,7 @@ export function TreeCellPlanEditor({
   };
 
   return (
-    <details className="tree-plan-editor" open>
+    <details className="tree-plan-editor" open={defaultOpen ? true : undefined}>
       <summary className="tree-plan-heading">Kế hoạch cây theo ô</summary>
 
       <div className="tree-plan-palette" aria-label="Chọn trạng thái để tô">
