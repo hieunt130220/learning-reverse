@@ -517,6 +517,63 @@ export function decodeProgressQuestPacket(
 }
 
 /**
+ * Giải mã chuỗi `[i8 len][utf8]` lặp lại. Dùng cho cmd -62 (nhiệm vụ hiện tại)
+ * và cmd -81 (danh sách nhiệm vụ): byte 0 là header 0x00, sau đó lặp các phần tử.
+ */
+export function decodeLenPrefixedStrings(buf: Buffer, start = 1): string[] {
+  const out: string[] = [];
+  let o = start;
+  while (o < buf.length) {
+    const n = buf[o];
+    if (o + 1 + n > buf.length) break;
+    out.push(buf.toString('utf8', o + 1, o + 1 + n));
+    o += 1 + n;
+  }
+  return out;
+}
+
+export interface QuestCatalogEntry {
+  title: string;
+  reward: string;
+}
+
+/**
+ * Giải mã danh sách nhiệm vụ (cmd -81). Format đã xác minh trên payload 12082 byte:
+ *   [i16:9]"lsnhiemvu" [i16:23]"Danh Sách Nhiệm Vụ" [i32:15] [i32:count] ff ff
+ *   rồi lặp count lần: [i16 len]"Nhiệm Vụ Nhà Nông - N" [i16 len]"Phần Thưởng: …" ff ff
+ * (KHÁC cmd -62 dùng i8 — không dùng decodeLenPrefixedStrings ở đây.)
+ */
+export function parseQuestListPacket(buf: Buffer): QuestCatalogEntry[] {
+  const out: QuestCatalogEntry[] = [];
+  let o = 0;
+  const readStr = (): string | null => {
+    if (o + 2 > buf.length) return null;
+    const n = buf.readUInt16BE(o);
+    if (o + 2 + n > buf.length) return null;
+    const s = buf.toString('utf8', o + 2, o + 2 + n);
+    o += 2 + n;
+    return s;
+  };
+  // Magic + tiêu đề danh sách (bỏ qua nội dung)
+  readStr();
+  readStr();
+  // Header: i32 (hằng số 15) + i32 count + separator ff ff
+  if (o + 8 > buf.length) return out;
+  const count = buf.readUInt32BE(o + 4);
+  o += 8;
+  if (o + 1 < buf.length && buf[o] === 0xff && buf[o + 1] === 0xff) o += 2;
+  for (let i = 0; i < count && i < 500; i++) {
+    const title = readStr();
+    if (title === null) break;
+    const reward = readStr();
+    if (reward === null) break;
+    out.push({ title, reward });
+    if (o + 1 < buf.length && buf[o] === 0xff && buf[o + 1] === 0xff) o += 2;
+  }
+  return out;
+}
+
+/**
  * Đồng bộ tiến trình nhiệm vụ (Tân Thủ, Nhà Nông) với dữ liệu từ server:
  * Dữ liệu tiến trình giải mã từ hộp thoại NPC (`parseQuestDialogText`) và gói tin
  * Cmd 104 (`decodeProgressQuestPacket`) là nguồn chân lý chính xác nhất của server.
@@ -533,21 +590,3 @@ export function syncQuestStateWithFarm(
   return quest;
 }
 
-/** Đánh dấu chuỗi nhiệm vụ là đã hoàn thành (mọi điều kiện current=total, isDone=true). */
-export function markQuestCompleted(quest: ProgressQuestChain | null): ProgressQuestChain | null {
-  if (!quest || !quest.conditions || quest.conditions.length === 0) return quest ?? null;
-  return {
-    ...quest,
-    conditions: quest.conditions.map((c) => ({
-      ...c,
-      current: c.total,
-      isDone: true,
-    })),
-    source: 'completed',
-    updatedAt: Date.now(),
-  };
-}
-
-export function isQuestCompleted(quest: ProgressQuestChain | null): boolean {
-  return !!quest && quest.source === 'completed';
-}

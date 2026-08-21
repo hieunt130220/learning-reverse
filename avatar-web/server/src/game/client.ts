@@ -32,9 +32,10 @@ import {
 import {
   decodeProgressQuestPacket,
   parseQuestDialogText,
+  decodeLenPrefixedStrings,
+  parseQuestListPacket,
   syncQuestStateWithFarm,
-  markQuestCompleted,
-  isQuestCompleted,
+  type QuestCatalogEntry,
   type ProgressQuestChain,
   type ProgressQuestMapping,
   type FarmUpgradeRequirements,
@@ -171,6 +172,8 @@ export class GameClient extends EventEmitter {
   beginnerQuestState: ProgressQuestChain | null = DEFAULT_BEGINNER_QUEST_STATE;
   /** Trạng thái nhiệm vụ nhà nông (cmd 104 / dialog NPC). */
   farmerQuestState: ProgressQuestChain | null = DEFAULT_FARMER_QUEST_STATE;
+  /** Danh sách nhiệm vụ NPC (cmd -81, "Xem danh sách nhiệm vụ") — dữ liệu phụ trợ. */
+  questCatalog: QuestCatalogEntry[] = [];
   /** Danh sách mapping giải mã tiến trình nhiệm vụ. */
   progressQuestMappings: readonly ProgressQuestMapping[] = DEFAULT_PROGRESS_QUEST_MAPPINGS;
   /** Số dư xu, cập nhật từ UPDATE_MONEY (-3), type 1. */
@@ -491,24 +494,9 @@ export class GameClient extends EventEmitter {
     this.farm.claimDailyQuestBox();
   }
 
-  /** Đánh dấu Tân Thủ/Nhà Nông là đã hoàn thành khi farm level ≥ 2 (quest là nội dung level 1→2). */
-  private markQuestsCompletedForFarmLevel(): boolean {
-    if (this.farmLevel === undefined || this.farmLevel < 2) return false;
-    let changed = false;
-    if (this.beginnerQuestState && !isQuestCompleted(this.beginnerQuestState)) {
-      this.beginnerQuestState = markQuestCompleted(this.beginnerQuestState);
-      changed = true;
-    }
-    if (this.farmerQuestState && !isQuestCompleted(this.farmerQuestState)) {
-      this.farmerQuestState = markQuestCompleted(this.farmerQuestState);
-      changed = true;
-    }
-    return changed;
-  }
-
   /** Đồng bộ tiến trình nhiệm vụ (Tân Thủ, Nhà Nông) với dữ liệu thực tế (vật nuôi, nông sản, ô đất). */
   syncProgressQuests(): boolean {
-    let changed = this.markQuestsCompletedForFarmLevel();
+    let changed = false;
     if (this.beginnerQuestState) {
       const synced = syncQuestStateWithFarm(
         this.beginnerQuestState,
@@ -560,17 +548,19 @@ export class GameClient extends EventEmitter {
       this.farm.getInfoUpgradeFarm(1);
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // 2. Hỏi tuần tự từng mục của NPC; server không xử lý hai menu option
-      // liên tiếp khi chưa nhận lại lượt tương tác trước đó.
-      this.farm.communicate(-1);
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      this.farm.doMenuOption(-1, 0, 1); // Nhiệm Vụ Tân Thủ
-      await new Promise((resolve) => setTimeout(resolve, 400));
-
-      this.farm.communicate(-1);
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      this.farm.doMenuOption(-1, 0, 0); // Nhiệm Vụ Nhà Nông
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      // 2. Hỏi NPC quest thật (Lái buôn). NPC 90/91 → menu userID 35 (Nhiệm Vụ
+      // Nhà Nông); userID lấy từ chính gói menu cmd -61. Chỉ hỏi Nhà Nông —
+      // NPC 95 (Thợ Câu) là chuỗi khác, không hiển thị ở UI, và phản hồi của nó
+      // sẽ ghi đè farmerQuestState nếu query cùng lúc. Server chỉ phản hồi trong
+      // farm handler; hai menu option liên tiếp cần tách lượt tương tác.
+      this.farm.communicate(90);
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      this.farm.doMenuOption(35, 0, 0); // "Xem nhiệm vụ hiện tại" → cmd -62
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      this.farm.communicate(90);
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      this.farm.doMenuOption(35, 0, 1); // "Xem danh sách nhiệm vụ" → cmd -81
+      await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (err) {
       this.emit('log', `làm mới nhiệm vụ tiến trình lỗi: ${(err as Error).message}`);
     }
@@ -711,6 +701,47 @@ export class GameClient extends EventEmitter {
           }
         } catch {
           /* bỏ qua */
+        }
+        break;
+      }
+      case -62: { // CURRENT_QUEST — "Xem nhiệm vụ hiện tại" (NPC Lái buôn)
+        try {
+          const parts = decodeLenPrefixedStrings(msg.getData());
+          const text = parts.find((s) => /nhiệm vụ hiện tại/i.test(s));
+          if (!text) {
+            this.emit(
+              'log',
+              `cmd -62 không chứa nội dung quest: ${parts.map((p) => p.slice(0, 30)).join(' | ')}`,
+            );
+            break;
+          }
+          const questState = parseQuestDialogText(text);
+          if (questState) {
+            if (questState.kind === 'beginner') {
+              this.beginnerQuestState = questState;
+            } else {
+              this.farmerQuestState = questState;
+            }
+            this.emit(
+              'log',
+              `cập nhật ${questState.title}: ${questState.conditions
+                .map((c) => `${c.name} (${c.current}/${c.total})`)
+                .join(', ')}`,
+            );
+            this.emit('quests');
+          }
+        } catch (err) {
+          this.emit('log', `giải mã nhiệm vụ hiện tại lỗi: ${(err as Error).message}`);
+        }
+        break;
+      }
+      case -81: { // QUEST_LIST — "Xem danh sách nhiệm vụ" (NPC Lái buôn)
+        try {
+          const catalog = parseQuestListPacket(msg.getData());
+          this.questCatalog = catalog;
+          this.emit('log', `danh sách nhiệm vụ: ${catalog.length} quest (mẫu: ${catalog[0]?.title ?? '—'})`);
+        } catch (err) {
+          this.emit('log', `giải mã danh sách nhiệm vụ lỗi: ${(err as Error).message}`);
         }
         break;
       }
