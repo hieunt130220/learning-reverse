@@ -548,18 +548,21 @@ export class GameClient extends EventEmitter {
       this.farm.getInfoUpgradeFarm(1);
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // 2. Hỏi NPC quest thật (Lái buôn). NPC 90/91 → menu userID 35 (Nhiệm Vụ
-      // Nhà Nông); userID lấy từ chính gói menu cmd -61. Chỉ hỏi Nhà Nông —
-      // NPC 95 (Thợ Câu) là chuỗi khác, không hiển thị ở UI, và phản hồi của nó
-      // sẽ ghi đè farmerQuestState nếu query cùng lúc. Server chỉ phản hồi trong
-      // farm handler; hai menu option liên tiếp cần tách lượt tương tác.
+      // 2. Hỏi NPC quest thật (Lái buôn). Mỗi chuỗi quest có một userID riêng
+      // trong doMenuOption (verified: 19=Tân Thủ, 35=Nhà Nông, 38=Thợ Câu);
+      // userID lấy từ chính gói menu cmd -61. Server chỉ phản hồi trong farm
+      // handler; mỗi menu option cần một lượt communicate() riêng.
       this.farm.communicate(90);
       await new Promise((resolve) => setTimeout(resolve, 450));
-      this.farm.doMenuOption(35, 0, 0); // "Xem nhiệm vụ hiện tại" → cmd -62
+      this.farm.doMenuOption(35, 0, 0); // "Xem nhiệm vụ hiện tại" (Nhà Nông) → cmd -62
       await new Promise((resolve) => setTimeout(resolve, 500));
       this.farm.communicate(90);
       await new Promise((resolve) => setTimeout(resolve, 450));
-      this.farm.doMenuOption(35, 0, 1); // "Xem danh sách nhiệm vụ" → cmd -81
+      this.farm.doMenuOption(35, 0, 1); // "Xem danh sách nhiệm vụ" (Nhà Nông) → cmd -81
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      this.farm.communicate(90);
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      this.farm.doMenuOption(19, 0, 0); // "Xem nhiệm vụ hiện tại" (Tân Thủ) → cmd -62
       await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (err) {
       this.emit('log', `làm mới nhiệm vụ tiến trình lỗi: ${(err as Error).message}`);
