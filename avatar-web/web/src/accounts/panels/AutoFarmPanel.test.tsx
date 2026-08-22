@@ -199,6 +199,9 @@ test('lưu gửi đúng full stored config cùng plan mới và báo áp dụng 
       barnAnimalPlan: [],
       pondAnimalPlan: [],
       cookingSlotPlan: [],
+      autoSellProduce: false,
+      autoSellIntervalMs: 600000,
+      autoSellRules: [],
     },
   }));
   expect(await screen.findByText(/vòng kế tiếp/i)).toBeInTheDocument();
