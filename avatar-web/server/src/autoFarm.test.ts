@@ -75,6 +75,8 @@ class FakeClient extends EventEmitter {
    * test "server từ chối" (số con không tăng).
    */
   honorBuyAnimal = true;
+  /** Khi false, mua thành công chỉ phát money; farm state chưa kịp refresh. */
+  syncFarmAfterBuy = true;
   private nextAnimalSlot = (): number => {
     const occupied = new Set(this.farmState.animals.map((a) => a.index));
     let slot = 0;
@@ -154,13 +156,15 @@ class FakeClient extends EventEmitter {
       this.calls.push(`buyAnimal:${idAnimal}:${typeBuy}`);
       this.echo(51);
       if (this.honorBuyAnimal) {
-        const slot = this.nextAnimalSlot();
-        this.farmState.animals.push(
-          animal(slot, { species: idAnimal, bornTime: 0 }),
-        );
+        if (this.syncFarmAfterBuy) {
+          const slot = this.nextAnimalSlot();
+          this.farmState.animals.push(
+            animal(slot, { species: idAnimal, bornTime: 0 }),
+          );
+        }
         queueMicrotask(() => {
           this.emit('money', { delta: -2000, type: 1, balance: 10000 });
-          this.emit('farm', this.farmState);
+          if (this.syncFarmAfterBuy) this.emit('farm', this.farmState);
         });
       } else {
         queueMicrotask(() => {
@@ -680,15 +684,21 @@ test('server im lặng không treo vòng: lệnh chưa có xác nhận vẫn đi
   );
 });
 
-test('mua hết vật nuôi theo kế hoạch trong 1 vòng, ao trước chuồng sau', async () => {
-  // Ao: slot 0 (Rùa 59) đang có, slot 1 trống -> mua Cá chép 54.
-  // Chuồng: slot 2, 3 trống -> mua Gà 50 rồi Vịt 55. Tất cả trong 1 vòng.
+test('mua bù quota vật nuôi theo loài, ao trước chuồng sau', async () => {
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
-    animals: [animal(0, { species: 59 })],
+    animals: [animal(0, { species: 59 }), animal(2, { species: 55 })],
+    animalSlots: [0, 1, 2, 3, 4, 5],
+    pondAnimalSlots: [0, 1],
+    barnAnimalSlots: [2, 3, 4, 5],
     updatedAt: Date.now(),
   });
+  client.animals.push(
+    { id: 54, name: 'Cá chép', desc: '' },
+    { id: 55, name: 'Vịt', desc: '' },
+  );
+
   const auto = await runOneCycle(client, {
     harvest: false,
     pondAnimalPlan: [
@@ -696,84 +706,217 @@ test('mua hết vật nuôi theo kế hoạch trong 1 vòng, ao trước chuồn
       { slotIndex: 1, action: 'breed', speciesId: 54 },
     ],
     barnAnimalPlan: [
-      { slotIndex: 2, action: 'breed', speciesId: 50 },
+      { slotIndex: 0, action: 'breed', speciesId: 50 },
+      { slotIndex: 1, action: 'breed', speciesId: 50 },
+      { slotIndex: 2, action: 'breed', speciesId: 55 },
       { slotIndex: 3, action: 'breed', speciesId: 55 },
     ],
-  });
+  }, { sleep: () => Promise.resolve() });
 
   assert.deepEqual(
-    client.calls.filter((c) => c.startsWith('buyAnimal:')),
-    ['buyAnimal:54:1', 'buyAnimal:50:1', 'buyAnimal:55:1'],
-    'ao trước (54), chuồng sau theo thứ tự slot (50, 55), đều bằng xu',
+    client.calls.filter((call) => call.startsWith('buyAnimal:')),
+    ['buyAnimal:54:1', 'buyAnimal:50:1', 'buyAnimal:50:1', 'buyAnimal:55:1'],
   );
-  const log = auto.state().lastActions;
-  assert.ok(log.some((l) => l.includes('mua vật nuôi ao slot 1:')), log.join(' | '));
-  assert.ok(log.some((l) => l.includes('mua vật nuôi chuồng slot 2:')), log.join(' | '));
-  assert.ok(log.some((l) => l.includes('mua vật nuôi chuồng slot 3:')), log.join(' | '));
+  assert.ok(auto.state().lastActions.some((line) => line.includes('kế hoạch ao: sức chứa 2')));
+  assert.ok(auto.state().lastActions.some((line) => line.includes('mua bù vật nuôi chuồng: Gà')));
+  assert.equal(auto.state().lastActions.some((line) => line.includes(' slot ')), false);
 });
 
-test('server từ chối mua thì dừng ngay, sang task tiếp theo', async () => {
-  // honorBuyAnimal = false: số con không tăng sau lệnh mua -> server từ chối.
+test('capacity 10 chỉ lấy prefix 5 Gà 5 Vịt và mua bù 5 Gà', async () => {
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
-    animals: [animal(0, { species: 50 })],
+    animals: Array.from({ length: 5 }, (_, index) => animal(index + 2, { species: 55 })),
+    animalSlots: Array.from({ length: 12 }, (_, index) => index),
+    pondAnimalSlots: [0, 1],
+    barnAnimalSlots: Array.from({ length: 10 }, (_, index) => index + 2),
+    updatedAt: Date.now(),
+  });
+  client.animals.push({ id: 55, name: 'Vịt', desc: '' });
+  const barnAnimalPlan = [
+    ...Array.from({ length: 5 }, (_, slotIndex) => ({ slotIndex, action: 'breed' as const, speciesId: 50 })),
+    ...Array.from({ length: 5 }, (_, offset) => ({ slotIndex: offset + 5, action: 'breed' as const, speciesId: 55 })),
+    ...Array.from({ length: 5 }, (_, offset) => ({ slotIndex: offset + 10, action: 'breed' as const, speciesId: 50 })),
+  ];
+
+  await runOneCycle(client, { harvest: false, barnAnimalPlan }, { sleep: () => Promise.resolve() });
+
+  assert.deepEqual(
+    client.calls.filter((call) => call.startsWith('buyAnimal:')),
+    Array.from({ length: 5 }, () => 'buyAnimal:50:1'),
+  );
+});
+
+test('quota 5 Gà 5 Vịt mua bù 2 Gà rồi 4 Vịt', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [
+      animal(2, { species: 50 }),
+      animal(7, { species: 55 }),
+      animal(9, { species: 50 }),
+      animal(11, { species: 50 }),
+    ],
+    animalSlots: Array.from({ length: 12 }, (_, index) => index),
+    pondAnimalSlots: [0, 1],
+    barnAnimalSlots: Array.from({ length: 10 }, (_, index) => index + 2),
+    updatedAt: Date.now(),
+  });
+  client.animals.push({ id: 55, name: 'Vịt', desc: '' });
+  const barnAnimalPlan = [
+    ...Array.from({ length: 5 }, (_, slotIndex) => ({ slotIndex, action: 'breed' as const, speciesId: 50 })),
+    ...Array.from({ length: 5 }, (_, offset) => ({ slotIndex: offset + 5, action: 'breed' as const, speciesId: 55 })),
+  ];
+
+  await runOneCycle(client, { harvest: false, barnAnimalPlan }, { sleep: () => Promise.resolve() });
+
+  assert.deepEqual(client.calls.filter((call) => call.startsWith('buyAnimal:')), [
+    'buyAnimal:50:1',
+    'buyAnimal:50:1',
+    'buyAnimal:55:1',
+    'buyAnimal:55:1',
+    'buyAnimal:55:1',
+    'buyAnimal:55:1',
+  ]);
+});
+
+test('vật nuôi dư quota vẫn chiếm chỗ, chỉ mua đến capacity', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: Array.from({ length: 7 }, (_, index) => animal(index + 2, { species: 55 })),
+    animalSlots: Array.from({ length: 12 }, (_, index) => index),
+    pondAnimalSlots: [0, 1],
+    barnAnimalSlots: Array.from({ length: 10 }, (_, index) => index + 2),
+    updatedAt: Date.now(),
+  });
+  client.animals.push({ id: 55, name: 'Vịt', desc: '' });
+  const barnAnimalPlan = [
+    ...Array.from({ length: 5 }, (_, slotIndex) => ({ slotIndex, action: 'breed' as const, speciesId: 50 })),
+    ...Array.from({ length: 5 }, (_, offset) => ({ slotIndex: offset + 5, action: 'breed' as const, speciesId: 55 })),
+  ];
+
+  const auto = await runOneCycle(client, { harvest: false, barnAnimalPlan }, { sleep: () => Promise.resolve() });
+
+  assert.deepEqual(
+    client.calls.filter((call) => call.startsWith('buyAnimal:')),
+    ['buyAnimal:50:1', 'buyAnimal:50:1', 'buyAnimal:50:1'],
+  );
+  assert.ok(auto.state().lastActions.some((line) => line.includes('chuồng đã đầy') && line.includes('còn thiếu 2')));
+});
+
+test('server từ chối mua thì dừng ngay, sang task tiếp theo', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [],
+    animalSlots: [0, 1],
+    pondAnimalSlots: [],
+    barnAnimalSlots: [0, 1],
     updatedAt: Date.now(),
   });
   client.honorBuyAnimal = false;
   const auto = await runOneCycle(client, {
     harvest: false,
     barnAnimalPlan: [
-      { slotIndex: 1, action: 'breed', speciesId: 52 },
-      { slotIndex: 2, action: 'breed', speciesId: 55 },
+      { slotIndex: 0, action: 'breed', speciesId: 52 },
+      { slotIndex: 1, action: 'breed', speciesId: 55 },
     ],
-  });
+  }, { sleep: () => Promise.resolve() });
 
   assert.deepEqual(
-    client.calls.filter((c) => c.startsWith('buyAnimal:')),
+    client.calls.filter((call) => call.startsWith('buyAnimal:')),
     ['buyAnimal:52:1'],
     'chỉ gửi 1 lệnh mua, từ chối thì không mua tiếp',
   );
   assert.ok(
-    auto.state().lastActions.some((l) => l.includes('dừng mua vật nuôi chuồng')),
-    'phải ghi rõ dừng vì server từ chối',
+    auto.state().lastActions.some((line) => line.includes('dừng mua vật nuôi chuồng')
+      && line.includes('Heo')
+      && line.includes('hết chỗ')),
+    'phải ghi rõ loài và lý do server từ chối',
   );
 });
 
-test('kế hoạch vật nuôi không mua khi mọi slot kế hoạch đã có con', async () => {
+test('đủ quota theo loài thì không mua dù physical index không khớp plan', async () => {
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
-    animals: [animal(0, { species: 50 }), animal(1, { species: 52 })],
+    animals: [
+      animal(5, { species: 55 }),
+      animal(2, { species: 50 }),
+      animal(3, { species: 55 }),
+      animal(4, { species: 50 }),
+    ],
+    animalSlots: [0, 1, 2, 3, 4, 5],
+    pondAnimalSlots: [0, 1],
+    barnAnimalSlots: [2, 3, 4, 5],
     updatedAt: Date.now(),
   });
   await runOneCycle(client, {
     harvest: false,
     barnAnimalPlan: [
       { slotIndex: 0, action: 'breed', speciesId: 50 },
-      { slotIndex: 1, action: 'breed', speciesId: 52 },
+      { slotIndex: 1, action: 'breed', speciesId: 50 },
+      { slotIndex: 2, action: 'breed', speciesId: 55 },
+      { slotIndex: 3, action: 'breed', speciesId: 55 },
     ],
-  });
+  }, { sleep: () => Promise.resolve() });
 
-  assert.equal(client.calls.some((c) => c.startsWith('buyAnimal:')), false);
+  assert.equal(client.calls.some((call) => call.startsWith('buyAnimal:')), false);
 });
 
-test('slot skip trong kế hoạch vật nuôi không bị mua', async () => {
+test('skip không tạo quota và entry ngoài capacity không bị dồn vào prefix', async () => {
   const client = new FakeClient({
     idFarm: 1,
     cells: [],
     animals: [],
+    animalSlots: [0, 1, 2, 3],
+    pondAnimalSlots: [0, 1],
+    barnAnimalSlots: [2, 3],
     updatedAt: Date.now(),
   });
   await runOneCycle(client, {
     harvest: false,
     barnAnimalPlan: [
-      { slotIndex: 0, action: 'skip' },
+      { slotIndex: 0, action: 'breed', speciesId: 50 },
+      { slotIndex: 1, action: 'skip' },
+      { slotIndex: 2, action: 'breed', speciesId: 55 },
     ],
-  });
+  }, { sleep: () => Promise.resolve() });
 
-  // Slot 0 là skip -> không được mua gì cả.
-  assert.equal(client.calls.some((c) => c.startsWith('buyAnimal:')), false);
+  assert.deepEqual(
+    client.calls.filter((call) => call.startsWith('buyAnimal:')),
+    ['buyAnimal:50:1'],
+  );
+});
+
+test('money success không có farm refresh vẫn không mua vượt quota hoặc capacity', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [],
+    animals: [],
+    animalSlots: [0, 1, 2],
+    pondAnimalSlots: [],
+    barnAnimalSlots: [0, 1, 2],
+    updatedAt: Date.now(),
+  });
+  client.syncFarmAfterBuy = false;
+
+  await runOneCycle(client, {
+    harvest: false,
+    barnAnimalPlan: [
+      { slotIndex: 0, action: 'breed', speciesId: 50 },
+      { slotIndex: 1, action: 'breed', speciesId: 50 },
+      { slotIndex: 2, action: 'breed', speciesId: 55 },
+    ],
+  }, { sleep: () => Promise.resolve() });
+
+  assert.deepEqual(client.calls.filter((call) => call.startsWith('buyAnimal:')), [
+    'buyAnimal:50:1',
+    'buyAnimal:50:1',
+    'buyAnimal:55:1',
+  ]);
+  assert.deepEqual(client.farmState.animals, [], 'test mode cố ý chưa refresh farm state');
 });
 
 test('bornTime đổi giữa 2 vòng thì ghi lại delta để xác định chiều đếm', async () => {

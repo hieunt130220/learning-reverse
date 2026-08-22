@@ -13,6 +13,7 @@ import {
   SPECIES_SELL_WHEN_GROWN,
   foodForSpecies,
   isCellRipe,
+  isPondSpecies,
   parseAnimalSpec,
   isCellSpent,
   DEFAULT_FOOD_CATALOG,
@@ -22,6 +23,7 @@ import {
 } from './game/farmData.js';
 import type {
   AnimalInfo,
+  FarmAnimal,
   FarmCell,
   FarmState,
   InventoryItem,
@@ -644,131 +646,162 @@ export class AutoFarm extends EventEmitter {
       }
 
       // --- MUA VẬT NUÔI THEO KẾ HOẠCH --------------------------------------
-      // Slot trống không có bản ghi trong `farm.animals` — muốn biết slot nào
-      // trống phải đối chiếu với danh sách slot (farm.animalSlots) chứ không
-      // phải duyệt animals.
+      // `slotIndex` trong config là vị trí LOGIC để xác định quota trong phần đầu
+      // tương ứng sức chứa thật, không phải index vật lý của con trên server.
+      // Mua bù theo số lượng từng loài; con dư vẫn chiếm chỗ nhưng không bị thay.
       //
       // Phản hồi từ server:
       // - Mua THÀNH CÔNG: server gửi gói -3 (UPDATE_MONEY) với delta < 0 (trừ tiền).
       // - Mua THẤT BẠI / HẾT CHỖ / HẾT TIỀN: server gửi gói -40 (dialog) báo lỗi
-      //   (ví dụ "Bạn không thể mua thêm vì nông trại đã hết chỗ.") hoặc timeout
-      //   mà không trừ tiền. Khi bị từ chối thì dừng mua nhóm đó và sang task kế.
+      //   hoặc timeout mà không trừ tiền. Khi bị từ chối thì dừng mua nhóm đó.
       //
-      // Thứ tự: AO trước (slot nhỏ, đứng đầu mảng), CHUỒNG sau.
+      // Thứ tự: AO trước, CHUỒNG sau; trong nhóm theo lần xuất hiện đầu của loài.
       if (cfg.pondAnimalPlan || cfg.barnAnimalPlan) {
-        const pondBySlot = new Map(
-          (cfg.pondAnimalPlan ?? [])
-            .filter((e): e is AnimalPlanEntry & { action: 'breed' } => e.action === 'breed')
-            .map((e) => [e.slotIndex, e]),
-        );
-        const barnBySlot = new Map(
-          (cfg.barnAnimalPlan ?? [])
-            .filter((e): e is AnimalPlanEntry & { action: 'breed' } => e.action === 'breed')
-            .map((e) => [e.slotIndex, e]),
-        );
-        const planGroups: Array<[string, Map<number, AnimalPlanEntry>]> = [
-          ['ao', pondBySlot],
-          ['chuồng', barnBySlot],
+        const planGroups: Array<{
+          name: string;
+          plan: AnimalPlanEntry[];
+          capacity: number;
+          accepts: (animal: FarmAnimal) => boolean;
+        }> = [
+          {
+            name: 'ao',
+            plan: cfg.pondAnimalPlan ?? [],
+            capacity: farm.pondAnimalSlots.length,
+            accepts: (animal) => isPondSpecies(animal.species),
+          },
+          {
+            name: 'chuồng',
+            plan: cfg.barnAnimalPlan ?? [],
+            capacity: farm.barnAnimalSlots.length,
+            accepts: (animal) => !isPondSpecies(animal.species),
+          },
         ];
-        const occupied = new Set(farm.animals.map((a) => a.index));
         let boughtThisRound = 0;
-        for (const [groupName, bySlot] of planGroups) {
-          if (bySlot.size === 0) continue;
-          const targets = [...bySlot.keys()]
-            .sort((a, b) => a - b)
-            .filter((slot) => Number.isInteger(slot) && slot >= 0 && !occupied.has(slot));
-          for (const slot of targets) {
-            if (this.aborted) return;
-            const entry = bySlot.get(slot);
-            if (entry === undefined || entry.action !== 'breed') continue;
-            const speciesName = this.client.animals.find((x) => x.id === entry.speciesId)?.name
-              ?? `loài ${entry.speciesId}`;
+        for (const group of planGroups) {
+          if (group.capacity <= 0 || group.plan.length === 0) continue;
 
-            // Lắng nghe phản hồi: tiền trừ (thành công) hoặc dialog -40 / timeout (thất bại).
-            const buyResultPromise = new Promise<{ ok: boolean; reason?: string }>((resolve) => {
-              let settled = false;
-              let timer: NodeJS.Timeout | undefined;
-              let onMoney: ((m: any) => void) | undefined;
-              let onDialog: ((reason: string) => void) | undefined;
-              let onFarm: (() => void) | undefined;
+          const targetBySpecies = new Map<number, number>();
+          const orderedSpecies: number[] = [];
+          const effectivePlan = [...group.plan]
+            .sort((left, right) => left.slotIndex - right.slotIndex)
+            .filter((entry) => Number.isInteger(entry.slotIndex)
+              && entry.slotIndex >= 0
+              && entry.slotIndex < group.capacity);
 
-              const cleanup = () => {
-                if (timer) clearTimeout(timer);
-                if (onMoney) this.client.removeListener('money', onMoney);
-                if (onDialog) this.client.removeListener('dialog', onDialog);
-                if (onFarm) this.client.removeListener('farm', onFarm);
-              };
+          for (const entry of effectivePlan) {
+            if (entry.action !== 'breed') continue;
+            if (!targetBySpecies.has(entry.speciesId)) orderedSpecies.push(entry.speciesId);
+            targetBySpecies.set(entry.speciesId, (targetBySpecies.get(entry.speciesId) ?? 0) + 1);
+          }
 
-              const finish = (result: { ok: boolean; reason?: string }) => {
-                if (settled) return;
-                settled = true;
-                cleanup();
-                resolve(result);
-              };
+          const currentAnimals = farm.animals.filter(group.accepts);
+          const currentBySpecies = new Map<number, number>();
+          for (const animal of currentAnimals) {
+            currentBySpecies.set(animal.species, (currentBySpecies.get(animal.species) ?? 0) + 1);
+          }
+          let remainingCapacity = Math.max(0, group.capacity - currentAnimals.length);
+          const speciesName = (speciesId: number): string =>
+            this.client.animals.find((animal) => animal.id === speciesId)?.name
+              ?? `loài #${speciesId}`;
+          const quotaSummary = orderedSpecies
+            .map((speciesId) => `${speciesName(speciesId)} ${targetBySpecies.get(speciesId) ?? 0}`)
+            .join(' / ');
+          note(`kế hoạch ${group.name}: sức chứa ${group.capacity}, hiện có ${currentAnimals.length}, quota ${quotaSummary || 'trống'}`);
 
-              timer = setTimeout(() => {
-                finish({ ok: false, reason: 'hết thời gian chờ phản hồi mua vật nuôi' });
-              }, 2000);
+          let groupRejected = false;
+          for (const speciesId of orderedSpecies) {
+            if (this.aborted || remainingCapacity === 0) break;
+            const target = targetBySpecies.get(speciesId) ?? 0;
+            const current = currentBySpecies.get(speciesId) ?? 0;
+            const missing = Math.max(0, target - current);
+            const toBuy = Math.min(missing, remainingCapacity);
 
-              onMoney = (m: any) => {
-                if (m && typeof m.delta === 'number' && m.delta < 0) {
-                  finish({ ok: true });
-                }
-              };
+            for (let purchaseIndex = 0; purchaseIndex < toBuy; purchaseIndex += 1) {
+              if (this.aborted) return;
+              const countBeforeCommand = this.client.farmState?.animals.length ?? farm.animals.length;
 
-              onFarm = () => {
-                const currentCount = this.client.farmState?.animals.length ?? 0;
-                if (currentCount > farm.animals.length) {
-                  finish({ ok: true });
-                }
-              };
+              // Lắng nghe phản hồi: tiền trừ (thành công) hoặc dialog -40 / timeout (thất bại).
+              const buyResultPromise = new Promise<{ ok: boolean; reason?: string }>((resolve) => {
+                let settled = false;
+                let timer: NodeJS.Timeout | undefined;
+                let onMoney: ((m: any) => void) | undefined;
+                let onDialog: ((reason: string) => void) | undefined;
+                let onFarm: (() => void) | undefined;
 
-              onDialog = (reason: string) => {
-                finish({ ok: false, reason });
-              };
+                const cleanup = () => {
+                  if (timer) clearTimeout(timer);
+                  if (onMoney) this.client.removeListener('money', onMoney);
+                  if (onDialog) this.client.removeListener('dialog', onDialog);
+                  if (onFarm) this.client.removeListener('farm', onFarm);
+                };
 
-              this.client.once('money', onMoney);
-              this.client.once('dialog', onDialog);
-              this.client.once('farm', onFarm);
-            });
+                const finish = (result: { ok: boolean; reason?: string }) => {
+                  if (settled) return;
+                  settled = true;
+                  cleanup();
+                  resolve(result);
+                };
 
-            this.client.farm.buyAnimal(entry.speciesId, SHOP_XU);
-            sent += 1;
+                timer = setTimeout(() => {
+                  finish({ ok: false, reason: 'hết thời gian chờ phản hồi mua vật nuôi' });
+                }, 2000);
 
-            const buyResult = await buyResultPromise;
-            if (buyResult.ok) {
-              boughtThisRound += 1;
-              note(`mua vật nuôi ${groupName} slot ${slot}: ${speciesName} (#${entry.speciesId})`);
-              occupied.add(slot);
-              // Cập nhật danh sách vật nuôi cục bộ để các vòng / slot sau nhận diện đúng
-              if (!farm.animals.some((a) => a.index === slot)) {
-                farm.animals.push({
-                  index: slot,
-                  species: entry.speciesId,
-                  bornTime: 0,
-                  health: 100,
-                  harvestPer: 0,
-                  numEggOne: 0,
-                  hunger: false,
-                  hasFlu: false,
-                  hasDiarrhea: false,
-                });
+                onMoney = (money: any) => {
+                  if (money && typeof money.delta === 'number' && money.delta < 0) {
+                    finish({ ok: true });
+                  }
+                };
+
+                onFarm = () => {
+                  const currentCount = this.client.farmState?.animals.length ?? 0;
+                  if (currentCount > countBeforeCommand) {
+                    finish({ ok: true });
+                  }
+                };
+
+                onDialog = (reason: string) => {
+                  finish({ ok: false, reason });
+                };
+
+                this.client.once('money', onMoney);
+                this.client.once('dialog', onDialog);
+                this.client.once('farm', onFarm);
+              });
+
+              this.client.farm.buyAnimal(speciesId, SHOP_XU);
+              sent += 1;
+
+              const buyResult = await buyResultPromise;
+              if (buyResult.ok) {
+                boughtThisRound += 1;
+                note(`mua bù vật nuôi ${group.name}: ${speciesName(speciesId)} ${purchaseIndex + 1}/${toBuy}`);
+                currentBySpecies.set(speciesId, (currentBySpecies.get(speciesId) ?? 0) + 1);
+                remainingCapacity -= 1;
+                await tick();
+              } else {
+                const detail = buyResult.reason ? ` (${buyResult.reason})` : '';
+                note(`dừng mua vật nuôi ${group.name}: server từ chối khi mua ${speciesName(speciesId)}${detail} — sang task kế`);
+                groupRejected = true;
+                break;
               }
-              const added = this.client.farmState?.animals.filter(
-                (a) => !farm.animals.some((x) => x.index === a.index),
-              ) ?? [];
-              for (const a of added) occupied.add(a.index);
-              await tick();
-            } else {
-              const detail = buyResult.reason ? ` (${buyResult.reason})` : '';
-              note(`dừng mua vật nuôi ${groupName}: server từ chối sau slot ${slot}${detail} — sang task kế`);
-              break;
             }
+            if (groupRejected) break;
           }
           if (this.aborted) return;
+
+          const stillMissing = orderedSpecies.reduce(
+            (sum, speciesId) => sum + Math.max(
+              0,
+              (targetBySpecies.get(speciesId) ?? 0) - (currentBySpecies.get(speciesId) ?? 0),
+            ),
+            0,
+          );
+          if (!groupRejected && remainingCapacity === 0 && stillMissing > 0) {
+            note(`vật nuôi ${group.name} đã đầy, còn thiếu ${stillMissing} con theo quota`);
+          }
         }
         if (boughtThisRound === 0) {
-          note('không còn slot trống theo kế hoạch vật nuôi');
+          note('không cần mua bù vật nuôi theo quota');
         }
       }
 
