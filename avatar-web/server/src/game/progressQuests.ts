@@ -542,17 +542,18 @@ export function decodeProgressQuestPacket(
 }
 
 /**
- * Giải mã chuỗi `[i8 len][utf8]` lặp lại. Dùng cho cmd -62 (nhiệm vụ hiện tại)
- * và cmd -81 (danh sách nhiệm vụ): byte 0 là header 0x00, sau đó lặp các phần tử.
+ * Giải mã các chuỗi cmd -62 (nhiệm vụ hiện tại): byte 0 là header,
+ * sau đó lặp `[i16 len][utf8]`. Length là số byte UTF-8, big-endian.
  */
-export function decodeLenPrefixedStrings(buf: Buffer, start = 1): string[] {
+export function decodeQuestDialogStrings(buf: Buffer, start = 1): string[] {
   const out: string[] = [];
-  let o = start;
-  while (o < buf.length) {
-    const n = buf[o];
-    if (o + 1 + n > buf.length) break;
-    out.push(buf.toString('utf8', o + 1, o + 1 + n));
-    o += 1 + n;
+  let offset = start;
+  while (offset + 2 <= buf.length) {
+    const length = buf.readUInt16BE(offset);
+    offset += 2;
+    if (offset + length > buf.length) break;
+    out.push(buf.toString('utf8', offset, offset + length));
+    offset += length;
   }
   return out;
 }
@@ -566,7 +567,7 @@ export interface QuestCatalogEntry {
  * Giải mã danh sách nhiệm vụ (cmd -81). Format đã xác minh trên payload 12082 byte:
  *   [i16:9]"lsnhiemvu" [i16:23]"Danh Sách Nhiệm Vụ" [i32:15] [i32:count] ff ff
  *   rồi lặp count lần: [i16 len]"Nhiệm Vụ Nhà Nông - N" [i16 len]"Phần Thưởng: …" ff ff
- * (KHÁC cmd -62 dùng i8 — không dùng decodeLenPrefixedStrings ở đây.)
+ * (Cmd -62 cũng dùng i16 nhưng có header/subtype khác; không dùng parser này.)
  */
 export function parseQuestListPacket(buf: Buffer): QuestCatalogEntry[] {
   const out: QuestCatalogEntry[] = [];

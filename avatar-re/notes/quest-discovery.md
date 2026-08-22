@@ -41,18 +41,22 @@ Ví dụ: `00 00 00 23 | 00 02 | 00 1d "Xem nhiệm vụ hiện tại" | 00 1b "
 
 ### cmd -62 (nhiệm vụ hiện tại — có tiến trình)
 ```
-byte0 = 0x00 (header), rồi lặp: [i8 len][utf8]
+byte0 = 0x00 (header), rồi lặp: [i16 len][utf8]
 ```
+Raw packet đã xác minh bắt đầu: `00 | 000c | "Nhiệm Vụ" | 00f0 | "Nhiệm vụ hiện tại..."`. Length là **unsigned 16-bit big-endian** và tính theo số byte UTF-8.
+
 Ví dụ phần tử chứa quest: `"Nhiệm vụ hiện tại của bạn là nhiệm vụ:Nhiệm Vụ Tân Thủ 2:\n- Mua 5 con gà  - 0/5\n- Mua 2 con cá chép  -Xong\n\nPhần Thưởng: \n - 5000 xu - 1 Tiến Sĩ vĩnh viễn …"`
 
 **PHẢI lấy đúng phần tử** chứa `"nhiệm vụ hiện tại"` (`parts.find(s => /nhiệm vụ hiện tại/i.test(s))`), **KHÔNG join toàn bộ** các string lại với nhau.
+
+> **Bẫy đã gặp:** Quest 1 có field dài 240 byte (`0x00f0`). Decoder i8 cũ đọc nhầm byte cao `0x00` thành chuỗi rỗng, rồi byte thấp `0xf0` thành length 240 nên tình cờ vẫn chạy. Quest 2 dài >255 byte (`0x01xx`) làm decoder i8 nuốt byte length thấp, dùng chữ `N` đầu của `"Nhiệm vụ"` làm length tiếp theo và chia vỡ text. Luôn đọc cmd -62 bằng i16.
 
 ### cmd -81 (danh sách nhiệm vụ — KHÁC cmd -62!)
 ```
 [i16 len]"lsnhiemvu" [i16 len]"Danh Sách Nhiệm Vụ" [i32=15] [i32 count] ff ff
 rồi count× : [i16 len]title + [i16 len]reward + ff ff
 ```
-Dùng **i16-len + header i32 count**. **KHÔNG dùng** `decodeLenPrefixedStrings` (đó là i8-len cho cmd -62). Nhà Nông = 108 quest.
+Cmd -81 cũng dùng **i16-len**, nhưng có header i32 count và separator riêng; dùng `parseQuestListPacket`, không dùng decoder cmd -62. Nhà Nông = 108 quest.
 
 ### cmd 104 (OPEN_INFO_FARM — tab "Nâng Cấp", KHÔNG phải chuỗi quest dialog)
 - `action=1`: yêu cầu nâng cấp nông trại (`bool + 7 short + count + count×[type,(idFarm nếu 7/9),request,inStorage]`).
@@ -68,7 +72,7 @@ for (let uid = 1; uid <= 130; uid++) {
   await sleep(220);
   c.farm.doMenuOption(uid, 0, 0); // "Xem nhiệm vụ hiện tại" với mọi userID
   await sleep(330);
-  // bắt cmd -62, decodeLenPrefixedStrings → phần tử chứa "nhiệm vụ hiện tại" → parse title
+  // bắt cmd -62, decodeQuestDialogStrings (i16) → field chứa "nhiệm vụ hiện tại" → parse title
   // title chứa "Tân Thủ" → beginner, "Nhà Nông" → farmer, "Thợ Câu"/"Tháng 7"/"Tiền Sử" → chuỗi mới
 }
 ```
@@ -98,8 +102,8 @@ Các file liên quan: `server/src/game/client.ts`, `server/src/game/progressQues
 |---|-----|---------|------------|
 | 1 | Kết luận quest **liên quan farm level** ("level-gated 1→2") | Sai hướng điều tra, tốn thời gian | Quest lấy từ **hộp thoại NPC** (cmd -62/-81), không liên quan cấp độ |
 | 2 | Query **nhiều chuỗi cùng lúc** (NPC 90 + NPC 95) | Phản hồi Thợ Câu ghi đè `farmerQuestState` | Chỉ query đúng userID mình cần; mỗi chuỗi ghi vào state khác nhau theo `kind` (beginner/farmer) — cùng kind sẽ ghi đè lẫn nhau |
-| 3 | Dùng **sai bộ decode cho cmd -81** (dùng i8 `decodeLenPrefixedStrings`) | Parse ra 1 hoặc 0 quest | cmd -81 là **i16-len + header i32 count**; cmd -62 mới là i8-len |
-| 4 | **Join toàn bộ** strings cmd -62 rồi parse | Title sai: `"Nhiệm VụNhiệm vụ hiện tại..."`, kind sai | `parts.find(s => /nhiệm vụ hiện tại/i.test(s))` rồi parse phần tử đó |
+| 3 | Đọc length cmd -62 bằng **i8** | Quest ngắn chạy tình cờ, quest >255 byte bị mất chữ đầu/chia vỡ text và web giữ state cũ | cmd -62 là **i16-len big-endian**; dùng `decodeQuestDialogStrings` |
+| 4 | Dùng decoder cmd -62 cho cmd -81 hoặc **join toàn bộ** strings cmd -62 | Cmd -81 parse ra 0/1 quest; cmd -62 có title sai/kind sai | Cmd -81 dùng parser riêng có header i32 count; cmd -62 dùng i16 và `parts.find(s => /nhiệm vụ hiện tại/i.test(s))` |
 | 5 | Đọc nhầm key JSON | Tưởng `upgradeRequirements` bị null | `/api/:id/state` chứa quest dưới **`quests`**, không phải `questOverview` |
 | 6 | Tin tưởng `dump.cs` / `assembly-csharp.cs` | Mất thời gian tìm method body | `il2cpp_out/dump.cs` chỉ là **stub signature**; `notes/assembly-csharp.cs` là **.NET BCL** không phải game code. Tên quest ("Nhiệm Vụ Tân Thủ") **không có** trong `stringliteral.json` — server gửi text |
 | 7 | Probe treo do account session conflict | Phải TaskStop | Dừng probe cũ trước khi chạy probe mới; chạy từ `avatar-web/server/` (cần `.env`) |

@@ -32,7 +32,7 @@ import {
 import {
   decodeProgressQuestPacket,
   parseQuestDialogText,
-  decodeLenPrefixedStrings,
+  decodeQuestDialogStrings,
   parseQuestListPacket,
   syncQuestStateWithFarm,
   type QuestCatalogEntry,
@@ -709,7 +709,7 @@ export class GameClient extends EventEmitter {
       }
       case -62: { // CURRENT_QUEST — "Xem nhiệm vụ hiện tại" (NPC Lái buôn)
         try {
-          const parts = decodeLenPrefixedStrings(msg.getData());
+          const parts = decodeQuestDialogStrings(msg.getData());
           const text = parts.find((s) => /nhiệm vụ hiện tại/i.test(s));
           if (!text) {
             this.emit(
