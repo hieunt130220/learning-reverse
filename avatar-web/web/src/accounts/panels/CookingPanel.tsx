@@ -71,7 +71,10 @@ export function CookingPanel({
 }) {
   const [showRecipes, setShowRecipes] = useState(false);
 
-  const recipeCatalog = foods ?? [];
+  // Ưu tiên catalog động từ Cmd76 (có khi có session live). Khi chưa load
+  // (tài khoản idle / chưa kết nối), dùng FALLBACK_RECIPES để UI vẫn hiển thị
+  // danh sách món thay vì trắng hoàn toàn.
+  const recipeCatalog = foods && foods.length > 0 ? foods : FALLBACK_RECIPES;
   const inventoryMap = new Map<number, number>();
   // Gộp CẢ kho thường (inventory) VÀ nông sản (produce) — vật phẩm như Trứng
   // gà #50 nằm ở section 3 (produce) của Cmd70, không có trong inventory.
