@@ -58,6 +58,7 @@ export function CookingPanel({
   items,
   trees,
   animals,
+  produce,
 }: {
   cooking?: CookingState;
   foods?: FoodRecipe[];
