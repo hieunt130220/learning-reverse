@@ -6,6 +6,7 @@ import type {
   AutoConfigResponse,
   AutoConfigStateDto,
   AutoFarmConfigDto,
+  AutoSellRuleDto,
   FarmProfileDto,
   KitchenPlanEntry,
   TreeCellPlanEntry,
@@ -93,6 +94,7 @@ const AUTO_CONFIG_KEYS = new Set([
   'buyBudgetXu', 'maxBuyPerItem', 'stepDelayMs', 'intervalMs', 'startDelayMs', 'treeCellPlan',
   'barnAnimalPlan', 'pondAnimalPlan', 'cookingSlotPlan', 'autoCook', 'autoHarvestCook',
   'prioritizeCookingMissions', 'defaultRecipeId', 'autoClaimDailyQuests', 'logoutAfterCycle',
+  'autoSellProduce', 'autoSellIntervalMs', 'autoSellRules',
 ]);
 
 function isFiniteNumber(value: unknown): value is number {
@@ -146,12 +148,29 @@ function isKitchenPlan(value: unknown): value is KitchenPlanEntry[] {
   });
 }
 
+function isAutoSellRules(value: unknown): value is AutoSellRuleDto[] {
+  return Array.isArray(value) && value.every((entry) => {
+    return isRecord(entry)
+      && typeof entry.itemId === 'number'
+      && Number.isInteger(entry.itemId)
+      && entry.itemId >= 0
+      && entry.itemId <= 32767
+      && typeof entry.quantity === 'number'
+      && Number.isInteger(entry.quantity)
+      && entry.quantity > 0
+      && typeof entry.price === 'number'
+      && Number.isInteger(entry.price)
+      && entry.price > 0;
+  });
+}
+
 function isAutoConfig(value: unknown): value is Partial<AutoFarmConfigDto> {
   if (!isRecord(value) || Object.keys(value).some((key) => !AUTO_CONFIG_KEYS.has(key))) return false;
   const optionalNumberKeys = [
     'seedId', 'waterItemId', 'grassItemId', 'wormItemId', 'minGrowthToSell',
     'nearDeathRatio', 'maxSellsPerCycle', 'minHealth', 'minVitality', 'buyBudgetXu',
     'maxBuyPerItem', 'stepDelayMs', 'intervalMs', 'startDelayMs', 'defaultRecipeId',
+    'autoSellIntervalMs',
   ];
   const optionalBooleanKeys = [
     'harvest', 'harvestAnimals', 'harvestBarnAnimals', 'harvestPondAnimals',
@@ -159,6 +178,7 @@ function isAutoConfig(value: unknown): value is Partial<AutoFarmConfigDto> {
     'feedAnimals', 'feedBarnAnimals', 'feedPondAnimals',
     'healAnimals', 'fertilizeCells', 'autoBuy', 'autoCook', 'autoHarvestCook',
     'prioritizeCookingMissions', 'autoClaimDailyQuests', 'logoutAfterCycle',
+    'autoSellProduce',
   ];
   return optionalNumberKeys.every((key) => value[key] === undefined || isFiniteNumber(value[key]))
     && optionalBooleanKeys.every((key) => value[key] === undefined || typeof value[key] === 'boolean')
@@ -169,7 +189,8 @@ function isAutoConfig(value: unknown): value is Partial<AutoFarmConfigDto> {
     && (value.treeCellPlan === undefined || isTreePlan(value.treeCellPlan))
     && (value.barnAnimalPlan === undefined || isAnimalPlan(value.barnAnimalPlan))
     && (value.pondAnimalPlan === undefined || isAnimalPlan(value.pondAnimalPlan))
-    && (value.cookingSlotPlan === undefined || isKitchenPlan(value.cookingSlotPlan));
+    && (value.cookingSlotPlan === undefined || isKitchenPlan(value.cookingSlotPlan))
+    && (value.autoSellRules === undefined || isAutoSellRules(value.autoSellRules));
 }
 
 function isAutoConfigState(value: unknown): value is AutoConfigStateDto {

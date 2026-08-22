@@ -1,7 +1,7 @@
 import { DEFAULT_SEED_CATALOG } from './defaultSeedCatalog.js';
-import type { AnimalPlanEntry, AutoFarmConfig, KitchenPlanEntry, TreeCellPlanEntry } from '../autoFarm.js';
+import type { AnimalPlanEntry, AutoFarmConfig, AutoSellRule, KitchenPlanEntry, TreeCellPlanEntry } from '../autoFarm.js';
 
-export type { AnimalPlanEntry, KitchenPlanEntry, TreeCellPlanEntry } from '../autoFarm.js';
+export type { AnimalPlanEntry, AutoSellRule, KitchenPlanEntry, TreeCellPlanEntry } from '../autoFarm.js';
 
 export interface StoredAutoConfigState {
   revision: number;
@@ -134,6 +134,40 @@ function kitchenPlan(value: unknown): KitchenPlanEntry[] {
   return entries;
 }
 
+function autoSellRules(value: unknown): AutoSellRule[] {
+  if (!Array.isArray(value)) throw new Error('autoSellRules phải là mảng');
+
+  const seenItemIds = new Set<number>();
+  const entries = value.map((raw, index) => {
+    const entry = record(raw, 'mỗi quy tắc bán');
+    if (Object.keys(entry).some((key) => key !== 'itemId' && key !== 'quantity' && key !== 'price')) {
+      throw new Error(`quy tắc bán ${index} không hợp lệ`);
+    }
+    const itemId = entry.itemId;
+    if (typeof itemId !== 'number' || !Number.isInteger(itemId) || itemId < 0 || itemId > 32767) {
+      throw new Error(`quy tắc bán ${index}: itemId phải là số nguyên trong [0, 32767]`);
+    }
+    if (seenItemIds.has(itemId)) {
+      throw new Error(`quy tắc bán ${index}: itemId ${itemId} bị lặp`);
+    }
+    seenItemIds.add(itemId);
+
+    const quantity = entry.quantity;
+    if (typeof quantity !== 'number' || !Number.isInteger(quantity) || quantity <= 0 || quantity > 2_147_483_647) {
+      throw new Error(`quy tắc bán ${index}: quantity phải là số nguyên dương`);
+    }
+
+    const price = entry.price;
+    if (typeof price !== 'number' || !Number.isInteger(price) || price <= 0 || price > 2_147_483_647) {
+      throw new Error(`quy tắc bán ${index}: price phải là số nguyên dương`);
+    }
+
+    return { itemId, quantity, price };
+  });
+
+  return entries;
+}
+
 const parsers: Record<ConfigKey, ConfigParser> = {
   harvest: (value, key) => {
     if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
@@ -230,6 +264,17 @@ const parsers: Record<ConfigKey, ConfigParser> = {
     if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
     return value;
   },
+  autoSellProduce: (value, key) => {
+    if (typeof value !== 'boolean') throw new Error(`${key} phải là boolean`);
+    return value;
+  },
+  autoSellIntervalMs: (value, key) => {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 300_000) {
+      throw new Error(`${key} phải là số nguyên tối thiểu 300000 ms (5 phút)`);
+    }
+    return value;
+  },
+  autoSellRules: autoSellRules,
 };
 
 function isConfigKey(key: string): key is ConfigKey {
