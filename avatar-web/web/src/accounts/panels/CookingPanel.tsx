@@ -51,6 +51,28 @@ export const ANIMAL_PRODUCT_NAMES: Record<number, string> = {
   59: 'Thịt ba ba',
 };
 
+// Vật phẩm chế biến dùng làm nguyên liệu nấu ăn nhưng KHÔNG có trong catalog
+// động (Cmd76 item block chỉ trả ~11 vật phẩm shop). Tên suy luận từ công thức
+// nấu tương ứng — cần xác nhận lại trên game nếu hiển thị sai.
+export const COOKING_ITEM_NAMES: Record<number, string> = {
+  204: 'Lá mắc mật',
+  212: 'Đường',
+  249: 'Chuối xanh',
+  266: 'Hoa cúc',
+  271: 'Khoai tây', // xác nhận từ game
+  272: 'Tinh thể dưa hấu',
+  276: 'Thịt gà',
+  277: 'Gà luộc',
+  279: 'Ba ba',
+  282: 'Thịt heo',
+  283: 'Cá chép',
+  286: 'Gia vị',
+  289: 'Nước hoa cúc',
+  295: 'Thịt trâu',
+  297: 'Thịt vịt',
+  301: 'Nước cốt dừa',
+};
+
 export function CookingPanel({
   cooking,
   foods,
@@ -78,6 +100,7 @@ export function CookingPanel({
   for (const tree of trees) itemNames.set(tree.id, tree.name);
   for (const animal of animals) itemNames.set(animal.id, animal.name);
   for (const [id, name] of Object.entries(ANIMAL_PRODUCT_NAMES)) itemNames.set(Number(id), name);
+  for (const [id, name] of Object.entries(COOKING_ITEM_NAMES)) itemNames.set(Number(id), name);
 
   const recipeName = (id: number) => recipeCatalog.find((r) => r.id === id)?.name ?? `Món #${id}`;
 
@@ -193,7 +216,10 @@ export function CookingPanel({
                           borderRadius: '3px',
                         }}
                       >
-                        {itemNames.get(m.itemId) ?? `Item #${m.itemId}`} #{m.itemId}: {m.countInBag}/{m.count}
+                        {(() => {
+                          const name = itemNames.get(m.itemId);
+                          return name ? `${name} #${m.itemId}:` : `#${m.itemId}:`;
+                        })()} {m.countInBag}/{m.count}
                       </span>
                     ))}
                   </div>
