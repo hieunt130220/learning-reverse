@@ -1483,3 +1483,230 @@ button.ghost {
   .shop-paid-action input { width: 96px; }
   .shop-transaction > div:first-child { display: grid; gap: 2px; }
 }
+
+/* ==========================================================================
+   AutoSellRulesEditor Styling (Quy tắc tự động bán)
+   ========================================================================== */
+
+.auto-sell-rules-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.auto-sell-header-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #111722;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.auto-sell-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.auto-sell-interval-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.auto-sell-input-interval {
+  width: 70px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0d1117;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+}
+
+.auto-sell-warning-notice {
+  padding: 10px 12px;
+  border: 1px solid #665122;
+  border-radius: 6px;
+  color: #e4bb61;
+  background: rgba(217, 164, 65, 0.08);
+  font-size: 12px;
+}
+
+.auto-sell-rules-table-container {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.auto-sell-rules-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.auto-sell-rules-table th {
+  background: #111722;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.auto-sell-rules-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg);
+}
+
+.auto-sell-rules-table tr:last-child td {
+  border-bottom: none;
+}
+
+.auto-sell-empty-text {
+  text-align: center;
+  color: var(--muted);
+  padding: 16px !important;
+  font-style: italic;
+}
+
+.auto-sell-price-range {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.auto-sell-actions-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.auto-sell-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #111722;
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.auto-sell-btn-icon:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.auto-sell-btn-delete {
+  font-size: 14px;
+  color: var(--err);
+}
+
+.auto-sell-btn-delete:hover:not(:disabled) {
+  border-color: var(--err);
+  background: rgba(255, 123, 114, 0.15);
+  color: var(--err);
+}
+
+.auto-sell-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #111722;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.auto-sell-add-form-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.auto-sell-add-form-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.auto-sell-select-item {
+  flex: 1 1 200px;
+  min-width: 180px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0d1117;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+
+.auto-sell-add-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.auto-sell-input-num {
+  width: 90px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0d1117;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+
+.auto-sell-btn-add {
+  padding: 6px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.auto-sell-btn-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auto-sell-price-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.auto-sell-price-error {
+  color: var(--err);
+  font-weight: 600;
+}
+
