@@ -13,17 +13,31 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  min-width: 0;
+}
+
 body {
   margin: 0;
+  overflow-x: hidden;
   background: var(--bg);
   color: var(--fg);
   font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
 .app {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 12px;
 }
 
 header {
@@ -48,7 +62,7 @@ h2 {
 
 .cols {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
   gap: 16px;
   align-items: start;
 }
@@ -92,6 +106,7 @@ textarea {
   border-radius: 6px;
   color: var(--fg);
   font: inherit;
+  font-size: 16px;
 }
 
 label.inline input {
@@ -101,7 +116,6 @@ label.inline input {
 
 textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
   resize: vertical;
 }
 
@@ -175,7 +189,8 @@ button.ghost {
 }
 
 .action-head > button {
-  min-width: 170px;
+  width: 100%;
+  min-width: 0;
   text-align: left;
 }
 
@@ -362,16 +377,25 @@ button.ghost {
 .eyebrow {
   margin: 0 0 3px;
   color: var(--ok);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
 }
 
-.dashboard-header .hint { margin-left: auto; }
+.dashboard-header {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.dashboard-header .hint {
+  width: 100%;
+  margin-left: 0;
+  order: 3;
+}
 
 .accounts-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 16px;
 }
 
@@ -409,7 +433,7 @@ button.ghost {
 }
 .account-card-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .account-card-heading > span:first-child,
@@ -434,6 +458,7 @@ button.ghost {
   border-top: 1px solid var(--line);
 }
 
+.account-card-actions { flex-wrap: wrap; }
 .account-card-actions .danger { color: var(--err); margin-left: auto; }
 .account-card-error { padding: 0 16px 14px; }
 
@@ -469,11 +494,58 @@ button.ghost {
 }
 
 .account-modal { width: min(100%, 480px); border-radius: 12px; padding: 18px; }
-.account-drawer { width: min(720px, 100%); height: 100%; overflow: auto; padding: 18px; animation: drawer-in 200ms ease-out; }
+.account-drawer {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: auto;
+  padding: 0 12px calc(12px + env(safe-area-inset-bottom));
+  border-width: 0;
+  animation: drawer-in 200ms ease-out;
+}
 
-.dialog-heading { position: sticky; top: 0; z-index: 1; background: var(--bg); }
+.dialog-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: calc(12px + env(safe-area-inset-top)) 0 10px;
+  background: var(--bg);
+}
 .dialog-heading h2 { margin: 0; color: var(--fg); text-transform: none; letter-spacing: 0; font-size: 18px; }
 .dialog-heading > .ghost { margin-left: auto; }
+.drawer-tabbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  margin: 0 -12px 12px;
+  padding: 6px 12px;
+  overflow-x: auto;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: none;
+}
+
+.drawer-tabbar::-webkit-scrollbar { display: none; }
+
+.drawer-tabbar button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+
+.drawer-tabbar button.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+
+.drawer-panel-slot[hidden] { display: none; }
 .drawer-panels { display: grid; gap: 16px; }
 .drawer-debug-link { justify-self: start; margin-bottom: 20px; }
 .dashboard-empty { text-align: center; }
@@ -567,7 +639,7 @@ button.ghost {
 
 .tree-plan-grid {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   min-width: 0;
   margin-top: 12px;
@@ -606,7 +678,7 @@ button.ghost {
   color: var(--err);
 }
 
-.tree-plan-cell-warning { font-size: 9px; font-weight: 700; }
+.tree-plan-cell-warning { font-size: 11px; font-weight: 700; }
 
 .tree-plan-palette-item:focus-visible,
 .tree-plan-cell:focus-visible,
@@ -640,20 +712,6 @@ button.ghost {
 
 @keyframes dialog-fade { from { opacity: 0; } }
 @keyframes drawer-in { from { transform: translateX(24px); opacity: 0; } }
-
-@media (max-width: 1099px) {
-  .accounts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-@media (max-width: 679px) {
-  .app { padding: 12px; }
-  .dashboard-header { align-items: flex-start; flex-wrap: wrap; }
-  .dashboard-header .hint { width: 100%; margin-left: 0; order: 3; }
-  .accounts-grid { grid-template-columns: 1fr; }
-  .account-drawer { width: 100%; border-width: 0; }
-  .account-card-actions { flex-wrap: wrap; }
-  .tree-plan-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .dialog-backdrop,
@@ -748,7 +806,7 @@ button.ghost {
 }
 
 .tab-badge {
-  font-size: 10px;
+  font-size: 11px;
   padding: 1px 6px;
   background: rgba(255, 255, 255, 0.12);
   border-radius: 10px;
@@ -761,7 +819,7 @@ button.ghost {
 }
 
 .tab-pill {
-  font-size: 10px;
+  font-size: 11px;
   padding: 1px 6px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -871,7 +929,7 @@ button.ghost {
 }
 
 .box-status-tag {
-  font-size: 9px;
+  font-size: 11px;
   padding: 1px 4px;
   border-radius: 4px;
 }
@@ -887,7 +945,7 @@ button.ghost {
 
 .btn-box-claim {
   padding: 2px 6px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   background: linear-gradient(135deg, #ffd700, #ff9f1c);
   color: #0d1117;
@@ -1244,7 +1302,7 @@ button.ghost {
 }
 
 .shop-heading {
-  display: flex;
+  display: block;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -1261,7 +1319,7 @@ button.ghost {
   gap: 8px;
 }
 
-.shop-read-actions { margin-top: 0; }
+.shop-read-actions { margin-top: 10px; }
 
 .shop-empty {
   margin-top: 12px;
@@ -1288,10 +1346,12 @@ button.ghost {
   display: flex;
   gap: 4px;
   margin-top: 14px;
+  overflow-x: auto;
   border-bottom: 1px solid var(--line);
 }
 
 .shop-tabs button {
+  flex: 1 0 auto;
   border: 1px solid transparent;
   border-bottom: 0;
   border-radius: 6px 6px 0 0;
@@ -1340,7 +1400,7 @@ button.ghost {
 
 .shop-table {
   width: 100%;
-  min-width: 590px;
+  min-width: 0;
   border-collapse: collapse;
   text-align: left;
 }
@@ -1372,6 +1432,8 @@ button.ghost {
 .shop-panel button.danger { color: var(--err); }
 
 .shop-paid-action {
+  align-items: stretch;
+  flex-direction: column;
   margin-top: 12px;
   padding: 10px;
   border: 1px solid var(--line);
@@ -1382,12 +1444,13 @@ button.ghost {
 .shop-paid-action label {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 7px;
   margin: 0;
 }
 
 .shop-paid-action input {
-  width: 72px;
+  width: 96px;
   margin: 0;
 }
 
@@ -1473,17 +1536,6 @@ button.ghost {
   margin: 16px -18px -18px;
 }
 
-@media (max-width: 679px) {
-  .shop-heading { display: block; }
-  .shop-read-actions { margin-top: 10px; }
-  .shop-tabs { overflow-x: auto; }
-  .shop-tabs button { flex: 1 0 auto; }
-  .shop-paid-action { align-items: stretch; flex-direction: column; }
-  .shop-paid-action label { justify-content: space-between; }
-  .shop-paid-action input { width: 96px; }
-  .shop-transaction > div:first-child { display: grid; gap: 2px; }
-}
-
 /* ==========================================================================
    AutoSellRulesEditor Styling (Quy tắc tự động bán)
    ========================================================================== */
@@ -1533,7 +1585,7 @@ button.ghost {
   background: #0d1117;
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: 16px;
   text-align: center;
 }
 
@@ -1660,7 +1712,7 @@ button.ghost {
   background: #0d1117;
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .auto-sell-add-field {
@@ -1679,7 +1731,7 @@ button.ghost {
   background: #0d1117;
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .auto-sell-btn-add {
@@ -1711,7 +1763,7 @@ button.ghost {
 }
 
 @media (max-width: 679px) {
-  .shop-table { min-width: 0; }
+  .shop-transaction > div:first-child { display: grid; gap: 2px; }
   .shop-table-wrap,
   .auto-sell-rules-table-container { overflow: visible; border: 0; }
   .shop-table thead,
@@ -1760,4 +1812,41 @@ button.ghost {
   }
   .table-empty-row::before { content: none !important; }
   .auto-sell-actions-cell { justify-content: space-between; }
+}
+
+@media (min-width: 680px) {
+  .app { padding: 20px; }
+  input, select, textarea { font-size: inherit; }
+  .action-head > button { width: auto; min-width: 170px; }
+  .dashboard-header { align-items: center; flex-wrap: nowrap; }
+  .dashboard-header .hint { width: auto; margin-left: auto; order: initial; }
+  .accounts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .account-card-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .account-drawer { width: min(720px, 100%); padding: 18px; border-width: 1px; }
+  .dialog-heading { padding: 0; }
+  .tree-plan-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .shop-heading { display: flex; }
+  .shop-read-actions { margin-top: 0; }
+  .shop-tabs { overflow-x: visible; }
+  .shop-tabs button { flex: 0 1 auto; }
+  .shop-paid-action { align-items: center; flex-direction: row; }
+  .shop-paid-action label { justify-content: normal; }
+  .shop-paid-action input { width: 72px; }
+  .shop-table { min-width: 590px; }
+  .auto-sell-input-interval,
+  .auto-sell-select-item,
+  .auto-sell-input-num { font-size: 13px; }
+}
+
+@media (min-width: 1100px) {
+  .accounts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (pointer: coarse) {
+  button,
+  .tab,
+  .quests-tab-btn { min-height: 40px; }
+
+  input:not([type='checkbox']):not([type='radio']),
+  select { min-height: 40px; }
 }
