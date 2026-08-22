@@ -51,19 +51,6 @@ export const ANIMAL_PRODUCT_NAMES: Record<number, string> = {
   59: 'Thịt ba ba',
 };
 
-// Vật phẩm chế biến dùng làm nguyên liệu nấu ăn. Tên lấy từ Cmd76 (scan gói
-// GET_TREE_INFO) — KHÔNG đoán. Chỉ điền những tên ĐÃ xác nhận (từ game hoặc
-// scan Cmd76 nhất quán). ID chưa có ở đây sẽ hiển thị dạng "#ID" thay vì tên sai.
-// Cần xác nhận thêm: 204, 212, 249, 266, 272, 277, 282, 289, 295, 297.
-export const COOKING_ITEM_NAMES: Record<number, string> = {
-  271: 'Khoai Tây', // xác nhận từ game + Cmd76
-  276: 'Gà nguyên con', // scan Cmd76
-  279: 'Mai rùa may mắn', // xác nhận từ game + Cmd76
-  283: 'Cá chép tươi sống', // scan Cmd76
-  286: 'Ớt', // xác nhận từ game + Cmd76
-  301: 'Quả Dừa', // scan Cmd76
-};
-
 export function CookingPanel({
   cooking,
   foods,
@@ -91,7 +78,6 @@ export function CookingPanel({
   for (const tree of trees) itemNames.set(tree.id, tree.name);
   for (const animal of animals) itemNames.set(animal.id, animal.name);
   for (const [id, name] of Object.entries(ANIMAL_PRODUCT_NAMES)) itemNames.set(Number(id), name);
-  for (const [id, name] of Object.entries(COOKING_ITEM_NAMES)) itemNames.set(Number(id), name);
 
   const recipeName = (id: number) => recipeCatalog.find((r) => r.id === id)?.name ?? `Món #${id}`;
 

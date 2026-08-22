@@ -773,6 +773,38 @@ export function decodeItemCatalog(body: Buffer): ItemInfo[] {
     }
     q += 1;
   }
+
+  // Block vật phẩm chế biến (Cmd76) dùng layout khác: id(i16) + icon(i16) +
+  // type(i8) + len(i8) + name(len) — KHÔNG có terminator FFFF như shop items,
+  // nên vòng trên bỏ sót. Quét riêng và gộp những id chưa có. Giới hạn id>=200
+  // để tránh trùng với cây/nông sản (id thấp) và shop items đã decode ở trên.
+  const have = new Set(items.map((i) => i.id));
+  let p = 0;
+  while (p + 6 < body.length) {
+    const id = body.readInt16BE(p);
+    const type = body.readUInt8(p + 4);
+    const len = body.readUInt8(p + 5);
+    const end = p + 6 + len;
+    if (
+      id >= 200 && id <= 4000 &&
+      type >= 0 && type <= 8 &&
+      len >= 2 && len <= 50 &&
+      end <= body.length
+    ) {
+      const name = body.toString('utf8', p + 6, end);
+      const letters = [...name].filter((ch) => /\p{L}/u.test(ch)).length;
+      if (name.trim() && !name.includes('�') && letters >= 2 && /^[A-Za-zÀ-ỹ]/.test(name)) {
+        if (!have.has(id)) {
+          items.push({ id, icon: body.readInt16BE(p + 2), type, name, price: 0 });
+          have.add(id);
+        }
+        p = end;
+        continue;
+      }
+    }
+    p += 1;
+  }
+
   return items;
 }
 
@@ -1860,14 +1892,6 @@ export const KNOWN_PRODUCE_NAME_MAP: Record<number, string> = {
   124: 'Thuốc trừ sâu',
   125: 'Thuốc diệt cỏ',
   126: 'Thức ăn gia súc',
-  // Vật phẩm chế biến dùng làm nguyên liệu nấu ăn. Tên lấy từ Cmd76 (không đoán).
-  // Chỉ điền những tên ĐÃ xác nhận. ID chưa có sẽ hiển thị "#ID" trong log.
-  271: 'Khoai Tây',
-  276: 'Gà nguyên con',
-  279: 'Mai rùa may mắn',
-  283: 'Cá chép tươi sống',
-  286: 'Ớt',
-  301: 'Quả Dừa',
 };
 
 // Daily quest packets use the animal species id for livestock targets
