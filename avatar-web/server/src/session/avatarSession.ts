@@ -158,6 +158,8 @@ export class AvatarSession {
   private permanentlyFailed = false;
   private lastAutoConfig: Partial<AutoFarmConfig> = {};
   private wantAuto = false;
+  private lastAutoSellAt = 0;
+  private autoSellRunSequence = 0;
   private farmSync: FarmSyncState = EMPTY_FARM_SYNC;
   private cachedMetrics: CachedAccountMetrics;
   private autoSyncKickoff?: NodeJS.Immediate;
@@ -485,7 +487,37 @@ export class AvatarSession {
     this.retryAfter = undefined;
     this.auto = this.opts.createAutoFarm
       ? this.opts.createAutoFarm(client)
-      : new AutoFarm(client, { continuous: false });
+      : new AutoFarm(client, {
+          continuous: false,
+          runAutoSellCycle: async (rules, shouldStop) => {
+            const cfg = this.lastAutoConfig;
+            const interval = cfg.autoSellIntervalMs ?? 600_000;
+            const now = this.now();
+
+            // Nếu chưa đến chu kỳ kiểm tra tiếp theo
+            if (now - this.lastAutoSellAt < interval) {
+              return {
+                startedAt: now,
+                completedAt: now,
+                listedLots: 0,
+                stopReason: 'completed',
+                rules: rules.map((r) => ({
+                  itemId: r.itemId,
+                  listedLots: 0,
+                  listedQuantity: 0,
+                  skippedReason: 'Chưa đến chu kỳ kiểm tra',
+                })),
+              };
+            }
+
+            this.autoSellRunSequence += 1;
+            const runId = `${this.onlineEpoch ?? 0}-${this.autoSellRunSequence}`;
+            this.lastAutoSellAt = now;
+
+            const coordinator = this.requireShop();
+            return await coordinator.runAutoSellCycle(rules, runId, shouldStop);
+          },
+        });
     this.macros = this.opts.createMacroRunner
       ? this.opts.createMacroRunner(client)
       : new MacroRunner(client);

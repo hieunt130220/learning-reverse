@@ -212,6 +212,8 @@ export interface AutoFarmClient {
   };
 }
 
+import type { AutoSellCycleResult } from './session/shopCoordinator.js';
+
 export interface AutoFarmOptions {
   sleep?: (ms: number) => Promise<void>;
   catalogTimeout?: (signal: AbortSignal) => Promise<void>;
@@ -219,6 +221,10 @@ export interface AutoFarmOptions {
   commandTimeoutMs?: number;
   /** Session tự quyết định thời điểm đăng nhập cho vòng kế tiếp. */
   continuous?: boolean;
+  runAutoSellCycle?: (
+    rules: readonly AutoSellRule[],
+    shouldStop: () => boolean,
+  ) => Promise<AutoSellCycleResult>;
 }
 
 const ALWAYS_ON_CONFIG = {
@@ -291,7 +297,7 @@ export class AutoFarm extends EventEmitter {
    */
   private bornProbe = new Map<string, { value: number; at: number }>();
 
-  constructor(private readonly client: AutoFarmClient, options: AutoFarmOptions = {}) {
+  constructor(private readonly client: AutoFarmClient, private readonly options: AutoFarmOptions = {}) {
     super();
     this.wait = options.sleep ?? sleep;
     this.catalogTimeout = options.catalogTimeout ?? waitForCatalogTimeout;
@@ -1240,6 +1246,26 @@ export class AutoFarm extends EventEmitter {
             }
           }
         }
+      }
+
+      // ---- Tự động bán nông sản (Auto Sell Produce) -----------------------------
+      if (cfg.autoSellProduce && cfg.autoSellRules && cfg.autoSellRules.length > 0 && this.options.runAutoSellCycle) {
+        note('[sạp tự động] bắt đầu kiểm tra sạp...');
+        try {
+          const result = await this.options.runAutoSellCycle(cfg.autoSellRules, () => this.aborted);
+          note(`[sạp tự động] hoàn thành: đã đăng ${result.listedLots} lô. Lý do dừng: ${result.stopReason}`);
+          for (const r of result.rules) {
+            if (r.listedLots > 0) {
+              note(`  - Nông sản #${r.itemId}: đăng ${r.listedLots} lô (${r.listedQuantity} sản phẩm)`);
+            }
+            if (r.skippedReason) {
+              note(`  - Nông sản #${r.itemId}: bỏ qua (${r.skippedReason})`);
+            }
+          }
+        } catch (err) {
+          note(`[sạp tự động] gặp lỗi: ${(err as Error).message}`);
+        }
+        await tick(); // Nhịp nghỉ sau khi chạy Auto Sell
       }
 
       // Nếu trong chu kỳ có phát sinh lệnh làm thay đổi farm, làm mới lại farm
