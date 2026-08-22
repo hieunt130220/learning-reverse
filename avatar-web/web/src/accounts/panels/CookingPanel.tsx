@@ -51,26 +51,17 @@ export const ANIMAL_PRODUCT_NAMES: Record<number, string> = {
   59: 'Thịt ba ba',
 };
 
-// Vật phẩm chế biến dùng làm nguyên liệu nấu ăn nhưng KHÔNG có trong catalog
-// động (Cmd76 item block chỉ trả ~11 vật phẩm shop). Tên suy luận từ công thức
-// nấu tương ứng — cần xác nhận lại trên game nếu hiển thị sai.
+// Vật phẩm chế biến dùng làm nguyên liệu nấu ăn. Tên lấy từ Cmd76 (scan gói
+// GET_TREE_INFO) — KHÔNG đoán. Chỉ điền những tên ĐÃ xác nhận (từ game hoặc
+// scan Cmd76 nhất quán). ID chưa có ở đây sẽ hiển thị dạng "#ID" thay vì tên sai.
+// Cần xác nhận thêm: 204, 212, 249, 266, 272, 277, 282, 289, 295, 297.
 export const COOKING_ITEM_NAMES: Record<number, string> = {
-  204: 'Lá mắc mật',
-  212: 'Đường',
-  249: 'Chuối xanh',
-  266: 'Hoa cúc',
-  271: 'Khoai tây', // xác nhận từ game
-  272: 'Tinh thể dưa hấu',
-  276: 'Thịt gà',
-  277: 'Gà luộc',
-  279: 'Ba ba',
-  282: 'Thịt heo',
-  283: 'Cá chép',
-  286: 'Gia vị',
-  289: 'Nước hoa cúc',
-  295: 'Thịt trâu',
-  297: 'Thịt vịt',
-  301: 'Nước cốt dừa',
+  271: 'Khoai Tây', // xác nhận từ game + Cmd76
+  276: 'Gà nguyên con', // scan Cmd76
+  279: 'Mai rùa may mắn', // xác nhận từ game + Cmd76
+  283: 'Cá chép tươi sống', // scan Cmd76
+  286: 'Ớt', // xác nhận từ game + Cmd76
+  301: 'Quả Dừa', // scan Cmd76
 };
 
 export function CookingPanel({

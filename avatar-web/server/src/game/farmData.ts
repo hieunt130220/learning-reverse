@@ -1860,24 +1860,14 @@ export const KNOWN_PRODUCE_NAME_MAP: Record<number, string> = {
   124: 'Thuốc trừ sâu',
   125: 'Thuốc diệt cỏ',
   126: 'Thức ăn gia súc',
-  // Vật phẩm chế biến dùng làm nguyên liệu nấu ăn (không có trong catalog động Cmd76).
-  // Tên suy luận từ công thức — cần xác nhận lại trên game nếu sai.
-  204: 'Lá mắc mật',
-  212: 'Đường',
-  249: 'Chuối xanh',
-  266: 'Hoa cúc',
-  271: 'Khoai tây',
-  272: 'Tinh thể dưa hấu',
-  276: 'Thịt gà',
-  277: 'Gà luộc',
-  279: 'Ba ba',
-  282: 'Thịt heo',
-  283: 'Cá chép',
-  286: 'Gia vị',
-  289: 'Nước hoa cúc',
-  295: 'Thịt trâu',
-  297: 'Thịt vịt',
-  301: 'Nước cốt dừa',
+  // Vật phẩm chế biến dùng làm nguyên liệu nấu ăn. Tên lấy từ Cmd76 (không đoán).
+  // Chỉ điền những tên ĐÃ xác nhận. ID chưa có sẽ hiển thị "#ID" trong log.
+  271: 'Khoai Tây',
+  276: 'Gà nguyên con',
+  279: 'Mai rùa may mắn',
+  283: 'Cá chép tươi sống',
+  286: 'Ớt',
+  301: 'Quả Dừa',
 };
 
 // Daily quest packets use the animal species id for livestock targets
