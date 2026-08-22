@@ -430,12 +430,12 @@ export function ShopPanel({
                     const empty = slot.itemId < 0 || slot.quantity <= 0;
                     return (
                       <tr key={slot.slot}>
-                        <td>{slot.slot}</td>
-                        <td>{empty ? 'Trống' : itemName(slot.itemId)}</td>
-                        <td>{empty ? '—' : slot.quantity}</td>
-                        <td>{empty ? '—' : `${slot.price} xu`}</td>
-                        <td>{empty ? 'Sẵn sàng' : slot.isSale ? 'Đã bán' : slot.isTimeOut ? 'Hết hạn' : 'Đang bán'}</td>
-                        <td>
+                        <td data-label="Slot">{slot.slot}</td>
+                        <td data-label="Nông sản">{empty ? 'Trống' : itemName(slot.itemId)}</td>
+                        <td data-label="Số lượng">{empty ? '—' : slot.quantity}</td>
+                        <td data-label="Giá">{empty ? '—' : `${slot.price} xu`}</td>
+                        <td data-label="Trạng thái">{empty ? 'Sẵn sàng' : slot.isSale ? 'Đã bán' : slot.isTimeOut ? 'Hết hạn' : 'Đang bán'}</td>
+                        <td data-label="Hành động">
                           {empty ? (
                             <button
                               type="button"
@@ -502,10 +502,10 @@ export function ShopPanel({
                 <tbody>
                   {shop.market.data.catalog.map((entry) => (
                     <tr key={entry.itemId}>
-                      <td>{entry.itemId}</td>
-                      <td>{itemName(entry.itemId)}</td>
-                      <td>{entry.price}</td>
-                      <td>
+                      <td data-label="ID">{entry.itemId}</td>
+                      <td data-label="Nông sản">{itemName(entry.itemId)}</td>
+                      <td data-label="Giá server">{entry.price}</td>
+                      <td data-label="Hành động">
                         <button
                           type="button"
                           className="ghost compact"
@@ -518,7 +518,7 @@ export function ShopPanel({
                     </tr>
                   ))}
                   {shop.market.data.catalog.length === 0 && (
-                    <tr><td colSpan={4} className="hint">Chợ chưa có danh mục nông sản.</td></tr>
+                    <tr><td colSpan={4} className="hint table-empty-row">Chợ chưa có danh mục nông sản.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -544,10 +544,10 @@ export function ShopPanel({
                   <tbody>
                     {shop.market.data.listings.map((listing) => (
                       <tr key={`${listing.idShop}:${listing.verShop}:${listing.index}`}>
-                        <td>{listing.idShop}/{listing.verShop}</td>
-                        <td>{listing.quantity}</td>
-                        <td>{listing.price} xu</td>
-                        <td><button
+                        <td data-label="ID sạp">{listing.idShop}/{listing.verShop}</td>
+                        <td data-label="Số lượng">{listing.quantity}</td>
+                        <td data-label="Giá">{listing.price} xu</td>
+                        <td data-label="Hành động"><button
                           type="button"
                           className="compact"
                           disabled={
@@ -562,7 +562,7 @@ export function ShopPanel({
                     ))}
                     {shop.market.data.listings.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="hint">Chưa có sạp bán nông sản này</td>
+                        <td colSpan={4} className="hint table-empty-row">Chưa có sạp bán nông sản này</td>
                       </tr>
                     )}
                   </tbody>

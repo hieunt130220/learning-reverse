@@ -1710,3 +1710,55 @@ button.ghost {
   font-weight: 600;
 }
 
+.shop-table { min-width: 0; }
+
+@media (max-width: 679px) {
+  .shop-table-wrap,
+  .auto-sell-rules-table-container { overflow: visible; border: 0; }
+  .shop-table thead,
+  .auto-sell-rules-table thead { display: none; }
+  .shop-table,
+  .shop-table tbody,
+  .auto-sell-rules-table,
+  .auto-sell-rules-table tbody { display: block; width: 100%; }
+  .shop-table tr,
+  .auto-sell-rules-table tr {
+    display: grid;
+    gap: 0;
+    margin-bottom: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #111722;
+    overflow: hidden;
+  }
+  .shop-table td,
+  .auto-sell-rules-table td {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--line);
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .shop-table td::before,
+  .auto-sell-rules-table td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-align: left;
+  }
+  .shop-table td:last-child,
+  .auto-sell-rules-table td:last-child { border-bottom: 0; }
+  .shop-table .table-empty-row,
+  .auto-sell-rules-table .table-empty-row {
+    display: block;
+    text-align: center;
+  }
+  .table-empty-row::before { content: none !important; }
+  .auto-sell-actions-cell { justify-content: space-between; }
+}

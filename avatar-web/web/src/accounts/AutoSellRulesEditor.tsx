@@ -188,7 +188,7 @@ export function AutoSellRulesEditor({
               <tbody>
                 {autoSellRules.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="auto-sell-empty-text">
+                    <td colSpan={4} className="auto-sell-empty-text table-empty-row">
                       Chưa có quy tắc nào
                     </td>
                   </tr>
@@ -200,14 +200,14 @@ export function AutoSellRulesEditor({
 
                     return (
                       <tr key={rule.itemId}>
-                        <td>
+                        <td data-label="Nông sản">
                           <strong>{itemName}</strong>
                         </td>
-                        <td>{rule.quantity.toLocaleString()}</td>
-                        <td>
+                        <td data-label="Số lượng một lô">{rule.quantity.toLocaleString()}</td>
+                        <td data-label="Giá bán">
                           {rule.price.toLocaleString()} <span className="auto-sell-price-range">{priceRangeText}</span>
                         </td>
-                        <td className="auto-sell-actions-cell">
+                        <td data-label="Hành động" className="auto-sell-actions-cell">
                           <button
                             type="button"
                             className="auto-sell-btn-icon"
