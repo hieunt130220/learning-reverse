@@ -65,12 +65,17 @@ export function CookingPanel({
   items: ItemInfo[];
   trees: TreeInfo[];
   animals: AnimalInfo[];
+  produce?: InventoryItem[];
+  /** Nông sản thu được (Cmd70 section 3) — chứa Trứng gà #50, Sữa bò #51... */
+  produce?: InventoryItem[];
 }) {
   const [showRecipes, setShowRecipes] = useState(false);
 
   const recipeCatalog = foods ?? [];
   const inventoryMap = new Map<number, number>();
-  for (const item of inventory) {
+  // Gộp CẢ kho thường (inventory) VÀ nông sản (produce) — vật phẩm như Trứng
+  // gà #50 nằm ở section 3 (produce) của Cmd70, không có trong inventory.
+  for (const item of [...inventory, ...(produce ?? [])]) {
     inventoryMap.set(item.id, (inventoryMap.get(item.id) ?? 0) + item.num);
   }
   const itemNames = new Map<number, string>();

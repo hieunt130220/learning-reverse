@@ -106,6 +106,7 @@ function LoadedOperations({
         items={snapshot?.items ?? []}
         trees={snapshot?.trees ?? []}
         animals={snapshot?.animals ?? []}
+        produce={snapshot?.farmProduce ?? []}
       />
       <AssetsPanel accountId={account.id} farm={snapshot?.farm ?? null} inventory={snapshot?.inventory ?? []} produce={snapshot?.farmProduce ?? []} trees={snapshot?.trees ?? []} animals={snapshot?.animals ?? []} items={snapshot?.items ?? []} />
       <ShopPanel
