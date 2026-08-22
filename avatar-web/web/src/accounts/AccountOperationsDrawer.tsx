@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import type { AccountWithRuntime } from '../types.js';
@@ -96,31 +96,51 @@ function LoadedOperations({
   const snapshot = useAccountRuntime(account.id, account.runtime);
   const isMobile = useMediaQuery('(max-width: 679px)');
   const [activePanel, setActivePanel] = useState<PanelId>('status');
+  const panelsRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const visible = (id: PanelId) => !isMobile || activePanel === id;
+  const selectPanel = (id: PanelId) => {
+    setActivePanel(id);
+    if (panelsRef.current) panelsRef.current.scrollTop = 0;
+  };
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const offset = event.key === 'ArrowRight' ? 1 : -1;
+    const nextIndex = (index + offset + PANEL_TABS.length) % PANEL_TABS.length;
+    const [nextPanel] = PANEL_TABS[nextIndex];
+    selectPanel(nextPanel);
+    tabRefs.current[nextIndex]?.focus();
+  };
 
   return (
-    <>
+    <div className="drawer-operations">
       {isMobile && (
         <nav className="drawer-tabbar" role="tablist" aria-label="Các mục vận hành">
-          {PANEL_TABS.map(([id, label]) => (
+          {PANEL_TABS.map(([id, label], index) => (
             <button
               key={id}
+              ref={(element) => { tabRefs.current[index] = element; }}
+              id={`drawer-tab-${id}`}
               type="button"
               role="tab"
+              aria-controls={`drawer-panel-${id}`}
               aria-selected={activePanel === id}
+              tabIndex={activePanel === id ? 0 : -1}
               className={activePanel === id ? 'active' : ''}
-              onClick={() => setActivePanel(id)}
+              onClick={() => selectPanel(id)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
             >
               {label}
             </button>
           ))}
         </nav>
       )}
-      <div className="drawer-panels">
-        <div className="drawer-panel-slot" hidden={!visible('status')}>
+      <div ref={panelsRef} className="drawer-panels">
+        <div id="drawer-panel-status" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-status' : undefined} hidden={!visible('status')}>
           <StatusPanel accountId={account.id} snap={snapshot} gameUser={account.gameUser} onChanged={() => void reload()} />
         </div>
-        <div className="drawer-panel-slot" hidden={!visible('autofarm')}>
+        <div id="drawer-panel-autofarm" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-autofarm' : undefined} hidden={!visible('autofarm')}>
           <AutoFarmPanel
             accountId={account.id}
             foods={snapshot?.foods}
@@ -132,13 +152,13 @@ function LoadedOperations({
             onPlanDirtyChange={onPlanDirtyChange}
           />
         </div>
-        <div className="drawer-panel-slot" hidden={!visible('quests')}>
+        <div id="drawer-panel-quests" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-quests' : undefined} hidden={!visible('quests')}>
           <QuestsPanel
             accountId={account.id}
             quests={snapshot?.quests ?? null}
           />
         </div>
-        <div className="drawer-panel-slot" hidden={!visible('cooking')}>
+        <div id="drawer-panel-cooking" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-cooking' : undefined} hidden={!visible('cooking')}>
           <CookingPanel
             cooking={snapshot?.cooking}
             foods={snapshot?.foods}
@@ -149,10 +169,10 @@ function LoadedOperations({
             cookingMaterials={snapshot?.cookingMaterials ?? []}
           />
         </div>
-        <div className="drawer-panel-slot" hidden={!visible('assets')}>
+        <div id="drawer-panel-assets" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-assets' : undefined} hidden={!visible('assets')}>
           <AssetsPanel accountId={account.id} farm={snapshot?.farm ?? null} inventory={snapshot?.inventory ?? []} produce={snapshot?.farmProduce ?? []} trees={snapshot?.trees ?? []} animals={snapshot?.animals ?? []} items={snapshot?.items ?? []} />
         </div>
-        <div className="drawer-panel-slot" hidden={!visible('shop')}>
+        <div id="drawer-panel-shop" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-shop' : undefined} hidden={!visible('shop')}>
           <ShopPanel
             accountId={account.id}
             accountName={account.label}
@@ -165,13 +185,13 @@ function LoadedOperations({
             foods={snapshot?.foods ?? []}
           />
         </div>
-        <div className="drawer-panel-slot" hidden={!visible('logs')}>
+        <div id="drawer-panel-logs" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-logs' : undefined} hidden={!visible('logs')}>
           <LogPanel logs={snapshot?.logs ?? []} />
         </div>
         <Link className="btn-link drawer-debug-link" to={`/accounts/${account.id}/debug`} onClick={onOpenDebug}>
           Debug chuyên sâu →
         </Link>
       </div>
-    </>
+    </div>
   );
 }

@@ -313,7 +313,7 @@ button.ghost {
 }
 
 .cell .idx {
-  font-size: 10px;
+  font-size: 11px;
   opacity: 0.6;
 }
 
@@ -495,28 +495,32 @@ button.ghost {
 
 .account-modal { width: min(100%, 480px); border-radius: 12px; padding: 18px; }
 .account-drawer {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100vh;
   height: 100dvh;
-  overflow: auto;
-  padding: 0 12px calc(12px + env(safe-area-inset-bottom));
+  overflow: hidden;
+  padding: 0 calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
   border-width: 0;
   animation: drawer-in 200ms ease-out;
 }
 
 .dialog-heading {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  flex: 0 0 auto;
   padding: calc(12px + env(safe-area-inset-top)) 0 10px;
   background: var(--bg);
 }
 .dialog-heading h2 { margin: 0; color: var(--fg); text-transform: none; letter-spacing: 0; font-size: 18px; }
 .dialog-heading > .ghost { margin-left: auto; }
+.drawer-operations {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
 .drawer-tabbar {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  flex: 0 0 auto;
   display: flex;
   gap: 4px;
   margin: 0 -12px 12px;
@@ -546,7 +550,14 @@ button.ghost {
 }
 
 .drawer-panel-slot[hidden] { display: none; }
-.drawer-panels { display: grid; gap: 16px; }
+.drawer-panels {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: start;
+  gap: 16px;
+  overflow: auto;
+}
 .drawer-debug-link { justify-self: start; margin-bottom: 20px; }
 .dashboard-empty { text-align: center; }
 
@@ -1795,6 +1806,8 @@ button.ghost {
     text-align: right;
     overflow-wrap: anywhere;
   }
+  .shop-table td:not(:last-child),
+  .auto-sell-rules-table td:not(:last-child) { border-bottom: 1px solid var(--line); }
   .shop-table td::before,
   .auto-sell-rules-table td::before {
     content: attr(data-label);
@@ -1823,7 +1836,11 @@ button.ghost {
   .dashboard-header .hint { width: auto; margin-left: auto; order: initial; }
   .accounts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .account-card-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .account-drawer { width: min(720px, 100%); padding: 18px; border-width: 1px; }
+  .account-drawer {
+    width: min(720px, 100%);
+    padding: calc(18px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left));
+    border-width: 1px;
+  }
   .dialog-heading { padding: 0; }
   .tree-plan-palette select { font-size: inherit; }
   .tree-plan-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
