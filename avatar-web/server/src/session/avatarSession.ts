@@ -83,6 +83,7 @@ export interface AvatarSessionSnapshot {
   produce: ProduceSnapshot | null;
   inventory: unknown[];
   farmProduce: unknown[];
+  cookingMaterials: unknown[];
   trees: unknown[];
   items: unknown[];
   animals: unknown[];
@@ -435,6 +436,7 @@ export class AvatarSession {
       produce: this.shopProduceState(),
       inventory: c?.inventory ?? [],
       farmProduce: c?.produce ?? [],
+      cookingMaterials: c?.cookingMaterials ?? [],
       trees: c?.trees ?? [],
       items: c?.items ?? [],
       animals: c?.animals ?? [],
@@ -579,6 +581,9 @@ export class AvatarSession {
     });
     client.on('produce', (produce: unknown) => {
       if (this.isCurrent(client, epoch)) this.emit('farm-produce', produce);
+    });
+    client.on('cooking-materials', (materials: unknown) => {
+      if (this.isCurrent(client, epoch)) this.emit('cooking-materials', materials);
     });
     client.on('trees', (t: unknown) => {
       if (this.isCurrent(client, epoch)) this.emit('trees', t);

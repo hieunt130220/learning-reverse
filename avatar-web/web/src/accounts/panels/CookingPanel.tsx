@@ -54,21 +54,21 @@ export const ANIMAL_PRODUCT_NAMES: Record<number, string> = {
 export function CookingPanel({
   cooking,
   foods,
-  inventory,
   items,
   trees,
   animals,
   produce,
+  cookingMaterials,
 }: {
   cooking?: CookingState;
   foods?: FoodRecipe[];
-  inventory: InventoryItem[];
   items: ItemInfo[];
   trees: TreeInfo[];
   animals: AnimalInfo[];
-  produce?: InventoryItem[];
   /** Nông sản thu được (Cmd70 section 3) — chứa Trứng gà #50, Sữa bò #51... */
   produce?: InventoryItem[];
+  /** Nguyên liệu đặc biệt cho bếp (Cmd70 section 4) — gà nguyên con, mai rùa... */
+  cookingMaterials?: InventoryItem[];
 }) {
   const [showRecipes, setShowRecipes] = useState(false);
 
@@ -76,11 +76,11 @@ export function CookingPanel({
   // (tài khoản idle / chưa kết nối), dùng FALLBACK_RECIPES để UI vẫn hiển thị
   // danh sách món thay vì trắng hoàn toàn.
   const recipeCatalog = foods && foods.length > 0 ? foods : FALLBACK_RECIPES;
-  const inventoryMap = new Map<number, number>();
-  // Gộp CẢ kho thường (inventory) VÀ nông sản (produce) — vật phẩm như Trứng
-  // gà #50 nằm ở section 3 (produce) của Cmd70, không có trong inventory.
-  for (const item of [...inventory, ...(produce ?? [])]) {
-    inventoryMap.set(item.id, (inventoryMap.get(item.id) ?? 0) + item.num);
+  const materialCountMap = new Map<number, number>();
+  // Nguyên liệu bếp chỉ đến từ nông sản section 3 và vật phẩm đặc biệt section 4.
+  // Không lấy inventory vì section 1 chứa hạt có ID trùng nông sản (vd. #4 Nho).
+  for (const item of [...(produce ?? []), ...(cookingMaterials ?? [])]) {
+    materialCountMap.set(item.id, (materialCountMap.get(item.id) ?? 0) + item.num);
   }
   const itemNames = new Map<number, string>();
   for (const item of items) itemNames.set(item.id, item.name);
@@ -161,7 +161,7 @@ export function CookingPanel({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
             {recipeCatalog.map((r) => {
               const materialsStatus = r.materials.map((m) => {
-                const countInBag = inventoryMap.get(m.itemId) ?? 0;
+                const countInBag = materialCountMap.get(m.itemId) ?? 0;
                 const ok = countInBag >= m.count;
                 return { ...m, countInBag, ok };
               });

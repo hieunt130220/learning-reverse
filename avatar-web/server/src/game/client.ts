@@ -149,6 +149,8 @@ export class GameClient extends EventEmitter {
    * bằng chứng lệnh thu hoạch có chạy hay không.
    */
   produce: InventoryItem[] = [];
+  /** Nguyên liệu/vật phẩm đặc biệt dùng cho bếp (section 4 của gói 70). */
+  cookingMaterials: InventoryItem[] = [];
   /** Bảng cây trồng (cmd 76) — dùng để hiện tên thay vì id. */
   trees: TreeInfo[] = [];
   /** Bảng vật phẩm rút từ cùng gói 76. */
@@ -794,15 +796,13 @@ export class GameClient extends EventEmitter {
         // INVENTORY — 4 section; section 1 = hạt giống, 2 = vật phẩm; đuôi chứa số dư xu, farmLevel, levelStore, capacityStore
         const inv = decodeInventory(msg.getData());
         // Section 1 = hạt giống, 2 = vật phẩm thường, 3 = nông sản thu được
-        // (`#6×2813` lúa, `#50×530` trứng gà, `#51×202` sữa bò), 4 = vật phẩm
-        // "đặc biệt" (thịt gia súc gia cầm đã giết mổ: `#276×10` thịt gà, `#279`
-        // ba ba...). CẢ 4 section đều là vật phẩm có thể dùng làm nguyên liệu
-        // nấu ăn, nên gộp section 1+2+4 vào `inventory`; phần nấu (AutoFarm)
-        // tổng hợp `inventory + produce` làm kho nguyên liệu — nếu bỏ section 4
-        // thì thịt gà (276) không bao giờ được tính → luôn báo "thiếu nguyên liệu"
-        // dù người chơi thực sự có.
-        this.inventory = [...inv.seeds, ...inv.items, ...(inv.other[1] ?? [])];
+        // (`#6×2813` lúa, `#50×530` trứng gà, `#51×202` sữa bò), 4 = nguyên liệu
+        // đặc biệt (`#276×10` gà nguyên con, `#279×4` mai rùa may mắn). Phải giữ
+        // section 4 riêng: ID hạt giống có thể trùng ID nông sản (ví dụ #4 Nho),
+        // nên gộp section 1 vào kho nguyên liệu bếp sẽ đếm hạt thành nông sản.
+        this.inventory = [...inv.seeds, ...inv.items];
         this.produce = inv.other[0] ?? [];
+        this.cookingMaterials = inv.other[1] ?? [];
         if (inv.xu !== undefined && inv.xu >= 0) {
           this.money = inv.xu;
           this.emit('money', { type: 1, balance: inv.xu, delta: 0 });
@@ -814,12 +814,14 @@ export class GameClient extends EventEmitter {
         this.emit(
           'log',
           `kho: ${inv.seeds.length} loại hạt, ${inv.items.length} loại vật phẩm, ` +
-            `${this.produce.length} loại nông sản (${this.produce.map((i) => `#${i.id}×${i.num}`).join(' ')})` +
+            `${this.produce.length} loại nông sản (${this.produce.map((i) => `#${i.id}×${i.num}`).join(' ')}), ` +
+            `${this.cookingMaterials.length} loại nguyên liệu bếp (${this.cookingMaterials.map((i) => `#${i.id}×${i.num}`).join(' ')})` +
             (inv.xu !== undefined ? ` · xu: ${inv.xu}` : '') +
             (inv.farmLevel !== undefined ? ` · farmLevel: ${inv.farmLevel}` : ''),
         );
         this.emit('inventory', this.inventory);
         this.emit('produce', [...this.produce]);
+        this.emit('cooking-materials', [...this.cookingMaterials]);
 
         this.syncProgressQuests();
 

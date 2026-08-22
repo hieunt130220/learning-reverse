@@ -184,6 +184,7 @@ export interface AutoFarmClient {
   foods?: FoodRecipe[];
   inventory: InventoryItem[];
   produce?: InventoryItem[];
+  cookingMaterials?: InventoryItem[];
   items: ItemInfo[];
   trees: TreeInfo[];
   animals: AnimalInfo[];
@@ -1142,9 +1143,10 @@ export class AutoFarm extends EventEmitter {
               (cfg.cookingSlotPlan ?? []).map((entry) => [entry.slotIndex, entry]),
             );
 
-            // Tổng hợp kho nguyên liệu hiện có (inventory + produce)
+            // Nguyên liệu bếp chỉ đến từ Cmd70 section 3 (nông sản) và section 4
+            // (vật phẩm đặc biệt); không tính section 1 vì hạt có ID trùng nông sản.
             const availableMaterials = new Map<number, number>();
-            for (const item of [...this.client.inventory, ...(this.client.produce ?? [])]) {
+            for (const item of [...(this.client.produce ?? []), ...(this.client.cookingMaterials ?? [])]) {
               availableMaterials.set(item.id, (availableMaterials.get(item.id) ?? 0) + item.num);
             }
 

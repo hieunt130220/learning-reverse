@@ -1186,8 +1186,8 @@ test('bếp: tự động nấu món theo cookingSlotPlan khi đủ nguyên li�
     animals: [],
     updatedAt: Date.now(),
   });
-  // Kho có 15 Lúa (#6), 10 Trứng gà (#50)
-  client.inventory = [
+  // Nông sản Cmd70 section 3 có 15 Lúa (#6), 10 Trứng gà (#50).
+  client.produce = [
     { id: 6, num: 15 },
     { id: 50, num: 10 },
   ];
@@ -1225,8 +1225,8 @@ test('bếp: không nấu khi thiếu nguyên liệu trong kho', async () => {
     animals: [],
     updatedAt: Date.now(),
   });
-  // Kho chỉ có 2 Lúa (#6) — không đủ 5 Lúa để nấu Cơm #3
-  client.inventory = [
+  // Nông sản Cmd70 section 3 chỉ có 2 Lúa (#6) — không đủ 5 Lúa để nấu Cơm #3.
+  client.produce = [
     { id: 6, num: 2 },
   ];
   client.cookingState = {

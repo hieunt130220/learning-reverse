@@ -358,6 +358,8 @@ export interface SessionSnapshot {
   produce?: ProduceSnapshot | null;
   /** Nông sản thu hoạch (section 3 gói kho cmd 70) — riêng với `produce` của sạp. */
   farmProduce?: InventoryItem[];
+  /** Nguyên liệu đặc biệt cho bếp (section 4 gói kho cmd 70). */
+  cookingMaterials?: InventoryItem[];
   inventory: InventoryItem[];
   trees: TreeInfo[];
   items: ItemInfo[];
