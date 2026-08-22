@@ -574,7 +574,6 @@ export class ShopCoordinator {
               break;
             }
 
-            const targetSlot = freeSlots.shift()!;
             const idempotencyKey = `auto-sell:${this.accountId}:${runId}:${ruleIndex}:${lotIndex}`;
 
             const replay = this.findReplay(idempotencyKey);
@@ -585,6 +584,8 @@ export class ShopCoordinator {
               lotIndex += 1;
               continue;
             }
+
+            const targetSlot = freeSlots.shift()!;
 
             const beforeProduce = countItem(
               this.produce?.items ?? [],
