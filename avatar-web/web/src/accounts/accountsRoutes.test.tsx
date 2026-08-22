@@ -167,3 +167,16 @@ test('plan bẩn chặn beforeunload và save thành công gỡ chặn', async (
   window.dispatchEvent(cleanEvent);
   expect(cleanEvent.defaultPrevented).toBe(false);
 });
+
+test('mobile drawer dùng tab và giữ panel mounted khi chuyển mục', async () => {
+  vi.mocked(window.matchMedia).mockImplementation((query) => ({
+    matches: query === '(max-width: 679px)', media: query, onchange: null,
+    addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+  }));
+  renderRoute('/accounts/1');
+  expect(await screen.findByRole('tab', { name: 'Trạng thái' })).toHaveAttribute('aria-selected', 'true');
+  await userEvent.click(screen.getByRole('tab', { name: 'Tự động' }));
+  expect(screen.getByRole('tab', { name: 'Tự động' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByText(/Kế hoạch cây theo ô/i)).toBeInTheDocument();
+});

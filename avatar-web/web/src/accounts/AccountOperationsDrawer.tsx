@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import type { AccountWithRuntime } from '../types.js';
+import { useMediaQuery } from '../useMediaQuery.js';
 import { useAccounts } from './AccountsProvider.js';
 import { useAccountRuntime } from './useAccountRuntime.js';
 import { useDialogFocus } from './useDialogFocus.js';
@@ -12,6 +13,17 @@ import { LogPanel } from './panels/LogPanel.js';
 import { QuestsPanel } from './panels/QuestsPanel.js';
 import { ShopPanel } from './panels/ShopPanel.js';
 import { StatusPanel } from './panels/StatusPanel.js';
+
+const PANEL_TABS = [
+  ['status', 'Trạng thái'],
+  ['autofarm', 'Tự động'],
+  ['quests', 'Nhiệm vụ'],
+  ['cooking', 'Nấu ăn'],
+  ['assets', 'Tài sản'],
+  ['shop', 'Sạp'],
+  ['logs', 'Log'],
+] as const;
+type PanelId = (typeof PANEL_TABS)[number][0];
 
 export function AccountOperationsDrawer() {
   const navigate = useNavigate();
@@ -82,48 +94,84 @@ function LoadedOperations({
   onOpenDebug(event: MouseEvent<HTMLAnchorElement>): void;
 }) {
   const snapshot = useAccountRuntime(account.id, account.runtime);
+  const isMobile = useMediaQuery('(max-width: 679px)');
+  const [activePanel, setActivePanel] = useState<PanelId>('status');
+  const visible = (id: PanelId) => !isMobile || activePanel === id;
+
   return (
-    <div className="drawer-panels">
-      <StatusPanel accountId={account.id} snap={snapshot} gameUser={account.gameUser} onChanged={() => void reload()} />
-      <AutoFarmPanel
-        accountId={account.id}
-        foods={snapshot?.foods}
-        trees={snapshot?.trees}
-        animals={snapshot?.animals}
-        items={snapshot?.items}
-        shop={snapshot?.shop}
-        produce={snapshot?.produce}
-        onPlanDirtyChange={onPlanDirtyChange}
-      />
-      <QuestsPanel
-        accountId={account.id}
-        quests={snapshot?.quests ?? null}
-      />
-      <CookingPanel
-        cooking={snapshot?.cooking}
-        foods={snapshot?.foods}
-        items={snapshot?.items ?? []}
-        trees={snapshot?.trees ?? []}
-        animals={snapshot?.animals ?? []}
-        produce={snapshot?.farmProduce ?? []}
-        cookingMaterials={snapshot?.cookingMaterials ?? []}
-      />
-      <AssetsPanel accountId={account.id} farm={snapshot?.farm ?? null} inventory={snapshot?.inventory ?? []} produce={snapshot?.farmProduce ?? []} trees={snapshot?.trees ?? []} animals={snapshot?.animals ?? []} items={snapshot?.items ?? []} />
-      <ShopPanel
-        accountId={account.id}
-        accountName={account.label}
-        online={snapshot?.status === 'online'}
-        shop={snapshot?.shop}
-        produce={snapshot?.produce}
-        trees={snapshot?.trees ?? []}
-        animals={snapshot?.animals ?? []}
-        items={snapshot?.items ?? []}
-        foods={snapshot?.foods ?? []}
-      />
-      <LogPanel logs={snapshot?.logs ?? []} />
-      <Link className="btn-link drawer-debug-link" to={`/accounts/${account.id}/debug`} onClick={onOpenDebug}>
-        Debug chuyên sâu →
-      </Link>
-    </div>
+    <>
+      {isMobile && (
+        <nav className="drawer-tabbar" role="tablist" aria-label="Các mục vận hành">
+          {PANEL_TABS.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={activePanel === id}
+              className={activePanel === id ? 'active' : ''}
+              onClick={() => setActivePanel(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      )}
+      <div className="drawer-panels">
+        <div className="drawer-panel-slot" hidden={!visible('status')}>
+          <StatusPanel accountId={account.id} snap={snapshot} gameUser={account.gameUser} onChanged={() => void reload()} />
+        </div>
+        <div className="drawer-panel-slot" hidden={!visible('autofarm')}>
+          <AutoFarmPanel
+            accountId={account.id}
+            foods={snapshot?.foods}
+            trees={snapshot?.trees}
+            animals={snapshot?.animals}
+            items={snapshot?.items}
+            shop={snapshot?.shop}
+            produce={snapshot?.produce}
+            onPlanDirtyChange={onPlanDirtyChange}
+          />
+        </div>
+        <div className="drawer-panel-slot" hidden={!visible('quests')}>
+          <QuestsPanel
+            accountId={account.id}
+            quests={snapshot?.quests ?? null}
+          />
+        </div>
+        <div className="drawer-panel-slot" hidden={!visible('cooking')}>
+          <CookingPanel
+            cooking={snapshot?.cooking}
+            foods={snapshot?.foods}
+            items={snapshot?.items ?? []}
+            trees={snapshot?.trees ?? []}
+            animals={snapshot?.animals ?? []}
+            produce={snapshot?.farmProduce ?? []}
+            cookingMaterials={snapshot?.cookingMaterials ?? []}
+          />
+        </div>
+        <div className="drawer-panel-slot" hidden={!visible('assets')}>
+          <AssetsPanel accountId={account.id} farm={snapshot?.farm ?? null} inventory={snapshot?.inventory ?? []} produce={snapshot?.farmProduce ?? []} trees={snapshot?.trees ?? []} animals={snapshot?.animals ?? []} items={snapshot?.items ?? []} />
+        </div>
+        <div className="drawer-panel-slot" hidden={!visible('shop')}>
+          <ShopPanel
+            accountId={account.id}
+            accountName={account.label}
+            online={snapshot?.status === 'online'}
+            shop={snapshot?.shop}
+            produce={snapshot?.produce}
+            trees={snapshot?.trees ?? []}
+            animals={snapshot?.animals ?? []}
+            items={snapshot?.items ?? []}
+            foods={snapshot?.foods ?? []}
+          />
+        </div>
+        <div className="drawer-panel-slot" hidden={!visible('logs')}>
+          <LogPanel logs={snapshot?.logs ?? []} />
+        </div>
+        <Link className="btn-link drawer-debug-link" to={`/accounts/${account.id}/debug`} onClick={onOpenDebug}>
+          Debug chuyên sâu →
+        </Link>
+      </div>
+    </>
   );
 }
