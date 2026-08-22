@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 
+import type { AutoSellRule } from '../autoFarm.js';
 import type { ShopPolicy } from '../config.js';
 import type { GameClient } from '../game/client.js';
 import type { InventoryItem } from '../game/farmData.js';
@@ -37,6 +38,27 @@ export class ShopError extends Error {
     super(message);
     this.name = 'ShopError';
   }
+}
+
+export type AutoSellStopReason =
+  | 'completed'
+  | 'no-free-slot'
+  | 'stopped'
+  | 'uncertain-state';
+
+export interface AutoSellRuleResult {
+  itemId: number;
+  listedLots: number;
+  listedQuantity: number;
+  skippedReason?: string;
+}
+
+export interface AutoSellCycleResult {
+  startedAt: number;
+  completedAt: number;
+  listedLots: number;
+  stopReason: AutoSellStopReason;
+  rules: AutoSellRuleResult[];
 }
 
 interface BaseWriteInput {
@@ -193,6 +215,7 @@ export class ShopCoordinator {
   private shopChannelBlockedReason: string | null = null;
   private produce: ProduceSnapshot | null;
   private runtime: ShopRuntimeState;
+  private isExecutingAutoSell = false;
 
   constructor(deps: ShopCoordinatorDeps) {
     this.accountId = deps.accountId;
@@ -460,6 +483,233 @@ export class ShopCoordinator {
     const transaction = this.createTransaction('refresh-market', { ...input }, this.captureBefore());
     this.scheduleTransaction(transaction, epoch, (id) => this.runRefreshMarket(id, input));
     return transaction;
+  }
+
+  async runAutoSellCycle(
+    rules: readonly AutoSellRule[],
+    runId: string,
+    shouldStop: () => boolean,
+  ): Promise<AutoSellCycleResult> {
+    return this.enqueue('auto-sell-cycle', async () => {
+      this.isExecutingAutoSell = true;
+      const startedAt = this.now();
+      let totalListedLots = 0;
+      let stopReason: AutoSellStopReason = 'completed';
+      const ruleResults: AutoSellRuleResult[] = [];
+
+      try {
+        if (!this.policy.writeEnabled) {
+          return {
+            startedAt,
+            completedAt: this.now(),
+            listedLots: 0,
+            stopReason: 'completed',
+            rules: [],
+          };
+        }
+
+        try {
+          await this.syncOwnShopInLane();
+        } catch (error) {
+          const normalized = asShopError(error);
+          return {
+            startedAt,
+            completedAt: this.now(),
+            listedLots: 0,
+            stopReason: 'uncertain-state',
+            rules: [],
+          };
+        }
+
+        const ownSlots = this.runtime.own?.data.slots ?? [];
+        const numSlot = this.runtime.own?.data.numSlot ?? 0;
+        const freeSlots: number[] = [];
+        for (let s = 0; s < numSlot; s++) {
+          const slotItem = ownSlots.find((item) => item.slot === s);
+          if (!slotItem || slotItem.itemId === -1 || slotItem.quantity <= 0) {
+            freeSlots.push(s);
+          }
+        }
+
+        for (let ruleIndex = 0; ruleIndex < rules.length; ruleIndex++) {
+          const rule = rules[ruleIndex];
+          const ruleResult: AutoSellRuleResult = {
+            itemId: rule.itemId,
+            listedLots: 0,
+            listedQuantity: 0,
+          };
+          ruleResults.push(ruleResult);
+
+          if (shouldStop()) {
+            stopReason = 'stopped';
+            break;
+          }
+
+          const priceRule = this.runtime.priceRules?.data.find(
+            (pr) => pr.itemId === rule.itemId,
+          );
+          if (!priceRule) {
+            ruleResult.skippedReason = 'Không có price rule';
+            continue;
+          }
+
+          if (rule.price < priceRule.minPrice || rule.price > priceRule.maxPrice) {
+            ruleResult.skippedReason = 'Giá ngoài khoảng quy định';
+            continue;
+          }
+
+          let lotIndex = 0;
+
+          while (freeSlots.length > 0) {
+            if (shouldStop()) {
+              stopReason = 'stopped';
+              break;
+            }
+
+            const availableProduce = countItem(
+              this.produce?.items ?? [],
+              rule.itemId,
+            );
+            if (availableProduce < rule.quantity) {
+              break;
+            }
+
+            const targetSlot = freeSlots.shift()!;
+            const idempotencyKey = `auto-sell:${this.accountId}:${runId}:${ruleIndex}:${lotIndex}`;
+
+            const replay = this.findReplay(idempotencyKey);
+            if (replay && replay.status === 'succeeded') {
+              ruleResult.listedLots += 1;
+              ruleResult.listedQuantity += rule.quantity;
+              totalListedLots += 1;
+              lotIndex += 1;
+              continue;
+            }
+
+            const beforeProduce = countItem(
+              this.produce?.items ?? [],
+              rule.itemId,
+            );
+            const transaction = this.createTransaction(
+              'list',
+              {
+                idempotencyKey,
+                slot: targetSlot,
+                itemId: rule.itemId,
+                quantity: rule.quantity,
+                price: rule.price,
+                expectedShopRevision: this.runtime.own?.revision ?? 0,
+                expectedProduceRevision: this.produce?.revision ?? 0,
+              },
+              this.captureBefore(),
+            );
+
+            try {
+              this.transition(transaction.id, 'sending');
+              const ack = await this.request<
+                Extract<ShopProtocolEvent, { subType: 3 }>
+              >(
+                3,
+                (farm) => {
+                  farm.addItemToShop(
+                    targetSlot,
+                    rule.itemId,
+                    rule.quantity,
+                    rule.price,
+                  );
+                  this.transition(transaction.id, 'awaiting_response');
+                },
+                (event) => event.slot === targetSlot,
+              );
+
+              if (
+                ack.itemId !== rule.itemId ||
+                ack.quantity !== rule.quantity ||
+                ack.price !== rule.price
+              ) {
+                this.transition(transaction.id, 'unknown', {
+                  errorCode: 'SHOP_PROTOCOL_ERROR',
+                  errorMessage: 'Phản hồi đăng bán không khớp request',
+                });
+                stopReason = 'uncertain-state';
+                break;
+              }
+
+              this.transition(transaction.id, 'reconciling', { result: { ack } });
+              await this.syncOwnShopInLane();
+
+              const afterSlot = this.runtime.own?.data.slots.find(
+                (slot) => slot.slot === targetSlot,
+              );
+              const afterProduce = countItem(
+                this.produce?.items ?? [],
+                rule.itemId,
+              );
+
+              if (
+                !afterSlot ||
+                afterSlot.itemId !== rule.itemId ||
+                afterSlot.quantity !== rule.quantity ||
+                afterSlot.price !== rule.price ||
+                afterProduce > beforeProduce - rule.quantity
+              ) {
+                this.transition(transaction.id, 'unknown', {
+                  errorCode: 'SHOP_PROTOCOL_ERROR',
+                  errorMessage: 'Chưa đủ bằng chứng xác nhận đăng bán',
+                });
+                stopReason = 'uncertain-state';
+                break;
+              }
+
+              this.transition(transaction.id, 'succeeded', {
+                result: { ack, own: this.runtime.own, produce: this.produce },
+              });
+
+              ruleResult.listedLots += 1;
+              ruleResult.listedQuantity += rule.quantity;
+              totalListedLots += 1;
+              lotIndex += 1;
+            } catch (error) {
+              const normalized = asShopError(error);
+              const currentTx = this.repository.findTransaction(
+                this.accountId,
+                idempotencyKey,
+              );
+              if (currentTx && !TERMINAL_STATUSES.has(currentTx.status)) {
+                const sent = currentTx.status !== 'queued';
+                this.transition(transaction.id, sent ? 'unknown' : 'failed', {
+                  errorCode: normalized.code,
+                  errorMessage: sent
+                    ? `${normalized.message}; không tự gửi lại giao dịch`
+                    : normalized.message,
+                });
+              }
+              stopReason = 'uncertain-state';
+              break;
+            }
+          }
+
+          if (stopReason !== 'completed') {
+            break;
+          }
+
+          if (freeSlots.length === 0) {
+            stopReason = 'no-free-slot';
+            break;
+          }
+        }
+
+        return {
+          startedAt,
+          completedAt: this.now(),
+          listedLots: totalListedLots,
+          stopReason,
+          rules: ruleResults,
+        };
+      } finally {
+        this.isExecutingAutoSell = false;
+      }
+    });
   }
 
   private enqueue<T>(label: string, run: () => Promise<T>): Promise<T> {
@@ -1228,7 +1478,7 @@ export class ShopCoordinator {
   }
 
   private assertNoAutomation(): void {
-    if (this.isAutomationRunning()) {
+    if (!this.isExecutingAutoSell && this.isAutomationRunning()) {
       throw new ShopError(409, 'OPERATION_CONFLICT', 'AutoFarm hoặc Macro đang chạy');
     }
   }

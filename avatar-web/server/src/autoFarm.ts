@@ -43,6 +43,12 @@ export type KitchenPlanEntry =
   | { slotIndex: number; action: 'cook'; recipeId: number }
   | { slotIndex: number; action: 'skip' };
 
+export interface AutoSellRule {
+  itemId: number;
+  quantity: number;
+  price: number;
+}
+
 export interface AutoFarmConfig {
   /** Hạt để trồng lại ô trống. Bỏ trống = không trồng. */
   seedId?: number;
