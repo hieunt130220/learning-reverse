@@ -1710,9 +1710,8 @@ button.ghost {
   font-weight: 600;
 }
 
-.shop-table { min-width: 0; }
-
 @media (max-width: 679px) {
+  .shop-table { min-width: 0; }
   .shop-table-wrap,
   .auto-sell-rules-table-container { overflow: visible; border: 0; }
   .shop-table thead,
