@@ -403,6 +403,12 @@ export type KitchenPlanEntry =
   | { slotIndex: number; action: 'cook'; recipeId: number }
   | { slotIndex: number; action: 'skip' };
 
+export interface AutoSellRuleDto {
+  itemId: number;
+  quantity: number;
+  price: number;
+}
+
 export interface AutoFarmConfigDto {
   seedId?: number;
   waterItemId?: number;
@@ -445,6 +451,9 @@ export interface AutoFarmConfigDto {
   defaultRecipeId?: number;
   autoClaimDailyQuests?: boolean;
   logoutAfterCycle?: boolean;
+  autoSellProduce?: boolean;
+  autoSellIntervalMs?: number;
+  autoSellRules?: AutoSellRuleDto[];
 }
 
 export interface CachedSeedDto {

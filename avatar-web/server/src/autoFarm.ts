@@ -43,6 +43,12 @@ export type KitchenPlanEntry =
   | { slotIndex: number; action: 'cook'; recipeId: number }
   | { slotIndex: number; action: 'skip' };
 
+export interface AutoSellRule {
+  itemId: number;
+  quantity: number;
+  price: number;
+}
+
 export interface AutoFarmConfig {
   /** Hạt để trồng lại ô trống. Bỏ trống = không trồng. */
   seedId?: number;
@@ -150,6 +156,14 @@ export interface AutoFarmConfig {
   autoClaimDailyQuests?: boolean;
   /** Tự động đăng xuất sau khi hoàn thành 1 chu kỳ auto và đăng nhập lại khi tới chu kỳ kế tiếp. Mặc định: true. */
   logoutAfterCycle?: boolean;
+
+  // ---- Cấu hình Tự động bán nông sản (Auto Sell Produce) -------------------
+  /** Bật/tắt tự động bán nông sản ra sạp chợ. */
+  autoSellProduce?: boolean;
+  /** Khoảng cách giữa các lần quét bán nông sản (ms). */
+  autoSellIntervalMs?: number;
+  /** Danh sách cấu hình các vật phẩm nông sản tự động bán. */
+  autoSellRules?: AutoSellRule[];
 }
 
 export interface AutoFarmState {
