@@ -17,6 +17,7 @@ import {
   parseAnimalSpec,
   isCellSpent,
   DEFAULT_FOOD_CATALOG,
+  getProduceOrItemName,
   type CookingState,
   type DailyQuestState,
   type FoodRecipe,
@@ -1209,7 +1210,15 @@ export class AutoFarm extends EventEmitter {
                   await confirm(91, `nấu món ô ${slot.slot}`);
                   await tick();
                 } else {
-                  note(`[bếp] ô ${slot.slot} thiếu nguyên liệu để nấu "${targetRecipe.name}"`);
+                  const missing = targetRecipe.materials
+                    .filter((mat) => (availableMaterials.get(mat.itemId) ?? 0) < mat.count)
+                    .map((mat) => {
+                      const have = availableMaterials.get(mat.itemId) ?? 0;
+                      const name = getProduceOrItemName(mat.itemId, this.client.trees, this.client.items);
+                      return `${name} #${mat.itemId} (có ${have}/${mat.count})`;
+                    })
+                    .join(', ');
+                  note(`[bếp] ô ${slot.slot} thiếu nguyên liệu để nấu "${targetRecipe.name}": ${missing}`);
                 }
               }
             }

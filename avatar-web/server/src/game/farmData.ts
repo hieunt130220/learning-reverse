@@ -1328,164 +1328,175 @@ export const DEFAULT_FOOD_CATALOG: FoodRecipe[] = [
   {
     id: 22,
     name: 'Heo quay ngũ vị',
-    productID: 133,
-    cookTimeMinutes: 240,
-    level: 4,
+    productID: 284,
+    cookTimeMinutes: 120,
+    level: 1,
     iconId: 284,
     materials: [
-      { itemId: 52, count: 1 },  // Heo (#52)
-      { itemId: 44, count: 10 }, // Ớt (#44)
+      { itemId: 282, count: 3 }, // Thịt heo chế biến (#282)
+      { itemId: 286, count: 500 },
+      { itemId: 6, count: 2000 }, // Lúa (#6)
     ],
   },
   {
     id: 23,
     name: 'Cá chép om dưa',
-    productID: 132,
-    cookTimeMinutes: 180,
-    level: 3,
+    productID: 285,
+    cookTimeMinutes: 120,
+    level: 1,
     iconId: 285,
     materials: [
-      { itemId: 54, count: 2 }, // Cá chép (#54)
-      { itemId: 39, count: 5 }, // Dưa leo (#39)
+      { itemId: 283, count: 1 }, // Cá chép chế biến (#283)
+      { itemId: 286, count: 1000 },
+      { itemId: 0, count: 5000 }, // Cà chua (#0)
     ],
   },
   {
     id: 24,
     name: 'Gà Luộc',
-    productID: 148,
-    cookTimeMinutes: 120,
-    level: 3,
+    productID: 277,
+    cookTimeMinutes: 30,
+    level: 1,
     iconId: 277,
     materials: [
-      { itemId: 50, count: 1 }, // Gà (#50)
+      { itemId: 276, count: 1 }, // Thịt gà sống (#276) — nằm ở section 4 Cmd70
     ],
   },
   {
     id: 25,
     name: 'Gà bó xôi',
-    productID: 149,
-    cookTimeMinutes: 180,
-    level: 3,
+    productID: 278,
+    cookTimeMinutes: 90,
+    level: 1,
     iconId: 278,
     materials: [
-      { itemId: 50, count: 1 },  // Gà (#50)
-      { itemId: 6, count: 10 },  // Lúa (#6)
+      { itemId: 277, count: 1 }, // Gà luộc (#277)
+      { itemId: 50, count: 500 }, // Trứng gà (#50)
+      { itemId: 6, count: 3000 }, // Lúa (#6)
     ],
   },
   {
     id: 26,
     name: 'Baba om chuối',
-    productID: 150,
-    cookTimeMinutes: 240,
-    level: 4,
+    productID: 280,
+    cookTimeMinutes: 90,
+    level: 1,
     iconId: 280,
     materials: [
-      { itemId: 59, count: 2 }, // Rùa/Ba ba (#59)
-      { itemId: 38, count: 5 }, // Chuối (#38)
+      { itemId: 279, count: 1 }, // Ba ba chế biến (#279)
+      { itemId: 249, count: 1000 },
+      { itemId: 286, count: 1000 },
     ],
   },
   {
     id: 27,
     name: 'Tinh Thể Dưa Hấu',
-    productID: 151,
-    cookTimeMinutes: 180,
-    level: 3,
+    productID: 290,
+    cookTimeMinutes: 1440,
+    level: 1,
     iconId: 290,
     materials: [
-      { itemId: 7, count: 20 }, // Dưa hấu (#7)
+      { itemId: 272, count: 10 }, // Dưa hấu cô đặc (#272)
     ],
   },
   {
     id: 28,
     name: 'Gà Đóng Hộp',
-    productID: 152,
-    cookTimeMinutes: 180,
-    level: 3,
+    productID: 291,
+    cookTimeMinutes: 1440,
+    level: 1,
     iconId: 291,
     materials: [
-      { itemId: 50, count: 1 }, // Gà (#50)
+      { itemId: 277, count: 20 }, // Gà luộc (#277)
     ],
   },
   {
     id: 29,
     name: 'Bánh Xèo',
-    productID: 153,
+    productID: 256,
     cookTimeMinutes: 120,
-    level: 3,
+    level: 6,
     iconId: 256,
     materials: [
-      { itemId: 6, count: 10 }, // Lúa (#6)
-      { itemId: 50, count: 5 },  // Trứng gà (#50)
+      { itemId: 282, count: 10 }, // Thịt heo chế biến (#282)
+      { itemId: 50, count: 800 }, // Trứng gà (#50)
+      { itemId: 6, count: 3000 }, // Lúa (#6)
     ],
   },
   {
     id: 30,
     name: 'Trà Hoa Cúc',
-    productID: 154,
-    cookTimeMinutes: 60,
+    productID: 292,
+    cookTimeMinutes: 90,
     level: 1,
     iconId: 292,
     materials: [
-      { itemId: 8, count: 10 }, // Cúc (#8)
+      { itemId: 266, count: 1000 },
+      { itemId: 289, count: 500 },
     ],
   },
   {
     id: 31,
     name: 'Thịt Trâu Gác Bếp',
-    productID: 155,
-    cookTimeMinutes: 240,
-    level: 4,
+    productID: 296,
+    cookTimeMinutes: 90,
+    level: 2,
     iconId: 296,
     materials: [
-      { itemId: 57, count: 1 },  // Trâu (#57)
-      { itemId: 44, count: 10 }, // Ớt (#44)
+      { itemId: 295, count: 3 }, // Thịt trâu chế biến (#295)
     ],
   },
   {
     id: 32,
     name: 'Vịt Quay Lá Mắc Mật',
-    productID: 156,
-    cookTimeMinutes: 180,
-    level: 3,
+    productID: 298,
+    cookTimeMinutes: 120,
+    level: 4,
     iconId: 298,
     materials: [
-      { itemId: 55, count: 1 }, // Vịt (#55)
+      { itemId: 297, count: 3 }, // Vịt chế biến (#297)
+      { itemId: 286, count: 500 },
+      { itemId: 6, count: 2000 }, // Lúa (#6)
+      { itemId: 204, count: 1000 },
     ],
   },
   {
     id: 33,
     name: 'Mì Ramen Thượng Hạng',
-    productID: 157,
-    cookTimeMinutes: 240,
+    productID: 299,
+    cookTimeMinutes: 120,
     level: 4,
     iconId: 299,
     materials: [
-      { itemId: 6, count: 10 }, // Lúa (#6)
-      { itemId: 50, count: 2 },  // Trứng gà (#50)
-      { itemId: 52, count: 1 },  // Heo (#52)
+      { itemId: 6, count: 1000 }, // Lúa (#6)
+      { itemId: 50, count: 500 }, // Trứng gà (#50)
+      { itemId: 51, count: 200 }, // Sữa bò (#51)
+      { itemId: 282, count: 2 }, // Thịt heo chế biến (#282)
     ],
   },
   {
     id: 34,
     name: 'Khoai tây đóng hộp',
-    productID: 158,
-    cookTimeMinutes: 180,
-    level: 3,
+    productID: 300,
+    cookTimeMinutes: 1440,
+    level: 1,
     iconId: 300,
     materials: [
-      { itemId: 43, count: 20 }, // Khoai tây (#43)
+      { itemId: 271, count: 2000 }, // Khoai tây cô đặc (#271)
     ],
   },
   {
     id: 35,
     name: 'Thịt Kho Trứng',
-    productID: 159,
-    cookTimeMinutes: 240,
-    level: 4,
+    productID: 302,
+    cookTimeMinutes: 180,
+    level: 7,
     iconId: 302,
     materials: [
-      { itemId: 52, count: 1 }, // Heo (#52)
-      { itemId: 50, count: 5 }, // Trứng gà (#50)
+      { itemId: 301, count: 1000 },
+      { itemId: 282, count: 5 }, // Thịt heo chế biến (#282)
+      { itemId: 50, count: 500 }, // Trứng gà (#50)
+      { itemId: 212, count: 5 },
     ],
   },
 ];

@@ -793,11 +793,15 @@ export class GameClient extends EventEmitter {
       case 70: {
         // INVENTORY — 4 section; section 1 = hạt giống, 2 = vật phẩm; đuôi chứa số dư xu, farmLevel, levelStore, capacityStore
         const inv = decodeInventory(msg.getData());
-        this.inventory = [...inv.seeds, ...inv.items];
-        // Section 3 = NÔNG SẢN thu được (đo thật: `#6×2813` lúa, `#50×530` trứng
-        // gà, `#51×202` sữa bò — id trùng bảng cây/bảng vật nuôi). Trước đây bị
-        // bỏ đi cùng section 4, nên thu hoạch xong nhìn vào kho thấy y nguyên và
-        // tưởng lệnh không chạy.
+        // Section 1 = hạt giống, 2 = vật phẩm thường, 3 = nông sản thu được
+        // (`#6×2813` lúa, `#50×530` trứng gà, `#51×202` sữa bò), 4 = vật phẩm
+        // "đặc biệt" (thịt gia súc gia cầm đã giết mổ: `#276×10` thịt gà, `#279`
+        // ba ba...). CẢ 4 section đều là vật phẩm có thể dùng làm nguyên liệu
+        // nấu ăn, nên gộp section 1+2+4 vào `inventory`; phần nấu (AutoFarm)
+        // tổng hợp `inventory + produce` làm kho nguyên liệu — nếu bỏ section 4
+        // thì thịt gà (276) không bao giờ được tính → luôn báo "thiếu nguyên liệu"
+        // dù người chơi thực sự có.
+        this.inventory = [...inv.seeds, ...inv.items, ...(inv.other[1] ?? [])];
         this.produce = inv.other[0] ?? [];
         if (inv.xu !== undefined && inv.xu >= 0) {
           this.money = inv.xu;
