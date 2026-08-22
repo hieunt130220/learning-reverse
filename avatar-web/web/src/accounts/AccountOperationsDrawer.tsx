@@ -88,6 +88,11 @@ function LoadedOperations({
       <AutoFarmPanel
         accountId={account.id}
         foods={snapshot?.foods}
+        trees={snapshot?.trees}
+        animals={snapshot?.animals}
+        items={snapshot?.items}
+        shop={snapshot?.shop}
+        produce={snapshot?.produce}
         onPlanDirtyChange={onPlanDirtyChange}
       />
       <QuestsPanel

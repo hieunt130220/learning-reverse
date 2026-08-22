@@ -2,18 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ApiError, apiGet, apiPut } from '../../api.js';
 import type {
+  AnimalInfo,
   AnimalPlanEntry,
   AutoConfigResponse,
   AutoConfigStateDto,
   AutoFarmConfigDto,
   AutoSellRuleDto,
   FarmProfileDto,
+  ItemInfo,
   KitchenPlanEntry,
+  ProduceSnapshot,
+  ShopRuntimeState,
   TreeCellPlanEntry,
+  TreeInfo,
 } from '../../types.js';
 import type { FoodRecipe } from '../../types.js';
 import { BARN_ANIMAL_CATALOG, DEFAULT_BARN_ANIMAL_SLOTS, DEFAULT_POND_ANIMAL_SLOTS, POND_ANIMAL_CATALOG } from '../animalPlan.js';
 import { AnimalPlanEditor } from '../AnimalPlanEditor.js';
+import { AutoSellRulesEditor } from '../AutoSellRulesEditor.js';
 import { KitchenPlanEditor } from '../KitchenPlanEditor.js';
 import { TreeCellPlanEditor } from '../TreeCellPlanEditor.js';
 
@@ -214,12 +220,22 @@ function errorMessage(cause: unknown): string {
 export interface AutoFarmPanelProps {
   accountId: number;
   foods?: FoodRecipe[];
+  trees?: TreeInfo[];
+  animals?: AnimalInfo[];
+  items?: ItemInfo[];
+  shop?: ShopRuntimeState;
+  produce?: ProduceSnapshot | null;
   onPlanDirtyChange?(dirty: boolean): void;
 }
 
 export function AutoFarmPanel({
   accountId,
   foods = [],
+  trees = [],
+  animals = [],
+  items = [],
+  shop,
+  produce,
   onPlanDirtyChange,
 }: AutoFarmPanelProps) {
   const [storedState, setStoredState] = useState<AutoConfigStateDto>(EMPTY_AUTO);
@@ -227,6 +243,9 @@ export function AutoFarmPanel({
   const [draftBarnPlan, setDraftBarnPlan] = useState<AnimalPlanEntry[]>([]);
   const [draftPondPlan, setDraftPondPlan] = useState<AnimalPlanEntry[]>([]);
   const [draftKitchenPlan, setDraftKitchenPlan] = useState<KitchenPlanEntry[]>([]);
+  const [draftAutoSellProduce, setDraftAutoSellProduce] = useState(false);
+  const [draftAutoSellIntervalMs, setDraftAutoSellIntervalMs] = useState(600_000);
+  const [draftAutoSellRules, setDraftAutoSellRules] = useState<AutoSellRuleDto[]>([]);
   const [profile, setProfile] = useState<FarmProfileDto>(EMPTY_PROFILE);
   const [configReady, setConfigReady] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -242,7 +261,21 @@ export function AutoFarmPanel({
 
   const hydrateForm = useCallback((config: Partial<AutoFarmConfigDto>) => {
     setDraftKitchenPlan(sortedKitchenPlan(config.cookingSlotPlan));
+    setDraftAutoSellProduce(config.autoSellProduce ?? false);
+    setDraftAutoSellIntervalMs(config.autoSellIntervalMs ?? 600_000);
+    setDraftAutoSellRules(config.autoSellRules ?? []);
   }, []);
+
+  const nameById = useMemo(() => {
+    const names = new Map<number, string>();
+    for (const entry of trees) names.set(entry.id, entry.name);
+    for (const entry of animals) names.set(entry.id, entry.name);
+    for (const entry of items) names.set(entry.id, entry.name);
+    for (const entry of foods) {
+      if (entry.productID >= 0) names.set(entry.productID, entry.name);
+    }
+    return names;
+  }, [animals, foods, items, trees]);
 
   useEffect(() => {
     const generation = ++requestGeneration.current;
@@ -253,6 +286,9 @@ export function AutoFarmPanel({
     setStoredState(EMPTY_AUTO);
     setDraftPlan([]);
     setDraftKitchenPlan([]);
+    setDraftAutoSellProduce(false);
+    setDraftAutoSellIntervalMs(600_000);
+    setDraftAutoSellRules([]);
     setProfile(EMPTY_PROFILE);
     hydrateForm({});
     setConfigError('');
@@ -291,13 +327,16 @@ export function AutoFarmPanel({
     };
   }, [accountId, hydrateForm]);
 
-  // Chỉ so sánh các phần UI cho phép sửa: kế hoạch cây + vật nuôi (chuồng/hồ) + bếp nấu.
+  // Chỉ so sánh các phần UI cho phép sửa: kế hoạch cây + vật nuôi (chuồng/hồ) + bếp nấu + tự động bán.
   const dirty = useMemo(
     () => planKey(draftPlan) !== planKey(storedState.config.treeCellPlan)
       || animalPlanKey(draftBarnPlan) !== animalPlanKey(storedState.config.barnAnimalPlan)
       || animalPlanKey(draftPondPlan) !== animalPlanKey(storedState.config.pondAnimalPlan)
-      || kitchenPlanKey(draftKitchenPlan) !== kitchenPlanKey(storedState.config.cookingSlotPlan),
-    [draftPlan, draftBarnPlan, draftPondPlan, draftKitchenPlan, storedState.config],
+      || kitchenPlanKey(draftKitchenPlan) !== kitchenPlanKey(storedState.config.cookingSlotPlan)
+      || draftAutoSellProduce !== (storedState.config.autoSellProduce ?? false)
+      || draftAutoSellIntervalMs !== (storedState.config.autoSellIntervalMs ?? 600_000)
+      || JSON.stringify(draftAutoSellRules) !== JSON.stringify(storedState.config.autoSellRules ?? []),
+    [draftPlan, draftBarnPlan, draftPondPlan, draftKitchenPlan, draftAutoSellProduce, draftAutoSellIntervalMs, draftAutoSellRules, storedState.config],
   );
   const planDirtyRef = useRef(dirty);
   planDirtyRef.current = dirty;
@@ -325,6 +364,9 @@ export function AutoFarmPanel({
           cookingSlotPlan: sortedKitchenPlan(draftKitchenPlan),
           autoCook: true,
           autoHarvestCook: true,
+          autoSellProduce: draftAutoSellProduce,
+          autoSellIntervalMs: draftAutoSellIntervalMs,
+          autoSellRules: draftAutoSellRules,
         },
       });
       if (requestGeneration.current !== generation) return;
@@ -340,10 +382,19 @@ export function AutoFarmPanel({
       const nextKitchenPlan = Array.isArray(saved.config.cookingSlotPlan)
         ? sortedKitchenPlan(saved.config.cookingSlotPlan)
         : sortedKitchenPlan(draftKitchenPlan);
+      const nextAutoSellProduce = saved.config.autoSellProduce ?? draftAutoSellProduce;
+      const nextAutoSellIntervalMs = saved.config.autoSellIntervalMs ?? draftAutoSellIntervalMs;
+      const nextAutoSellRules = Array.isArray(saved.config.autoSellRules)
+        ? saved.config.autoSellRules
+        : draftAutoSellRules;
+
       setDraftPlan(nextTreePlan);
       setDraftBarnPlan(nextBarnPlan);
       setDraftPondPlan(nextPondPlan);
       setDraftKitchenPlan(nextKitchenPlan);
+      setDraftAutoSellProduce(nextAutoSellProduce);
+      setDraftAutoSellIntervalMs(nextAutoSellIntervalMs);
+      setDraftAutoSellRules(nextAutoSellRules);
       setStoredState({
         revision: saved.revision,
         config: {
@@ -352,6 +403,9 @@ export function AutoFarmPanel({
           barnAnimalPlan: nextBarnPlan,
           pondAnimalPlan: nextPondPlan,
           cookingSlotPlan: nextKitchenPlan,
+          autoSellProduce: nextAutoSellProduce,
+          autoSellIntervalMs: nextAutoSellIntervalMs,
+          autoSellRules: nextAutoSellRules,
         },
       });
       setPlanNotice(saved.application === 'next-cycle'
@@ -481,6 +535,27 @@ export function AutoFarmPanel({
           disabled={!configReady || saving}
           onChange={(entries) => {
             setDraftKitchenPlan(sortedKitchenPlan(entries));
+            setPlanNotice('');
+            setPlanError('');
+            setConflict(null);
+          }}
+        />
+      </div>
+
+      <div className="setting-section">
+        <h3>🧺 Tự động đưa nông sản lên sạp</h3>
+        <AutoSellRulesEditor
+          autoSellProduce={draftAutoSellProduce}
+          autoSellIntervalMs={draftAutoSellIntervalMs}
+          autoSellRules={draftAutoSellRules}
+          priceRules={shop?.priceRules?.data ?? []}
+          produceItems={produce?.items ?? []}
+          nameById={nameById}
+          disabled={!configReady || saving}
+          onChange={(patch) => {
+            if (patch.autoSellProduce !== undefined) setDraftAutoSellProduce(patch.autoSellProduce);
+            if (patch.autoSellIntervalMs !== undefined) setDraftAutoSellIntervalMs(patch.autoSellIntervalMs);
+            if (patch.autoSellRules !== undefined) setDraftAutoSellRules(patch.autoSellRules);
             setPlanNotice('');
             setPlanError('');
             setConflict(null);
