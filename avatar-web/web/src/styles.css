@@ -635,6 +635,7 @@ button.ghost {
   background: #111722;
   color: var(--fg);
   font: inherit;
+  font-size: 16px;
 }
 
 .tree-plan-grid {
@@ -1824,6 +1825,7 @@ button.ghost {
   .account-card-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .account-drawer { width: min(720px, 100%); padding: 18px; border-width: 1px; }
   .dialog-heading { padding: 0; }
+  .tree-plan-palette select { font-size: inherit; }
   .tree-plan-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
   .shop-heading { display: flex; }
   .shop-read-actions { margin-top: 0; }
@@ -1849,4 +1851,6 @@ button.ghost {
 
   input:not([type='checkbox']):not([type='radio']),
   select { min-height: 40px; }
+
+  .tree-plan-palette select { min-height: 40px; }
 }
