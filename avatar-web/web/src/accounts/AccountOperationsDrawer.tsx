@@ -108,6 +108,7 @@ function LoadedOperations({
   const snapshot = useAccountRuntime(account.id, account.runtime);
   const isMobile = useMediaQuery('(max-width: 679px)');
   const [activePanel, setActivePanel] = useState<PanelId>('status');
+  const [automationMutationBusy, setAutomationMutationBusy] = useState(false);
   const panelsRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const visible = (id: PanelId) => !isMobile || activePanel === id;
@@ -150,7 +151,14 @@ function LoadedOperations({
       )}
       <div ref={panelsRef} className="drawer-panels">
         <div id="drawer-panel-status" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-status' : undefined} hidden={!visible('status')}>
-          <StatusPanel accountId={account.id} snap={snapshot} gameUser={account.gameUser} onChanged={() => void reload()} />
+          <StatusPanel
+            accountId={account.id}
+            snap={snapshot}
+            gameUser={account.gameUser}
+            onChanged={() => void reload()}
+            automationMutationBusy={automationMutationBusy}
+            onAutomationMutationBusyChange={setAutomationMutationBusy}
+          />
         </div>
         <div id="drawer-panel-autofarm" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-autofarm' : undefined} hidden={!visible('autofarm')}>
           <AutoFarmPanel
@@ -169,6 +177,8 @@ function LoadedOperations({
             accountId={account.id}
             automation={snapshot?.automation}
             onDirtyChange={onFindNpcDirtyChange}
+            automationMutationBusy={automationMutationBusy}
+            onAutomationMutationBusyChange={setAutomationMutationBusy}
           />
         </div>
         <div id="drawer-panel-quests" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-quests' : undefined} hidden={!visible('quests')}>

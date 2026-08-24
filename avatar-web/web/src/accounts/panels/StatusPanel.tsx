@@ -9,13 +9,17 @@ export function StatusPanel({
   snap,
   gameUser,
   onChanged,
+  automationMutationBusy = false,
+  onAutomationMutationBusyChange = () => {},
 }: {
   accountId: number;
   snap: SessionSnapshot | null;
   gameUser: string;
   onChanged: () => void;
+  automationMutationBusy?: boolean;
+  onAutomationMutationBusyChange?(busy: boolean): void;
 }) {
-  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoAction, setAutoAction] = useState<'start' | 'stop' | null>(null);
   const [autoErr, setAutoErr] = useState('');
   const [logoutAfterCycle, setLogoutAfterCycle] = useState(true);
   const [loadingOpt, setLoadingOpt] = useState(false);
@@ -54,7 +58,9 @@ export function StatusPanel({
   }, [accountId]);
 
   async function startAuto() {
-    setAutoBusy(true);
+    if (automationMutationBusy || automation?.transitionState === 'switching') return;
+    setAutoAction('start');
+    onAutomationMutationBusyChange(true);
     setAutoErr('');
     try {
       await apiPost(`/api/accounts/${accountId}/automation/start`, { mode: 'auto_farm' });
@@ -62,12 +68,15 @@ export function StatusPanel({
     } catch (e) {
       setAutoErr((e as Error).message);
     } finally {
-      setAutoBusy(false);
+      setAutoAction(null);
+      onAutomationMutationBusyChange(false);
     }
   }
 
   async function stopAuto() {
-    setAutoBusy(true);
+    if (automationMutationBusy || automation?.transitionState === 'switching') return;
+    setAutoAction('stop');
+    onAutomationMutationBusyChange(true);
     setAutoErr('');
     try {
       await apiPost(`/api/accounts/${accountId}/automation/stop`, {});
@@ -75,7 +84,8 @@ export function StatusPanel({
     } catch (e) {
       setAutoErr((e as Error).message);
     } finally {
-      setAutoBusy(false);
+      setAutoAction(null);
+      onAutomationMutationBusyChange(false);
     }
   }
 
@@ -111,11 +121,18 @@ export function StatusPanel({
         {snap?.money !== undefined && <span className="chip">{snap.money} xu</span>}
       </div>
       <div className="row">
-        <button onClick={() => void startAuto()} disabled={farmStable || autoBusy}>
-          {autoBusy && !autoActive ? 'Đang bật…' : 'Bật chăm farm'}
+        <button
+          onClick={() => void startAuto()}
+          disabled={farmStable || autoAction !== null || automationMutationBusy || automation?.transitionState === 'switching'}
+        >
+          {autoAction === 'start' ? 'Đang bật…' : 'Bật chăm farm'}
         </button>
-        <button className="ghost" onClick={() => void stopAuto()} disabled={!autoActive || autoBusy}>
-          {autoBusy && autoActive ? 'Đang tắt…' : 'Dừng tự động'}
+        <button
+          className="ghost"
+          onClick={() => void stopAuto()}
+          disabled={!autoActive || autoAction !== null || automationMutationBusy || automation?.transitionState === 'switching'}
+        >
+          {autoAction === 'stop' ? 'Đang tắt…' : 'Dừng tự động'}
         </button>
         <span className="hint">
           {automation ? `desired=${automation.desiredMode} · active=${automation.activeMode}` : ''}
@@ -126,7 +143,7 @@ export function StatusPanel({
                 ? ` · auto đang chạy — vòng ${auto.cycle}`
                 : ' · auto đang chờ vòng tiếp theo'
               : automation
-                ? ' · tự động đang tắt'
+                ? ' · chăm farm đang tắt'
                 : auto.running
                   ? `auto đang chạy — vòng ${auto.cycle}`
                   : 'auto đang tắt'}
