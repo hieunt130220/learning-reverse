@@ -56,6 +56,8 @@ export interface AutoSellRuleResult {
 export interface AutoSellCycleResult {
   startedAt: number;
   completedAt: number;
+  collectedSoldSlots: number;
+  withdrawnExpiredSlots: number;
   listedLots: number;
   stopReason: AutoSellStopReason;
   rules: AutoSellRuleResult[];
@@ -493,6 +495,8 @@ export class ShopCoordinator {
     return this.enqueue('auto-sell-cycle', async () => {
       this.isExecutingAutoSell = true;
       const startedAt = this.now();
+      let collectedSoldSlots = 0;
+      let withdrawnExpiredSlots = 0;
       let totalListedLots = 0;
       let stopReason: AutoSellStopReason = 'completed';
       const ruleResults: AutoSellRuleResult[] = [];
@@ -502,6 +506,8 @@ export class ShopCoordinator {
           return {
             startedAt,
             completedAt: this.now(),
+            collectedSoldSlots,
+            withdrawnExpiredSlots,
             listedLots: 0,
             stopReason: 'completed',
             rules: [],
@@ -515,6 +521,8 @@ export class ShopCoordinator {
           return {
             startedAt,
             completedAt: this.now(),
+            collectedSoldSlots,
+            withdrawnExpiredSlots,
             listedLots: 0,
             stopReason: 'uncertain-state',
             rules: [],
@@ -703,6 +711,8 @@ export class ShopCoordinator {
         return {
           startedAt,
           completedAt: this.now(),
+          collectedSoldSlots,
+          withdrawnExpiredSlots,
           listedLots: totalListedLots,
           stopReason,
           rules: ruleResults,
