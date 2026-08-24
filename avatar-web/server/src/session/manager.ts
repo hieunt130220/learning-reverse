@@ -137,6 +137,10 @@ export class SessionManager {
       ?? offlineAutomationSnapshot(readAutomationState(this.deps.db, accountId));
   }
 
+  hasVerifiedFindNpcCatalog(): boolean {
+    return (this.deps.findNpcCatalog?.length ?? 0) > 0;
+  }
+
   getShopView(userId: number, accountId: number): ShopView | null {
     if (!getAccount(this.deps.db, userId, accountId)) return null;
     const live = this.sessions.get(accountId);

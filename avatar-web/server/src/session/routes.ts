@@ -1,6 +1,12 @@
 import { Router, type Response } from 'express';
 
 import { normalizeAutoConfig, type AutoConfigProfile } from '../accounts/autoConfig.js';
+import {
+  normalizeFindNpcConfig,
+  readAutomationState,
+  saveFindNpcConfig,
+  setDesiredMode,
+} from '../accounts/automationRepo.js';
 import { DEFAULT_SEED_CATALOG } from '../accounts/defaultSeedCatalog.js';
 import { getFarmProfile } from '../accounts/farmProfileRepo.js';
 import { requireOwnedAccount, type AccountRequest } from '../accounts/routes.js';
@@ -16,6 +22,7 @@ import { makeRequireAuth } from '../auth/middleware.js';
 import type { Db } from '../db/index.js';
 import type { ShopPolicy } from '../config.js';
 import type { Macro } from '../macro.js';
+import type { AutomationApiErrorCode, LoadedAutomationIntent } from './automationTypes.js';
 import type { SessionManager } from './manager.js';
 
 export interface SessionRoutesDeps {
@@ -43,6 +50,23 @@ function fail(res: Response, err: unknown): void {
   const message = (err as Error).message;
   const unavailable = message.includes('chưa kết nối') || message.includes('chưa online');
   res.status(unavailable ? 409 : 500).json({ error: message });
+}
+
+function automationError(
+  res: Response,
+  status: number,
+  code: AutomationApiErrorCode,
+  error: string,
+  extra: Record<string, unknown> = {},
+): void {
+  res.status(status).json({ error, code, ...extra });
+}
+
+function exactObject(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, i) => key === expected[i]);
 }
 
 function configFail(res: Response, err: unknown): void {
@@ -118,6 +142,116 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
   router.post('/:id/disconnect', owned, (req, res) => {
     sessions.disconnect(accountId(req));
     res.json({ ok: true });
+  });
+
+  router.get('/:id/automation', owned, (req, res) => {
+    res.json(sessions.automationSnapshot(accountId(req)));
+  });
+
+  router.put('/:id/automation/find-npc/config', owned, (req, res) => {
+    if (
+      !exactObject(req.body, ['expectedRevision', 'config'])
+      || !Number.isInteger(req.body.expectedRevision)
+      || (req.body.expectedRevision as number) < 0
+    ) {
+      automationError(res, 400, 'invalid-find-npc-config', 'payload cấu hình tìm NPC không hợp lệ');
+      return;
+    }
+    let config;
+    try {
+      config = normalizeFindNpcConfig(req.body.config);
+    } catch (error) {
+      automationError(res, 400, 'invalid-find-npc-config', (error as Error).message);
+      return;
+    }
+    const saved = saveFindNpcConfig(
+      db,
+      accountId(req),
+      req.body.expectedRevision as number,
+      config,
+    );
+    if (saved.status === 'missing') {
+      res.status(404).json({ error: 'không có tài khoản này' });
+      return;
+    }
+    if (saved.status === 'conflict') {
+      automationError(res, 409, 'revision-conflict', 'revision cấu hình đã thay đổi', {
+        current: saved.current,
+      });
+      return;
+    }
+    res.json({ ...saved.state, application: 'next-start' });
+  });
+
+  router.post('/:id/automation/start', owned, async (req, res) => {
+    if (
+      !exactObject(req.body, ['mode'])
+      || (req.body.mode !== 'auto_farm' && req.body.mode !== 'find_npc')
+    ) {
+      automationError(res, 400, 'invalid-automation-mode', 'mode automation không hợp lệ');
+      return;
+    }
+    const id = accountId(req);
+    const mode = req.body.mode;
+    const before = readAutomationState(db, id);
+    if (mode === 'find_npc') {
+      if (!before.findNpcConfig.config.npcName) {
+        automationError(res, 400, 'find-npc-name-required', 'hãy lưu tên NPC trước khi bắt đầu');
+        return;
+      }
+      if (!sessions.hasVerifiedFindNpcCatalog()) {
+        automationError(res, 409, 'catalog-unverified', 'catalog NPC chưa được live-verify');
+        return;
+      }
+    }
+
+    try {
+      setDesiredMode(db, id, mode);
+    } catch {
+      automationError(res, 500, 'automation-start-failed', 'không lưu được mode automation');
+      return;
+    }
+
+    try {
+      const stored = readAutomationState(db, id);
+      const intent: LoadedAutomationIntent = {
+        desiredMode: mode,
+        findNpcConfig: stored.findNpcConfig,
+        location: stored.location,
+      };
+      const outcome = await sessions.switchAutomationMode(id, intent);
+      const snapshot = sessions.automationSnapshot(id);
+      if (outcome === 'connect-pending') {
+        automationError(res, 409, 'automation-connect-pending', 'đang chờ kết nối game', { snapshot });
+        return;
+      }
+      if (outcome === 'start-failed') {
+        setDesiredMode(db, id, 'off');
+        await sessions.stopAutomation(id);
+        automationError(res, 500, 'automation-start-failed', 'không khởi tạo được automation', {
+          snapshot: sessions.automationSnapshot(id),
+        });
+        return;
+      }
+      res.json(snapshot);
+    } catch {
+      setDesiredMode(db, id, 'off');
+      await sessions.stopAutomation(id);
+      automationError(res, 500, 'automation-start-failed', 'không khởi tạo được automation', {
+        snapshot: sessions.automationSnapshot(id),
+      });
+    }
+  });
+
+  router.post('/:id/automation/stop', owned, async (req, res) => {
+    if (!exactObject(req.body ?? {}, [])) {
+      automationError(res, 400, 'invalid-automation-mode', 'payload stop phải rỗng');
+      return;
+    }
+    const id = accountId(req);
+    setDesiredMode(db, id, 'off');
+    await sessions.stopAutomation(id);
+    res.json(sessions.automationSnapshot(id));
   });
 
   router.get('/:id/auto/config', owned, (req, res) => {
@@ -245,10 +379,10 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     }
   });
 
-  router.post('/:id/auto/stop', owned, (req, res) => {
+  router.post('/:id/auto/stop', owned, async (req, res) => {
     const id = accountId(req);
     setAutoEnabled(db, id, false);
-    sessions.peek(id)?.stopAuto();
+    await sessions.peek(id)?.stopAuto();
     res.json({ ok: true });
   });
 
