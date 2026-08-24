@@ -501,6 +501,8 @@ export class AvatarSession {
               return {
                 startedAt: now,
                 completedAt: now,
+                collectedSoldSlots: 0,
+                withdrawnExpiredSlots: 0,
                 listedLots: 0,
                 stopReason: 'completed',
                 rules: rules.map((r) => ({

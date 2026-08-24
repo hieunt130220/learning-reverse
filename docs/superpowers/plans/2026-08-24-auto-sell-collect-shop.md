@@ -35,7 +35,7 @@
 - Consumes: `AutoSellStopReason`, `AutoSellRuleResult`, callback `AutoFarmOptions.runAutoSellCycle` hiện có.
 - Produces: `AutoSellCycleResult` có thêm `collectedSoldSlots: number` và `withdrawnExpiredSlots: number`; mọi producer trả đủ hai trường.
 
-- [ ] **Step 1: Chạy impact analysis cho các symbol sẽ sửa**
+- [x] **Step 1: Chạy impact analysis cho các symbol sẽ sửa**
 
 Run GitNexus:
 
@@ -48,7 +48,7 @@ Nếu `connect` bị nhập nhằng, dùng `context(name="AvatarSession", file_p
 
 Expected: ghi lại risk và d=1 callers; dừng xin xác nhận nếu risk HIGH/CRITICAL.
 
-- [ ] **Step 2: Mở rộng `AutoSellCycleResult` và khởi tạo counters trong coordinator**
+- [x] **Step 2: Mở rộng `AutoSellCycleResult` và khởi tạo counters trong coordinator**
 
 Sửa contract:
 
@@ -78,7 +78,7 @@ collectedSoldSlots,
 withdrawnExpiredSlots,
 ```
 
-- [ ] **Step 3: Cập nhật result khi chưa đến chu kỳ trong `AvatarSession.connect()`**
+- [x] **Step 3: Cập nhật result khi chưa đến chu kỳ trong `AvatarSession.connect()`**
 
 Trong callback `runAutoSellCycle`, nhánh `now - this.lastAutoSellAt < interval` phải trả:
 
@@ -99,7 +99,7 @@ return {
 };
 ```
 
-- [ ] **Step 4: Typecheck contract thay đổi**
+- [x] **Step 4: Typecheck contract thay đổi**
 
 Run:
 
@@ -109,7 +109,7 @@ cd avatar-web/server && npm run typecheck
 
 Expected: PASS; không còn producer nào thiếu `collectedSoldSlots` hoặc `withdrawnExpiredSlots`.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 Trước commit, chạy `gitnexus_detect_changes({ scope: "all" })`, xác nhận chỉ contract Auto Sell và callback session bị ảnh hưởng. Sau đó:
 
@@ -131,7 +131,7 @@ Không stage `AGENTS.md` hoặc `CLAUDE.md`.
 - Consumes: `OwnShopSlot`, `ShopProtocolEvent` sub-type 4, `FarmService.takeItemBack(slot)`, `syncOwnShopInLane()`, `createTransaction()`, `transition()`, `countItem()`, `runId`, `shouldStop()`.
 - Produces: private type `AutoCollectCandidate`; private awaited primitive `collectAutoSellSlot(candidate, runId): Promise<void>`; phase thu dọn cập nhật `collectedSoldSlots`/`withdrawnExpiredSlots` trước khi listing.
 
-- [ ] **Step 1: Chạy impact/context trước khi sửa coordinator internals**
+- [x] **Step 1: Chạy impact/context trước khi sửa coordinator internals**
 
 Run GitNexus:
 
@@ -144,7 +144,7 @@ impact(target="unknownEvidence", direction="upstream", includeTests=true)
 
 Expected: ghi lại callers/flows; dừng xin xác nhận nếu risk HIGH/CRITICAL.
 
-- [ ] **Step 2: Khai báo candidate nội bộ và helper kiểm tra identity**
+- [x] **Step 2: Khai báo candidate nội bộ và helper kiểm tra identity**
 
 Import `OwnShopSlot` bằng type import từ `shopProtocol.js`, rồi khai báo gần các interface nội bộ:
 
@@ -163,7 +163,7 @@ function sameOwnSlot(actual: OwnShopSlot, expected: OwnShopSlot): boolean {
 
 Helper chỉ so identity listing; cờ trạng thái được kiểm tra riêng theo `candidate.kind` để lỗi có thông báo rõ.
 
-- [ ] **Step 3: Thêm primitive `collectAutoSellSlot` có transaction và reconciliation**
+- [x] **Step 3: Thêm primitive `collectAutoSellSlot` có transaction và reconciliation**
 
 Đặt private method cạnh `runListing`/`runWithdraw`:
 
@@ -254,7 +254,7 @@ private async collectAutoSellSlot(
 
 Khi triển khai, giữ nguyên idiom formatting của file. Primitive không enqueue và không gọi `assertNoAutomation()` vì caller đã giữ lane Auto Sell.
 
-- [ ] **Step 4: Chèn pha thu dọn trước khi tính `freeSlots`**
+- [x] **Step 4: Chèn pha thu dọn trước khi tính `freeSlots`**
 
 Ngay sau `syncOwnShopInLane()` thành công, thay việc tính `ownSlots/freeSlots` ngay lập tức bằng:
 
@@ -302,7 +302,7 @@ Sau đó giữ thuật toán xây `freeSlots` và listing hiện tại. Vì `syn
 
 Lưu ý: primitive trả `void` khi candidate đã trống. Để counter không tăng sai, thay signature thành `Promise<'collected' | 'already-free'>` nếu implementation cần phân biệt; khi đó chỉ tăng counter với `'collected'`. Không được ghi nhận một slot là đã thu nếu không gửi/xác nhận giao dịch trong lượt này hoặc replay `succeeded` chứng minh thao tác đã hoàn tất.
 
-- [ ] **Step 5: Mở rộng reconciliation của transaction `withdraw` tự động**
+- [x] **Step 5: Mở rộng reconciliation của transaction `withdraw` tự động**
 
 Trong `unknownEvidence()`, phân nhánh bằng `request.autoCollectKind`:
 
@@ -324,7 +324,7 @@ if (transaction.kind === 'withdraw') {
 
 Public/manual withdraw không có `autoCollectKind`, nên tiếp tục yêu cầu listing cũ biến mất và produce tăng như hành vi hiện tại.
 
-- [ ] **Step 6: Chạy typecheck và test hiện có của server**
+- [x] **Step 6: Chạy typecheck và test hiện có của server**
 
 Run:
 
@@ -335,7 +335,7 @@ cd avatar-web/server && npm test
 
 Expected: cả hai PASS. Không tạo test file mới. Nếu test hiện có cần cập nhật fixture vì contract result thêm field, chỉ sửa fixture/assertion hiện có sau production code và ghi rõ file trong plan checklist trước khi stage.
 
-- [ ] **Step 7: Chạy build server**
+- [x] **Step 7: Chạy build server**
 
 Run:
 
@@ -345,7 +345,7 @@ cd avatar-web/server && npm run build
 
 Expected: PASS và schema được copy vào `dist/db/schema.sql`; không stage output build nếu thư mục dist không được track.
 
-- [ ] **Step 8: Commit Task 2**
+- [x] **Step 8: Commit Task 2**
 
 Chạy `gitnexus_detect_changes({ scope: "all" })`; xác nhận flow bị ảnh hưởng chỉ gồm Auto Sell, shop transaction/reconciliation và caller trực tiếp dự kiến. Sau đó:
 
@@ -367,7 +367,7 @@ Nếu phải sửa test fixture hiện có, stage chính xác file đó cùng co
 - Consumes: `AutoSellCycleResult.collectedSoldSlots`, `AutoSellCycleResult.withdrawnExpiredSlots` từ Task 1/2.
 - Produces: một dòng log/`lastActions` thu dọn khi ít nhất một counter lớn hơn `0`; giữ nguyên dòng summary listing hiện tại.
 
-- [ ] **Step 1: Chạy impact analysis cho `AutoFarm.runCycle` đúng UID**
+- [x] **Step 1: Chạy impact analysis cho `AutoFarm.runCycle` đúng UID**
 
 Do tên `runCycle` bị nhập nhằng, chạy:
 
@@ -379,7 +379,7 @@ impact(target=<UID runCycle trả về>, direction="upstream", includeTests=true
 
 Expected: ghi lại risk/d=1; dừng xin xác nhận nếu HIGH/CRITICAL.
 
-- [ ] **Step 2: Thêm log thu dọn trước summary listing**
+- [x] **Step 2: Thêm log thu dọn trước summary listing**
 
 Sau khi callback trả result và trước dòng `hoàn thành`, thêm:
 
@@ -394,7 +394,7 @@ if (result.collectedSoldSlots > 0 || result.withdrawnExpiredSlots > 0) {
 
 Giữ nguyên log từng rule và `stopReason`. Không log dòng mới khi cả hai counter bằng `0`.
 
-- [ ] **Step 3: Chạy server verification**
+- [x] **Step 3: Chạy server verification**
 
 Run:
 
@@ -406,7 +406,7 @@ cd avatar-web/server && npm run build
 
 Expected: PASS toàn bộ; log compile đúng và không đổi API web.
 
-- [ ] **Step 4: Commit Task 3**
+- [x] **Step 4: Commit Task 3**
 
 Chạy `gitnexus_detect_changes({ scope: "all" })`; xác nhận chỉ Auto Farm logging/cycle flow và các thay đổi feature trước đó. Sau đó:
 
@@ -427,7 +427,7 @@ git commit -m "feat(auto-farm): log collected shop slots"
 - Consumes: production code từ Tasks 1-3.
 - Produces: bằng chứng typecheck/test/build, báo cáo GitNexus scope và checklist manual cho phiên live.
 
-- [ ] **Step 1: Chạy toàn bộ kiểm tra server từ working tree cuối**
+- [x] **Step 1: Chạy toàn bộ kiểm tra server từ working tree cuối**
 
 Run:
 
@@ -439,7 +439,7 @@ cd avatar-web/server && npm run build
 
 Expected: PASS cả ba lệnh.
 
-- [ ] **Step 2: Xác nhận web không bị phá vỡ bởi thay đổi shared workspace**
+- [x] **Step 2: Xác nhận web không bị phá vỡ bởi thay đổi shared workspace**
 
 Run:
 
@@ -449,7 +449,7 @@ cd avatar-web/web && npm run build
 
 Expected: PASS. Không cần sửa web vì contract Auto Sell cycle là nội bộ server.
 
-- [ ] **Step 3: Rà soát diff và scope bằng GitNexus**
+- [x] **Step 3: Rà soát diff và scope bằng GitNexus**
 
 Run:
 
@@ -488,13 +488,13 @@ Chuẩn bị một sạp có slot đã bán, slot hết hạn và slot đang bá
 
 Nếu không có môi trường live, ghi rõ manual verification là chưa chạy; không suy diễn thành công từ build/test.
 
-- [ ] **Step 5: Chạy review trước khi hoàn tất**
+- [x] **Step 5: Chạy review trước khi hoàn tất**
 
 Invoke `superpowers:requesting-code-review` hoặc skill `code-review` trên diff cuối. Xử lý findings đã xác minh; sau mọi chỉnh sửa phải chạy lại verification liên quan và `gitnexus_detect_changes(scope="all")`.
 
 Expected: không còn finding correctness mức blocking.
 
-- [ ] **Step 6: Cập nhật checkbox và commit tài liệu**
+- [x] **Step 6: Cập nhật checkbox và commit tài liệu**
 
 Đánh dấu `- [x]` cho đúng các bước thực sự hoàn tất; để nguyên `- [ ]` cho manual verification chưa chạy. Chạy lại `git diff --check`, sau đó:
 
