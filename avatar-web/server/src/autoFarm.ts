@@ -1264,6 +1264,12 @@ export class AutoFarm extends EventEmitter {
         note('[sạp tự động] bắt đầu kiểm tra sạp...');
         try {
           const result = await this.options.runAutoSellCycle(cfg.autoSellRules, () => this.aborted);
+          if (result.collectedSoldSlots > 0 || result.withdrawnExpiredSlots > 0) {
+            note(
+              `[sạp tự động] đã thu tiền ${result.collectedSoldSlots} ô đã bán, `
+                + `rút hàng ${result.withdrawnExpiredSlots} ô hết hạn`,
+            );
+          }
           note(`[sạp tự động] hoàn thành: đã đăng ${result.listedLots} lô. Lý do dừng: ${result.stopReason}`);
           for (const r of result.rules) {
             if (r.listedLots > 0) {
