@@ -288,11 +288,12 @@ export function setAutoEnabled(
 ): void {
   const now = typeof nowOrIgnoredConfig === 'number' ? nowOrIgnoredConfig : legacyNow;
   db.transaction(() => {
-    db.prepare('UPDATE avatar_accounts SET auto_enabled = ?, updated_at = ? WHERE id = ?').run(
+    const result = db.prepare('UPDATE avatar_accounts SET auto_enabled = ?, updated_at = ? WHERE id = ?').run(
       enabled ? 1 : 0,
       now,
       id,
     );
+    if (result.changes === 0) return;
     db.prepare(
       `INSERT INTO avatar_automation_state (account_id, desired_mode, updated_at)
          VALUES (?, ?, ?)

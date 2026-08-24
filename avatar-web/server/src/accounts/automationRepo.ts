@@ -26,7 +26,9 @@ interface AutomationRow {
   location_observed_at: number | null;
 }
 
-const DEFAULT_CONFIG: StoredFindNpcConfigState = { revision: 0, config: { npcName: '' } };
+function defaultFindNpcConfig(): StoredFindNpcConfigState {
+  return { revision: 0, config: { npcName: '' } };
+}
 
 /** Trim + giới hạn 1..80 Unicode code points; chỉ nhận đúng key `npcName`. */
 export function normalizeFindNpcConfig(input: unknown): FindNpcConfig {
@@ -48,7 +50,7 @@ export function normalizeFindNpcConfig(input: unknown): FindNpcConfig {
 }
 
 function storedFindNpcConfig(raw: string | null): StoredFindNpcConfigState {
-  if (!raw) return DEFAULT_CONFIG;
+  if (!raw) return defaultFindNpcConfig();
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (
@@ -65,7 +67,7 @@ function storedFindNpcConfig(raw: string | null): StoredFindNpcConfigState {
   } catch {
     /* JSON hỏng -> mặc định */
   }
-  return DEFAULT_CONFIG;
+  return defaultFindNpcConfig();
 }
 
 function rowToState(row: AutomationRow) {
@@ -91,7 +93,7 @@ export function readAutomationState(db: Db, accountId: number): StoredAutomation
     )
     .get(accountId);
   if (!row) {
-    return { desiredMode: 'off', findNpcConfig: { ...DEFAULT_CONFIG }, location: null };
+    return { desiredMode: 'off', findNpcConfig: defaultFindNpcConfig(), location: null };
   }
   return rowToState(row);
 }
@@ -169,10 +171,15 @@ export function saveFindNpcLocation(
   const area = location?.area ?? null;
   const observedAt = location ? now : null;
   db.prepare(
-    `UPDATE avatar_automation_state
-        SET current_map = ?, current_area = ?, location_observed_at = ?, updated_at = ?
-      WHERE account_id = ?`,
-  ).run(map, area, observedAt, now, accountId);
+    `INSERT INTO avatar_automation_state
+        (account_id, desired_mode, current_map, current_area, location_observed_at, updated_at)
+     VALUES (?, 'off', ?, ?, ?, ?)
+     ON CONFLICT(account_id) DO UPDATE
+       SET current_map = excluded.current_map,
+           current_area = excluded.current_area,
+           location_observed_at = excluded.location_observed_at,
+           updated_at = excluded.updated_at`,
+  ).run(accountId, map, area, observedAt, now);
 }
 
 export interface DesiredAutomationEntry {
