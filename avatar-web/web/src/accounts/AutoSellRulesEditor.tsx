@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import type { AutoSellRuleDto, ShopPriceRule } from '../types.js';
 
 export interface AutoSellRulesEditorProps {
   autoSellProduce: boolean;
-  autoSellIntervalMs: number;
   autoSellRules: AutoSellRuleDto[];
   priceRules: ShopPriceRule[];
   produceItems: { id: number; num: number }[];
@@ -12,14 +11,12 @@ export interface AutoSellRulesEditorProps {
   disabled?: boolean;
   onChange(patch: {
     autoSellProduce?: boolean;
-    autoSellIntervalMs?: number;
     autoSellRules?: AutoSellRuleDto[];
   }): void;
 }
 
 export function AutoSellRulesEditor({
   autoSellProduce,
-  autoSellIntervalMs,
   autoSellRules,
   priceRules,
   produceItems: _produceItems,
@@ -27,16 +24,6 @@ export function AutoSellRulesEditor({
   disabled = false,
   onChange,
 }: AutoSellRulesEditorProps) {
-  // Input local state for interval (minutes)
-  const [intervalMinutesInput, setIntervalMinutesInput] = useState<string>(() =>
-    Math.round(autoSellIntervalMs / 60000).toString(),
-  );
-
-  // Sync internal interval input state when prop changes from outside
-  useEffect(() => {
-    setIntervalMinutesInput(Math.round(autoSellIntervalMs / 60000).toString());
-  }, [autoSellIntervalMs]);
-
   // Map itemId -> priceRule for fast lookup
   const priceRulesMap = useMemo(() => {
     const map = new Map<number, ShopPriceRule>();
@@ -132,15 +119,6 @@ export function AutoSellRulesEditor({
     onChange({ autoSellRules: nextRules });
   };
 
-  // Handle interval change
-  const handleIntervalChange = (valStr: string) => {
-    setIntervalMinutesInput(valStr);
-    const num = parseInt(valStr, 10);
-    if (!isNaN(num) && num >= 5 && Number.isInteger(num)) {
-      onChange({ autoSellIntervalMs: num * 60000 });
-    }
-  };
-
   return (
     <div className="auto-sell-rules-editor">
       <div className="auto-sell-header-controls">
@@ -153,20 +131,6 @@ export function AutoSellRulesEditor({
           />
           <span>Tự động bán trên sạp</span>
         </label>
-
-        <div className="auto-sell-interval-control">
-          <span>Chu kỳ kiểm tra:</span>
-          <input
-            type="number"
-            min={5}
-            step={1}
-            className="auto-sell-input-interval"
-            value={intervalMinutesInput}
-            disabled={disabled}
-            onChange={(e) => handleIntervalChange(e.target.value)}
-          />
-          <span>Phút</span>
-        </div>
       </div>
 
       {priceRules.length === 0 ? (

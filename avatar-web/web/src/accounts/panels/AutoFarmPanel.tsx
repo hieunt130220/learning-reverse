@@ -546,7 +546,6 @@ export function AutoFarmPanel({
         <h3>🧺 Tự động đưa nông sản lên sạp</h3>
         <AutoSellRulesEditor
           autoSellProduce={draftAutoSellProduce}
-          autoSellIntervalMs={draftAutoSellIntervalMs}
           autoSellRules={draftAutoSellRules}
           priceRules={shop?.priceRules?.data ?? []}
           produceItems={produce?.items ?? []}
@@ -554,7 +553,6 @@ export function AutoFarmPanel({
           disabled={!configReady || saving}
           onChange={(patch) => {
             if (patch.autoSellProduce !== undefined) setDraftAutoSellProduce(patch.autoSellProduce);
-            if (patch.autoSellIntervalMs !== undefined) setDraftAutoSellIntervalMs(patch.autoSellIntervalMs);
             if (patch.autoSellRules !== undefined) setDraftAutoSellRules(patch.autoSellRules);
             setPlanNotice('');
             setPlanError('');
