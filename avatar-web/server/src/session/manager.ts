@@ -133,8 +133,14 @@ export class SessionManager {
   }
 
   automationSnapshot(accountId: number): AutomationSnapshot {
-    return this.sessions.get(accountId)?.automationSnapshot()
-      ?? offlineAutomationSnapshot(readAutomationState(this.deps.db, accountId));
+    const persisted = readAutomationState(this.deps.db, accountId);
+    const live = this.sessions.get(accountId)?.automationSnapshot();
+    if (!live) return offlineAutomationSnapshot(persisted);
+
+    return {
+      ...live,
+      findNpcConfig: persisted.findNpcConfig,
+    };
   }
 
   hasVerifiedFindNpcCatalog(): boolean {
