@@ -134,6 +134,33 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function loginWithTimeout(
+  client: GameClient,
+  options: Parameters<GameClient['login']>[0],
+  timeoutMs: number,
+): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      try {
+        client.logout();
+      } finally {
+        reject(new RedactedProbeError('login', 'hết giờ kết nối hoặc bắt đầu đăng nhập game'));
+      }
+    }, timeoutMs);
+  });
+
+  try {
+    const login = client.login(options);
+    await Promise.race([login, timeout]);
+  } catch (error) {
+    if (error instanceof RedactedProbeError) throw error;
+    throw new RedactedProbeError('login', 'không thể kết nối hoặc bắt đầu đăng nhập game');
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function waitUntilOnline(client: GameClient, timeoutMs: number): Promise<void> {
   if (client.status === 'online') return Promise.resolve();
   if (client.status === 'error' || client.status === 'idle') {
@@ -278,17 +305,13 @@ async function runProbe(args: ProbeArgs, metadata: TxRxMetadata[]): Promise<void
     const row = getAccountById(db, args.accountId);
     if (!row) throw new RedactedProbeError('account', `không có account #${args.accountId}`);
 
-    try {
-      await client.login({
-        host: row.host,
-        port: row.port,
-        user: row.gameUser,
-        pass: readGamePass(db, config.masterKey, args.accountId),
-        device: row.device,
-      });
-    } catch {
-      throw new RedactedProbeError('login', 'không thể kết nối hoặc bắt đầu đăng nhập game');
-    }
+    await loginWithTimeout(client, {
+      host: row.host,
+      port: row.port,
+      user: row.gameUser,
+      pass: readGamePass(db, config.masterKey, args.accountId),
+      device: row.device,
+    }, 12_000);
     await waitUntilOnline(client, 10_000);
 
     client.on('traffic', onTraffic);
