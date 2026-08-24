@@ -1404,13 +1404,17 @@ export class ShopCoordinator {
     if (transaction.kind === 'withdraw') {
       const slot = Number(request.slot);
       const listing = this.runtime.own?.data.slots.find((candidate) => candidate.slot === slot);
-      const oldListingGone = !listing
+      const manualListingGone = !listing
         || listing.itemId !== itemId
-        || listing.quantity !== quantity
+        || listing.quantity !== quantity;
+      const autoCollectListingGone = manualListingGone
         || listing.price !== Number(request.expectedPrice);
       if (request.autoCollectKind === 'sold') {
-        if (oldListingGone) return { ownRevision: this.runtime.own?.revision };
-      } else if (oldListingGone && produceDelta >= quantity) {
+        if (autoCollectListingGone) return { ownRevision: this.runtime.own?.revision };
+      } else if (
+        (request.autoCollectKind === 'expired' ? autoCollectListingGone : manualListingGone)
+        && produceDelta >= quantity
+      ) {
         return { ownRevision: this.runtime.own?.revision, produceRevision: this.produce?.revision };
       }
     }
