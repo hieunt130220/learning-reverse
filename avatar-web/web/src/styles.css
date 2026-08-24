@@ -561,6 +561,13 @@ button.ghost {
 .drawer-debug-link { justify-self: start; margin-bottom: 20px; }
 .dashboard-empty { text-align: center; }
 
+.find-npc-status { display: grid; gap: 0.45rem; }
+.find-npc-status > h2,
+.find-npc-status > label,
+.find-npc-status > p { margin: 0; }
+.find-npc-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+.find-npc-conflict { border-left: 3px solid var(--accent); padding-left: 0.75rem; }
+
 /* --- kế hoạch cây theo ô --- */
 .setting-section {
   border: 1px solid var(--line);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import type { AccountWithRuntime } from '../types.js';
@@ -9,6 +9,7 @@ import { useDialogFocus } from './useDialogFocus.js';
 import { AssetsPanel } from './panels/AssetsPanel.js';
 import { AutoFarmPanel } from './panels/AutoFarmPanel.js';
 import { CookingPanel } from './panels/CookingPanel.js';
+import { FindNpcPanel } from './panels/FindNpcPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
 import { QuestsPanel } from './panels/QuestsPanel.js';
 import { ShopPanel } from './panels/ShopPanel.js';
@@ -17,6 +18,7 @@ import { StatusPanel } from './panels/StatusPanel.js';
 const PANEL_TABS = [
   ['status', 'Trạng thái'],
   ['autofarm', 'Tự động'],
+  ['find_npc', 'Tìm NPC'],
   ['quests', 'Nhiệm vụ'],
   ['cooking', 'Nấu ăn'],
   ['assets', 'Tài sản'],
@@ -35,22 +37,29 @@ export function AccountOperationsDrawer() {
     : undefined;
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const [planDirty, setPlanDirty] = useState(false);
-  const canLeave = () => !planDirty || window.confirm('Kế hoạch cây chưa lưu. Bỏ thay đổi?');
+  const [dirtySources, setDirtySources] = useState({ farm: false, findNpc: false });
+  const anyDirty = dirtySources.farm || dirtySources.findNpc;
+  const setFarmDirty = useCallback((dirty: boolean) => {
+    setDirtySources((current) => current.farm === dirty ? current : { ...current, farm: dirty });
+  }, []);
+  const setFindNpcDirty = useCallback((dirty: boolean) => {
+    setDirtySources((current) => current.findNpc === dirty ? current : { ...current, findNpc: dirty });
+  }, []);
+  const canLeave = () => !anyDirty || window.confirm('Có thay đổi chưa lưu. Bỏ thay đổi?');
   const close = () => {
     if (canLeave()) navigate('/accounts');
   };
   useDialogFocus({ open: true, containerRef: dialogRef, initialFocusRef: closeRef, onClose: close });
 
   useEffect(() => {
-    if (!planDirty) return;
+    if (!anyDirty) return;
     const blockUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', blockUnload);
     return () => window.removeEventListener('beforeunload', blockUnload);
-  }, [planDirty]);
+  }, [anyDirty]);
 
   const openDebug = (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
@@ -70,7 +79,8 @@ export function AccountOperationsDrawer() {
           <LoadedOperations
             account={account}
             reload={reload}
-            onPlanDirtyChange={setPlanDirty}
+            onPlanDirtyChange={setFarmDirty}
+            onFindNpcDirtyChange={setFindNpcDirty}
             onOpenDebug={openDebug}
           />
         ) : (
@@ -86,11 +96,13 @@ function LoadedOperations({
   account,
   reload,
   onPlanDirtyChange,
+  onFindNpcDirtyChange,
   onOpenDebug,
 }: {
   account: AccountWithRuntime;
   reload(): Promise<void>;
   onPlanDirtyChange(dirty: boolean): void;
+  onFindNpcDirtyChange(dirty: boolean): void;
   onOpenDebug(event: MouseEvent<HTMLAnchorElement>): void;
 }) {
   const snapshot = useAccountRuntime(account.id, account.runtime);
@@ -150,6 +162,13 @@ function LoadedOperations({
             shop={snapshot?.shop}
             produce={snapshot?.produce}
             onPlanDirtyChange={onPlanDirtyChange}
+          />
+        </div>
+        <div id="drawer-panel-find_npc" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-find_npc' : undefined} hidden={!visible('find_npc')}>
+          <FindNpcPanel
+            accountId={account.id}
+            automation={snapshot?.automation}
+            onDirtyChange={onFindNpcDirtyChange}
           />
         </div>
         <div id="drawer-panel-quests" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-quests' : undefined} hidden={!visible('quests')}>

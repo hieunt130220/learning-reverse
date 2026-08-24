@@ -22,7 +22,16 @@ export function StatusPanel({
   const [savingOpt, setSavingOpt] = useState(false);
   const farmSync = snap?.farmSync;
   const auto = snap?.auto ?? { running: false, cycle: 0, lastActions: [] };
-  const autoActive = auto.running || snap?.desiredConnected === true;
+  const automation = snap?.automation;
+  const autoActive = automation
+    ? automation.desiredMode !== 'off'
+      || automation.activeMode !== 'off'
+      || automation.transitionState === 'switching'
+    : auto.running;
+  const farmStable = automation
+    ? automation.transitionState === 'stable'
+      && (automation.desiredMode === 'auto_farm' || automation.activeMode === 'auto_farm')
+    : auto.running;
 
   useEffect(() => {
     let active = true;
@@ -48,7 +57,7 @@ export function StatusPanel({
     setAutoBusy(true);
     setAutoErr('');
     try {
-      await apiPost(`/api/accounts/${accountId}/auto/start`, {});
+      await apiPost(`/api/accounts/${accountId}/automation/start`, { mode: 'auto_farm' });
       onChanged();
     } catch (e) {
       setAutoErr((e as Error).message);
@@ -61,7 +70,7 @@ export function StatusPanel({
     setAutoBusy(true);
     setAutoErr('');
     try {
-      await apiPost(`/api/accounts/${accountId}/auto/stop`);
+      await apiPost(`/api/accounts/${accountId}/automation/stop`, {});
       onChanged();
     } catch (e) {
       setAutoErr((e as Error).message);
@@ -102,19 +111,28 @@ export function StatusPanel({
         {snap?.money !== undefined && <span className="chip">{snap.money} xu</span>}
       </div>
       <div className="row">
-        <button onClick={() => void startAuto()} disabled={autoActive || autoBusy}>
-          {autoBusy && !autoActive ? 'Đang bật…' : 'Bật auto'}
+        <button onClick={() => void startAuto()} disabled={farmStable || autoBusy}>
+          {autoBusy && !autoActive ? 'Đang bật…' : 'Bật chăm farm'}
         </button>
         <button className="ghost" onClick={() => void stopAuto()} disabled={!autoActive || autoBusy}>
-          {autoBusy && autoActive ? 'Đang tắt…' : 'Tắt auto'}
+          {autoBusy && autoActive ? 'Đang tắt…' : 'Dừng tự động'}
         </button>
         <span className="hint">
-          {auto.running
-            ? `auto đang chạy — vòng ${auto.cycle}`
-            : autoActive
-              ? 'auto đang chờ vòng tiếp theo'
-              : 'auto đang tắt'}
-          {auto.lastRun ? ` · lần cuối ${new Date(auto.lastRun).toLocaleTimeString()}` : ''}
+          {automation ? `desired=${automation.desiredMode} · active=${automation.activeMode}` : ''}
+          {automation?.transitionState === 'switching'
+            ? ' · Đang chuyển chế độ'
+            : automation?.desiredMode === 'auto_farm' || automation?.activeMode === 'auto_farm'
+              ? auto.running
+                ? ` · auto đang chạy — vòng ${auto.cycle}`
+                : ' · auto đang chờ vòng tiếp theo'
+              : automation
+                ? ' · tự động đang tắt'
+                : auto.running
+                  ? `auto đang chạy — vòng ${auto.cycle}`
+                  : 'auto đang tắt'}
+          {(automation?.activeMode === 'auto_farm' || (!automation && auto.running)) && auto.lastRun
+            ? ` · lần cuối ${new Date(auto.lastRun).toLocaleTimeString()}`
+            : ''}
         </span>
       </div>
       <div className="row" style={{ marginTop: '0.25rem' }}>

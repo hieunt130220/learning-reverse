@@ -126,7 +126,7 @@ test('Escape hỏi xác nhận khi plan bẩn và chỉ đóng khi đồng ý', 
 
   await userEvent.keyboard('{Escape}');
   expect(screen.getByTestId('location')).toHaveTextContent('/accounts/1');
-  expect(confirm).toHaveBeenLastCalledWith('Kế hoạch cây chưa lưu. Bỏ thay đổi?');
+  expect(confirm).toHaveBeenLastCalledWith('Có thay đổi chưa lưu. Bỏ thay đổi?');
 
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/accounts'));
@@ -146,7 +146,7 @@ test.each([
 
   await leave();
   expect(screen.getByTestId('location')).toHaveTextContent('/accounts/1');
-  expect(confirm).toHaveBeenLastCalledWith('Kế hoạch cây chưa lưu. Bỏ thay đổi?');
+  expect(confirm).toHaveBeenLastCalledWith('Có thay đổi chưa lưu. Bỏ thay đổi?');
 
   await leave();
   const expected = kind === 'link Debug' ? '/accounts/1/debug' : '/accounts';

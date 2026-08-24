@@ -54,8 +54,8 @@ test('hiển thị trạng thái và chỉ hiển thị các nút điều khiể
   expect(screen.getByText('500000 xu')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Kết nối' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Ngắt' })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Bật auto' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Tắt auto' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Bật chăm farm' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Dừng tự động' })).toBeEnabled();
   expect(screen.getByText(/auto đang chạy — vòng 15/)).toBeInTheDocument();
 });
 
@@ -73,9 +73,9 @@ test('đang chờ vòng kế tiếp thì vẫn giữ auto active và không cho 
     />,
   );
 
-  expect(screen.getByRole('button', { name: 'Bật auto' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Tắt auto' })).toBeEnabled();
-  expect(screen.getByText('auto đang chờ vòng tiếp theo')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Bật chăm farm' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Dừng tự động' })).toBeDisabled();
+  expect(screen.getByText('auto đang tắt')).toBeInTheDocument();
 });
 
 test('Bật auto gọi API auto/start và callback onChanged', async () => {
@@ -89,12 +89,12 @@ test('Bật auto gọi API auto/start và callback onChanged', async () => {
     />,
   );
 
-  const startBtn = screen.getByRole('button', { name: 'Bật auto' });
+  const startBtn = screen.getByRole('button', { name: 'Bật chăm farm' });
   expect(startBtn).toBeEnabled();
   await userEvent.click(startBtn);
 
   await waitFor(() => {
-    expect(mocks.apiPost).toHaveBeenCalledWith('/api/accounts/1/auto/start', {});
+    expect(mocks.apiPost).toHaveBeenCalledWith('/api/accounts/1/automation/start', { mode: 'auto_farm' });
     expect(onChanged).toHaveBeenCalled();
   });
 });
@@ -110,12 +110,12 @@ test('Tắt auto gọi API auto/stop và callback onChanged', async () => {
     />,
   );
 
-  const stopBtn = screen.getByRole('button', { name: 'Tắt auto' });
+  const stopBtn = screen.getByRole('button', { name: 'Dừng tự động' });
   expect(stopBtn).toBeEnabled();
   await userEvent.click(stopBtn);
 
   await waitFor(() => {
-    expect(mocks.apiPost).toHaveBeenCalledWith('/api/accounts/1/auto/stop');
+    expect(mocks.apiPost).toHaveBeenCalledWith('/api/accounts/1/automation/stop', {});
     expect(onChanged).toHaveBeenCalled();
   });
 });
@@ -131,6 +131,6 @@ test('hiển thị lỗi khi gọi bật auto thất bại', async () => {
     />,
   );
 
-  await userEvent.click(screen.getByRole('button', { name: 'Bật auto' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Bật chăm farm' }));
   expect(await screen.findByText('Máy chủ từ chối')).toBeInTheDocument();
 });
