@@ -1,4 +1,11 @@
-import { getAccount, getAccountById, listAutoEnabled, readGamePass, setAutoEnabled, updateCachedMetrics } from '../accounts/repo.js';
+import { getAccount, getAccountById, readGamePass, updateCachedMetrics } from '../accounts/repo.js';
+import {
+  listDesiredAutomation,
+  offlineAutomationSnapshot,
+  readAutomationState,
+  saveFindNpcLocation,
+  setDesiredMode,
+} from '../accounts/automationRepo.js';
 import { ShopRepository, type ProduceSnapshot, type ShopRuntimeState } from '../accounts/shopRepo.js';
 import type { ShopPolicy } from '../config.js';
 import { updateFarmCells } from '../accounts/farmProfileRepo.js';
@@ -11,6 +18,12 @@ import {
   type AvatarSessionOptions,
   type AvatarSessionSnapshot,
 } from './avatarSession.js';
+import type {
+  AutomationSnapshot,
+  AutomationStartOutcome,
+  LoadedAutomationIntent,
+  NpcMapLocation,
+} from './automationTypes.js';
 import { ShopCoordinator } from './shopCoordinator.js';
 
 /** Giãn cách giữa các lần đăng nhập lúc khởi động. */
@@ -23,6 +36,7 @@ export interface SessionManagerDeps {
   broadcast(userId: number, accountId: number, type: string, payload: unknown): void;
   shopRepository?: ShopRepository;
   shopPolicy?: ShopPolicy;
+  findNpcCatalog?: readonly NpcMapLocation[];
   createSession?(opts: AvatarSessionOptions): AvatarSession;
   setTimeoutFn?: typeof setTimeout;
 }
@@ -118,6 +132,11 @@ export class SessionManager {
     return this.sessions.get(accountId)?.snapshot() ?? null;
   }
 
+  automationSnapshot(accountId: number): AutomationSnapshot {
+    return this.sessions.get(accountId)?.automationSnapshot()
+      ?? offlineAutomationSnapshot(readAutomationState(this.deps.db, accountId));
+  }
+
   getShopView(userId: number, accountId: number): ShopView | null {
     if (!getAccount(this.deps.db, userId, accountId)) return null;
     const live = this.sessions.get(accountId);
@@ -141,6 +160,17 @@ export class SessionManager {
     await this.getOrCreate(accountId).startAuto(cfg);
   }
 
+  async switchAutomationMode(
+    accountId: number,
+    intent: LoadedAutomationIntent,
+  ): Promise<AutomationStartOutcome> {
+    return this.getOrCreate(accountId).switchAutomationMode(intent);
+  }
+
+  async stopAutomation(accountId: number): Promise<void> {
+    await this.sessions.get(accountId)?.stopAutomation();
+  }
+
   disconnect(accountId: number): void {
     this.sessions.get(accountId)?.stop();
   }
@@ -158,22 +188,25 @@ export class SessionManager {
   }
 
   /**
-   * Bật lại mọi tài khoản có `auto_enabled = 1`, giãn cách vài giây một lần:
+   * Bật lại mọi tài khoản có automation intent, giãn cách vài giây một lần:
    * mở một loạt phiên cùng lúc từ cùng một IP là thứ dễ bị server game để ý nhất.
    */
   async bootstrap(): Promise<void> {
-    const accounts = listAutoEnabled(this.deps.db);
-    if (accounts.length === 0) return;
+    const entries = listDesiredAutomation(this.deps.db);
+    if (entries.length === 0) return;
 
     const startAt = async (i: number): Promise<void> => {
-      const acc = accounts[i];
+      const entry = entries[i];
       try {
-        await this.connect(acc.id);
+        const outcome = await this.switchAutomationMode(entry.accountId, entry.intent);
+        if (outcome === 'start-failed') {
+          setDesiredMode(this.deps.db, entry.accountId, 'off');
+        }
       } catch (err) {
         // Một tài khoản hỏng (sai khoá, vượt trần) không được chặn phần còn lại.
-        console.error(`bootstrap #${acc.id} lỗi: ${(err as Error).message}`);
+        console.error(`bootstrap #${entry.accountId} lỗi: ${(err as Error).message}`);
       }
-      if (i + 1 < accounts.length) {
+      if (i + 1 < entries.length) {
         this.setTimeoutFn(() => void startAt(i + 1), BOOTSTRAP_STAGGER_MS);
       }
     };
@@ -197,21 +230,25 @@ export class SessionManager {
       accountId,
       shopRepository: this.shopRepository,
       shopPolicy: this.shopPolicy,
+      findNpcCatalog: this.deps.findNpcCatalog ?? [],
       cachedMetrics: account.cachedMetrics,
       onMetrics: (patch) => updateCachedMetrics(db, accountId, patch),
+      onAutomationLocation: (location) => saveFindNpcLocation(db, accountId, location),
       // Đọc lại DB mỗi lần kết nối: mật khẩu hoặc cấu hình auto có thể đã đổi
       // giữa hai lần thử lại.
       loadCredentials: async (): Promise<AvatarCredentials> => {
         const row = getAccountById(db, accountId);
         if (!row) throw new Error(`không có tài khoản #${accountId}`);
+        const automation = readAutomationState(db, accountId);
         return {
           host: row.host,
           port: row.port,
           user: row.gameUser,
           pass: readGamePass(db, masterKey, accountId),
           device: row.device as Partial<DeviceProfile> | undefined,
-          autoEnabled: row.autoEnabled,
+          autoEnabled: automation.desiredMode === 'auto_farm',
           autoConfig: row.autoConfig as Partial<AutoFarmConfig> | undefined,
+          automation,
         };
       },
       onEvent: (type, payload) => {
@@ -238,7 +275,7 @@ export class SessionManager {
       onPermanentFailure: () => {
         // DB là ý muốn của người dùng. Sai mật khẩu game thì ý muốn "chạy 24/7"
         // phải bị gỡ, nếu không restart sau đó lại lao vào vòng đăng nhập sai.
-        setAutoEnabled(db, accountId, false);
+        setDesiredMode(db, accountId, 'off');
         broadcast(userId, accountId, 'auto-disabled', { accountId });
       },
     };

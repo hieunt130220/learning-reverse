@@ -13,6 +13,12 @@ import {
 import { getFarmProfile } from '../accounts/farmProfileRepo.js';
 import { DEFAULT_SEED_CATALOG } from '../accounts/defaultSeedCatalog.js';
 import type { AvatarSession, AvatarSessionOptions } from './avatarSession.js';
+import {
+  idleFindNpcRuntime,
+  type AutomationSnapshot,
+  type AutomationStartOutcome,
+  type LoadedAutomationIntent,
+} from './automationTypes.js';
 import { BOOTSTRAP_STAGGER_MS, SessionManager } from './manager.js';
 
 /** `AvatarSession` giả — ghi lại lời gọi, không mở socket. */
@@ -21,6 +27,11 @@ class FakeSession {
   stopped = 0;
   desiredConnected = false;
   startedConfig: unknown;
+  private intent: LoadedAutomationIntent = {
+    desiredMode: 'off',
+    findNpcConfig: { revision: 0, config: { npcName: '' } },
+    location: null,
+  };
   constructor(readonly opts: AvatarSessionOptions) {}
   async start() {
     this.started += 1;
@@ -33,6 +44,26 @@ class FakeSession {
   }
   snapshot() {
     return { accountId: this.opts.accountId, status: 'online' };
+  }
+  async switchAutomationMode(intent: LoadedAutomationIntent): Promise<AutomationStartOutcome> {
+    this.intent = intent;
+    this.started += 1;
+    this.desiredConnected = intent.desiredMode !== 'off';
+    this.startedConfig = (await this.opts.loadCredentials()).autoConfig;
+    return 'active';
+  }
+  automationSnapshot(): AutomationSnapshot {
+    return {
+      desiredMode: this.intent.desiredMode,
+      activeMode: this.intent.desiredMode,
+      transitionState: 'stable',
+      findNpcConfig: this.intent.findNpcConfig,
+      findNpcRuntime: idleFindNpcRuntime(this.intent.findNpcConfig.config.npcName),
+      location: this.intent.location,
+    };
+  }
+  async stopAutomation(): Promise<void> {
+    this.intent = { ...this.intent, desiredMode: 'off' };
   }
 }
 
