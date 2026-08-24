@@ -52,7 +52,7 @@ import {
   type ShopProtocolEvent,
   type ShopProtocolWarning,
 } from './shopProtocol.js';
-import { decodeEnterWorld, type EnterWorldSnapshot } from './worldData.js';
+import { decodeEnterWorld, WorldDataDecodeError, type EnterWorldSnapshot } from './worldData.js';
 
 /**
  * Giá trị handler cho `GET_HANDLER (-1)`. `GlobalLogicHandler.doGetHandler`
@@ -466,6 +466,14 @@ export class GameClient extends EventEmitter {
         cleanup();
         resolve(snap);
       };
+      const onSnapshotError = (error: unknown): void => {
+        cleanup();
+        reject(
+          error instanceof WorldDataDecodeError
+            ? error
+            : new WorldDataDecodeError('enter-world', -1, error instanceof Error ? error.message : String(error)),
+        );
+      };
       const onAbort = (): void => {
         cleanup();
         reject(new Error('chờ enter-world bị hủy'));
@@ -477,6 +485,7 @@ export class GameClient extends EventEmitter {
       const cleanup = (): void => {
         if (timer) clearTimeout(timer);
         this.removeListener('world-snapshot', onSnapshot);
+        this.removeListener('world-snapshot-error', onSnapshotError);
         signal.removeEventListener('abort', onAbort);
         this.session.removeListener('closed', onClosed);
       };
@@ -485,6 +494,7 @@ export class GameClient extends EventEmitter {
         reject(new Error('hết giờ chờ gói enter-world (-34)'));
       }, timeoutMs);
       this.once('world-snapshot', onSnapshot);
+      this.once('world-snapshot-error', onSnapshotError);
       signal.addEventListener('abort', onAbort, { once: true });
       this.session.once('closed', onClosed);
       if (signal.aborted) onAbort();

@@ -160,8 +160,8 @@ export class SessionManager {
     await this.getOrCreate(accountId).start();
   }
 
-  async startAuto(accountId: number, cfg: Partial<AutoFarmConfig>): Promise<void> {
-    await this.getOrCreate(accountId).startAuto(cfg);
+  async startAuto(accountId: number, cfg: Partial<AutoFarmConfig>): Promise<AutomationStartOutcome> {
+    return await this.getOrCreate(accountId).startAuto(cfg);
   }
 
   async switchAutomationMode(
@@ -238,6 +238,10 @@ export class SessionManager {
       cachedMetrics: account.cachedMetrics,
       onMetrics: (patch) => updateCachedMetrics(db, accountId, patch),
       onAutomationLocation: (location) => saveFindNpcLocation(db, accountId, location),
+      onAutomationFailure: () => {
+        setDesiredMode(db, accountId, 'off');
+        broadcast(userId, accountId, 'auto-disabled', { accountId });
+      },
       // Đọc lại DB mỗi lần kết nối: mật khẩu hoặc cấu hình auto có thể đã đổi
       // giữa hai lần thử lại.
       loadCredentials: async (): Promise<AvatarCredentials> => {

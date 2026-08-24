@@ -22,6 +22,8 @@ export interface AutoFindNpcOptions {
   onFound: (location: AutomationLocation) => void;
   /** Hai miss hợp lệ liên tiếp: xóa location, quay scanning. */
   onMissing: () => void;
+  /** Lỗi terminal (kể cả callback persist): owner phải rollback mode an toàn. */
+  onTerminalFailure?: (error: Error) => void;
   now?: () => number;
   setTimeoutFn?: typeof setTimeout;
   clearTimeoutFn?: typeof clearTimeout;
@@ -61,6 +63,7 @@ export class AutoFindNpc {
   private current?: NpcMapLocation;
   private probing?: NpcMapLocation;
   private missingCount = 0;
+  private lastMissingObservedAt?: number;
   private lastJoinAt = 0;
   private abortController = new AbortController();
   private pendingTimer?: NodeJS.Timeout;
@@ -123,6 +126,7 @@ export class AutoFindNpc {
     this.current = undefined;
     this.probing = undefined;
     this.missingCount = 0;
+    this.lastMissingObservedAt = undefined;
     this.lastJoinAt = 0;
     this.abortController = new AbortController();
     const runEpoch = ++this.epoch;
@@ -130,8 +134,16 @@ export class AutoFindNpc {
     this.emitState();
     // Xin context Park đúng MỘT lần trước vòng quét; mốc lastJoinAt buộc join
     // đầu tiên cách context-switch ít nhất một scanIntervalMs.
-    this.opts.client.enterParkContext();
-    this.lastJoinAt = this.now();
+    try {
+      this.opts.client.enterParkContext();
+      this.lastJoinAt = this.now();
+    } catch (error) {
+      const failure = asError(error);
+      this.lastError = failure.message;
+      this.finish(runEpoch);
+      this.notifyTerminalFailure(failure);
+      throw failure;
+    }
     void this.loop(runEpoch);
   }
 
@@ -156,16 +168,23 @@ export class AutoFindNpc {
   // --- vòng quét -----------------------------------------------------------
 
   private async loop(runEpoch: number): Promise<void> {
+    let failure: Error | undefined;
     try {
       while (!this.stopped && runEpoch === this.epoch) {
-        const progressed = this.phase === 'tracking'
+        const progressed = this.current
           ? await this.trackingStep(runEpoch)
           : await this.scanningStep(runEpoch);
         if (!progressed) break;
       }
+    } catch (error) {
+      if (!this.stopped && runEpoch === this.epoch) {
+        failure = asError(error);
+        this.lastError = failure.message;
+      }
     } finally {
       this.finish(runEpoch);
     }
+    if (failure) this.notifyTerminalFailure(failure);
   }
 
   /** true = tiếp tục vòng kế; false = dừng (stopped hoặc lệch epoch). */
@@ -198,13 +217,7 @@ export class AutoFindNpc {
     } catch (err) {
       this.probing = undefined;
       if (this.stopped || runEpoch !== this.epoch) return false;
-      this.timeoutStreak += 1;
-      const growth = Math.min(this.timeoutStreak, MAX_TIMEOUT_STREAK_FOR_BACKOFF_GROWTH);
-      const backoff = Math.min(MAX_TIMEOUT_BACKOFF_MS, TIMEOUT_STREAK_BASE_MS * 2 ** (growth - 1));
-      this.backoffUntil = this.now() + backoff;
-      this.lastError = (err as Error).message;
-      this.phase = 'scan_backoff';
-      this.emitState();
+      this.recordSnapshotFailure(asError(err));
       return true;
     }
     this.probing = undefined;
@@ -217,6 +230,7 @@ export class AutoFindNpc {
       const location: AutomationLocation = { map: target.map, area: target.area, observedAt: this.now() };
       this.current = { map: target.map, area: target.area };
       this.missingCount = 0;
+      this.lastMissingObservedAt = undefined;
       this.phase = 'tracking';
       this.emitState();
       this.opts.onFound(location);
@@ -235,6 +249,13 @@ export class AutoFindNpc {
   private async trackingStep(runEpoch: number): Promise<boolean> {
     const here = this.current;
     if (!here) return false;
+    if (this.backoffUntil !== undefined) {
+      const remain = this.backoffUntil - this.now();
+      if (remain > 0 && !(await this.delay(remain))) return false;
+      this.backoffUntil = undefined;
+      this.phase = 'tracking';
+      this.emitState();
+    }
     const sinceLast = this.now() - this.lastJoinAt;
     if (sinceLast < this.trackingIntervalMs) {
       if (!(await this.delay(this.trackingIntervalMs - sinceLast))) return false;
@@ -248,23 +269,34 @@ export class AutoFindNpc {
       this.opts.client.joinPark(here.map, here.area);
       this.lastJoinAt = this.now();
       snap = await pending;
-    } catch {
+    } catch (error) {
       if (this.stopped || runEpoch !== this.epoch) return false;
-      // Tracking mất một lần refresh không đủ căn cứ rời vị trí: thử lại.
-      this.lastError = 'mất snapshot khi tracking';
-      this.emitState();
+      // Tracking mất snapshot/decode không phải miss hợp lệ; áp cùng backoff có trần.
+      this.recordSnapshotFailure(asError(error));
       return true;
     }
     if (this.stopped || runEpoch !== this.epoch) return false;
 
+    this.timeoutStreak = 0;
+    this.backoffUntil = undefined;
+    this.lastError = undefined;
+    this.phase = 'tracking';
+    this.emitState();
     const wanted = normalizeNpcName(this.opts.targetName);
     const stillThere = snap.specials.some((special) => normalizeNpcName(special.name) === wanted);
     if (stillThere) {
       this.missingCount = 0;
+      this.lastMissingObservedAt = undefined;
       this.opts.onFound({ map: here.map, area: here.area, observedAt: this.now() });
       return true;
     }
-    this.missingCount += 1;
+    const observedAt = this.now();
+    if (this.lastMissingObservedAt === undefined) {
+      this.missingCount = 1;
+      this.lastMissingObservedAt = observedAt;
+    } else if (observedAt - this.lastMissingObservedAt >= this.trackingIntervalMs) {
+      this.missingCount += 1;
+    }
     if (this.missingCount >= 2) {
       const idx = this.opts.catalog.findIndex(
         (entry) => entry.map === here.map && entry.area === here.area,
@@ -273,6 +305,7 @@ export class AutoFindNpc {
       this.current = undefined;
       this.probing = undefined;
       this.missingCount = 0;
+      this.lastMissingObservedAt = undefined;
       this.phase = 'scanning';
       this.emitState();
       this.opts.onMissing();
@@ -290,7 +323,27 @@ export class AutoFindNpc {
     }
     this.abortController.abort();
     this.emitState();
-    this.settle?.();
+    const settle = this.settle;
+    this.settle = undefined;
+    settle?.();
+  }
+
+  private recordSnapshotFailure(error: Error): void {
+    this.timeoutStreak += 1;
+    const growth = Math.min(this.timeoutStreak, MAX_TIMEOUT_STREAK_FOR_BACKOFF_GROWTH);
+    const backoff = Math.min(MAX_TIMEOUT_BACKOFF_MS, TIMEOUT_STREAK_BASE_MS * 2 ** (growth - 1));
+    this.backoffUntil = this.now() + backoff;
+    this.lastError = error.message;
+    this.phase = 'scan_backoff';
+    this.emitState();
+  }
+
+  private notifyTerminalFailure(error: Error): void {
+    try {
+      this.opts.onTerminalFailure?.(error);
+    } catch {
+      /* owner đã nhận terminal state; callback persistence không được tạo rejection */
+    }
   }
 
   /** Delay có thể bị stop cắt ngang; resolve false nếu phải bỏ cuộc. */
@@ -322,4 +375,8 @@ export class AutoFindNpc {
       /* callback của owner lỗi không được giết runner */
     }
   }
+}
+
+function asError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
 }

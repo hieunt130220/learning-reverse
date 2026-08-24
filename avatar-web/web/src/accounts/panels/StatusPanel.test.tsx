@@ -73,9 +73,9 @@ test('đang chờ vòng kế tiếp thì vẫn giữ auto active và không cho 
     />,
   );
 
-  expect(screen.getByRole('button', { name: 'Bật chăm farm' })).toBeEnabled();
-  expect(screen.getByRole('button', { name: 'Dừng tự động' })).toBeDisabled();
-  expect(screen.getByText('auto đang tắt')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Bật chăm farm' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Dừng tự động' })).toBeEnabled();
+  expect(screen.getByText('auto đang chờ kết nối / vòng tiếp theo')).toBeInTheDocument();
 });
 
 test('Bật auto gọi API auto/start và callback onChanged', async () => {
@@ -94,7 +94,7 @@ test('Bật auto gọi API auto/start và callback onChanged', async () => {
   await userEvent.click(startBtn);
 
   await waitFor(() => {
-    expect(mocks.apiPost).toHaveBeenCalledWith('/api/accounts/1/automation/start', { mode: 'auto_farm' });
+    expect(mocks.apiPost).toHaveBeenCalledWith('/api/accounts/1/auto/start', {});
     expect(onChanged).toHaveBeenCalled();
   });
 });
@@ -105,6 +105,22 @@ test('Tắt auto gọi API auto/stop và callback onChanged', async () => {
     <StatusPanel
       accountId={1}
       snap={onlineSnapshot}
+      automationSupported
+      automation={{
+        desiredMode: 'auto_farm',
+        activeMode: 'auto_farm',
+        transitionState: 'stable',
+        findNpcConfig: { revision: 0, config: { npcName: '' } },
+        findNpcRuntime: {
+          phase: 'idle',
+          running: false,
+          targetName: '',
+          cursor: 0,
+          total: 0,
+          timeoutStreak: 0,
+        },
+        location: null,
+      }}
       gameUser="user123"
       onChanged={onChanged}
     />,

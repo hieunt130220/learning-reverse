@@ -210,12 +210,18 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
       automationError(res, 400, 'invalid-find-npc-config', (error as Error).message);
       return;
     }
-    const saved = saveFindNpcConfig(
-      db,
-      accountId(req),
-      req.body.expectedRevision as number,
-      config,
-    );
+    let saved: ReturnType<typeof saveFindNpcConfig>;
+    try {
+      saved = saveFindNpcConfig(
+        db,
+        accountId(req),
+        req.body.expectedRevision as number,
+        config,
+      );
+    } catch {
+      automationError(res, 500, 'automation-start-failed', 'không lưu được cấu hình tìm NPC');
+      return;
+    }
     if (saved.status === 'missing') {
       res.status(404).json({ error: 'không có tài khoản này' });
       return;
@@ -468,7 +474,11 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
           cfg = result.state.config;
         }
         // DB là nguồn sự thật: commit ý muốn trước khi chạm runtime.
-        await sessions.startAuto(id, cfg);
+        const outcome = await sessions.startAuto(id, cfg);
+        if (outcome === 'start-failed') {
+          await rollbackAutomation(id);
+          throw new Error('không khởi tạo được tự động');
+        }
       });
       if (!res.headersSent) res.json(sessions.snapshot(id));
     } catch (err) {

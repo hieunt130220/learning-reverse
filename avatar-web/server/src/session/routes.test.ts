@@ -11,6 +11,7 @@ import { getAccountById, getAutoConfig, saveAutoConfig } from '../accounts/repo.
 import type { AvatarSession, AvatarSessionOptions } from './avatarSession.js';
 import { SessionManager } from './manager.js';
 import { sessionRouter } from './routes.js';
+import type { AutomationStartOutcome } from './automationTypes.js';
 
 const INVITE = 'ma-moi';
 const PASSWORD = 'mat-khau-du-dai';
@@ -18,6 +19,7 @@ const PASSWORD = 'mat-khau-du-dai';
 class FakeSession {
   calls: Array<{ name: string; args: unknown[] }> = [];
   throwOn?: string;
+  startOutcome: AutomationStartOutcome = 'active';
   updateResult: 'next-cycle' | 'next-start' = 'next-cycle';
   refreshResult: 'success' | 'offline' | 'timeout' = 'success';
   constructor(readonly opts: AvatarSessionOptions) {}
@@ -31,8 +33,9 @@ class FakeSession {
   stop() {
     this.record('stop');
   }
-  startAuto(cfg: unknown) {
+  async startAuto(cfg: unknown): Promise<AutomationStartOutcome> {
     this.record('startAuto', cfg);
+    return this.startOutcome;
   }
   updateAutoConfig(cfg: unknown) {
     this.record('updateAutoConfig', cfg);
@@ -40,6 +43,9 @@ class FakeSession {
   }
   stopAuto() {
     this.record('stopAuto');
+  }
+  async stopAutomation() {
+    this.record('stopAutomation');
   }
   startMacro(m: unknown) {
     this.record('startMacro', m);
@@ -163,17 +169,18 @@ test('auto/start khi chưa kết nối tự tạo session và đăng nhập', as
   db.close();
 });
 
-test('phiên ném lỗi khi bật auto thì DB vẫn giữ ý muốn và trả 500', async () => {
+test('phiên báo start-failed khi bật auto thì rollback ý muốn và trả lỗi lịch sử', async () => {
   const { db, server, made, id } = await setup();
   await server.fetch(`/api/accounts/${id}/connect`, { method: 'POST' });
-  made[0].throwOn = 'startAuto';
+  made[0].startOutcome = 'start-failed';
   const r = await server.fetch(`/api/accounts/${id}/auto/start`, {
     method: 'POST',
     json: { harvest: true },
   });
   assert.equal(r.status, 500);
-  // Ý muốn đã ghi rồi: bootstrap sau restart vẫn bật lại đúng.
-  assert.equal(getAccountById(db, id)!.autoEnabled, true);
+  assert.equal(r.body.error, 'không khởi tạo được tự động');
+  assert.equal(getAccountById(db, id)!.autoEnabled, false);
+  assert.deepEqual(made[0].calls.slice(-2).map((call) => call.name), ['startAuto', 'stopAutomation']);
   await server.close();
   db.close();
 });

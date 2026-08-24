@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import type { AccountWithRuntime } from '../types.js';
+import type { AccountWithRuntime, AutomationSnapshot } from '../types.js';
 import { useMediaQuery } from '../useMediaQuery.js';
 import { useAccounts } from './AccountsProvider.js';
 import { useAccountRuntime } from './useAccountRuntime.js';
@@ -77,6 +77,7 @@ export function AccountOperationsDrawer() {
         </header>
         {loading ? <p className="hint">đang tải…</p> : account ? (
           <LoadedOperations
+            key={account.id}
             account={account}
             reload={reload}
             onPlanDirtyChange={setFarmDirty}
@@ -109,9 +110,17 @@ function LoadedOperations({
   const isMobile = useMediaQuery('(max-width: 679px)');
   const [activePanel, setActivePanel] = useState<PanelId>('status');
   const [automationMutationBusy, setAutomationMutationBusy] = useState(false);
+  const [automationSupported, setAutomationSupported] = useState<boolean | undefined>();
+  const [fetchedAutomation, setFetchedAutomation] = useState<AutomationSnapshot | undefined>();
   const panelsRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const visible = (id: PanelId) => !isMobile || activePanel === id;
+  const automation = snapshot?.automation ?? fetchedAutomation;
+  const handleAutomationCapabilityChange = useCallback((supported: boolean, loaded?: AutomationSnapshot) => {
+    setAutomationSupported(supported);
+    if (loaded) setFetchedAutomation(loaded);
+    else if (!supported) setFetchedAutomation(undefined);
+  }, []);
   const selectPanel = (id: PanelId) => {
     setActivePanel(id);
     if (panelsRef.current) panelsRef.current.scrollTop = 0;
@@ -154,6 +163,8 @@ function LoadedOperations({
           <StatusPanel
             accountId={account.id}
             snap={snapshot}
+            automation={automation}
+            automationSupported={snapshot?.automation ? true : automationSupported}
             gameUser={account.gameUser}
             onChanged={() => void reload()}
             automationMutationBusy={automationMutationBusy}
@@ -175,10 +186,11 @@ function LoadedOperations({
         <div id="drawer-panel-find_npc" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-find_npc' : undefined} hidden={!visible('find_npc')}>
           <FindNpcPanel
             accountId={account.id}
-            automation={snapshot?.automation}
+            automation={automation}
             onDirtyChange={onFindNpcDirtyChange}
             automationMutationBusy={automationMutationBusy}
             onAutomationMutationBusyChange={setAutomationMutationBusy}
+            onAutomationCapabilityChange={handleAutomationCapabilityChange}
           />
         </div>
         <div id="drawer-panel-quests" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-quests' : undefined} hidden={!visible('quests')}>
