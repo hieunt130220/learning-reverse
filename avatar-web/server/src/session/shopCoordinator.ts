@@ -7,6 +7,7 @@ import type { InventoryItem } from '../game/farmData.js';
 import type { FarmService } from '../game/farmService.js';
 import type {
   DecodedShopPacket,
+  OwnShopSlot,
   ShopProtocolEvent,
 } from '../game/shopProtocol.js';
 import {
@@ -149,6 +150,12 @@ interface ClientListeners {
   produce: (items: InventoryItem[]) => void;
 }
 
+type AutoCollectCandidate =
+  | { kind: 'sold'; slot: OwnShopSlot }
+  | { kind: 'expired'; slot: OwnShopSlot };
+
+type AutoCollectResult = 'collected' | 'already-free';
+
 const TERMINAL_STATUSES = new Set<ShopTransactionStatus>(['succeeded', 'failed', 'unknown']);
 
 function defensiveClone<T>(value: T): T {
@@ -157,6 +164,13 @@ function defensiveClone<T>(value: T): T {
 
 function countItem(items: readonly InventoryItem[], itemId: number): number {
   return items.find((item) => item.id === itemId)?.num ?? 0;
+}
+
+function sameOwnSlot(actual: OwnShopSlot, expected: OwnShopSlot): boolean {
+  return actual.slot === expected.slot
+    && actual.itemId === expected.itemId
+    && actual.quantity === expected.quantity
+    && actual.price === expected.price;
 }
 
 function requireInteger(
@@ -526,6 +540,43 @@ export class ShopCoordinator {
             listedLots: 0,
             stopReason: 'uncertain-state',
             rules: [],
+          };
+        }
+
+        const collectCandidates: AutoCollectCandidate[] = (this.runtime.own?.data.slots ?? [])
+          .flatMap((slot): AutoCollectCandidate[] => {
+            if (slot.isSale) return [{ kind: 'sold', slot: { ...slot } }];
+            if (slot.isTimeOut) return [{ kind: 'expired', slot: { ...slot } }];
+            return [];
+          })
+          .sort((left, right) => left.slot.slot - right.slot.slot);
+
+        for (const candidate of collectCandidates) {
+          if (shouldStop()) {
+            stopReason = 'stopped';
+            break;
+          }
+          try {
+            const result = await this.collectAutoSellSlot(candidate, runId);
+            if (result === 'collected') {
+              if (candidate.kind === 'sold') collectedSoldSlots += 1;
+              else withdrawnExpiredSlots += 1;
+            }
+          } catch {
+            stopReason = 'uncertain-state';
+            break;
+          }
+        }
+
+        if (stopReason !== 'completed') {
+          return {
+            startedAt,
+            completedAt: this.now(),
+            collectedSoldSlots,
+            withdrawnExpiredSlots,
+            listedLots: totalListedLots,
+            stopReason,
+            rules: ruleResults,
           };
         }
 
@@ -899,6 +950,116 @@ export class ShopCoordinator {
     void task.catch(() => undefined);
   }
 
+  private async collectAutoSellSlot(
+    candidate: AutoCollectCandidate,
+    runId: string,
+  ): Promise<AutoCollectResult> {
+    const { slot } = candidate;
+    const current = this.runtime.own?.data.slots.find((item) => item.slot === slot.slot);
+    if (!current || current.itemId === -1 || current.quantity <= 0) return 'already-free';
+    if (!sameOwnSlot(current, slot)) {
+      throw new ShopError(409, 'STALE_SHOP_STATE', `Slot ${slot.slot} đã đổi trước khi thu sạp`);
+    }
+    const stateMatches = candidate.kind === 'sold'
+      ? current.isSale
+      : !current.isSale && current.isTimeOut;
+    if (!stateMatches) {
+      throw new ShopError(
+        409,
+        'STALE_SHOP_STATE',
+        `Trạng thái slot ${slot.slot} đã đổi trước khi thu sạp`,
+      );
+    }
+
+    const idempotencyKey = `auto-sell-collect:${this.accountId}:${runId}:${slot.slot}:${candidate.kind}`;
+    const replay = this.findReplay(idempotencyKey);
+    if (replay?.status === 'succeeded') return 'already-free';
+    if (replay) {
+      throw new ShopError(
+        409,
+        'STALE_SHOP_STATE',
+        `Giao dịch thu slot ${slot.slot} chưa ở trạng thái an toàn`,
+      );
+    }
+
+    const beforeProduce = countItem(this.produce?.items ?? [], slot.itemId);
+    const transaction = this.createTransaction(
+      'withdraw',
+      {
+        idempotencyKey,
+        slot: slot.slot,
+        expectedShopRevision: this.runtime.own?.revision ?? 0,
+        expectedItemId: slot.itemId,
+        expectedQuantity: slot.quantity,
+        expectedPrice: slot.price,
+        autoCollectKind: candidate.kind,
+      },
+      this.captureBefore(),
+    );
+
+    try {
+      this.transition(transaction.id, 'sending');
+      const ack = await this.request<Extract<ShopProtocolEvent, { subType: 4 }>>(
+        4,
+        (farm) => {
+          farm.takeItemBack(slot.slot);
+          this.transition(transaction.id, 'awaiting_response');
+        },
+        (event) => event.slot === slot.slot,
+      );
+      const ackMatches = candidate.kind === 'sold'
+        ? ack.result === 0
+        : ack.result === 1 && ack.itemId === slot.itemId;
+      if (!ackMatches) {
+        throw new ShopError(
+          500,
+          'SHOP_PROTOCOL_ERROR',
+          `Phản hồi thu slot ${slot.slot} không khớp trạng thái`,
+        );
+      }
+
+      this.transition(transaction.id, 'reconciling', { result: { ack } });
+      await this.syncOwnShopInLane();
+      const afterSlot = this.runtime.own?.data.slots.find((item) => item.slot === slot.slot);
+      const stillSame = afterSlot && sameOwnSlot(afterSlot, slot)
+        && (candidate.kind === 'sold' ? afterSlot.isSale : afterSlot.isTimeOut);
+      const afterProduce = countItem(this.produce?.items ?? [], slot.itemId);
+      if (stillSame || (candidate.kind === 'expired' && afterProduce < beforeProduce + slot.quantity)) {
+        throw new ShopError(
+          500,
+          'SHOP_PROTOCOL_ERROR',
+          `Chưa đủ bằng chứng xác nhận thu slot ${slot.slot}`,
+        );
+      }
+
+      this.transition(transaction.id, 'succeeded', {
+        result: {
+          ack,
+          autoCollectKind: candidate.kind,
+          own: this.runtime.own,
+          produce: this.produce,
+        },
+      });
+      return 'collected';
+    } catch (error) {
+      const normalized = asShopError(error);
+      const currentTransaction = this.repository.findTransaction(
+        this.accountId,
+        idempotencyKey,
+      );
+      if (currentTransaction && !TERMINAL_STATUSES.has(currentTransaction.status)) {
+        const sent = currentTransaction.status !== 'queued';
+        this.transition(transaction.id, sent ? 'unknown' : 'failed', {
+          errorCode: normalized.code,
+          errorMessage: sent
+            ? `${normalized.message}; không tự gửi lại giao dịch`
+            : normalized.message,
+        });
+      }
+      throw normalized;
+    }
+  }
+
   private async runListing(id: string, input: CreateListingInput): Promise<Record<string, unknown>> {
     const beforeProduce = countItem(this.produce?.items ?? [], input.itemId);
     this.requireOnlineClient();
@@ -1243,10 +1404,15 @@ export class ShopCoordinator {
     if (transaction.kind === 'withdraw') {
       const slot = Number(request.slot);
       const listing = this.runtime.own?.data.slots.find((candidate) => candidate.slot === slot);
-      if (
-        (!listing || listing.itemId !== itemId || listing.quantity !== quantity)
-        && produceDelta >= quantity
-      ) return { ownRevision: this.runtime.own?.revision, produceRevision: this.produce?.revision };
+      const oldListingGone = !listing
+        || listing.itemId !== itemId
+        || listing.quantity !== quantity
+        || listing.price !== Number(request.expectedPrice);
+      if (request.autoCollectKind === 'sold') {
+        if (oldListingGone) return { ownRevision: this.runtime.own?.revision };
+      } else if (oldListingGone && produceDelta >= quantity) {
+        return { ownRevision: this.runtime.own?.revision, produceRevision: this.produce?.revision };
+      }
     }
     if (transaction.kind === 'purchase') {
       if (!this.isMarketFreshForCurrentAttachment()) return null;
