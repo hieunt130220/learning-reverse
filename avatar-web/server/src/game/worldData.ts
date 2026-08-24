@@ -107,9 +107,6 @@ export function decodeEnterWorld(body: Buffer): EnterWorldSnapshot {
   const playerId = r.i32();
   r.utf(); // tên nhân vật
   r.i8(); r.i8(); r.i16(); r.i16();
-  if (!(playerId > 0)) {
-    throw new WorldDataDecodeError('header', 5, `playerId không hợp lệ: ${playerId}`);
-  }
 
   r.in('players');
   const nPlayer = readCount(r, 'players');
