@@ -39,7 +39,7 @@ const END_OF_CATALOG_BACKOFF_MS = 30_000;
 const TRACKING_INTERVAL_MS = 2_000;
 const MAX_TIMEOUT_BACKOFF_MS = 60_000;
 const TIMEOUT_STREAK_BASE_MS = 5_000;
-const MAX_TIMEOUT_STREAK_FOR_BACKOFF_GROWTH = 4; // 5s,10s,20s,40s -> cap 60s
+const MAX_TIMEOUT_STREAK_FOR_BACKOFF_GROWTH = 5; // 5s,10s,20s,40s,60s -> cap 60s
 
 /** Exact match: NFC + trim + lowercase vi, so TOÀN chuỗi. */
 function normalizeNpcName(name: string): string {
@@ -173,7 +173,7 @@ export class AutoFindNpc {
     const catalog = this.opts.catalog;
     if (this.backoffUntil !== undefined) {
       const remain = this.backoffUntil - this.now();
-      if (remain > 0 && !(await this.delay(Math.min(remain, 30_000)))) return false;
+      if (remain > 0 && !(await this.delay(remain))) return false;
       this.backoffUntil = undefined;
       this.phase = 'scanning';
       this.emitState();
