@@ -291,6 +291,7 @@ test('update config khi auto dừng giữ cho lần start kế tiếp', async ()
   await h.session.start();
   assert.equal(h.session.updateAutoConfig({ seedId: 7 }), 'next-start');
   h.clients[0].goOnline();
+  await flush();
 
   assert.deepEqual(h.autos[0].lastCfg, { seedId: 7 });
 });
@@ -430,6 +431,7 @@ test('online reset backoff và auto chỉ start một lần', async () => {
   await flush();
   h.clients[1].goOnline();
   h.clients[1].goOnline();
+  await flush();
   assert.equal(h.session.snapshot().retries, 0);
   assert.equal(h.autos[1].startCount, 1);
 });
