@@ -458,7 +458,7 @@ export class GameClient extends EventEmitter {
     this.park.doJoinPark(map, area);
   }
 
-  /** Chờ đúng MỘT snapshot enter-world mới; cleanup trọn trên resolve/timeout/abort. */
+  /** Chờ đúng MỘT snapshot enter-world mới; cleanup trọn trên resolve/timeout/abort/đóng socket. */
   waitForWorldSnapshot(signal: AbortSignal, timeoutMs: number): Promise<EnterWorldSnapshot> {
     return new Promise((resolve, reject) => {
       let timer: NodeJS.Timeout | undefined;
@@ -470,10 +470,15 @@ export class GameClient extends EventEmitter {
         cleanup();
         reject(new Error('chờ enter-world bị hủy'));
       };
+      const onClosed = (): void => {
+        cleanup();
+        reject(new Error('kết nối đã đóng khi chờ gói enter-world (-34)'));
+      };
       const cleanup = (): void => {
         if (timer) clearTimeout(timer);
         this.removeListener('world-snapshot', onSnapshot);
         signal.removeEventListener('abort', onAbort);
+        this.session.removeListener('closed', onClosed);
       };
       timer = setTimeout(() => {
         cleanup();
@@ -481,6 +486,7 @@ export class GameClient extends EventEmitter {
       }, timeoutMs);
       this.once('world-snapshot', onSnapshot);
       signal.addEventListener('abort', onAbort, { once: true });
+      this.session.once('closed', onClosed);
       if (signal.aborted) onAbort();
     });
   }
