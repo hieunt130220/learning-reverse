@@ -7,6 +7,7 @@ function isMoneyUpdate(value: unknown): value is { type?: number; balance: numbe
 }
 
 import { AutoFarm, DEFAULT_AUTO_INTERVAL_MS, type AutoFarmConfig, type AutoFarmState } from '../autoFarm.js';
+import { AutoFindNpc, type AutoFindNpcOptions } from '../autoFindNpc.js';
 import {
   GameClient,
   type ClientStatus,
@@ -29,11 +30,32 @@ import {
   type UnlockSlotInput,
   type WithdrawListingInput,
 } from './shopCoordinator.js';
+import {
+  idleFindNpcRuntime,
+  type AutomationLocation,
+  type AutomationMode,
+  type AutomationSnapshot,
+  type AutomationStartOutcome,
+  type AutoFindNpcState,
+  type LoadedAutomationIntent,
+  type NpcMapLocation,
+} from './automationTypes.js';
 
 export const RETRY_BASE_MS = 10_000;
 export const RETRY_MAX_MS = 5 * 60 * 1000;
+const AUTOMATION_INITIAL_OUTCOME_TIMEOUT_MS = 10_000;
 const LOG_BUFFER = 500;
 const TRAFFIC_BUFFER = 100;
+
+export class AutomationInitializationError extends Error {
+  constructor(
+    readonly code: 'find-npc-name-required' | 'catalog-unverified' | 'find-npc-init-failed',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'AutomationInitializationError';
+  }
+}
 
 export interface AvatarCredentials {
   host: string;
@@ -43,6 +65,8 @@ export interface AvatarCredentials {
   device?: Partial<DeviceProfile>;
   /** Ý muốn của người dùng, đọc từ DB. */
   autoEnabled: boolean;
+  /** Intent chuẩn hóa; `autoEnabled` chỉ còn là field tương thích cho harness cũ. */
+  automation: LoadedAutomationIntent;
   autoConfig?: Partial<AutoFarmConfig>;
 }
 
@@ -78,6 +102,7 @@ export interface AvatarSessionSnapshot {
   quests?: QuestOverviewState | null;
   farmSync: FarmSyncState;
   auto: AutoFarmState;
+  automation: AutomationSnapshot;
   macro: MacroState;
   shop: ShopRuntimeState;
   produce: ProduceSnapshot | null;
@@ -101,6 +126,8 @@ export interface AvatarSessionOptions {
   onEvent: (type: string, payload: unknown) => void;
   /** Lỗi không thể tự khắc phục (sai mật khẩu game) — tầng trên ghi DB. */
   onPermanentFailure: (reason: string) => void;
+  onAutomationFailure?: (reason: string) => void;
+  onAutomationLocation: (location: NpcMapLocation | null) => void;
   onMetrics?: (patch: AccountMetricsPatch) => void;
   cachedMetrics?: CachedAccountMetrics;
   /** Production luôn truyền đủ hai dependency; optional giữ tương thích cho harness cũ. */
@@ -108,6 +135,8 @@ export interface AvatarSessionOptions {
   shopPolicy?: ShopPolicy;
   createClient?: () => GameClient;
   createAutoFarm?: (client: GameClient) => AutoFarm;
+  findNpcCatalog?: readonly NpcMapLocation[];
+  createAutoFindNpc?: (options: AutoFindNpcOptions) => AutoFindNpc;
   createMacroRunner?: (client: GameClient) => MacroRunner;
   setTimeoutFn?: typeof setTimeout;
   clearTimeoutFn?: typeof clearTimeout;
@@ -158,9 +187,24 @@ export class AvatarSession {
   /** Đã nhận LOGIN_FAIL: không thử lại nữa dù rớt kết nối. */
   private permanentlyFailed = false;
   private lastAutoConfig: Partial<AutoFarmConfig> = {};
-  private wantAuto = false;
+  private desiredMode: AutomationMode = 'off';
+  private activeMode: AutomationMode = 'off';
+  private transitionState: 'stable' | 'switching' = 'stable';
+  private findNpcConfig = { revision: 0, config: { npcName: '' } };
+  private automationLocation: AutomationLocation | null = null;
+  private findNpc?: AutoFindNpc;
+  private findNpcRuntime: AutoFindNpcState = idleFindNpcRuntime('');
+  private automationTransition: Promise<AutomationStartOutcome> = Promise.resolve('active');
+  private pendingAutomationTransitions = 0;
+  private pendingFindNpcTransitions = 0;
+  private readonly initialConnectionWaiters = new Set<() => void>();
+  /** Hard teardown tăng generation để mọi continuation đang await trở thành inert. */
+  private automationGeneration = 0;
+  private automationTransitionSequence = 0;
+  private cancelledAutomationTransitionSequence = 0;
   private autoSellRunSequence = 0;
   private farmSync: FarmSyncState = EMPTY_FARM_SYNC;
+  private farmSyncPromise?: Promise<void>;
   private cachedMetrics: CachedAccountMetrics;
   private autoSyncKickoff?: NodeJS.Immediate;
   private readonly shop?: ShopCoordinator;
@@ -259,22 +303,19 @@ export class AvatarSession {
     this.cancelAutoCycleTimer();
     this.cancelAutoSyncKickoff();
     this.teardown();
+    this.activeMode = 'off';
+    this.transitionState = 'stable';
+    this.emitAutomation();
     this.emit('status', 'idle');
   }
 
-  async startAuto(cfg: Partial<AutoFarmConfig>): Promise<void> {
-    this.shop?.assertIdleForAutomation();
-    this.cancelAutoCycleTimer();
-    this.wantAuto = true;
+  async startAuto(cfg: Partial<AutoFarmConfig>): Promise<AutomationStartOutcome> {
     this.lastAutoConfig = cfg;
-    const wasOnline = this.status === 'online';
-    this.autoStartEpoch = undefined;
-    await this.start();
-    this.wantAuto = true;
-    const currentStatus: string = this.status;
-    if (wasOnline || (currentStatus === 'online' && this.autoStartEpoch !== this.connectionEpoch)) {
-      this.tryStartAuto();
-    }
+    return await this.switchAutomationMode({
+      desiredMode: 'auto_farm',
+      findNpcConfig: this.findNpcConfig,
+      location: this.automationLocation,
+    });
   }
 
   updateAutoConfig(cfg: Partial<AutoFarmConfig>): 'next-cycle' | 'next-start' {
@@ -286,11 +327,101 @@ export class AvatarSession {
     return 'next-start';
   }
 
-  stopAuto(): void {
-    this.wantAuto = false;
+  async stopAutomation(): Promise<void> {
+    await this.switchAutomationMode({
+      desiredMode: 'off',
+      findNpcConfig: this.findNpcConfig,
+      location: this.automationLocation,
+    });
+  }
+
+  async stopAuto(): Promise<void> {
+    // Giữ cleanup legacy đồng bộ ngay cả khi caller cũ chưa await Promise mới.
     this.cancelAutoCycleTimer();
-    this.auto?.stop();
+    await this.stopAutomation();
     this.stop();
+  }
+
+  switchAutomationMode(intent: LoadedAutomationIntent): Promise<AutomationStartOutcome> {
+    const targetsFindNpc = intent.desiredMode === 'find_npc';
+    if (targetsFindNpc) this.pendingFindNpcTransitions += 1;
+    const transitionSequence = ++this.automationTransitionSequence;
+    const enqueuedGeneration = this.automationGeneration;
+    const run = async (): Promise<AutomationStartOutcome> => {
+      if (
+        transitionSequence <= this.cancelledAutomationTransitionSequence
+        || !this.isAutomationGenerationCurrent(enqueuedGeneration)
+      ) return 'connect-pending';
+      let generation = enqueuedGeneration;
+      try {
+        this.desiredMode = intent.desiredMode;
+        this.findNpcConfig = intent.findNpcConfig;
+        this.automationLocation = intent.location;
+        if (intent.desiredMode === 'find_npc') this.cancelAutoSyncKickoff();
+        this.transitionState = 'switching';
+        this.emitAutomation();
+        if (!this.isAutomationGenerationCurrent(generation)) return 'connect-pending';
+
+        if (!(await this.stopActiveAutomation(generation))) return 'connect-pending';
+        if (intent.desiredMode === 'off') {
+          this.transitionState = 'stable';
+          this.emitAutomation();
+          return 'active';
+        }
+
+        if (this.status !== 'online') {
+          const starting = this.beginAutomationConnection(generation);
+          if (!starting) return 'connect-pending';
+          generation = starting.generation;
+          const connectionOutcome = await starting.completion;
+          if (connectionOutcome === 'permanent' || this.permanentlyFailed) return 'start-failed';
+          if (connectionOutcome !== 'online') return 'connect-pending';
+          if (!this.isAutomationGenerationCurrent(generation)) return 'connect-pending';
+        }
+
+        // connect() reload credentials from DB; explicit serialized intent wins
+        // only while this exact generation still owns the continuation.
+        this.desiredMode = intent.desiredMode;
+        this.findNpcConfig = intent.findNpcConfig;
+        this.automationLocation = intent.location;
+        this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
+        const client = this.client;
+        const epoch = this.connectionEpoch;
+        if (!client || client.status !== 'online') {
+          this.activeMode = 'off';
+          this.emitAutomation();
+          return 'connect-pending';
+        }
+        if (!(await this.startDesiredAutomation(client, generation, epoch))) {
+          return 'connect-pending';
+        }
+        if (
+          !this.isAutomationGenerationCurrent(generation)
+          || !this.isCurrent(client, epoch)
+          || client.status !== 'online'
+        ) return 'connect-pending';
+        this.transitionState = 'stable';
+        this.emitAutomation();
+        return 'active';
+      } catch (error) {
+        if (!this.isAutomationGenerationCurrent(generation)) return 'connect-pending';
+        if (!(error instanceof AutomationInitializationError) && this.status !== 'online') {
+          this.activeMode = 'off';
+          this.emitAutomation();
+          return 'connect-pending';
+        }
+        if (!(await this.stopActiveAutomation(generation))) return 'connect-pending';
+        this.desiredMode = 'off';
+        this.transitionState = 'stable';
+        this.emitAutomation();
+        return 'start-failed';
+      }
+    };
+    const transition = this.enqueueAutomationTransition(run);
+    if (!targetsFindNpc) return transition;
+    return transition.finally(() => {
+      this.pendingFindNpcTransitions -= 1;
+    });
   }
 
   startMacro(macro: Macro): void {
@@ -304,6 +435,7 @@ export class AvatarSession {
   }
 
   callFarm(name: string, args: unknown[]): void {
+    this.assertFarmContextAvailable();
     const client = this.requireClient();
     const fn = (client.farm as unknown as Record<string, unknown>)[name];
     if (typeof fn !== 'function') throw new Error(`không có action "${name}"`);
@@ -359,10 +491,23 @@ export class AvatarSession {
   }
 
   enterFarm(): void {
+    this.assertFarmContextAvailable();
     this.requireClient().enterFarm();
   }
 
   async refreshFarmProfile(timeoutMs = 10_000, realTimer = false): Promise<void> {
+    this.assertFarmContextAvailable();
+    if (this.farmSyncPromise) return await this.farmSyncPromise;
+    const refresh = this.performFarmRefresh(timeoutMs, realTimer);
+    this.farmSyncPromise = refresh;
+    try {
+      await refresh;
+    } finally {
+      if (this.farmSyncPromise === refresh) this.farmSyncPromise = undefined;
+    }
+  }
+
+  private async performFarmRefresh(timeoutMs: number, realTimer: boolean): Promise<void> {
     this.cancelAutoSyncKickoff();
     const client = this.requireClient();
     if (client.status !== 'online') throw new Error('phiên chưa online');
@@ -405,8 +550,31 @@ export class AvatarSession {
     }
   }
 
+  private findNpcOwnsOrTargetsContext(): boolean {
+    return this.desiredMode === 'find_npc'
+      || this.activeMode === 'find_npc'
+      || this.pendingFindNpcTransitions > 0;
+  }
+
+  private assertFarmContextAvailable(): void {
+    if (this.findNpcOwnsOrTargetsContext()) {
+      throw new Error('Find NPC đang sở hữu ngữ cảnh Park; không thể chuyển sang farm');
+    }
+  }
+
   lastPacketHex(cmd: number): string | undefined {
     return this.client?.lastPacket.get(cmd);
+  }
+
+  automationSnapshot(): AutomationSnapshot {
+    return {
+      desiredMode: this.desiredMode,
+      activeMode: this.activeMode,
+      transitionState: this.transitionState,
+      findNpcConfig: this.findNpcConfig,
+      findNpcRuntime: this.findNpcRuntime,
+      location: this.automationLocation,
+    };
   }
 
   snapshot(): AvatarSessionSnapshot {
@@ -430,6 +598,7 @@ export class AvatarSession {
       quests: this.getQuestOverview(),
       farmSync: this.farmSync,
       auto: this.auto?.state() ?? EMPTY_AUTO,
+      automation: this.automationSnapshot(),
       macro: this.macros?.state() ?? EMPTY_MACRO,
       shop: this.shopState(),
       produce: this.shopProduceState(),
@@ -470,6 +639,10 @@ export class AvatarSession {
     }
   }
 
+  private emitAutomation(): void {
+    this.emit('automation', this.automationSnapshot());
+  }
+
   private pushLog(line: string): void {
     const entry = { t: Date.now(), line };
     this.logs.push(entry);
@@ -477,9 +650,13 @@ export class AvatarSession {
     this.emit('log', entry);
   }
 
-  private async connect(): Promise<void> {
+  private async connect(generation = this.automationGeneration): Promise<void> {
     const creds = await this.opts.loadCredentials();
-    this.wantAuto = creds.autoEnabled;
+    if (!this.isAutomationGenerationCurrent(generation) || !this.wanted) return;
+    this.desiredMode = creds.automation.desiredMode;
+    this.findNpcConfig = creds.automation.findNpcConfig;
+    this.automationLocation = creds.automation.location;
+    this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
     this.lastAutoConfig = creds.autoConfig ?? {};
 
     const epoch = ++this.connectionEpoch;
@@ -502,6 +679,11 @@ export class AvatarSession {
       : new MacroRunner(client);
     this.shop?.attachClient(client, epoch);
     this.shopClientAttached = this.shop !== undefined;
+    if (
+      !this.isAutomationGenerationCurrent(generation)
+      || !this.wanted
+      || this.client !== client
+    ) return;
     this.wire(client, epoch);
 
     try {
@@ -516,6 +698,7 @@ export class AvatarSession {
       if (!this.isCurrent(client, epoch)) return;
       this.pushLog(`kết nối lỗi: ${(err as Error).message}`);
       this.scheduleRetry(epoch);
+      if (client.status !== 'idle' && client.status !== 'error') client.logout();
     }
   }
 
@@ -640,14 +823,190 @@ export class AvatarSession {
     this.retries = 0;
     this.retryAfter = undefined;
     this.cancelAutoSyncKickoff();
-    this.autoSyncKickoff = setImmediate(() => {
-      this.autoSyncKickoff = undefined;
-      void this.syncFarmAfterOnline(client, epoch);
-    });
-    if (this.wantAuto) {
-      this.autoStartEpoch = epoch;
-      this.tryStartAuto();
+    if (!this.findNpcOwnsOrTargetsContext()) {
+      this.autoSyncKickoff = setImmediate(() => {
+        this.autoSyncKickoff = undefined;
+        if (this.findNpcOwnsOrTargetsContext()) return;
+        const sync = this.syncFarmAfterOnline(client, epoch);
+        this.farmSyncPromise = sync;
+        void sync.finally(() => {
+          if (this.farmSyncPromise === sync) this.farmSyncPromise = undefined;
+        });
+      });
     }
+    if (this.pendingAutomationTransitions === 0) {
+      void this.resumeDesiredAutomation(client, epoch);
+    }
+  }
+
+  private resumeDesiredAutomation(
+    client: GameClient,
+    epoch: number,
+  ): Promise<AutomationStartOutcome> {
+    const transitionSequence = ++this.automationTransitionSequence;
+    const generation = this.automationGeneration;
+    const run = async (): Promise<AutomationStartOutcome> => {
+      if (
+        transitionSequence <= this.cancelledAutomationTransitionSequence
+        || !this.isAutomationGenerationCurrent(generation)
+        || !this.isCurrent(client, epoch)
+        || client.status !== 'online'
+      ) return 'connect-pending';
+      if (this.activeMode !== 'off' || this.desiredMode === 'off') return 'active';
+
+      this.transitionState = 'switching';
+      this.emitAutomation();
+      if (
+        !this.isAutomationGenerationCurrent(generation)
+        || !this.isCurrent(client, epoch)
+      ) return 'connect-pending';
+      try {
+        if (!(await this.startDesiredAutomation(client, generation, epoch))) {
+          return 'connect-pending';
+        }
+        if (
+          !this.isAutomationGenerationCurrent(generation)
+          || !this.isCurrent(client, epoch)
+          || client.status !== 'online'
+        ) return 'connect-pending';
+        this.transitionState = 'stable';
+        this.emitAutomation();
+        return 'active';
+      } catch (error) {
+        if (
+          !this.isAutomationGenerationCurrent(generation)
+          || !this.isCurrent(client, epoch)
+        ) return 'connect-pending';
+        if (
+          !(error instanceof AutomationInitializationError)
+          && client.status !== 'online'
+        ) {
+          this.activeMode = 'off';
+          this.emitAutomation();
+          return 'connect-pending';
+        }
+        if (!(await this.stopActiveAutomation(generation))) return 'connect-pending';
+        this.desiredMode = 'off';
+        this.transitionState = 'stable';
+        this.emitAutomation();
+        return 'start-failed';
+      }
+    };
+    return this.enqueueAutomationTransition(run);
+  }
+
+  private enqueueAutomationTransition(
+    run: () => Promise<AutomationStartOutcome>,
+  ): Promise<AutomationStartOutcome> {
+    this.pendingAutomationTransitions += 1;
+    const next = this.automationTransition.then(run, run);
+    const stabilized = next.catch((error: unknown) => {
+      if (this.transitionState === 'switching') {
+        this.transitionState = 'stable';
+        this.emitAutomation();
+      }
+      throw error;
+    });
+    const settled = stabilized.finally(() => {
+      this.pendingAutomationTransitions -= 1;
+    });
+    this.automationTransition = settled.catch(() => 'start-failed');
+    return settled;
+  }
+
+  private isAutomationGenerationCurrent(generation: number): boolean {
+    return this.automationGeneration === generation;
+  }
+
+  private invalidateAutomationTransitions(): void {
+    this.automationGeneration += 1;
+    this.cancelledAutomationTransitionSequence = this.automationTransitionSequence;
+    this.transitionState = 'stable';
+    for (const invalidate of [...this.initialConnectionWaiters]) invalidate();
+  }
+
+  private beginAutomationConnection(
+    generation: number,
+  ): { generation: number; completion: Promise<'online' | 'pending' | 'permanent' | 'stale'> } | undefined {
+    if (!this.isAutomationGenerationCurrent(generation)) return undefined;
+    this.setWanted(true);
+    if (!this.isAutomationGenerationCurrent(generation) || !this.wanted) return undefined;
+    this.permanentlyFailed = false;
+    if (this.client?.status === 'online') {
+      return { generation, completion: Promise.resolve('online') };
+    }
+    if (this.client) {
+      this.cancelRetry();
+      const beforeTeardown = this.automationGeneration;
+      this.teardown();
+      if (
+        this.automationGeneration !== beforeTeardown + 1
+        || !this.wanted
+      ) return undefined;
+      generation = this.automationGeneration;
+      this.transitionState = 'switching';
+    }
+    return {
+      generation,
+      completion: this.connect(generation).then(() => this.waitForInitialAutomationOutcome(generation)),
+    };
+  }
+
+  private waitForInitialAutomationOutcome(
+    generation: number,
+  ): Promise<'online' | 'pending' | 'permanent' | 'stale'> {
+    if (!this.isAutomationGenerationCurrent(generation)) return Promise.resolve('stale');
+    if (this.permanentlyFailed) return Promise.resolve('permanent');
+    const client = this.client;
+    const epoch = this.connectionEpoch;
+    if (!client) return Promise.resolve('pending');
+    if (client.status === 'online') return Promise.resolve('online');
+    if (client.status === 'idle' || client.status === 'error') return Promise.resolve('pending');
+
+    return new Promise((resolve) => {
+      let timeout: NodeJS.Timeout | undefined;
+      let settled = false;
+      const cleanup = (): void => {
+        if (timeout) this.clearTimeoutFn(timeout);
+        this.initialConnectionWaiters.delete(onInvalidated);
+        client.removeListener('status', onStatus);
+        client.removeListener('message', onMessage);
+        client.removeListener('temporary-rejection', onTemporaryRejection);
+      };
+      const finish = (outcome: 'online' | 'pending' | 'permanent' | 'stale'): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(outcome);
+      };
+      const currentOutcome = (): 'permanent' | 'stale' | undefined => {
+        if (this.permanentlyFailed) return 'permanent';
+        if (
+          !this.wanted
+          || !this.isAutomationGenerationCurrent(generation)
+          || !this.isCurrent(client, epoch)
+        ) return 'stale';
+        return undefined;
+      };
+      const onInvalidated = (): void => finish(currentOutcome() ?? 'stale');
+      const onStatus = (status: ClientStatus): void => {
+        const terminal = currentOutcome();
+        if (terminal) return finish(terminal);
+        if (status === 'online') finish('online');
+        else if (status === 'idle' || status === 'error') finish('pending');
+      };
+      const onMessage = (message: { command?: number }): void => {
+        if (message.command === -35) finish('permanent');
+      };
+      const onTemporaryRejection = (): void => finish('pending');
+
+      client.on('status', onStatus);
+      client.on('message', onMessage);
+      client.on('temporary-rejection', onTemporaryRejection);
+      this.initialConnectionWaiters.add(onInvalidated);
+      timeout = this.setTimeoutFn(() => finish(currentOutcome() ?? 'pending'), AUTOMATION_INITIAL_OUTCOME_TIMEOUT_MS);
+      timeout.unref?.();
+    });
   }
 
   private cancelAutoSyncKickoff(): void {
@@ -684,7 +1043,150 @@ export class AvatarSession {
     }
   }
 
+  private async stopActiveAutomation(generation: number): Promise<boolean> {
+    this.cancelAutoCycleTimer();
+    await this.auto?.stop();
+    const finder = this.findNpc;
+    this.findNpc = undefined;
+    if (finder) await finder.stop();
+    if (!this.isAutomationGenerationCurrent(generation)) return false;
+    this.activeMode = 'off';
+    this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
+    return true;
+  }
+
+  private async startFindNpc(client: GameClient, generation: number, epoch: number): Promise<boolean> {
+    const targetName = this.findNpcConfig.config.npcName;
+    const catalog = this.opts.findNpcCatalog ?? [];
+    if (!targetName) {
+      throw new AutomationInitializationError('find-npc-name-required', 'tên NPC trống');
+    }
+    if (catalog.length === 0) {
+      throw new AutomationInitializationError('catalog-unverified', 'catalog NPC chưa verified');
+    }
+
+    const farmSync = this.farmSyncPromise;
+    if (farmSync) await farmSync;
+    if (
+      !this.isAutomationGenerationCurrent(generation)
+      || !this.isCurrent(client, epoch)
+      || client.status !== 'online'
+    ) return false;
+
+    this.automationLocation = null;
+    this.opts.onAutomationLocation(null);
+    if (
+      !this.isAutomationGenerationCurrent(generation)
+      || !this.isCurrent(client, epoch)
+      || client.status !== 'online'
+    ) return false;
+    let finder!: AutoFindNpc;
+    const runnerOptions: AutoFindNpcOptions = {
+      client,
+      catalog,
+      targetName,
+      onState: (state) => {
+        if (this.findNpc !== finder) return;
+        this.findNpcRuntime = state;
+        this.emitAutomation();
+      },
+      onFound: (location) => {
+        if (this.findNpc !== finder) return;
+        this.automationLocation = location;
+        this.opts.onAutomationLocation({ map: location.map, area: location.area });
+        this.emitAutomation();
+      },
+      onMissing: () => {
+        if (this.findNpc !== finder) return;
+        this.automationLocation = null;
+        this.opts.onAutomationLocation(null);
+        this.emitAutomation();
+      },
+      onTerminalFailure: (error) => {
+        if (
+          this.findNpc !== finder
+          || !this.isAutomationGenerationCurrent(generation)
+          || !this.isCurrent(client, epoch)
+        ) return;
+        this.findNpc = undefined;
+        this.findNpcRuntime = finder.state();
+        this.activeMode = 'off';
+        this.desiredMode = 'off';
+        this.transitionState = 'stable';
+        this.automationLocation = null;
+        this.emitAutomation();
+        this.pushLog(`Find NPC đã dừng do lỗi: ${error.message}`);
+        try {
+          this.opts.onAutomationLocation(null);
+        } catch {
+          /* tiếp tục persist mode off ngay cả khi xóa location lỗi */
+        }
+        try {
+          this.opts.onAutomationFailure?.(error.message);
+        } catch {
+          /* callback persistence không được tạo unhandled rejection */
+        }
+      },
+      now: this.now,
+      setTimeoutFn: this.setTimeoutFn,
+      clearTimeoutFn: this.clearTimeoutFn,
+    };
+    finder = this.opts.createAutoFindNpc
+      ? this.opts.createAutoFindNpc(runnerOptions)
+      : new AutoFindNpc(runnerOptions);
+    this.findNpc = finder;
+    finder.start();
+    if (
+      !this.isAutomationGenerationCurrent(generation)
+      || !this.isCurrent(client, epoch)
+      || client.status !== 'online'
+      || this.findNpc !== finder
+    ) {
+      if (this.findNpc === finder) this.findNpc = undefined;
+      void finder.stop();
+      return false;
+    }
+    if (!finder.state().running) {
+      throw new AutomationInitializationError(
+        'find-npc-init-failed',
+        finder.state().lastError ?? 'runner Find NPC không khởi động',
+      );
+    }
+    this.findNpcRuntime = finder.state();
+    return true;
+  }
+
+  private async startDesiredAutomation(
+    client: GameClient,
+    generation: number,
+    epoch: number,
+  ): Promise<boolean> {
+    if (this.desiredMode === 'auto_farm') {
+      this.shop?.assertIdleForAutomation();
+      if (
+        !this.isAutomationGenerationCurrent(generation)
+        || !this.isCurrent(client, epoch)
+        || client.status !== 'online'
+      ) return false;
+      this.auto!.start(this.lastAutoConfig);
+      if (
+        !this.isAutomationGenerationCurrent(generation)
+        || !this.isCurrent(client, epoch)
+        || client.status !== 'online'
+      ) return false;
+      this.activeMode = 'auto_farm';
+      return true;
+    }
+    if (this.desiredMode === 'find_npc') {
+      if (!(await this.startFindNpc(client, generation, epoch))) return false;
+      this.activeMode = 'find_npc';
+      return true;
+    }
+    return true;
+  }
+
   private tryStartAuto(): void {
+    if (this.desiredMode !== 'auto_farm') return;
     try {
       this.shop?.assertIdleForAutomation();
       this.auto!.start(this.lastAutoConfig);
@@ -704,14 +1206,18 @@ export class AvatarSession {
   }
 
   private onAutoCycleComplete(epoch: number): void {
-    if (epoch !== this.connectionEpoch || !this.wantAuto || this.status !== 'online') return;
+    if (
+      epoch !== this.connectionEpoch
+      || this.desiredMode !== 'auto_farm'
+      || this.status !== 'online'
+    ) return;
     const rawInterval = this.lastAutoConfig.intervalMs;
     const intervalMs = typeof rawInterval === 'number' && Number.isFinite(rawInterval)
       ? Math.max(0, rawInterval)
       : DEFAULT_AUTO_INTERVAL_MS;
     const shouldLogout = this.lastAutoConfig.logoutAfterCycle ?? true;
 
-    this.auto?.stop();
+    void this.auto?.stop();
     if (shouldLogout) {
       this.scheduleAutoCycle(intervalMs);
       this.cancelAutoSyncKickoff();
@@ -726,7 +1232,7 @@ export class AvatarSession {
     this.cancelAutoCycleTimer();
     this.autoCycleTimer = this.setTimeoutFn(() => {
       this.autoCycleTimer = undefined;
-      if (!this.wantAuto || this.permanentlyFailed) return;
+      if (this.desiredMode !== 'auto_farm' || this.permanentlyFailed) return;
       if (this.status === 'online') {
         this.tryStartAuto();
       } else {
@@ -743,12 +1249,12 @@ export class AvatarSession {
     this.cancelAutoCycleTimer();
     this.autoCycleTimer = this.setTimeoutFn(() => {
       this.autoCycleTimer = undefined;
-      if (!this.wantAuto || this.permanentlyFailed) return;
-      const keepAuto = this.wantAuto;
+      if (this.desiredMode !== 'auto_farm' || this.permanentlyFailed) return;
+      const keepAuto = this.desiredMode === 'auto_farm';
       this.autoStartEpoch = undefined;
       void this.start().then(() => {
         if (!keepAuto || this.permanentlyFailed) return;
-        this.wantAuto = true;
+        this.desiredMode = 'auto_farm';
         if (this.status === 'online' && this.autoStartEpoch !== this.connectionEpoch) {
           this.tryStartAuto();
         }
@@ -766,9 +1272,19 @@ export class AvatarSession {
 
   private failPermanently(reason: string): void {
     this.permanentlyFailed = true;
+    this.invalidateAutomationTransitions();
     this.setWanted(false);
-    this.wantAuto = false;
+    this.desiredMode = 'off';
+    this.activeMode = 'off';
+    this.transitionState = 'stable';
     this.cancelRetry();
+    this.cancelAutoCycleTimer();
+    void this.auto?.stop();
+    const finder = this.findNpc;
+    this.findNpc = undefined;
+    if (finder) void finder.stop();
+    this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
+    this.emitAutomation();
     this.pushLog(reason);
     try {
       this.opts.onPermanentFailure(reason);
@@ -780,7 +1296,13 @@ export class AvatarSession {
   private onDisconnected(epoch: number): void {
     this.cancelAutoSyncKickoff();
     this.detachShop('Phiên game đã ngắt kết nối');
-    this.auto?.stop();
+    void this.auto?.stop();
+    const finder = this.findNpc;
+    this.findNpc = undefined;
+    if (finder) void finder.stop();
+    this.activeMode = 'off';
+    this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
+    this.emitAutomation();
     this.macros?.stop();
     if (this.autoCycleTimer || !this.wanted || this.permanentlyFailed || epoch !== this.connectionEpoch) return;
     this.scheduleRetry(epoch);
@@ -820,10 +1342,15 @@ export class AvatarSession {
   }
 
   private teardown(): void {
+    this.invalidateAutomationTransitions();
     this.cancelAutoSyncKickoff();
     this.detachShop('Phiên game đã teardown');
     this.connectionEpoch += 1;
-    this.auto?.stop();
+    void this.auto?.stop();
+    const finder = this.findNpc;
+    this.findNpc = undefined;
+    if (finder) void finder.stop();
+    this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
     this.macros?.stop();
     const client = this.client;
     this.client = undefined;

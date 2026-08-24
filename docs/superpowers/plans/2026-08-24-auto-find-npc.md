@@ -48,7 +48,7 @@
 - Consumes: không (module lá, chỉ type thuần).
 - Produces: `AutomationMode`, `AutomationTransitionState`, `AutomationLocation`, `FindNpcConfig`, `StoredFindNpcConfigState`, `LoadedAutomationIntent`, `AutoFindNpcPhase`, `AutoFindNpcState`, `NpcMapLocation`, `AutomationSnapshot`, `AutomationStartOutcome`, `AutomationApiErrorCode`, `idleFindNpcRuntime()`. Mọi task sau consume từ đây.
 
-- [ ] **Step 1: Tạo file với nội dung đầy đủ**
+- [x] **Step 1: Tạo file với nội dung đầy đủ**
 
 ```ts
 /**
@@ -134,12 +134,12 @@ export function idleFindNpcRuntime(targetName: string): AutoFindNpcState {
 }
 ```
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 Run: `npm --prefix avatar-web/server run typecheck`
 Expected: PASS (module mới chưa có consumer).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 Chạy `gitnexus_detect_changes({scope:"all"})` (chỉ file mới, không symbol cũ bị ảnh hưởng), rồi:
 
@@ -159,7 +159,7 @@ git commit -m "feat(session): add shared automation contracts"
 - Consumes: bảng `avatar_accounts` hiện có.
 - Produces: bảng `avatar_automation_state` 1-1 với account, có backfill idempotent từ `auto_enabled`.
 
-- [ ] **Step 1: Append schema**
+- [x] **Step 1: Append schema**
 
 Thêm vào cuối `schema.sql`:
 
@@ -192,12 +192,12 @@ FROM avatar_accounts
 ON CONFLICT(account_id) DO NOTHING;
 ```
 
-- [ ] **Step 2: Regression DB**
+- [x] **Step 2: Regression DB**
 
 Run: `npm --prefix avatar-web/server test src/db/index.test.ts`
 Expected: PASS — `openDb` chạy lại schema idempotent trên DB test mới mà không lỗi.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add avatar-web/server/src/db/schema.sql
@@ -225,7 +225,7 @@ git commit -m "feat(db): add avatar_automation_state with legacy backfill"
   - `listDesiredAutomation(db): DesiredAutomationEntry[]` với `interface DesiredAutomationEntry { accountId: number; intent: LoadedAutomationIntent }`
   - `offlineAutomationSnapshot(state: StoredAutomationState): AutomationSnapshot`
 
-- [ ] **Step 1: Impact analysis trước khi sửa repo.ts**
+- [x] **Step 1: Impact analysis trước khi sửa repo.ts**
 
 Run GitNexus:
 
@@ -236,7 +236,7 @@ impact(target="enableAutoWithConfigPatch", file_path="avatar-web/server/src/acco
 
 Expected d=1: `manager.ts` (bootstrap/onPermanentFailure), `routes.ts` (`/auto/start`, `/auto/stop`), `accounts/routes.test.ts`, `session/manager.test.ts`, `accounts/repo.test.ts`. Ghi risk; hành vi cũ được GIỮ NGUYÊN và chỉ THÊM side-effect đồng bộ desired_mode nên risk dự kiến LOW/MEDIUM.
 
-- [ ] **Step 2: Tạo `automationRepo.ts`**
+- [x] **Step 2: Tạo `automationRepo.ts`**
 
 ```ts
 import type { Db } from '../db/index.js';
@@ -458,7 +458,7 @@ export function offlineAutomationSnapshot(state: StoredAutomationState): Automat
 }
 ```
 
-- [ ] **Step 3: Đồng bộ ngược `repo.ts` (legacy writers cũng ghi desired_mode)**
+- [x] **Step 3: Đồng bộ ngược `repo.ts` (legacy writers cũng ghi desired_mode)**
 
 Trong `setAutoEnabled` (implementation overload, dòng ~282-295), bọc trong `db.transaction` và thêm upsert sau UPDATE:
 
@@ -475,7 +475,7 @@ Trong `enableAutoWithConfigPatch` (dòng ~408-436): nhánh sớm (patch rỗng) 
 
 Hành vi quan sát được của hai hàm này không đổi (test hiện có vẫn pass); chỉ thêm hàng automation tương ứng.
 
-- [ ] **Step 4: Verification**
+- [x] **Step 4: Verification**
 
 Run:
 
@@ -486,7 +486,7 @@ npm --prefix avatar-web/server test
 
 Expected: PASS toàn bộ, kể cả `repo.test.ts` và `manager.test.ts` (bootstrap vẫn thấy account `auto_enabled=1` nhờ dual-write).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Chạy `gitnexus_detect_changes({scope:"all"})` — kỳ vọng: repo.ts, automationRepo.ts, schema liên quan; flow account/auto-config. Rồi:
 
@@ -510,11 +510,11 @@ git commit -m "feat(accounts): automation repository with legacy dual-write"
   - `class WorldDataDecodeError extends Error` với `section: string`, `offset: number`.
   - `decodeEnterWorld(body: Buffer): EnterWorldSnapshot`
 
-- [ ] **Step 1: Đối chiếu endian với MyReader**
+- [x] **Step 1: Đối chiếu endian với MyReader**
 
 Read: `avatar-web/server/src/proto/reader.ts`. Xác nhận `readShort/readInt` dùng big-endian (Java DataInputStream). Nếu khác, `StrictReader` bên dưới phải theo đúng MyReader.
 
-- [ ] **Step 2: Tạo `worldData.ts`**
+- [x] **Step 2: Tạo `worldData.ts`**
 
 ```ts
 /**
@@ -688,12 +688,12 @@ export function decodeEnterWorld(body: Buffer): EnterWorldSnapshot {
 }
 ```
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `npm --prefix avatar-web/server run typecheck`
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add avatar-web/server/src/game/worldData.ts
@@ -717,7 +717,7 @@ git commit -m "feat(game): strict sequential enter-world decoder"
   - `GameClient.enterParkContext(): void`; `GameClient.joinPark(map, area): void`; `GameClient.waitForWorldSnapshot(signal: AbortSignal, timeoutMs: number): Promise<EnterWorldSnapshot>`;
   - event `'world-snapshot'` (payload `EnterWorldSnapshot`) và `'world-snapshot-error'` (payload lỗi decode).
 
-- [ ] **Step 1: Impact/context trước khi sửa client**
+- [x] **Step 1: Impact/context trước khi sửa client**
 
 Run GitNexus:
 
@@ -728,7 +728,7 @@ impact(target="enterFarm", file_path="avatar-web/server/src/game/client.ts", dir
 
 Ghi risk + d=1 (`avatarSession.refreshFarmProfile`, `avatarSession.callFarm`, `autoFarm`, tests). Kỳ vọng: thay `inFarm` bool bằng `currentHandlerContext` phải giữ NGUYÊN ngữ nghĩa enterFarm (lần đầu gửi -1+10, lần sau joinFarm 69) — test `client.test.ts:140` phải vẫn pass không cần sửa.
 
-- [ ] **Step 2: Tạo `parkService.ts`**
+- [x] **Step 2: Tạo `parkService.ts`**
 
 ```ts
 import { Message } from '../proto/message.js';
@@ -750,7 +750,7 @@ export class ParkService {
 }
 ```
 
-- [ ] **Step 3: Thêm hằng handler + ParkService vào `client.ts`**
+- [x] **Step 3: Thêm hằng handler + ParkService vào `client.ts`**
 
 Cạnh `HANDLER_FARM`:
 
@@ -774,7 +774,7 @@ readonly park = new ParkService(this.session);
 currentHandlerContext: 8 | 9 | 10 | 'unknown' = 'unknown';
 ```
 
-- [ ] **Step 4: Thay mọi điểm chạm `inFarm` bằng context**
+- [x] **Step 4: Thay mọi điểm chạm `inFarm` bằng context**
 
 - Constructor, handler `'closed'` (~:230): `this.inFarm = false;` → `this.currentHandlerContext = 'unknown';`
 - `logout()` (~:344): tương tự.
@@ -797,7 +797,7 @@ enterFarm(idFarm?: number): void {
 
 Giữ nguyên comment giải thích hiện có, cập nhật chữ "inFarm" thành "context".
 
-- [ ] **Step 5: Thêm park/world API cho runner**
+- [x] **Step 5: Thêm park/world API cho runner**
 
 Đặt cạnh `enterFarm`:
 
@@ -843,7 +843,7 @@ waitForWorldSnapshot(signal: AbortSignal, timeoutMs: number): Promise<EnterWorld
 }
 ```
 
-- [ ] **Step 6: Decode world trong case -34 mà không đụng login**
+- [x] **Step 6: Decode world trong case -34 mà không đụng login**
 
 Trong `case -34`, bên trong nhánh `if (id > 0)`, NGAY SAU khối ví (`wallet`) và TRƯỚC `this.requestYourInfo(id);` thêm:
 
@@ -862,7 +862,7 @@ try {
 
 Không đổi bất kỳ dòng nào khác của case này (flag/id/keepalive/ví/log/requestYourInfo giữ nguyên).
 
-- [ ] **Step 7: Verification**
+- [x] **Step 7: Verification**
 
 ```bash
 npm --prefix avatar-web/server run typecheck
@@ -871,7 +871,7 @@ npm --prefix avatar-web/server test src/game/client.test.ts src/session/avatarSe
 
 Expected: PASS — đặc biệt test `enterFarm lần đầu gửi GET_HANDLER 10, các lần sau gửi doJoinFarm cmd 69` phải pass KHÔNG sửa.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 Chạy `gitnexus_detect_changes({scope:"all"})`; xác nhận flow bị ảnh hưởng: farm join, login -34, client lifecycle. Rồi:
 
@@ -894,7 +894,7 @@ git commit -m "feat(game): park context, join and enter-world wait"
   - `interface AutoFindNpcOptions` (client, catalog, targetName, onState, onFound, onMissing, clock/timer injectables, các hằng khoảng cách override được).
   - `class AutoFindNpc { start(): void; stop(): Promise<void>; state(): AutoFindNpcState }`
 
-- [ ] **Step 1: Tạo `autoFindNpc.ts` với code hoàn chỉnh**
+- [x] **Step 1: Tạo `autoFindNpc.ts` với code hoàn chỉnh**
 
 ```ts
 import type { EnterWorldSnapshot } from './game/worldData.js';
@@ -1224,12 +1224,12 @@ export class AutoFindNpc {
 }
 ```
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 Run: `npm --prefix avatar-web/server run typecheck`
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add avatar-web/server/src/autoFindNpc.ts
@@ -1255,7 +1255,7 @@ git commit -m "feat(auto): add find-npc scan/tracking runner"
   - `stopAutomation(): Promise<void>` — dừng runner nhưng giữ `GameClient` online.
   - `stopAuto(): Promise<void>` — legacy cleanup rồi disconnect.
 
-- [ ] **Step 1: Chạy impact/context cho toàn bộ lifecycle sẽ sửa**
+- [x] **Step 1: Chạy impact/context cho toàn bộ lifecycle sẽ sửa**
 
 Run GitNexus:
 
@@ -1272,7 +1272,7 @@ impact(target="snapshot", file_path="avatar-web/server/src/session/avatarSession
 
 Expected: lifecycle session là integration surface rộng; ghi risk + mọi d=1 vào SDD ledger. Nếu HIGH/CRITICAL, warning bắt buộc đã được user chấp nhận khi duyệt Plan nhưng vẫn phải liệt kê trước edit. Không bỏ caller `manager.ts`, `routes.ts`, `avatarSession.test.ts`.
 
-- [ ] **Step 2: Thêm imports, contracts option và state coordinator**
+- [x] **Step 2: Thêm imports, contracts option và state coordinator**
 
 Thêm imports và lỗi typed:
 
@@ -1333,7 +1333,7 @@ private automationTransition: Promise<AutomationStartOutcome> = Promise.resolve(
 
 Giữ `auto`, timers và farm config hiện có. Mọi guard trước đây đọc `wantAuto` phải đọc `desiredMode === 'auto_farm'`.
 
-- [ ] **Step 3: Thêm snapshot + event nguyên khối**
+- [x] **Step 3: Thêm snapshot + event nguyên khối**
 
 ```ts
 automationSnapshot(): AutomationSnapshot {
@@ -1354,7 +1354,7 @@ private emitAutomation(): void {
 
 Trong `snapshot()` thêm `automation: this.automationSnapshot()`.
 
-- [ ] **Step 4: Nạp intent ở mỗi `connect()` và tạo AutoFarm như cũ**
+- [x] **Step 4: Nạp intent ở mỗi `connect()` và tạo AutoFarm như cũ**
 
 Ngay sau `const creds = await this.opts.loadCredentials()`:
 
@@ -1367,7 +1367,7 @@ this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
 
 Không khởi tạo `AutoFindNpc` ở đây. Vẫn khởi tạo `AutoFarm`, MacroRunner, ShopCoordinator wiring như trước. Không tin `creds.autoEnabled` để chọn runner.
 
-- [ ] **Step 5: Thêm primitive stop/start runner; không có overlap**
+- [x] **Step 5: Thêm primitive stop/start runner; không có overlap**
 
 Đặt cạnh `tryStartAuto()`:
 
@@ -1438,7 +1438,7 @@ private startFindNpc(client: GameClient): void {
 
 `let finder!` nằm trước callbacks để callback identity guard tham chiếu đúng instance sau assignment. `stopActiveAutomation()` phải được `await` ở switch; hard teardown dùng synchronous abort + identity guard như Step 7.
 
-- [ ] **Step 6: Serialize `switchAutomationMode` trên promise-chain**
+- [x] **Step 6: Serialize `switchAutomationMode` trên promise-chain**
 
 ```ts
 switchAutomationMode(intent: LoadedAutomationIntent): Promise<AutomationStartOutcome> {
@@ -1515,7 +1515,7 @@ async stopAutomation(): Promise<void> {
 
 Giữ public `startAuto(cfg)` làm compatibility wrapper: cập nhật `lastAutoConfig`, tạo intent `auto_farm`, rồi `await switchAutomationMode(intent)`. `stopAuto()` đổi thành `async`: `await stopAutomation(); this.stop();` để legacy endpoint vẫn disconnect sau cleanup.
 
-- [ ] **Step 7: Chuyển lifecycle/reconnect sang một nguồn mode**
+- [x] **Step 7: Chuyển lifecycle/reconnect sang một nguồn mode**
 
 - `onOnline`: thay block `if (this.wantAuto)` bằng guard epoch rồi `void this.resumeDesiredAutomation(client, epoch)`. Helper phải enqueue vào chính `automationTransition`; bên trong kiểm tra `isCurrent(client,epoch)`, `activeMode==='off'`, `desiredMode!=='off'`, đặt switching, gọi `startDesiredAutomation(client)`, rồi stable. Lỗi typed deterministic đưa desired off + emit; lỗi socket tạm giữ desired để retry.
 - `onAutoCycleComplete`, `scheduleOnlineAutoCycle`, `scheduleAutoCycle`: thay mọi `wantAuto` bằng `desiredMode === 'auto_farm'`; `activeMode` vẫn `auto_farm` trong interval kể cả client idle.
@@ -1526,7 +1526,7 @@ Giữ public `startAuto(cfg)` làm compatibility wrapper: cập nhật `lastAuto
 
 Ruling implementation: không biến toàn bộ teardown thành async vì sẽ lan API disconnect/shutdown; cleanup có await bắt buộc nằm trong automation switch. Hard socket teardown abort đồng bộ, rồi epoch + identity guard cô lập continuation cũ.
 
-- [ ] **Step 8: Verification production-first và cập nhật harness hiện có nếu compiler bắt buộc**
+- [x] **Step 8: Verification production-first và cập nhật harness hiện có nếu compiler bắt buộc**
 
 Run:
 
@@ -1537,7 +1537,7 @@ npm --prefix avatar-web/server test src/session/avatarSession.test.ts src/game/c
 
 Expected: PASS. Nếu `AvatarSessionOptions` mới làm fixture hiện có thiếu callbacks, thêm vào chính fixture hiện hữu `onAutomationLocation: () => undefined`, `automation` mặc định trong credentials và factory fake — không tạo test mới, không thêm test case mới. Ghi file fixture/test đã sửa ở checklist này trước stage.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 Chạy `gitnexus_detect_changes({scope:"all"})`; xác nhận d=1 lifecycle đã cập nhật, affected flows chỉ session connect/reconnect/AutoFarm/automation. Sau đó:
 
@@ -1563,7 +1563,7 @@ git commit -m "refactor(session): coordinate exclusive automation modes"
   - `stopAutomation(accountId): Promise<void>`.
   - credentials luôn có `automation` intent; permanent failure persist `off`.
 
-- [ ] **Step 1: Impact analysis**
+- [x] **Step 1: Impact analysis**
 
 ```text
 impact(target="bootstrap", file_path="avatar-web/server/src/session/manager.ts", direction="upstream", includeTests=true)
@@ -1574,7 +1574,7 @@ impact(target="startAuto", file_path="avatar-web/server/src/session/manager.ts",
 
 Expected: d=1 routes, accounts routes/WS bootstrap/tests. Ghi risk; cập nhật tất cả fake method compile-time consumers.
 
-- [ ] **Step 2: Thêm repository bridge + catalog provider**
+- [x] **Step 2: Thêm repository bridge + catalog provider**
 
 Imports:
 
@@ -1603,7 +1603,7 @@ findNpcCatalog?: readonly NpcMapLocation[];
 
 Trước Task 13, `index.ts` không truyền field này nên default `[]`.
 
-- [ ] **Step 3: Thêm manager API**
+- [x] **Step 3: Thêm manager API**
 
 ```ts
 automationSnapshot(accountId: number): AutomationSnapshot {
@@ -1625,7 +1625,7 @@ async stopAutomation(accountId: number): Promise<void> {
 
 `startAuto` compatibility wrapper vẫn gọi session `startAuto(cfg)`; legacy route tiếp tục dùng nó.
 
-- [ ] **Step 4: Nạp automation vào credentials + persistence callback**
+- [x] **Step 4: Nạp automation vào credentials + persistence callback**
 
 Trong `loadCredentials`:
 
@@ -1648,7 +1648,7 @@ onAutomationLocation: (location) => saveFindNpcLocation(db, accountId, location)
 
 `onPermanentFailure` đổi từ `setAutoEnabled(false)` sang `setDesiredMode(db, accountId, 'off')`, sau đó broadcast `auto-disabled` như ruling.
 
-- [ ] **Step 5: Bootstrap cả hai mode theo intent**
+- [x] **Step 5: Bootstrap cả hai mode theo intent**
 
 Thay `listAutoEnabled` bằng `listDesiredAutomation`:
 
@@ -1666,7 +1666,7 @@ try {
 
 Không log config/credential. Transient connect pending giữ desired mode để retry.
 
-- [ ] **Step 6: Verification; chỉ sửa fixture hiện có sau production**
+- [x] **Step 6: Verification; chỉ sửa fixture hiện có sau production**
 
 Run:
 
@@ -1711,7 +1711,7 @@ Import đúng types/helper Task 1. Chỉ thêm members tối thiểu production 
 
 Expected: toàn bộ suite nêu trên PASS và bootstrap vẫn stagger đúng.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add avatar-web/server/src/session/manager.ts
@@ -1732,7 +1732,7 @@ git commit -m "feat(session): bridge persisted automation intent"
 - Consumes: `normalizeFindNpcConfig`, `readAutomationState`, `saveFindNpcConfig`, `setDesiredMode`; manager API Task 8; `AutomationApiErrorCode`.
 - Produces: GET automation, PUT Find NPC config, POST start/stop contracts từ Spec §4.6; legacy endpoints giữ body/behavior cũ.
 
-- [ ] **Step 1: Impact analysis route handler + consumers**
+- [x] **Step 1: Impact analysis route handler + consumers**
 
 Trước sửa route handler, bắt buộc chạy API impact report:
 
@@ -1744,7 +1744,7 @@ impact(target="sessionRouter", file_path="avatar-web/server/src/session/routes.t
 
 Route mới có thể chưa có graph node; report file-level phải liệt kê consumer hiện có của `/auto/*`. Nếu HIGH/CRITICAL hoặc shape mismatch, ghi warning + action vào ledger trước edit.
 
-- [ ] **Step 2: Thêm validation/error helper typed**
+- [x] **Step 2: Thêm validation/error helper typed**
 
 ```ts
 function automationError(
@@ -1767,7 +1767,7 @@ function exactObject(value: unknown, keys: readonly string[]): value is Record<s
 
 Không gọi helper `fail()` substring-based từ route automation.
 
-- [ ] **Step 3: GET và PUT config**
+- [x] **Step 3: GET và PUT config**
 
 ```ts
 router.get('/:id/automation', owned, (req, res) => {
@@ -1798,7 +1798,7 @@ router.put('/:id/automation/find-npc/config', owned, (req, res) => {
 
 Ownership đã được middleware đảm bảo; repo vẫn kiểm tra account tồn tại.
 
-- [ ] **Step 4: POST start có persist-first và rollback rõ ràng**
+- [x] **Step 4: POST start có persist-first và rollback rõ ràng**
 
 ```ts
 router.post('/:id/automation/start', owned, async (req, res) => {
@@ -1872,7 +1872,7 @@ hasVerifiedFindNpcCatalog(): boolean {
 
 Nếu `setDesiredMode` ném, route để Express error middleware/outer try trả 500 nhưng KHÔNG gọi runtime. Bọc handler trong `try/catch`; lỗi persistence trả `{error, code:'automation-start-failed'}` 500 không snapshot, còn deterministic rollback theo flow trên. Không dùng biến `before` ngoài validation.
 
-- [ ] **Step 5: POST stop giữ socket online**
+- [x] **Step 5: POST stop giữ socket online**
 
 ```ts
 router.post('/:id/automation/stop', owned, async (req, res) => {
@@ -1886,11 +1886,11 @@ router.post('/:id/automation/stop', owned, async (req, res) => {
 });
 ```
 
-- [ ] **Step 6: Giữ alias cũ, chỉ await cleanup nơi cần**
+- [x] **Step 6: Giữ alias cũ, chỉ await cleanup nơi cần**
 
 `POST /auto/start` giữ normalize/merge contract hiện tại và `setAutoEnabled` dual-write. `POST /auto/stop` phải đổi handler thành `async`, `await sessions.peek(id)?.stopAuto()`, rồi trả `{ok:true}`; vì `stopAuto()` Task 7 giờ await cleanup rồi disconnect. GET/PUT `/auto/config` không đổi.
 
-- [ ] **Step 7: Verification + cập nhật FakeSession hiện có nếu compiler bắt buộc**
+- [x] **Step 7: Verification + cập nhật FakeSession hiện có nếu compiler bắt buộc**
 
 Run:
 
@@ -1901,7 +1901,7 @@ npm --prefix avatar-web/server test src/session/routes.test.ts src/session/manag
 
 Bổ sung methods coordinator vào `routes.test.ts` FakeSession chỉ khi TypeScript cần; không tạo test mới/case mới. Existing legacy assertions (`startAuto`, `stopAuto`, config merge) phải pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add avatar-web/server/src/session/routes.ts avatar-web/server/src/session/manager.ts
@@ -1923,7 +1923,7 @@ git commit -m "feat(api): add typed automation mode endpoints"
 - Consumes: backend DTO Task 1/9.
 - Produces: frontend copies của `AutomationMode`, `AutomationLocation`, `StoredFindNpcConfigState`, `AutoFindNpcState`, `AutomationSnapshot`, `AutomationApiErrorDto`; `SessionSnapshot.automation?: AutomationSnapshot`; reducer thay nguyên field khi event `automation` đến.
 
-- [ ] **Step 1: Impact analysis reducer/types**
+- [x] **Step 1: Impact analysis reducer/types**
 
 ```text
 impact(target="reduceAccountRuntime", file_path="avatar-web/web/src/accounts/accountRuntime.ts", direction="upstream", includeTests=true)
@@ -1931,7 +1931,7 @@ impact(target="reduceAccountRuntime", file_path="avatar-web/web/src/accounts/acc
 
 Types không phải symbol runtime; dùng LSP `findReferences`/grep cho `SessionSnapshot` nếu GitNexus không trả type references. Expected d=1: `useAccountRuntime`, debug/drawer tests và fixture.
 
-- [ ] **Step 2: Thêm DTO frontend đầy đủ**
+- [x] **Step 2: Thêm DTO frontend đầy đủ**
 
 Trước `SessionSnapshot`:
 
@@ -1979,7 +1979,7 @@ export interface AutomationApiErrorDto {
 
 Thêm `automation?: AutomationSnapshot` vào `SessionSnapshot` để rolling deploy không buộc fixtures cũ.
 
-- [ ] **Step 3: Reducer replace nguyên khối**
+- [x] **Step 3: Reducer replace nguyên khối**
 
 Trong switch sau case `auto`:
 
@@ -1990,7 +1990,7 @@ case 'automation':
 
 Import type tương ứng. Không thêm `automation` vào `AccountsProvider` vì card list không dùng field và event không light.
 
-- [ ] **Step 4: Verification**
+- [x] **Step 4: Verification**
 
 ```bash
 npm --prefix avatar-web/web run build
@@ -1999,7 +1999,7 @@ npm --prefix avatar-web/web test src/accounts/accountRuntime.test.ts src/account
 
 Expected: PASS, không cần sửa fixture vì field optional.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add avatar-web/web/src/types.ts avatar-web/web/src/accounts/accountRuntime.ts
@@ -2022,7 +2022,7 @@ git commit -m "feat(web): consume full automation snapshots"
 - Consumes: `AutomationSnapshot`, `StoredFindNpcConfigState`, `AutomationApiErrorDto`, `ApiError`; endpoints Task 9.
 - Produces: `FindNpcPanel({accountId, automation, onDirtyChange})`; drawer tab `find_npc`; StatusPanel farm start/stop qua common automation API.
 
-- [ ] **Step 1: Impact analysis các component sẽ sửa**
+- [x] **Step 1: Impact analysis các component sẽ sửa**
 
 ```text
 impact(target="StatusPanel", file_path="avatar-web/web/src/accounts/panels/StatusPanel.tsx", direction="upstream", includeTests=true)
@@ -2031,7 +2031,7 @@ impact(target="AccountOperationsDrawer", file_path="avatar-web/web/src/accounts/
 
 Expected d=1: drawer/routes/UI tests. Ghi risk; labels thay đổi bắt buộc cập nhật existing assertions sau production.
 
-- [ ] **Step 2: Tạo `FindNpcPanel.tsx` production-first**
+- [x] **Step 2: Tạo `FindNpcPanel.tsx` production-first**
 
 Component state/flow chính xác:
 
@@ -2080,7 +2080,7 @@ Component giữ thêm `const [savedState, setSavedState] = useState<StoredFindNp
 
 Nút start disable khi busy, dirty, invalid hoặc desired đang `find_npc` stable; nút stop enable khi desired/active là `find_npc` hoặc switching. Không tạo modal.
 
-- [ ] **Step 3: Drawer tab + dirty guard tổng hợp**
+- [x] **Step 3: Drawer tab + dirty guard tổng hợp**
 
 Import component, thêm `['find_npc','Tìm NPC']` sau `autofarm`. Thay một boolean bằng hai source:
 
@@ -2103,7 +2103,7 @@ onPlanDirtyChange={(dirty) => setDirtySources((current) => ({ ...current, farm: 
 
 `beforeunload`, backdrop close, Debug link đều dùng `anyDirty`. Thêm panel id/aria theo đúng pattern; keyboard cycle tự bao tab mới nhờ `PANEL_TABS.length`.
 
-- [ ] **Step 4: StatusPanel mode-aware**
+- [x] **Step 4: StatusPanel mode-aware**
 
 - Nhãn `Bật auto` → `Bật chăm farm`; `Tắt auto` → `Dừng tự động`.
 - Start gọi `/api/accounts/${accountId}/automation/start`, `{mode:'auto_farm'}`.
@@ -2113,7 +2113,7 @@ onPlanDirtyChange={(dirty) => setDirtySources((current) => ({ ...current, farm: 
 - Text hiển thị `desired=<...> · active=<...>` và `Đang chuyển chế độ` khi switching; giữ cycle/lastRun copy khi active farm.
 - Checkbox logoutAfterCycle giữ GET/PUT `/auto/config` y nguyên.
 
-- [ ] **Step 5: CSS tối thiểu theo design system hiện có**
+- [x] **Step 5: CSS tối thiểu theo design system hiện có**
 
 Chỉ thêm nếu cần:
 
@@ -2125,11 +2125,11 @@ Chỉ thêm nếu cần:
 
 Không đổi palette/font/layout toàn app; không thêm gradient/modal.
 
-- [ ] **Step 6: Cập nhật existing StatusPanel assertions sau production**
+- [x] **Step 6: Cập nhật existing StatusPanel assertions sau production**
 
 Trong `StatusPanel.test.tsx`, thay tên button thành `Bật chăm farm`/`Dừng tự động`, và expected endpoints thành `/automation/start` body `{mode:'auto_farm'}`, `/automation/stop` body `{}`. Fixture snapshot không có automation vẫn phải chạy fallback legacy. Không thêm test mới.
 
-- [ ] **Step 7: Verification**
+- [x] **Step 7: Verification**
 
 ```bash
 npm --prefix avatar-web/web run build
@@ -2138,7 +2138,7 @@ npm --prefix avatar-web/web test
 
 Expected: 73 existing tests PASS sau cập nhật assertions cần thiết; FindNpcPanel typechecks; desktop/mobile không overflow theo static CSS review.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add avatar-web/web/src/accounts/panels/FindNpcPanel.tsx \
@@ -2161,7 +2161,7 @@ git commit -m "feat(web): add find-npc controls and runtime status"
 - Consumes: `loadConfig`, `openDb`, `getAccountById`, `readGamePass`, `GameClient`, Task 5 park API, Task 4 snapshot decoder event.
 - Produces: CLI exact `--account-id --map --area`; local health preflight; đúng một context switch/join; redacted evidence text.
 
-- [ ] **Step 1: Tạo CLI parser không chấp nhận range/key lạ**
+- [x] **Step 1: Tạo CLI parser không chấp nhận range/key lạ**
 
 ```ts
 interface ProbeArgs { accountId: number; map: number; area: number }
@@ -2170,13 +2170,13 @@ const ALLOWED = new Set(['--account-id', '--map', '--area']);
 
 Parse argv theo cặp key/value; reject duplicate, thiếu value, key lạ, positional arg, non-integer. `accountId` positive safe integer; map/area signed byte `-128..127`. Không có default, comma, `..`, min/max/range arg.
 
-- [ ] **Step 2: Health-check fail-fast trước mở DB/socket game**
+- [x] **Step 2: Health-check fail-fast trước mở DB/socket game**
 
 Dùng built-in `http.get({host:'127.0.0.1', port:config.port, path:'/api/auth/me', timeout:750})`. Bất kỳ HTTP response nào nghĩa là Avatar Web server đang chạy → throw `hãy dừng Avatar Web server trước khi probe`. `ECONNREFUSED`/timeout được xem là server không chạy; cleanup request. Không gửi ra host ngoài localhost.
 
 `loadConfig()` đọc `.env` qua command `tsx --env-file=.env` ở invocation; tool không in env/config/masterKey.
 
-- [ ] **Step 3: Probe đúng một session/cặp và listener-before-send**
+- [x] **Step 3: Probe đúng một session/cặp và listener-before-send**
 
 Flow exact:
 
@@ -2214,7 +2214,7 @@ try {
 
 Output gồm UTC timestamp, account id, requested map/area, TX/RX cmd+len, decode `ok`, `specialSectionEnd`, `totalBytes`, `trailingBytes`, `specialCount`, `specialNames` (chỉ tên). Nếu decode/error, in section/offset/message không credential và exit code 1.
 
-- [ ] **Step 4: Static safety scan + typecheck (KHÔNG chạy live)**
+- [x] **Step 4: Static safety scan + typecheck (KHÔNG chạy live)**
 
 ```bash
 npm --prefix avatar-web/server run typecheck
@@ -2224,7 +2224,7 @@ grep -nE "REQUEST_JOIN_ANY|SELECTED_MINI_MAP|AVATAR_FEEL|COMMUNICATE|MENU_OPTION
 
 Expected: typecheck PASS; grep chỉ có thể hit comment safety, không có send/call. Rà lại tool chỉ gọi `enterParkContext`, `joinPark`, `waitForWorldSnapshot`, `login/logout`.
 
-- [ ] **Step 5: Commit tool chưa chạy**
+- [x] **Step 5: Commit tool chưa chạy**
 
 ```bash
 git add avatar-web/server/src/tools/npc-map-probe.ts
@@ -2249,7 +2249,7 @@ Không stage `.env`, DB, file temp hay output probe.
 - Consumes: production code Tasks 1–12.
 - Produces: code-complete evidence; optionally live-ready evidence/catalog; honest delivery status.
 
-- [ ] **Step 1: Full static/regression verification**
+- [x] **Step 1: Full static/regression verification**
 
 ```bash
 npm --prefix avatar-web/server run typecheck
@@ -2264,7 +2264,7 @@ git diff --stat main...HEAD
 
 Expected: server 258 existing tests and web 73 existing tests pass (counts may change only if project baseline changed independently; không thêm test mới trong feature); builds/typecheck PASS; không whitespace error; no secret/temp/dist tracked.
 
-- [ ] **Step 2: GitNexus final scope review**
+- [x] **Step 2: GitNexus final scope review**
 
 ```text
 gitnexus_detect_changes(scope="compare", base_ref="main")
@@ -2272,7 +2272,7 @@ gitnexus_detect_changes(scope="compare", base_ref="main")
 
 Expected affected flows: account automation persistence, session lifecycle/reconnect, login enter-world decode, farm/park context, automation API/WS/UI. Xác nhận mọi d=1 caller từ Tasks 3/5/7/8/9/10/11 đã update; không có HIGH/CRITICAL warning bị bỏ qua.
 
-- [ ] **Step 3: Manual non-live acceptance**
+- [x] **Step 3: Manual non-live acceptance**
 
 Với server local nhưng KHÔNG login game/probe:
 
@@ -2287,7 +2287,7 @@ Với server local nhưng KHÔNG login game/probe:
 
 Không dùng credential game để thực hiện bước này.
 
-- [ ] **Step 4: Request final broad code review**
+- [x] **Step 4: Request final broad code review**
 
 Invoke `superpowers:requesting-code-review` trên `main...HEAD`, review correctness/concurrency/protocol/security/compatibility. Fix findings đã xác minh; sau mỗi fix chạy lại verification liên quan và `gitnexus_detect_changes(scope="all")`. Expected: không còn finding blocking.
 
@@ -2339,7 +2339,7 @@ Catalog và evidence phải cùng số entry/thứ tự. Không tạo catalog r�
 
 Thực hiện tuần tự Spec §6.4–6.7: `off → auto_farm → find_npc → off`, stop idempotent giữ socket online, legacy stop disconnect, restart bootstrap, timeout/backoff/exact-name, found/location/tracking/two-miss, WS UI update. Không gửi NPC interaction/combat/reward command. Nếu NPC thật không xuất hiện trong thời gian acceptance, để bước end-to-end unchecked và báo chính xác **protocol/catalog verified; live target pending**.
 
-- [ ] **Step 9: Cập nhật Plan checkbox và commit docs**
+- [x] **Step 9: Cập nhật Plan checkbox và commit docs**
 
 Chỉ đánh `- [x]` cho bước đã chạy thành công; giữ Step 5–8 unchecked khi chưa authorized/đạt gate. Chạy `git diff --check` + final detect_changes rồi:
 
@@ -2350,4 +2350,3 @@ git commit -m "docs: complete auto find NPC implementation plan"
 ```
 
 Không claim live-ready/end-to-end ngoài đúng delivery gate của Spec.
-

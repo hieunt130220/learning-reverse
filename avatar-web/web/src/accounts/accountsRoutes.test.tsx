@@ -40,6 +40,21 @@ function renderRoute(path: string) {
   mocks.apiGet.mockImplementation((url: string) => {
     if (url === '/api/auth/me') return Promise.resolve({ id: 9, email: 'user@example.com' });
     if (url === '/api/accounts') return Promise.resolve([makeAccount()]);
+    if (url === '/api/accounts/1/automation') return Promise.resolve({
+      desiredMode: 'off',
+      activeMode: 'off',
+      transitionState: 'stable',
+      findNpcConfig: { revision: 0, config: { npcName: '' } },
+      findNpcRuntime: {
+        phase: 'idle',
+        running: false,
+        targetName: '',
+        cursor: 0,
+        total: 0,
+        timeoutStreak: 0,
+      },
+      location: null,
+    });
     if (url === '/api/accounts/1/auto/config') return Promise.resolve({ revision: 3, config: { treeCellPlan: [] } });
     if (url === '/api/accounts/1/farm/profile') return Promise.resolve({
       farmId: 12,
@@ -126,7 +141,7 @@ test('Escape hỏi xác nhận khi plan bẩn và chỉ đóng khi đồng ý', 
 
   await userEvent.keyboard('{Escape}');
   expect(screen.getByTestId('location')).toHaveTextContent('/accounts/1');
-  expect(confirm).toHaveBeenLastCalledWith('Kế hoạch cây chưa lưu. Bỏ thay đổi?');
+  expect(confirm).toHaveBeenLastCalledWith('Có thay đổi chưa lưu. Bỏ thay đổi?');
 
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/accounts'));
@@ -146,7 +161,7 @@ test.each([
 
   await leave();
   expect(screen.getByTestId('location')).toHaveTextContent('/accounts/1');
-  expect(confirm).toHaveBeenLastCalledWith('Kế hoạch cây chưa lưu. Bỏ thay đổi?');
+  expect(confirm).toHaveBeenLastCalledWith('Có thay đổi chưa lưu. Bỏ thay đổi?');
 
   await leave();
   const expected = kind === 'link Debug' ? '/accounts/1/debug' : '/accounts';

@@ -44,6 +44,7 @@ import {
   DEFAULT_FARMER_QUEST_STATE,
 } from './progressQuests.js';
 import { FarmService } from './farmService.js';
+import { ParkService } from './parkService.js';
 import { cmdName } from './opcodes.js';
 import {
   decodeShopPacket,
@@ -51,12 +52,15 @@ import {
   type ShopProtocolEvent,
   type ShopProtocolWarning,
 } from './shopProtocol.js';
+import { decodeEnterWorld, WorldDataDecodeError, type EnterWorldSnapshot } from './worldData.js';
 
 /**
  * Giá trị handler cho `GET_HANDLER (-1)`. `GlobalLogicHandler.doGetHandler`
  * @0x5E4974 rẽ nhánh: 3 = casino, 8/9/10 = farm (10 là cái server trả về
  * kèm luôn gói dữ liệu farm cmd 69).
  */
+export const HANDLER_MAIN = 8;
+export const HANDLER_PARK = 9;
 export const HANDLER_FARM = 10;
 
 /** Hằng lấy từ GameMidlet..cctor @0x5E0A4C. */
@@ -134,6 +138,7 @@ export interface TrafficEntry {
 export class GameClient extends EventEmitter {
   readonly session = new Session();
   readonly farm = new FarmService(this.session);
+  readonly park = new ParkService(this.session);
 
   status: ClientStatus = 'idle';
   lastError?: string;
@@ -198,7 +203,8 @@ export class GameClient extends EventEmitter {
   readonly lastPacket = new Map<number, string>();
 
   private device: DeviceProfile = { ...DEFAULT_DEVICE };
-  private inFarm = false;
+  /** Handler context hiện tại: 8 main, 9 park, 10 farm; 'unknown' khi chưa/đã đóng. */
+  currentHandlerContext: 8 | 9 | 10 | 'unknown' = 'unknown';
   private keepAliveTimer?: NodeJS.Timeout;
   /** Đóng socket khi server không gửi gói nào trong `silenceTimeoutMs`. */
   private silenceTimer?: NodeJS.Timeout;
@@ -227,7 +233,7 @@ export class GameClient extends EventEmitter {
 
     this.session.on('message', (msg) => this.onMessage(msg));
     this.session.on('closed', (info) => {
-      this.inFarm = false;
+      this.currentHandlerContext = 'unknown';
       this.stopKeepAlive();
       this.stopSilenceWatchdog();
       const statusAtClose = this.status;
@@ -341,7 +347,7 @@ export class GameClient extends EventEmitter {
   }
 
   logout(): void {
-    this.inFarm = false;
+    this.currentHandlerContext = 'unknown';
     this.stopKeepAlive();
     this.stopSilenceWatchdog();
     this.session.close();
@@ -382,6 +388,7 @@ export class GameClient extends EventEmitter {
     const handler = Message.create(-1);
     handler.writer!.writeByte(GAME_MIDLET.CLIENT_TYPE);
     this.session.send(handler);
+    this.currentHandlerContext = HANDLER_MAIN;
 
     // SET_PROVIDER (-47)
     const provider = Message.create(-47);
@@ -427,8 +434,8 @@ export class GameClient extends EventEmitter {
    *   (server coi việc xin lại handler khi đang ở trong farm là bất thường và đóng TCP socket).
    */
   enterFarm(idFarm?: number): void {
-    if (!this.inFarm) {
-      this.inFarm = true;
+    if (this.currentHandlerContext !== HANDLER_FARM) {
+      this.currentHandlerContext = HANDLER_FARM;
       const m = Message.create(-1);
       m.writer!.writeByte(HANDLER_FARM);
       this.session.send(m);
@@ -436,6 +443,62 @@ export class GameClient extends EventEmitter {
       const targetId = idFarm ?? this.farmState?.idFarm ?? this.playerId ?? 0;
       this.farm.joinFarm(targetId);
     }
+  }
+
+  /** Xin handler Park (9) đúng MỘT lần khi context khác 9; xin lại gây đóng socket. */
+  enterParkContext(): void {
+    if (this.currentHandlerContext === HANDLER_PARK) return;
+    this.currentHandlerContext = HANDLER_PARK;
+    const m = Message.create(-1);
+    m.writer!.writeByte(HANDLER_PARK);
+    this.session.send(m);
+  }
+
+  joinPark(map: number, area: number): void {
+    this.park.doJoinPark(map, area);
+  }
+
+  /** Chờ đúng MỘT snapshot enter-world mới; cleanup trọn trên resolve/timeout/abort/đóng socket. */
+  waitForWorldSnapshot(signal: AbortSignal, timeoutMs: number): Promise<EnterWorldSnapshot> {
+    return new Promise((resolve, reject) => {
+      let timer: NodeJS.Timeout | undefined;
+      const onSnapshot = (snap: EnterWorldSnapshot): void => {
+        cleanup();
+        resolve(snap);
+      };
+      const onSnapshotError = (error: unknown): void => {
+        cleanup();
+        reject(
+          error instanceof WorldDataDecodeError
+            ? error
+            : new WorldDataDecodeError('enter-world', -1, error instanceof Error ? error.message : String(error)),
+        );
+      };
+      const onAbort = (): void => {
+        cleanup();
+        reject(new Error('chờ enter-world bị hủy'));
+      };
+      const onClosed = (): void => {
+        cleanup();
+        reject(new Error('kết nối đã đóng khi chờ gói enter-world (-34)'));
+      };
+      const cleanup = (): void => {
+        if (timer) clearTimeout(timer);
+        this.removeListener('world-snapshot', onSnapshot);
+        this.removeListener('world-snapshot-error', onSnapshotError);
+        signal.removeEventListener('abort', onAbort);
+        this.session.removeListener('closed', onClosed);
+      };
+      timer = setTimeout(() => {
+        cleanup();
+        reject(new Error('hết giờ chờ gói enter-world (-34)'));
+      }, timeoutMs);
+      this.once('world-snapshot', onSnapshot);
+      this.once('world-snapshot-error', onSnapshotError);
+      signal.addEventListener('abort', onAbort, { once: true });
+      this.session.once('closed', onClosed);
+      if (signal.aborted) onAbort();
+    });
   }
 
   /** Gửi yêu cầu lấy thông tin chi tiết nhân vật (cmd -94). */
@@ -605,6 +668,16 @@ export class GameClient extends EventEmitter {
               );
             } else {
               this.emit('log', 'LOGIN_SUCESS không giải mã được số dư ví');
+            }
+            // Decoder chạy trên body độc lập; lỗi decode KHÔNG được ảnh hưởng status online.
+            try {
+              const snap = decodeEnterWorld(msg.getData());
+              this.emit('world-snapshot', snap);
+            } catch (err) {
+              const section = (err as { section?: string }).section ?? '?';
+              const offset = (err as { offset?: number }).offset ?? -1;
+              this.emit('log', `decode enter-world lỗi tại ${section}@${offset}: ${(err as Error).message}`);
+              this.emit('world-snapshot-error', err);
             }
             this.requestYourInfo(id);
           } else {

@@ -287,11 +287,20 @@ export function setAutoEnabled(
   legacyNow = Date.now(),
 ): void {
   const now = typeof nowOrIgnoredConfig === 'number' ? nowOrIgnoredConfig : legacyNow;
-  db.prepare('UPDATE avatar_accounts SET auto_enabled = ?, updated_at = ? WHERE id = ?').run(
-    enabled ? 1 : 0,
-    now,
-    id,
-  );
+  db.transaction(() => {
+    const result = db.prepare('UPDATE avatar_accounts SET auto_enabled = ?, updated_at = ? WHERE id = ?').run(
+      enabled ? 1 : 0,
+      now,
+      id,
+    );
+    if (result.changes === 0) return;
+    db.prepare(
+      `INSERT INTO avatar_automation_state (account_id, desired_mode, updated_at)
+         VALUES (?, ?, ?)
+       ON CONFLICT(account_id) DO UPDATE
+         SET desired_mode = excluded.desired_mode, updated_at = excluded.updated_at`,
+    ).run(id, enabled ? 'auto_farm' : 'off', now);
+  })();
 }
 
 interface AutoConfigRow {
@@ -420,6 +429,12 @@ export function enableAutoWithConfigPatch(
     const normalizedPatch = normalizeAutoConfig(patch);
     if (Object.keys(normalizedPatch).length === 0) {
       setAutoEnabled(db, id, true, now);
+      db.prepare(
+        `INSERT INTO avatar_automation_state (account_id, desired_mode, updated_at)
+           VALUES (?, ?, ?)
+         ON CONFLICT(account_id) DO UPDATE
+           SET desired_mode = excluded.desired_mode, updated_at = excluded.updated_at`,
+      ).run(id, 'auto_farm', now);
       return { status: 'saved', state: current };
     }
 
@@ -431,6 +446,12 @@ export function enableAutoWithConfigPatch(
           SET auto_config_json = ?, auto_enabled = 1, updated_at = ?
         WHERE id = ? AND user_id = ?`,
     ).run(JSON.stringify(storedAutoConfigEnvelope(state)), now, id, userId);
+    db.prepare(
+      `INSERT INTO avatar_automation_state (account_id, desired_mode, updated_at)
+         VALUES (?, ?, ?)
+       ON CONFLICT(account_id) DO UPDATE
+         SET desired_mode = excluded.desired_mode, updated_at = excluded.updated_at`,
+    ).run(id, 'auto_farm', now);
     return { status: 'saved', state };
   })();
 }

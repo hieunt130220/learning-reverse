@@ -280,6 +280,8 @@ const DEFAULTS: AutoFarmConfig = {
 export class AutoFarm extends EventEmitter {
   private timer?: NodeJS.Timeout;
   private aborted = true;
+  private generation = 0;
+  private activeCycle?: Promise<void>;
   private activeConfig: AutoFarmConfig = DEFAULTS;
   private pendingConfig?: AutoFarmConfig;
   private readonly wait: (ms: number) => Promise<void>;
@@ -319,17 +321,19 @@ export class AutoFarm extends EventEmitter {
 
   start(cfg: Partial<AutoFarmConfig>): void {
     if (this.client.status !== 'online') throw new Error('chưa đăng nhập');
-    this.stop();
+    if (this.activeCycle) throw new Error('vòng AutoFarm trước đang dừng');
+    this.requestStop();
     this.activeConfig = makeConfig(cfg);
     this.pendingConfig = undefined;
     this.aborted = false;
+    const generation = ++this.generation;
     this.cycle = 0;
     this.lastError = undefined;
     // Vòng đầu chờ phiên ổn định; các vòng sau đã cách nhau `intervalMs`.
     if (this.activeConfig.startDelayMs > 0) {
-      this.timer = setTimeout(() => void this.runCycle(), this.activeConfig.startDelayMs);
+      this.timer = setTimeout(() => this.launchCycle(generation), this.activeConfig.startDelayMs);
     } else {
-      void this.runCycle();
+      this.launchCycle(generation);
     }
   }
 
@@ -340,11 +344,37 @@ export class AutoFarm extends EventEmitter {
     this.pendingConfig = makeConfig({ ...this.activeConfig, ...cfg });
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
+    const activeCycle = this.activeCycle;
+    this.requestStop();
+    await activeCycle;
+  }
+
+  private requestStop(): void {
     this.aborted = true;
+    this.generation += 1;
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     this.emit('state', this.state());
+  }
+
+  private launchCycle(generation: number): void {
+    this.timer = undefined;
+    if (!this.isCurrent(generation) || this.activeCycle) return;
+    const cycle = this.runCycle(generation);
+    this.activeCycle = cycle;
+    const clear = (): void => {
+      if (this.activeCycle === cycle) this.activeCycle = undefined;
+    };
+    void cycle.then(clear, clear);
+  }
+
+  private isCurrent(generation: number): boolean {
+    return !this.aborted && this.generation === generation;
+  }
+
+  private assertCurrent(generation: number): void {
+    if (!this.isCurrent(generation)) throw new AutoFarmStoppedError();
   }
 
   /**
@@ -405,7 +435,7 @@ export class AutoFarm extends EventEmitter {
     await fresh;
   }
 
-  private async runCycle(): Promise<void> {
+  private async runCycle(generation: number): Promise<void> {
     if (this.pendingConfig) {
       this.activeConfig = this.pendingConfig;
       this.pendingConfig = undefined;
@@ -413,7 +443,7 @@ export class AutoFarm extends EventEmitter {
     const cfg = this.activeConfig;
     if (cfg.barnAnimalPlan?.length === 0) cfg.barnAnimalPlan = undefined;
     if (cfg.pondAnimalPlan?.length === 0) cfg.pondAnimalPlan = undefined;
-    if (this.aborted) return;
+    if (!this.isCurrent(generation)) return;
     const actions: string[] = [];
     // Một nguồn, hai đích: panel Tự động đọc `lastActions`, còn nhật ký phiên
     // nhận sự kiện `log` để có mốc giờ thật và chạy live qua WebSocket.
@@ -434,6 +464,7 @@ export class AutoFarm extends EventEmitter {
     }
 
     try {
+      const guard = (): void => this.assertCurrent(generation);
       // Xin lại dữ liệu farm rồi chờ gói 69 về.
       const fresh = new Promise<void>((resolve) => {
         const t = setTimeout(resolve, 5000);
@@ -444,6 +475,7 @@ export class AutoFarm extends EventEmitter {
       });
       this.client.enterFarm();
       await fresh;
+      guard();
 
       const farm = this.client.farmState;
       if (!farm) throw new Error('không lấy được dữ liệu farm');
@@ -452,6 +484,7 @@ export class AutoFarm extends EventEmitter {
       // khởi động lại, chưa có gói 70 nào) thì auto-buy sẽ tưởng đang có 0 và
       // mua thừa toàn bộ. Xin lại kho và chờ phản hồi.
       await this.refreshInventory();
+      guard();
       const idFarm = farm.idFarm;
 
       const knownSeeds = new Set<number>([
@@ -470,6 +503,7 @@ export class AutoFarm extends EventEmitter {
         needTreeCatalog,
         note,
       );
+      guard();
       const specs = new Map(
         this.client.animals.map((a) => [a.id, parseAnimalSpec(a.desc)] as const),
       );
@@ -480,12 +514,18 @@ export class AutoFarm extends EventEmitter {
       // Nhịp nghỉ dùng chung: sau mỗi lệnh gửi đi, và sau mỗi đối tượng đã duyệt
       // dù không gửi gì. `tick` chỉ chờ; việc dừng vòng do `this.aborted` ở đầu
       // mỗi lượt lặp lo.
-      const tick = (): Promise<void> => this.wait(cfg.stepDelayMs);
+      const tick = async (): Promise<void> => {
+        guard();
+        await this.wait(cfg.stepDelayMs);
+        guard();
+      };
 
       // Chờ xác nhận của từng lệnh (giới hạn `commandTimeoutMs`): server im lặng
       // không được phép treo vòng — ghi chú rồi vẫn đi tiếp.
       const confirm = async (cmd: number, label: string): Promise<void> => {
+        guard();
         const ok = await this.client.waitForReply(cmd, this.commandTimeoutMs);
+        guard();
         if (!ok) note(`server im lặng — chưa nhận xác nhận: ${label}`);
       };
 
@@ -860,6 +900,7 @@ export class AutoFarm extends EventEmitter {
           });
           this.client.enterFarm();
           await farmSynced;
+          guard();
         }
         // Server keeps the harvested tree id and marks the cell as spent with
         // time=-1; treat both representations as available for replanting.
@@ -1300,6 +1341,7 @@ export class AutoFarm extends EventEmitter {
       }
       this.lastError = undefined;
     } catch (err) {
+      if (err instanceof AutoFarmStoppedError) return;
       this.lastError = (err as Error).message;
       // Rớt kết nối giữa chu kỳ: dừng ngay thay vì để cờ `running` treo tới
       // lần quét sau.
@@ -1315,11 +1357,13 @@ export class AutoFarm extends EventEmitter {
     this.emit('state', this.state());
 
     this.emit('cycle-complete', this.state());
-    if (!this.aborted && this.continuous) {
-      this.timer = setTimeout(() => void this.runCycle(), cfg.intervalMs);
+    if (this.isCurrent(generation) && this.continuous) {
+      this.timer = setTimeout(() => this.launchCycle(generation), cfg.intervalMs);
     }
   }
 }
+
+class AutoFarmStoppedError extends Error {}
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 

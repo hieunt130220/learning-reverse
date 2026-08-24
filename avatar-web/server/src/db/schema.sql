@@ -90,3 +90,31 @@ CREATE INDEX IF NOT EXISTS idx_avatar_shop_transactions_account_created
 
 CREATE INDEX IF NOT EXISTS idx_avatar_shop_transactions_account_status
   ON avatar_shop_transactions(account_id, status);
+
+-- Trạng thái automation 1-1 với account: desired mode là nguồn sự thật cho
+-- bootstrap sau restart. Ba cột location nguyên tố cùng nhau hoặc cùng NULL.
+CREATE TABLE IF NOT EXISTS avatar_automation_state (
+  account_id              INTEGER PRIMARY KEY
+                          REFERENCES avatar_accounts(id) ON DELETE CASCADE,
+  desired_mode            TEXT NOT NULL DEFAULT 'off'
+                          CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc')),
+  find_npc_config_json    TEXT,
+  current_map             INTEGER,
+  current_area            INTEGER,
+  location_observed_at    INTEGER,
+  updated_at              INTEGER NOT NULL,
+  CHECK (
+    (current_map IS NULL AND current_area IS NULL AND location_observed_at IS NULL)
+    OR
+    (current_map IS NOT NULL AND current_area IS NOT NULL AND location_observed_at IS NOT NULL)
+  )
+);
+
+-- Backfill idempotent: account legacy auto_enabled=1 -> desired auto_farm.
+INSERT INTO avatar_automation_state (account_id, desired_mode, updated_at)
+SELECT id,
+       CASE WHEN auto_enabled = 1 THEN 'auto_farm' ELSE 'off' END,
+       updated_at
+FROM avatar_accounts
+WHERE 1
+ON CONFLICT(account_id) DO NOTHING;

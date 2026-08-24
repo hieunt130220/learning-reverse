@@ -1,4 +1,4 @@
-import type { SessionSnapshot, ShopRuntimeState } from '../types.js';
+import type { AutomationSnapshot, SessionSnapshot, ShopRuntimeState } from '../types.js';
 import type { WsMessage } from '../ws.js';
 
 function shopEpoch(shop: ShopRuntimeState | undefined): number {
@@ -31,6 +31,8 @@ export function reduceAccountRuntime(
       return { ...current, desiredConnected: Boolean(message.payload) };
     case 'auto':
       return { ...current, auto: message.payload };
+    case 'automation':
+      return { ...current, automation: message.payload as AutomationSnapshot };
     case 'macro':
       return { ...current, macro: message.payload };
     case 'shop': {

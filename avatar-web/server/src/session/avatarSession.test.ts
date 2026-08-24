@@ -147,6 +147,11 @@ function harness(
       user: 'u',
       pass: 'p',
       autoEnabled: false,
+      automation: {
+        desiredMode: creds.autoEnabled ? 'auto_farm' : 'off',
+        findNpcConfig: { revision: 0, config: { npcName: '' } },
+        location: null,
+      },
       ...creds,
     }),
     createClient: () => {
@@ -165,6 +170,7 @@ function harness(
     createMacroRunner: () => new FakeMacro() as unknown as MacroRunner,
     onEvent: (type, payload) => events.push({ type, payload }),
     onPermanentFailure: (reason) => permanent.push(reason),
+    onAutomationLocation: () => undefined,
     setTimeoutFn: ((fn: () => void, delay: number) => {
       const timer: FakeTimer = { id: nextTimerId++, fn, delay, active: true };
       timers.push(timer);
@@ -285,6 +291,7 @@ test('update config khi auto dừng giữ cho lần start kế tiếp', async ()
   await h.session.start();
   assert.equal(h.session.updateAutoConfig({ seedId: 7 }), 'next-start');
   h.clients[0].goOnline();
+  await flush();
 
   assert.deepEqual(h.autos[0].lastCfg, { seedId: 7 });
 });
@@ -424,6 +431,7 @@ test('online reset backoff và auto chỉ start một lần', async () => {
   await flush();
   h.clients[1].goOnline();
   h.clients[1].goOnline();
+  await flush();
   assert.equal(h.session.snapshot().retries, 0);
   assert.equal(h.autos[1].startCount, 1);
 });
