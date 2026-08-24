@@ -1260,10 +1260,10 @@ export class AutoFarm extends EventEmitter {
       }
 
       // ---- Tự động bán nông sản (Auto Sell Produce) -----------------------------
-      if (cfg.autoSellProduce && cfg.autoSellRules && cfg.autoSellRules.length > 0 && this.options.runAutoSellCycle) {
+      if (cfg.autoSellProduce && this.options.runAutoSellCycle) {
         note('[sạp tự động] bắt đầu kiểm tra sạp...');
         try {
-          const result = await this.options.runAutoSellCycle(cfg.autoSellRules, () => this.aborted);
+          const result = await this.options.runAutoSellCycle(cfg.autoSellRules ?? [], () => this.aborted);
           if (result.collectedSoldSlots > 0 || result.withdrawnExpiredSlots > 0) {
             note(
               `[sạp tự động] đã thu tiền ${result.collectedSoldSlots} ô đã bán, `
