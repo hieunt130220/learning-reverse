@@ -147,6 +147,11 @@ function harness(
       user: 'u',
       pass: 'p',
       autoEnabled: false,
+      automation: {
+        desiredMode: creds.autoEnabled ? 'auto_farm' : 'off',
+        findNpcConfig: { revision: 0, config: { npcName: '' } },
+        location: null,
+      },
       ...creds,
     }),
     createClient: () => {
@@ -165,6 +170,7 @@ function harness(
     createMacroRunner: () => new FakeMacro() as unknown as MacroRunner,
     onEvent: (type, payload) => events.push({ type, payload }),
     onPermanentFailure: (reason) => permanent.push(reason),
+    onAutomationLocation: () => undefined,
     setTimeoutFn: ((fn: () => void, delay: number) => {
       const timer: FakeTimer = { id: nextTimerId++, fn, delay, active: true };
       timers.push(timer);
