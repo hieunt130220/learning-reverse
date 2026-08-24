@@ -1,0 +1,5 @@
+{"type":"server-started","port":59964,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:59964/?key=4d048132a68de0a315591b16c9549e9a9c1ddb93a4825b2d9cc697f45cef9ec7","screen_dir":"/Users/devios/learning-reverse/.superpowers/brainstorm/9319-1787535780/content","state_dir":"/Users/devios/learning-reverse/.superpowers/brainstorm/9319-1787535780/state","idle_timeout_ms":14400000}
+{"type":"screen-added","file":"/Users/devios/learning-reverse/.superpowers/brainstorm/9319-1787535780/content/state-machine.html"}
+{"source":"user-event","type":"click","text":"✓\n      Duyệt luồng nàyTiếp tục sang API, persistence, error handling và verification.","choice":"approve-state-flow","id":null,"timestamp":1787535900867}
+{"type":"screen-added","file":"/Users/devios/learning-reverse/.superpowers/brainstorm/9319-1787535780/content/waiting.html"}
+{"type":"server-stopped","reason":"owner process exited"}

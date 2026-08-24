@@ -1,0 +1,161 @@
+<style>
+  .design-shell { max-width: 1100px; margin: 0 auto; }
+  .eyebrow { font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; opacity: .65; }
+  .diagram-card { margin: 1.25rem 0; padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 14px; overflow-x: auto; }
+  .diagram-card svg { display: block; min-width: 820px; width: 100%; height: auto; }
+  .node { fill: color-mix(in srgb, Canvas 92%, #5b8def 8%); stroke: color-mix(in srgb, currentColor 42%, transparent); stroke-width: 1.5; }
+  .node-active { fill: color-mix(in srgb, Canvas 80%, #2fa36b 20%); stroke: #2fa36b; stroke-width: 2; }
+  .node-transition { fill: color-mix(in srgb, Canvas 82%, #d68a22 18%); stroke: #d68a22; stroke-width: 2; }
+  .node-stop { fill: color-mix(in srgb, Canvas 88%, #87909b 12%); }
+  .arrow { stroke: color-mix(in srgb, currentColor 62%, transparent); stroke-width: 2; fill: none; marker-end: url(#arrow); }
+  .arrow-accent { stroke: #2f7bd9; stroke-width: 2.5; fill: none; marker-end: url(#arrowAccent); }
+  .svg-title { font: 650 16px system-ui, sans-serif; fill: currentColor; text-anchor: middle; }
+  .svg-copy { font: 12px system-ui, sans-serif; fill: currentColor; opacity: .78; text-anchor: middle; }
+  .svg-label { font: 12px system-ui, sans-serif; fill: currentColor; opacity: .7; text-anchor: middle; }
+  .legend { display: flex; flex-wrap: wrap; gap: .8rem 1.2rem; font-size: .86rem; opacity: .8; }
+  .dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 999px; margin-right: .35rem; vertical-align: -.04rem; }
+  .flow-grid { display: grid; grid-template-columns: repeat(7, minmax(7rem, 1fr)); gap: .5rem; align-items: stretch; min-width: 930px; }
+  .flow-step { padding: .8rem .65rem; border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 10px; background: color-mix(in srgb, Canvas 94%, #5b8def 6%); }
+  .flow-step strong { display: block; margin-bottom: .3rem; }
+  .flow-step span { font-size: .8rem; opacity: .72; line-height: 1.35; }
+  .flow-arrow { display: flex; align-items: center; justify-content: center; opacity: .55; font-size: 1.3rem; }
+  .contract-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem; margin-top: 1rem; }
+  .contract { padding: .9rem; border-radius: 10px; background: color-mix(in srgb, Canvas 95%, #2fa36b 5%); border-left: 3px solid #2fa36b; }
+  .contract strong { display: block; margin-bottom: .25rem; }
+  .contract p { margin: 0; font-size: .86rem; opacity: .78; }
+</style>
+
+<div class="design-shell">
+  <div class="eyebrow">Auto Tìm NPC · Thiết kế phần 2</div>
+  <h2>State machine và chuyển mode nguyên tử</h2>
+  <p class="subtitle">Backend giữ một desired mode duy nhất; runner NPC quét tuần tự rồi bám mục tiêu cho đến khi biến mất.</p>
+
+  <div class="diagram-card">
+    <h3>1. Session-level automation coordinator</h3>
+    <svg viewBox="0 0 1000 300" role="img" aria-label="Sơ đồ chuyển đổi giữa Off, Switching, Auto Farm và Auto Tìm NPC">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor" opacity=".62"/></marker>
+        <marker id="arrowAccent" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#2f7bd9"/></marker>
+      </defs>
+      <rect class="node node-stop" x="55" y="105" width="170" height="82" rx="14"/>
+      <text class="svg-title" x="140" y="137">OFF</text>
+      <text class="svg-copy" x="140" y="160">không runner hoạt động</text>
+
+      <rect class="node node-transition" x="335" y="85" width="220" height="122" rx="14"/>
+      <text class="svg-title" x="445" y="120">SWITCHING</text>
+      <text class="svg-copy" x="445" y="145">persist intent → stop cũ</text>
+      <text class="svg-copy" x="445" y="164">await cleanup → đổi context</text>
+      <text class="svg-copy" x="445" y="183">start runner mới</text>
+
+      <rect class="node node-active" x="690" y="35" width="220" height="82" rx="14"/>
+      <text class="svg-title" x="800" y="67">AUTO FARM</text>
+      <text class="svg-copy" x="800" y="90">farm handler · runner hiện tại</text>
+
+      <rect class="node node-active" x="690" y="185" width="220" height="82" rx="14"/>
+      <text class="svg-title" x="800" y="217">AUTO TÌM NPC</text>
+      <text class="svg-copy" x="800" y="240">park handler · AutoFindNpc</text>
+
+      <path class="arrow-accent" d="M225 137 C275 137 285 130 335 130"/>
+      <path class="arrow" d="M555 125 C615 95 630 76 690 76"/>
+      <path class="arrow" d="M555 170 C615 195 630 226 690 226"/>
+      <path class="arrow-accent" d="M690 95 C620 120 610 130 555 140"/>
+      <path class="arrow-accent" d="M690 205 C620 180 610 170 555 158"/>
+      <path class="arrow" d="M335 182 C285 182 275 167 225 167"/>
+
+      <text class="svg-label" x="278" y="119">bật mode</text>
+      <text class="svg-label" x="623" y="80">start farm</text>
+      <text class="svg-label" x="625" y="238">start findNpc</text>
+      <text class="svg-label" x="620" y="133">đổi sang NPC</text>
+      <text class="svg-label" x="620" y="183">đổi sang Farm</text>
+      <text class="svg-label" x="278" y="206">tắt / start lỗi</text>
+    </svg>
+    <div class="legend">
+      <span><i class="dot" style="background:#2fa36b"></i>runner đang sở hữu GameClient</span>
+      <span><i class="dot" style="background:#d68a22"></i>khóa chuyển mode tuần tự</span>
+      <span><i class="dot" style="background:#2f7bd9"></i>mọi chuyển mode đều quay qua cleanup</span>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <h3>2. AutoFindNpc runner</h3>
+    <svg viewBox="0 0 1000 360" role="img" aria-label="State machine quét và bám NPC">
+      <defs>
+        <marker id="arrow2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor" opacity=".62"/></marker>
+      </defs>
+      <g style="marker-end:url(#arrow2)">
+        <rect class="node node-stop" x="35" y="128" width="140" height="76" rx="14"/>
+        <text class="svg-title" x="105" y="158">IDLE</text>
+        <text class="svg-copy" x="105" y="180">chưa sở hữu client</text>
+
+        <rect class="node node-active" x="245" y="100" width="200" height="132" rx="14"/>
+        <text class="svg-title" x="345" y="132">SCANNING</text>
+        <text class="svg-copy" x="345" y="157">join map/khu kế tiếp</text>
+        <text class="svg-copy" x="345" y="176">chờ snapshot -34</text>
+        <text class="svg-copy" x="345" y="195">exact-match tên NPC</text>
+        <text class="svg-copy" x="345" y="214">delay chống spam map</text>
+
+        <rect class="node node-transition" x="515" y="38" width="195" height="100" rx="14"/>
+        <text class="svg-title" x="612" y="70">SCAN BACKOFF</text>
+        <text class="svg-copy" x="612" y="94">hết toàn bộ catalog</text>
+        <text class="svg-copy" x="612" y="113">nghỉ rồi reset cursor</text>
+
+        <rect class="node node-active" x="770" y="100" width="195" height="132" rx="14"/>
+        <text class="svg-title" x="867" y="132">TRACKING</text>
+        <text class="svg-copy" x="867" y="157">ở nguyên map/khu</text>
+        <text class="svg-copy" x="867" y="176">nghe packet thay đổi</text>
+        <text class="svg-copy" x="867" y="195">refresh snapshot định kỳ</text>
+        <text class="svg-copy" x="867" y="214">không đánh / hội thoại</text>
+
+        <rect class="node node-stop" x="515" y="272" width="195" height="68" rx="14"/>
+        <text class="svg-title" x="612" y="301">STOPPING</text>
+        <text class="svg-copy" x="612" y="322">cancel wait + bỏ listener</text>
+
+        <path class="arrow" d="M175 166 L245 166"/>
+        <path class="arrow" d="M445 126 C475 105 485 88 515 88"/>
+        <path class="arrow" d="M710 88 C742 88 750 125 770 140"/>
+        <path class="arrow" d="M445 166 L770 166"/>
+        <path class="arrow" d="M770 210 C680 248 520 247 445 210"/>
+        <path class="arrow" d="M345 232 C380 290 445 306 515 306"/>
+        <path class="arrow" d="M867 232 C830 290 780 306 710 306"/>
+        <path class="arrow" d="M515 320 C380 348 190 300 135 204"/>
+      </g>
+      <text class="svg-label" x="210" y="153">start</text>
+      <text class="svg-label" x="482" y="78">hết catalog</text>
+      <text class="svg-label" x="746" y="77">hết backoff</text>
+      <text class="svg-label" x="600" y="151">tìm thấy</text>
+      <text class="svg-label" x="610" y="256">vắng mặt đã xác nhận</text>
+      <text class="svg-label" x="420" y="292">stop / disconnect</text>
+      <text class="svg-label" x="805" y="292">stop / disconnect</text>
+    </svg>
+  </div>
+
+  <div class="diagram-card">
+    <h3>3. Một bước quét map/khu</h3>
+    <div class="flow-grid">
+      <div class="flow-step"><strong>1 · Cursor</strong><span>Lấy cặp map/khu kế tiếp từ catalog ổn định.</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><strong>2 · Join</strong><span>Park handler → join map/khu; áp dụng minimum delay.</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><strong>3 · Snapshot</strong><span>Chờ enter-world -34 và decode ItemMapSpecial.</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><strong>4 · Match</strong><span>Unicode normalize + trim + case-fold; khớp toàn bộ tên.</span></div>
+    </div>
+    <div class="contract-grid">
+      <div class="contract"><strong>Không thấy</strong><p>Cập nhật tiến độ rồi quét cặp tiếp theo.</p></div>
+      <div class="contract"><strong>Đã thấy</strong><p>Giữ nguyên vị trí, chuyển TRACKING, công bố map/khu hiện tại.</p></div>
+      <div class="contract"><strong>NPC biến mất</strong><p>Packet chỉ tạo tín hiệu; snapshot refresh xác nhận trước khi quét lại.</p></div>
+      <div class="contract"><strong>Reconnect / restart</strong><p>Runner cũ dừng sạch; desired mode đã lưu sẽ khởi động lại từ đầu catalog.</p></div>
+    </div>
+  </div>
+
+  <div class="options">
+    <div class="option" data-choice="approve-state-flow" onclick="toggleSelect(this)">
+      <div class="letter">✓</div>
+      <div class="content"><h3>Duyệt luồng này</h3><p>Tiếp tục sang API, persistence, error handling và verification.</p></div>
+    </div>
+    <div class="option" data-choice="revise-state-flow" onclick="toggleSelect(this)">
+      <div class="letter">↺</div>
+      <div class="content"><h3>Cần chỉnh sửa</h3><p>Chọn mục này rồi mô tả thay đổi mong muốn trong terminal.</p></div>
+    </div>
+  </div>
+</div>
