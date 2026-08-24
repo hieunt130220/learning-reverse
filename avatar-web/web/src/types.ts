@@ -333,6 +333,63 @@ export interface ShopRuntimeState {
   lastError?: { code: string; message: string };
 }
 
+export type AutomationMode = 'off' | 'auto_farm' | 'find_npc';
+
+export interface AutomationLocation {
+  map: number;
+  area: number;
+  observedAt: number;
+}
+
+export interface StoredFindNpcConfigState {
+  revision: number;
+  config: { npcName: string };
+}
+
+export interface NpcMapLocation {
+  map: number;
+  area: number;
+}
+
+export type AutoFindNpcPhase = 'idle' | 'scanning' | 'scan_backoff' | 'tracking' | 'stopping';
+
+export interface AutoFindNpcState {
+  phase: AutoFindNpcPhase;
+  running: boolean;
+  targetName: string;
+  cursor: number;
+  total: number;
+  current?: NpcMapLocation;
+  /** Map/khu đang chờ snapshot; tồn tại cả khi phase=scanning. */
+  probing?: NpcMapLocation;
+  timeoutStreak: number;
+  backoffUntil?: number;
+  lastError?: string;
+}
+
+export interface AutomationSnapshot {
+  desiredMode: AutomationMode;
+  activeMode: AutomationMode;
+  transitionState: 'stable' | 'switching';
+  findNpcConfig: StoredFindNpcConfigState;
+  findNpcRuntime: AutoFindNpcState;
+  location: AutomationLocation | null;
+}
+
+export interface AutomationApiErrorDto {
+  error: string;
+  code:
+    | 'invalid-automation-mode'
+    | 'invalid-find-npc-config'
+    | 'find-npc-name-required'
+    | 'catalog-unverified'
+    | 'revision-conflict'
+    | 'automation-connect-pending'
+    | 'automation-start-failed';
+  snapshot?: AutomationSnapshot;
+  current?: StoredFindNpcConfigState;
+}
+
 export interface SessionSnapshot {
   accountId: number;
   status: ClientStatus;
@@ -352,6 +409,7 @@ export interface SessionSnapshot {
   quests?: QuestOverviewState | null;
   farmSync?: FarmSyncState;
   auto: AutoState;
+  automation?: AutomationSnapshot;
   macro: MacroState;
   /** Optional trong rolling deploy; backend mới luôn phát đủ hai field. */
   shop?: ShopRuntimeState;
