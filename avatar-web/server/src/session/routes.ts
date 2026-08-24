@@ -32,6 +32,11 @@ export interface SessionRoutesDeps {
   shopPolicy?: ShopPolicy;
 }
 
+interface AutomationHttpResponse {
+  status: number;
+  body: unknown;
+}
+
 const SHOP_FARM_ACTIONS = new Set([
   'openShop',
   'unlockShopSlot',
@@ -60,6 +65,15 @@ function automationError(
   extra: Record<string, unknown> = {},
 ): void {
   res.status(status).json({ error, code, ...extra });
+}
+
+function automationFailure(
+  status: number,
+  code: AutomationApiErrorCode,
+  error: string,
+  extra: Record<string, unknown> = {},
+): AutomationHttpResponse {
+  return { status, body: { error, code, ...extra } };
 }
 
 function exactObject(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
@@ -129,6 +143,38 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
   const owned = requireOwnedAccount(db);
   const accountId = (req: unknown) => (req as AccountRequest).account!.id;
   const userId = (req: unknown) => (req as AccountRequest).user!.id;
+  const automationTails = new Map<number, Promise<void>>();
+
+  /**
+   * Tuần tự hóa toàn bộ persist -> runtime -> rollback của cùng account.
+   * Tail luôn resolve để một rejection không chặn các request sau. Operation
+   * đã vào queue không được tự enqueue lại cùng account để tránh tự deadlock.
+   */
+  const serializeAutomation = <T>(id: number, operation: () => Promise<T>): Promise<T> => {
+    const previous = automationTails.get(id) ?? Promise.resolve();
+    const result = previous.catch(() => undefined).then(operation);
+    const tail = result.then(() => undefined, () => undefined);
+    automationTails.set(id, tail);
+    void tail.then(() => {
+      if (automationTails.get(id) === tail) automationTails.delete(id);
+    });
+    return result;
+  };
+
+  const rollbackAutomation = async (id: number): Promise<void> => {
+    let firstError: unknown;
+    try {
+      setDesiredMode(db, id, 'off');
+    } catch (error) {
+      firstError = error;
+    }
+    try {
+      await sessions.stopAutomation(id);
+    } catch (error) {
+      firstError ??= error;
+    }
+    if (firstError !== undefined) throw firstError;
+  };
 
   router.post('/:id/connect', owned, async (req, res) => {
     try {
@@ -193,65 +239,113 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     }
     const id = accountId(req);
     const mode = req.body.mode;
-    const before = readAutomationState(db, id);
-    if (mode === 'find_npc') {
-      if (!before.findNpcConfig.config.npcName) {
-        automationError(res, 400, 'find-npc-name-required', 'hãy lưu tên NPC trước khi bắt đầu');
-        return;
-      }
-      if (!sessions.hasVerifiedFindNpcCatalog()) {
-        automationError(res, 409, 'catalog-unverified', 'catalog NPC chưa được live-verify');
-        return;
-      }
-    }
-
     try {
-      setDesiredMode(db, id, mode);
-    } catch {
-      automationError(res, 500, 'automation-start-failed', 'không lưu được mode automation');
-      return;
-    }
+      const reply = await serializeAutomation(id, async (): Promise<AutomationHttpResponse> => {
+        let persisted = false;
+        let rollbackAttempted = false;
+        try {
+          const before = readAutomationState(db, id);
+          if (mode === 'find_npc') {
+            if (!before.findNpcConfig.config.npcName) {
+              return automationFailure(
+                400,
+                'find-npc-name-required',
+                'hãy lưu tên NPC trước khi bắt đầu',
+              );
+            }
+            if (!sessions.hasVerifiedFindNpcCatalog()) {
+              return automationFailure(409, 'catalog-unverified', 'catalog NPC chưa được live-verify');
+            }
+          }
 
-    try {
-      const stored = readAutomationState(db, id);
-      const intent: LoadedAutomationIntent = {
-        desiredMode: mode,
-        findNpcConfig: stored.findNpcConfig,
-        location: stored.location,
-      };
-      const outcome = await sessions.switchAutomationMode(id, intent);
-      const snapshot = sessions.automationSnapshot(id);
-      if (outcome === 'connect-pending') {
-        automationError(res, 409, 'automation-connect-pending', 'đang chờ kết nối game', { snapshot });
-        return;
-      }
-      if (outcome === 'start-failed') {
-        setDesiredMode(db, id, 'off');
-        await sessions.stopAutomation(id);
-        automationError(res, 500, 'automation-start-failed', 'không khởi tạo được automation', {
-          snapshot: sessions.automationSnapshot(id),
-        });
-        return;
-      }
-      res.json(snapshot);
-    } catch {
-      setDesiredMode(db, id, 'off');
-      await sessions.stopAutomation(id);
-      automationError(res, 500, 'automation-start-failed', 'không khởi tạo được automation', {
-        snapshot: sessions.automationSnapshot(id),
+          try {
+            setDesiredMode(db, id, mode);
+          } catch {
+            return automationFailure(
+              500,
+              'automation-start-failed',
+              'không lưu được mode automation',
+            );
+          }
+          persisted = true;
+
+          const stored = readAutomationState(db, id);
+          const intent: LoadedAutomationIntent = {
+            desiredMode: mode,
+            findNpcConfig: stored.findNpcConfig,
+            location: stored.location,
+          };
+          const outcome = await sessions.switchAutomationMode(id, intent);
+          const snapshot = sessions.automationSnapshot(id);
+          if (outcome === 'connect-pending') {
+            return automationFailure(
+              409,
+              'automation-connect-pending',
+              'đang chờ kết nối game',
+              { snapshot },
+            );
+          }
+          if (outcome === 'start-failed') {
+            rollbackAttempted = true;
+            await rollbackAutomation(id);
+            return automationFailure(
+              500,
+              'automation-start-failed',
+              'không khởi tạo được automation',
+              { snapshot: sessions.automationSnapshot(id) },
+            );
+          }
+          return { status: 200, body: snapshot };
+        } catch {
+          if (persisted && !rollbackAttempted) {
+            rollbackAttempted = true;
+            try {
+              await rollbackAutomation(id);
+            } catch {
+              // Vẫn trả response typed sau khi cả persist-off và cleanup đã settle.
+            }
+          }
+          const extra: Record<string, unknown> = {};
+          try {
+            extra.snapshot = sessions.automationSnapshot(id);
+          } catch {
+            // Persistence lỗi có thể khiến snapshot offline không đọc được.
+          }
+          return automationFailure(
+            500,
+            'automation-start-failed',
+            'không khởi tạo được automation',
+            extra,
+          );
+        }
       });
+      res.status(reply.status).json(reply.body);
+    } catch {
+      if (!res.headersSent) {
+        automationError(res, 500, 'automation-start-failed', 'không khởi tạo được automation');
+      }
     }
   });
 
   router.post('/:id/automation/stop', owned, async (req, res) => {
-    if (!exactObject(req.body ?? {}, [])) {
+    const body = req.body === undefined ? {} : req.body;
+    if (!exactObject(body, [])) {
       automationError(res, 400, 'invalid-automation-mode', 'payload stop phải rỗng');
       return;
     }
     const id = accountId(req);
-    setDesiredMode(db, id, 'off');
-    await sessions.stopAutomation(id);
-    res.json(sessions.automationSnapshot(id));
+    try {
+      const snapshot = await serializeAutomation(id, async () => {
+        setDesiredMode(db, id, 'off');
+        await sessions.stopAutomation(id);
+        return sessions.automationSnapshot(id);
+      });
+      res.json(snapshot);
+    } catch {
+      if (!res.headersSent) {
+        automationError(res, 500, 'automation-start-failed', 'không dừng được automation');
+      }
+    }
   });
 
   router.get('/:id/auto/config', owned, (req, res) => {
@@ -346,44 +440,56 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
       return;
     }
     try {
-      let cfg: Partial<AutoFarmConfig>;
-      if (!hasConfigPatch) {
-        setAutoEnabled(db, id, true);
-        cfg = getAutoConfig(db, userId(req), id)!.config;
-      } else {
-        const result = enableAutoWithConfigPatch(
-          db,
-          userId(req),
-          id,
-          patch,
-          profileForConfig(db, id),
-        );
-        if (result.status === 'missing') {
-          return res.status(404).json({ error: 'không có tài khoản này' });
+      await serializeAutomation(id, async () => {
+        let cfg: Partial<AutoFarmConfig>;
+        if (!hasConfigPatch) {
+          setAutoEnabled(db, id, true);
+          cfg = getAutoConfig(db, userId(req), id)!.config;
+        } else {
+          const result = enableAutoWithConfigPatch(
+            db,
+            userId(req),
+            id,
+            patch,
+            profileForConfig(db, id),
+          );
+          if (result.status === 'missing') {
+            res.status(404).json({ error: 'không có tài khoản này' });
+            return;
+          }
+          if (result.status === 'conflict') {
+            res.status(409).json({
+              error: 'revision cấu hình đã thay đổi',
+              code: 'revision-conflict',
+              current: result.current,
+            });
+            return;
+          }
+          cfg = result.state.config;
         }
-        if (result.status === 'conflict') {
-          return res.status(409).json({
-            error: 'revision cấu hình đã thay đổi',
-            code: 'revision-conflict',
-            current: result.current,
-          });
-        }
-        cfg = result.state.config;
-      }
-      // DB là nguồn sự thật: commit ý muốn trước khi chạm runtime.
-      await sessions.startAuto(id, cfg);
-      res.json(sessions.snapshot(id));
+        // DB là nguồn sự thật: commit ý muốn trước khi chạm runtime.
+        await sessions.startAuto(id, cfg);
+      });
+      if (!res.headersSent) res.json(sessions.snapshot(id));
     } catch (err) {
-      if (err instanceof AutoConfigProfileError) configFail(res, err);
-      else fail(res, err);
+      if (!res.headersSent) {
+        if (err instanceof AutoConfigProfileError) configFail(res, err);
+        else fail(res, err);
+      }
     }
   });
 
   router.post('/:id/auto/stop', owned, async (req, res) => {
     const id = accountId(req);
-    setAutoEnabled(db, id, false);
-    await sessions.peek(id)?.stopAuto();
-    res.json({ ok: true });
+    try {
+      await serializeAutomation(id, async () => {
+        setAutoEnabled(db, id, false);
+        await sessions.peek(id)?.stopAuto();
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      if (!res.headersSent) fail(res, err);
+    }
   });
 
   router.post('/:id/farm', owned, (req, res) => {
