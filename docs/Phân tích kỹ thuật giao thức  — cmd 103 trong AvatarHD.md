@@ -147,15 +147,22 @@ Schema được khôi phục từ disassembly:
 i8  count
 repeat count:
   i16 idItem
-  i32 num
-  i32 price
-  bool isSale
-  if isSale == false:
-    bool isTimeOut
+  if idItem == -1:
+    slot trống; record kết thúc tại đây
+  else:
+    i32 num
+    i32 price
+    bool isSale
+    if isSale == false:
+      bool isTimeOut
 bool canOpenSlot
 ```
 
-Với mỗi record, client gọi constructor đơn giản của `ShopScr.ItemShop`:
+Packet live `0001ffff01` xác nhận `count=1` có thể chứa một slot trống chỉ
+gồm sentinel `idItem=-1`, sau đó là `canOpenSlot=true`. Vì vậy `count` là
+số slot đã mở; không được pre-validate mọi slot như một record đầy đủ.
+
+Với mỗi slot có item, client gọi constructor đơn giản của `ShopScr.ItemShop`:
 
 ```text
 ItemShop(idItem, num, price, isSale, isTimeOut)

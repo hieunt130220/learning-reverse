@@ -141,14 +141,27 @@ function decodeEvent(reader: MyReader, body: Buffer): ShopProtocolEvent {
   switch (subType) {
     case 0: {
       const count = readByte(reader, 'own.count', body);
-      validateCount(count, MAX_OWN_SLOTS, 'own.count', reader, body, 11, 1);
+      validateCount(count, MAX_OWN_SLOTS, 'own.count', reader, body, 2, 1);
       const slots: OwnShopSlot[] = [];
       for (let slot = 0; slot < count; slot += 1) {
         const itemId = readShort(reader, `own[${slot}].itemId`, body);
+        if (itemId === -1) {
+          slots.push({
+            slot,
+            itemId,
+            quantity: 0,
+            price: 0,
+            isSale: false,
+            isTimeOut: false,
+          });
+          continue;
+        }
         const quantity = readInt(reader, `own[${slot}].quantity`, body);
         const price = readInt(reader, `own[${slot}].price`, body);
         const isSale = readBoolean(reader, `own[${slot}].isSale`, body);
-        const isTimeOut = isSale ? false : readBoolean(reader, `own[${slot}].isTimeOut`, body);
+        const isTimeOut = isSale
+          ? false
+          : readBoolean(reader, `own[${slot}].isTimeOut`, body);
         slots.push({ slot, itemId, quantity, price, isSale, isTimeOut });
       }
       const canOpenSlot = readBoolean(reader, 'own.canOpenSlot', body);
