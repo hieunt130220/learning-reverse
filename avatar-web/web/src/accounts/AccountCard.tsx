@@ -21,7 +21,14 @@ export function AccountCard({ account, reload }: AccountCardProps) {
   const luongKhoa = runtime?.luongKhoa ?? cached?.luongKhoa;
   const playerLevel = runtime?.playerLevel ?? cached?.playerLevel;
   const farmLevel = runtime?.farmLevel ?? cached?.farmLevel;
-  const autoWanted = runtime?.desiredConnected ?? account.autoEnabled;
+  const automation = runtime?.automation;
+  const autoActive = automation
+    ? automation.desiredMode !== 'off'
+      || automation.activeMode !== 'off'
+      || automation.transitionState === 'switching'
+    : runtime
+      ? runtime.desiredConnected
+      : account.autoEnabled;
   const formatMetric = (value: number | undefined) =>
     value === undefined ? '—' : Intl.NumberFormat('vi-VN').format(value);
   const formatLuong = () => {
@@ -64,7 +71,7 @@ export function AccountCard({ account, reload }: AccountCardProps) {
           <span><small>Xu</small><b>{formatMetric(xu)}</b></span>
           <span><small>Lượng</small><b>{formatLuong()}</b></span>
           <span><small>Level</small><b>NV {playerLevel ?? '—'} · Farm {farmLevel ?? '—'}</b></span>
-          <span><small>Tự động</small><b>{runtime?.auto.running ? `vòng ${runtime.auto.cycle}` : autoWanted ? 'đang chờ' : 'đang tắt'}</b></span>
+          <span><small>Tự động</small><b>{runtime?.auto.running ? `vòng ${runtime.auto.cycle}` : autoActive ? 'đang chờ' : 'đang tắt'}</b></span>
         </span>
         {runtimeNotice && <span className="account-card-notice">{runtimeNotice}</span>}
       </button>
