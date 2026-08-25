@@ -272,7 +272,21 @@ test('tắt auto trong lúc chờ thì hủy vòng đăng nhập kế tiếp', a
   h.session.stopAuto();
   assert.equal(h.pendingTimers().length, 0);
   await flush();
+  assert.equal(h.session.snapshot().desiredConnected, false);
   assert.equal(h.clients.length, 1);
+});
+
+test('stopAutomation tắt desiredConnected nhưng giữ kết nối game', async () => {
+  const h = harness({ autoConfig: { intervalMs: 321 } });
+  await h.session.startAuto({ intervalMs: 321 });
+  assert.equal(h.session.snapshot().desiredConnected, true);
+  assert.equal(h.session.status, 'online');
+
+  await h.session.stopAutomation();
+
+  assert.equal(h.session.snapshot().desiredConnected, false);
+  assert.equal(h.session.snapshot().automation?.desiredMode, 'off');
+  assert.equal(h.session.status, 'online', 'dừng automation không được ngắt kết nối game');
 });
 test('update config khi auto chạy queue cho vòng kế tiếp, không start lại', async () => {
   const h = harness({ autoEnabled: true, autoConfig: { seedId: 5 } });
