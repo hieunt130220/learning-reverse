@@ -27,6 +27,12 @@ const PANEL_TABS = [
 ] as const;
 type PanelId = (typeof PANEL_TABS)[number][0];
 
+const FIND_NPC_TAB_HIDDEN = true;
+
+const VISIBLE_TABS = PANEL_TABS.filter(
+  ([id]) => !(id === 'find_npc' && FIND_NPC_TAB_HIDDEN),
+) as Array<(typeof PANEL_TABS)[number]>;
+
 export function AccountOperationsDrawer() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -129,8 +135,8 @@ function LoadedOperations({
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
     const offset = event.key === 'ArrowRight' ? 1 : -1;
-    const nextIndex = (index + offset + PANEL_TABS.length) % PANEL_TABS.length;
-    const [nextPanel] = PANEL_TABS[nextIndex];
+    const nextIndex = (index + offset + VISIBLE_TABS.length) % VISIBLE_TABS.length;
+    const [nextPanel] = VISIBLE_TABS[nextIndex];
     selectPanel(nextPanel);
     tabRefs.current[nextIndex]?.focus();
   };
@@ -139,7 +145,7 @@ function LoadedOperations({
     <div className="drawer-operations">
       {isMobile && (
         <nav className="drawer-tabbar" role="tablist" aria-label="Các mục vận hành">
-          {PANEL_TABS.map(([id, label], index) => (
+          {VISIBLE_TABS.map(([id, label], index) => (
             <button
               key={id}
               ref={(element) => { tabRefs.current[index] = element; }}
@@ -183,16 +189,18 @@ function LoadedOperations({
             onPlanDirtyChange={onPlanDirtyChange}
           />
         </div>
-        <div id="drawer-panel-find_npc" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-find_npc' : undefined} hidden={!visible('find_npc')}>
-          <FindNpcPanel
-            accountId={account.id}
-            automation={automation}
-            onDirtyChange={onFindNpcDirtyChange}
-            automationMutationBusy={automationMutationBusy}
-            onAutomationMutationBusyChange={setAutomationMutationBusy}
-            onAutomationCapabilityChange={handleAutomationCapabilityChange}
-          />
-        </div>
+        {!FIND_NPC_TAB_HIDDEN && (
+          <div id="drawer-panel-find_npc" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-find_npc' : undefined} hidden={!visible('find_npc')}>
+            <FindNpcPanel
+              accountId={account.id}
+              automation={automation}
+              onDirtyChange={onFindNpcDirtyChange}
+              automationMutationBusy={automationMutationBusy}
+              onAutomationMutationBusyChange={setAutomationMutationBusy}
+              onAutomationCapabilityChange={handleAutomationCapabilityChange}
+            />
+          </div>
+        )}
         <div id="drawer-panel-quests" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-quests' : undefined} hidden={!visible('quests')}>
           <QuestsPanel
             accountId={account.id}

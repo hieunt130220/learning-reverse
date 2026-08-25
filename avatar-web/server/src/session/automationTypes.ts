@@ -72,6 +72,7 @@ export type AutomationApiErrorCode =
   | 'invalid-find-npc-config'
   | 'find-npc-name-required'
   | 'catalog-unverified'
+  | 'find-npc-disabled'
   | 'revision-conflict'
   | 'automation-connect-pending'
   | 'automation-start-failed';

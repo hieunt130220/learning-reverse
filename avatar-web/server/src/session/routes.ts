@@ -23,6 +23,7 @@ import type { Db } from '../db/index.js';
 import type { ShopPolicy } from '../config.js';
 import type { Macro } from '../macro.js';
 import type { AutomationApiErrorCode, LoadedAutomationIntent } from './automationTypes.js';
+import { FIND_NPC_DISABLED } from './featureFlags.js';
 import type { SessionManager } from './manager.js';
 
 export interface SessionRoutesDeps {
@@ -245,6 +246,10 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     }
     const id = accountId(req);
     const mode = req.body.mode;
+    if (mode === 'find_npc' && FIND_NPC_DISABLED) {
+      automationError(res, 503, 'find-npc-disabled', 'Tính năng Tìm NPC đang tạm đóng');
+      return;
+    }
     try {
       const reply = await serializeAutomation(id, async (): Promise<AutomationHttpResponse> => {
         let persisted = false;

@@ -24,6 +24,7 @@ import type {
   LoadedAutomationIntent,
   NpcMapLocation,
 } from './automationTypes.js';
+import { FIND_NPC_DISABLED } from './featureFlags.js';
 import { ShopCoordinator } from './shopCoordinator.js';
 
 /** Giãn cách giữa các lần đăng nhập lúc khởi động. */
@@ -202,7 +203,17 @@ export class SessionManager {
    * mở một loạt phiên cùng lúc từ cùng một IP là thứ dễ bị server game để ý nhất.
    */
   async bootstrap(): Promise<void> {
-    const entries = listDesiredAutomation(this.deps.db);
+    const desired = listDesiredAutomation(this.deps.db);
+    const entries = FIND_NPC_DISABLED
+      ? desired.filter((entry) => entry.intent.desiredMode !== 'find_npc')
+      : desired;
+    if (entries.length !== desired.length) {
+      const skippedIds = desired
+        .filter((entry) => entry.intent.desiredMode === 'find_npc')
+        .map((entry) => entry.accountId)
+        .join(', #');
+      console.warn(`bootstrap bỏ qua find_npc (tạm đóng): #${skippedIds}`);
+    }
     if (entries.length === 0) return;
 
     const startAt = async (i: number): Promise<void> => {
