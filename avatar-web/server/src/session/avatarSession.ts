@@ -650,6 +650,12 @@ export class AvatarSession {
     this.emit('log', entry);
   }
 
+  /** Round auto mới bắt đầu: xoá log cũ ở server và báo client dọn phần tích luỹ. */
+  private clearLogs(): void {
+    this.logs.splice(0, this.logs.length);
+    this.emit('logs-clear', null);
+  }
+
   private async connect(generation = this.automationGeneration): Promise<void> {
     const creds = await this.opts.loadCredentials();
     if (!this.isAutomationGenerationCurrent(generation) || !this.wanted) return;
@@ -1168,6 +1174,7 @@ export class AvatarSession {
         || !this.isCurrent(client, epoch)
         || client.status !== 'online'
       ) return false;
+      this.clearLogs();
       this.auto!.start(this.lastAutoConfig);
       if (
         !this.isAutomationGenerationCurrent(generation)
@@ -1189,6 +1196,7 @@ export class AvatarSession {
     if (this.desiredMode !== 'auto_farm') return;
     try {
       this.shop?.assertIdleForAutomation();
+      this.clearLogs();
       this.auto!.start(this.lastAutoConfig);
     } catch (err) {
       this.pushLog(`không bật được tự động: ${(err as Error).message}`);

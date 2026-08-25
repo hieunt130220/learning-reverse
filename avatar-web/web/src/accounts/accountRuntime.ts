@@ -99,6 +99,8 @@ export function reduceAccountRuntime(
       return { ...current, cooking: message.payload };
     case 'quests':
       return { ...current, quests: message.payload };
+    case 'logs-clear':
+      return { ...current, logs: [] };
     case 'log':
       return { ...current, logs: [...current.logs.slice(-499), message.payload] };
     case 'traffic':
