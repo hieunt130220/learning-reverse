@@ -32,7 +32,7 @@
 - Consumes: không
 - Produces: `FIND_NPC_DISABLED: boolean` (dùng bởi Task 2, 3); error code `'find-npc-disabled'` (dùng bởi Task 2)
 
-- [ ] **Step 1: Tạo `featureFlags.ts`**
+- [x] **Step 1: Tạo `featureFlags.ts`**
 
 ```ts
 /**
@@ -42,7 +42,7 @@
 export const FIND_NPC_DISABLED = true;
 ```
 
-- [ ] **Step 2: Thêm error code vào `AutomationApiErrorCode`**
+- [x] **Step 2: Thêm error code vào `AutomationApiErrorCode`**
 
 Trong `avatar-web/server/src/session/automationTypes.ts`, sửa union thành:
 
@@ -58,7 +58,7 @@ export type AutomationApiErrorCode =
   | 'automation-start-failed';
 ```
 
-- [ ] **Step 3: Verify compile**
+- [x] **Step 3: Verify compile**
 
 Run: `cd avatar-web/server && npm run typecheck`
 Expected: exit 0, không lỗi mới.
@@ -72,7 +72,7 @@ Expected: exit 0, không lỗi mới.
 - Consumes: `FIND_NPC_DISABLED` (Task 1), `'find-npc-disabled'` (Task 1)
 - Produces: HTTP response `503 {"error":"Tính năng Tìm NPC đang tạm đóng","code":"find-npc-disabled"}`
 
-- [ ] **Step 1: Import kill-switch**
+- [x] **Step 1: Import kill-switch**
 
 Thêm vào import block (cùng nhóm với `./manager.js`):
 
@@ -80,7 +80,7 @@ Thêm vào import block (cùng nhóm với `./manager.js`):
 import { FIND_NPC_DISABLED } from './featureFlags.js';
 ```
 
-- [ ] **Step 2: Short-circuit trước `serializeAutomation`**
+- [x] **Step 2: Short-circuit trước `serializeAutomation`**
 
 Trong handler `POST /:id/automation/start`, ngay sau `const mode = req.body.mode;` (routes.ts:247), thêm:
 
@@ -93,7 +93,7 @@ if (mode === 'find_npc' && FIND_NPC_DISABLED) {
 
 Đặt TRƯỚC khối `try { serializeAutomation(...) }` vì chưa đọc/ghi gì DB nên không cần serialize; các mode khác đi đường cũ nguyên vẹn.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `cd avatar-web/server && npm run typecheck`
 Expected: exit 0.
@@ -108,13 +108,13 @@ Expected: exit 0.
 - Consumes: `FIND_NPC_DISABLED` (Task 1)
 - Produces: `bootstrap()` chỉ resume account `auto_farm` khi flag bật; log warn một dòng liệt kê account bị bỏ qua
 
-- [ ] **Step 1: Thêm import**
+- [x] **Step 1: Thêm import**
 
 ```ts
 import { FIND_NPC_DISABLED } from './featureFlags.js';
 ```
 
-- [ ] **Step 2: Sửa đầu `bootstrap()`**
+- [x] **Step 2: Sửa đầu `bootstrap()`**
 
 Thay:
 
@@ -144,7 +144,7 @@ async bootstrap(): Promise<void> {
 
 Phần thân còn lại (`startAt`, stagger) giữ nguyên. Không ghi DB → khi bật lại flag, account tự resume như cũ.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `cd avatar-web/server && npm run typecheck && npm test`
 Expected: typecheck pass; suite hiện có pass (các test bootstrap dùng auto_farm nên không bị ảnh hưởng).
@@ -158,7 +158,7 @@ Expected: typecheck pass; suite hiện có pass (các test bootstrap dùng auto_
 - Consumes: không (hằng số local)
 - Produces: drawer không hiển thị tab/panel `find_npc`; keyboard nav khớp danh sách tab hiển thị
 
-- [ ] **Step 1: Thêm flag + danh sách tab hiển thị**
+- [x] **Step 1: Thêm flag + danh sách tab hiển thị**
 
 Ngay dưới `type PanelId = ...` (sau dòng 28):
 
@@ -172,12 +172,12 @@ const VISIBLE_TABS = PANEL_TABS.filter(
 
 Giữ nguyên `PANEL_TABS` và type `PanelId` (logic khác còn dùng).
 
-- [ ] **Step 2: Tabbar + arrow-nav dùng `VISIBLE_TABS`**
+- [x] **Step 2: Tabbar + arrow-nav dùng `VISIBLE_TABS`**
 
 - Dòng 142: `{PANEL_TABS.map(([id, label], index) => (` → `{VISIBLE_TABS.map(([id, label], index) => (`
 - Trong `handleTabKeyDown` (dòng 129-135): thay `PANEL_TABS.length` → `VISIBLE_TABS.length` và `const [nextPanel] = PANEL_TABS[nextIndex];` → `const [nextPanel] = VISIBLE_TABS[nextIndex];`
 
-- [ ] **Step 3: Bọc điều kiện panel slot**
+- [x] **Step 3: Bọc điều kiện panel slot**
 
 Dòng 186-195, bọc div `drawer-panel-find_npc`:
 
@@ -198,7 +198,7 @@ Dòng 186-195, bọc div `drawer-panel-find_npc`:
 
 Không xóa wiring `dirtySources.findNpc`/`onFindNpcDirtyChange` — panel không mount thì cờ không bao giờ dirty; bật lại chỉ cần flip flag.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `cd avatar-web/web && npm run build`
 Expected: `tsc -b` + vite build thành công.
@@ -208,7 +208,7 @@ Expected: `tsc -b` + vite build thành công.
 **Files:**
 - Modify: none (verification only)
 
-- [ ] **Step 1: Full verify cả hai app**
+- [x] **Step 1: Full verify cả hai app**
 
 Run:
 ```bash
@@ -217,12 +217,12 @@ cd avatar-web/web && npm run build && npm test
 ```
 Expected: tất cả pass.
 
-- [ ] **Step 2: Rà soát phạm vi thay đổi**
+- [x] **Step 2: Rà soát phạm vi thay đổi**
 
 Run: `git status && git diff --stat` (và `gitnexus_detect_changes({scope:"staged"})` sau khi stage nếu tool khả dụng)
 Expected: đúng 5 file (4 modify + 1 create), không file lạ.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add avatar-web/server/src/session/featureFlags.ts \
@@ -233,7 +233,7 @@ git add avatar-web/server/src/session/featureFlags.ts \
 git commit -m "feat: tam dong chuc nang auto tim NPC qua kill-switch"
 ```
 
-- [ ] **Step 4: Cập nhật index GitNexus (nếu dự án yêu cầu)**
+- [x] **Step 4: Cập nhật index GitNexus (nếu dự án yêu cầu)**
 
 Run: `npx gitnexus analyze`
 Expected: index cập nhật, không lỗi.
