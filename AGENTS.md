@@ -83,7 +83,7 @@ Tất cả AI agent làm việc trên project này PHẢI tuân thủ nghiêm ng
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **learning-reverse** (4504 symbols, 10016 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **auto-find-npc** (4807 symbols, 10700 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -99,7 +99,7 @@ This project is indexed by GitNexus as **learning-reverse** (4504 symbols, 10016
 
 1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
 2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
-3. `READ gitnexus://repo/learning-reverse/process/{processName}` — trace the full execution flow step by step
+3. `READ gitnexus://repo/auto-find-npc/process/{processName}` — trace the full execution flow step by step
 4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
 
 ## When Refactoring
@@ -138,10 +138,10 @@ This project is indexed by GitNexus as **learning-reverse** (4504 symbols, 10016
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/learning-reverse/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/learning-reverse/clusters` | All functional areas |
-| `gitnexus://repo/learning-reverse/processes` | All execution flows |
-| `gitnexus://repo/learning-reverse/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/auto-find-npc/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/auto-find-npc/clusters` | All functional areas |
+| `gitnexus://repo/auto-find-npc/processes` | All execution flows |
+| `gitnexus://repo/auto-find-npc/process/{name}` | Step-by-step execution trace |
 
 ## Self-Check Before Finishing
 
