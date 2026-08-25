@@ -364,6 +364,7 @@ export class AvatarSession {
 
         if (!(await this.stopActiveAutomation(generation))) return 'connect-pending';
         if (intent.desiredMode === 'off') {
+          this.setWanted(false);
           this.transitionState = 'stable';
           this.emitAutomation();
           return 'active';
@@ -411,6 +412,7 @@ export class AvatarSession {
           return 'connect-pending';
         }
         if (!(await this.stopActiveAutomation(generation))) return 'connect-pending';
+        this.setWanted(false);
         this.desiredMode = 'off';
         this.transitionState = 'stable';
         this.emitAutomation();
@@ -892,6 +894,7 @@ export class AvatarSession {
           return 'connect-pending';
         }
         if (!(await this.stopActiveAutomation(generation))) return 'connect-pending';
+        this.setWanted(false);
         this.desiredMode = 'off';
         this.transitionState = 'stable';
         this.emitAutomation();
