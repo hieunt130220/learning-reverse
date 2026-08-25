@@ -877,6 +877,11 @@ export class AutoFarm extends EventEmitter {
         const seen: string[] = [];
         const did: string[] = [];
         const previousTreeId = c.idTree;
+        // Ô đi qua nhánh thu hoạch thì trạng thái care (hạn/cỏ/sâu/sức sống) của
+        // ảnh chụp đầu vòng thuộc về cây ĐÃ BỊ HẠ — chăm tiếp chỉ lãng phí vật
+        // phẩm và bón nhầm cho cây non vừa trồng. Cây mới sẽ được duyệt lại ở
+        // vòng kế tiếp với dữ liệu farm tươi.
+        let harvested = false;
 
         if (harvest && cellRipe(c)) {
           this.client.farm.harvest(idFarm, c.index);
@@ -901,6 +906,9 @@ export class AutoFarm extends EventEmitter {
           this.client.enterFarm();
           await farmSynced;
           guard();
+          // Đặt kể cả khi server im lặng ở confirm(): đã bắn lệnh thu thì trạng
+          // thái care cũ không còn tin cậy để bắn tiếp lệnh useItem.
+          harvested = true;
         }
         // Server keeps the harvested tree id and marks the cell as spent with
         // time=-1; treat both representations as available for replanting.
@@ -946,42 +954,51 @@ export class AutoFarm extends EventEmitter {
             await tick();
           }
         }
-        if (c.isArid && waterItemId !== undefined) {
-          this.client.farm.useItem(idFarm, c.index, waterItemId);
-          sent += 1;
-          seen.push('hạn');
-          did.push(`tưới #${waterItemId}`);
-          await confirm(65, `tưới #${waterItemId} ô ${c.index}`);
-          await tick();
-        }
-        if (c.isGrass && grassItemId !== undefined) {
-          this.client.farm.useItem(idFarm, c.index, grassItemId);
-          sent += 1;
-          seen.push('cỏ');
-          did.push(`nhổ cỏ #${grassItemId}`);
-          await confirm(65, `nhổ cỏ #${grassItemId} ô ${c.index}`);
-          await tick();
-        }
-        if (c.isWorm && wormItemId !== undefined) {
-          this.client.farm.useItem(idFarm, c.index, wormItemId);
-          sent += 1;
-          seen.push('sâu');
-          did.push(`bắt sâu #${wormItemId}`);
-          await confirm(65, `bắt sâu #${wormItemId} ô ${c.index}`);
-          await tick();
-        }
-        if (cfg.fertilizeCells && c.idTree !== -1 && c.vitalityPer < cfg.minVitality) {
-          this.client.farm.useItem(idFarm, c.index, ITEM_FERTILIZER);
-          sent += 1;
-          seen.push(`sức sống ${c.vitalityPer}`);
-          did.push('bón phân');
-          await confirm(65, `bón phân ô ${c.index}`);
-          await tick();
+        if (!harvested) {
+          if (c.isArid && waterItemId !== undefined) {
+            this.client.farm.useItem(idFarm, c.index, waterItemId);
+            sent += 1;
+            seen.push('hạn');
+            did.push(`tưới #${waterItemId}`);
+            await confirm(65, `tưới #${waterItemId} ô ${c.index}`);
+            await tick();
+          }
+          if (c.isGrass && grassItemId !== undefined) {
+            this.client.farm.useItem(idFarm, c.index, grassItemId);
+            sent += 1;
+            seen.push('cỏ');
+            did.push(`nhổ cỏ #${grassItemId}`);
+            await confirm(65, `nhổ cỏ #${grassItemId} ô ${c.index}`);
+            await tick();
+          }
+          if (c.isWorm && wormItemId !== undefined) {
+            this.client.farm.useItem(idFarm, c.index, wormItemId);
+            sent += 1;
+            seen.push('sâu');
+            did.push(`bắt sâu #${wormItemId}`);
+            await confirm(65, `bắt sâu #${wormItemId} ô ${c.index}`);
+            await tick();
+          }
+          if (cfg.fertilizeCells && c.idTree !== -1 && c.vitalityPer < cfg.minVitality) {
+            this.client.farm.useItem(idFarm, c.index, ITEM_FERTILIZER);
+            sent += 1;
+            seen.push(`sức sống ${c.vitalityPer}`);
+            did.push('bón phân');
+            await confirm(65, `bón phân ô ${c.index}`);
+            await tick();
+          }
         }
 
+        // Có care bị chặn bởi flag hay không — nói thẳng ra log thay vì im lặng,
+        // kẻo người dùng tưởng bot sót việc.
+        const skippedCare = harvested
+          && ((c.isArid && waterItemId !== undefined)
+            || (c.isGrass && grassItemId !== undefined)
+            || (c.isWorm && wormItemId !== undefined)
+            || (cfg.fertilizeCells && c.idTree !== -1 && c.vitalityPer < cfg.minVitality));
         note(
           did.length > 0
-            ? `[cây] ô ${c.index}: ${seen.join(', ')} -> ${did.join(', ')}`
+            ? `[cây] ô ${c.index}: ${seen.join(', ')} -> ${did.join(', ')}${skippedCare ? ', bỏ qua chăm sóc' : ''}`
             : `[cây] ô ${c.index}: không có việc`,
         );
         await tick();

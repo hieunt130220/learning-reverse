@@ -1248,3 +1248,65 @@ test('bếp: không nấu khi thiếu nguyên liệu trong kho', async () => {
 
   assert.equal(client.calls.some((c) => c.startsWith('cook:')), false, 'thiếu nguyên liệu thì không gửi lệnh cook');
 });
+
+test('ô chín được thu hoạch thì bỏ qua tưới/nhổ cỏ/bắt sâu/bón phân trong cùng vòng', async () => {
+  // Cây #5 (Hoa Hồng, lớn 2h) chín ở time>=120; ô bẩn đầy đủ + sức sống thấp
+  // để nếu guard thiếu thì CẢ 4 lệnh useItem đều bắn ra và test bắt được.
+  const farmState: FarmState = {
+    idFarm: 1,
+    cells: [cell(0, { idTree: 5, time: 200, vitalityPer: 50, isArid: true, isGrass: true, isWorm: true })],
+    animals: [],
+    updatedAt: Date.now(),
+  };
+  const client = new FakeClient(farmState);
+  client.inventory = [{ id: 5, num: 3 }];
+  const auto = new AutoFarm(client);
+  const done = new Promise<void>((resolve) =>
+    auto.on('state', (s) => {
+      if (s.cycle > 0) resolve();
+    }),
+  );
+  auto.start({
+    waterItemId: ITEM_WATER,
+    grassItemId: ITEM_GRASS,
+    wormItemId: 124,
+    stepDelayMs: 300,
+    startDelayMs: 0,
+  });
+  await done;
+  auto.stop();
+
+  assert.ok(client.calls.includes('harvest:0'), `phải thu hoạch ô chín: ${JSON.stringify(client.calls)}`);
+  const useItems = client.calls.filter((c) => c.startsWith('useItem:'));
+  assert.deepEqual(useItems, [], `không được chăm sóc ô vừa thu hoạch: ${JSON.stringify(useItems)}`);
+  assert.ok(
+    auto.state().lastActions.some((a) => a.includes('ô 0') && a.includes('bỏ qua chăm sóc')),
+    `log phải ghi rõ việc cố ý bỏ qua chăm sóc: ${JSON.stringify(auto.state().lastActions)}`,
+  );
+});
+
+test('ô chưa chín vẫn được chăm sóc bình thường', async () => {
+  // time=10 << 120 -> chưa chín, guard không chặn: tưới phải vẫn chạy.
+  const farmState: FarmState = {
+    idFarm: 1,
+    cells: [cell(0, { idTree: 5, time: 10, isArid: true })],
+    animals: [],
+    updatedAt: Date.now(),
+  };
+  const client = new FakeClient(farmState);
+  const auto = new AutoFarm(client);
+  const done = new Promise<void>((resolve) =>
+    auto.on('state', (s) => {
+      if (s.cycle > 0) resolve();
+    }),
+  );
+  auto.start({ waterItemId: ITEM_WATER, stepDelayMs: 300, startDelayMs: 0 });
+  await done;
+  auto.stop();
+
+  assert.equal(client.calls.includes('harvest:0'), false, 'ô non không được thu');
+  assert.ok(
+    client.calls.includes(`useItem:0:${ITEM_WATER}`),
+    `ô non vẫn phải được tưới: ${JSON.stringify(client.calls)}`,
+  );
+});
