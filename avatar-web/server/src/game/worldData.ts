@@ -11,6 +11,9 @@ export interface MapSpecial {
   type: number;
   imageIds: number[];
   menuIds: number[];
+  /** Tọa độ native nếu snapshot Park cung cấp; login snapshot cũ có thể thiếu. */
+  x?: number;
+  y?: number;
 }
 
 export interface EnterWorldSnapshot {
@@ -19,6 +22,10 @@ export interface EnterWorldSnapshot {
   specialSectionEnd: number;
   totalBytes: number;
   trailingBytes: number;
+  roomId?: number;
+  boardId?: number;
+  x?: number;
+  y?: number;
 }
 
 export class WorldDataDecodeError extends Error {
@@ -72,6 +79,11 @@ class StrictReader {
     const v = this.buf.readInt32BE(this.pos);
     this.pos += 4;
     return v;
+  }
+  skip(n: number, section = this.section): void {
+    this.section = section;
+    this.need(n);
+    this.pos += n;
   }
   utf(): string {
     // Java DataInputStream.readUTF/MyReader đọc prefix unsigned 16-bit.
@@ -162,5 +174,106 @@ export function decodeEnterWorld(body: Buffer): EnterWorldSnapshot {
     specialSectionEnd: r.pos,
     totalBytes: body.length,
     trailingBytes: body.length - r.pos,
+  };
+}
+
+/**
+ * Decode the native response to AVATAR_JOIN_PARK (cmd 80).
+ *
+ * This is intentionally a separate parser from LOGIN_SUCESS (-34): the live
+ * server sends room/board/coordinates first, then the Park list-player shape
+ * (18-byte state + drop-part vector), followed by map sections and specials.
+ * The current build appends a stable 20-byte suffix after the special list;
+ * callers receive its length but never interpret it as NPC data.
+ */
+export function decodeParkJoinWorld(body: Buffer, playerId: number): EnterWorldSnapshot {
+  const r = new StrictReader(body);
+  if (!Number.isInteger(playerId) || playerId <= 0) {
+    throw new WorldDataDecodeError('header', 0, 'playerId không hợp lệ cho Park snapshot');
+  }
+
+  const parkCount = (section: string): number => {
+    r.in(section);
+    const count = r.i8();
+    if (count < 0 || count > 64) {
+      throw new WorldDataDecodeError(section, r.pos - 1, `count ngoài bounds: ${count}`);
+    }
+    return count;
+  };
+
+  r.in('park-header');
+  const roomId = r.i8();
+  const boardId = r.i8();
+  const x = r.i16();
+  const y = r.i16();
+
+  r.in('park-players');
+  const playerCount = parkCount('park-players');
+  for (let i = 0; i < playerCount; i += 1) {
+    r.in(`park-players[${i}]`);
+    r.i32();
+    r.utf();
+    const partCount = parkCount(`park-players[${i}].parts`);
+    r.skip(partCount * 2, `park-players[${i}].parts`);
+    // Native ParkService response uses the 18-byte list-player state tail.
+    r.skip(18, `park-players[${i}].state`);
+  }
+
+  const dropCount = parkCount('park-drop-parts');
+  r.skip(dropCount * 11, 'park-drop-parts');
+
+  r.in('park-map-marker');
+  const mapMarker = r.i16();
+  if (mapMarker >= 1) {
+    const typeCount = parkCount('park-map-item-types');
+    for (let i = 0; i < typeCount; i += 1) {
+      r.skip(8, `park-map-item-types[${i}]`);
+      const notTransCount = parkCount(`park-map-item-types[${i}].notTrans`);
+      r.skip(notTransCount * 2, `park-map-item-types[${i}].notTrans`);
+    }
+    const itemCount = parkCount('park-map-items');
+    r.skip(itemCount * 4, 'park-map-items');
+  }
+
+  const animationCount = parkCount('park-animations');
+  r.skip(animationCount * 10, 'park-animations');
+
+  const specialCount = parkCount('park-specials');
+  const specials: MapSpecial[] = [];
+  for (let i = 0; i < specialCount; i += 1) {
+    r.in(`park-specials[${i}]`);
+    const id = r.i32();
+    const name = r.utf();
+    const specialX = r.i32();
+    const specialY = r.i32();
+    const type = r.i8();
+    const imageCount = parkCount(`park-specials[${i}].images`);
+    const imageIds: number[] = [];
+    for (let image = 0; image < imageCount; image += 1) imageIds.push(r.i16());
+    r.skip(8 * 4, `park-specials[${i}].state`);
+    const menuCount = parkCount(`park-specials[${i}].menus`);
+    const menuIds: number[] = [];
+    for (let menu = 0; menu < menuCount; menu += 1) menuIds.push(r.i16());
+    specials.push({
+      id,
+      name,
+      type,
+      imageIds,
+      menuIds,
+      x: specialX,
+      y: specialY,
+    });
+  }
+
+  return {
+    playerId,
+    specials,
+    specialSectionEnd: r.pos,
+    totalBytes: body.length,
+    trailingBytes: body.length - r.pos,
+    roomId,
+    boardId,
+    x,
+    y,
   };
 }

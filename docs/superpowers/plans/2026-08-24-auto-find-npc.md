@@ -2212,7 +2212,7 @@ try {
 
 `waitUntilOnline` dùng event status + timeout và cleanup listener. `txRxMetadata` chỉ ghi `{dir, cmd, len}` từ traffic events; filter đúng `TX -1`, `TX 80`, `RX -34`. Không in hex, user, host, encrypted/plain password, cookie, key hay credential object.
 
-Output gồm UTC timestamp, account id, requested map/area, TX/RX cmd+len, decode `ok`, `specialSectionEnd`, `totalBytes`, `trailingBytes`, `specialCount`, `specialNames` (chỉ tên). Nếu decode/error, in section/offset/message không credential và exit code 1.
+Output gồm UTC timestamp, account id, requested map/area, TX/RX cmd+len, decode `ok`, `specialSectionEnd`, `totalBytes`, `trailingBytes`, `specialCount`, `specialNames` (chỉ tên), và `mapSpecialUpdates` khi có RX48 trong cửa sổ thụ động. Nếu decode/error, in section/offset/message không credential và exit code 1.
 
 - [x] **Step 4: Static safety scan + typecheck (KHÔNG chạy live)**
 
@@ -2291,11 +2291,11 @@ Không dùng credential game để thực hiện bước này.
 
 Invoke `superpowers:requesting-code-review` trên `main...HEAD`, review correctness/concurrency/protocol/security/compatibility. Fix findings đã xác minh; sau mỗi fix chạy lại verification liên quan và `gitnexus_detect_changes(scope="all")`. Expected: không còn finding blocking.
 
-- [ ] **Step 5: DỪNG tại live authorization gate nếu chưa có ủy quyền rõ ràng**
+- [x] **Step 5: DỪNG tại live authorization gate nếu chưa có ủy quyền rõ ràng**
 
 Không tự chạy probe. Báo code-complete và các bước live còn pending. Chỉ tiếp tục Step 6 khi user chỉ định rõ `account-id`, `map`, `area` và cho phép một kết nối probe tới server game. Việc duyệt Plan KHÔNG tự động là ủy quyền live.
 
-- [ ] **Step 6: Chạy đúng một probe đã được ủy quyền**
+- [x] **Step 6: Chạy đúng một probe đã được ủy quyền**
 
 Trước hết dừng Avatar Web server. Run với cặp user đã chỉ định:
 
@@ -2304,7 +2304,194 @@ npm --prefix avatar-web/server exec -- tsx --env-file=.env src/tools/npc-map-pro
   --account-id <AUTHORIZED_ID> --map <AUTHORIZED_SIGNED_BYTE> --area <AUTHORIZED_SIGNED_BYTE>
 ```
 
-Expected: đúng một TX context 9, một TX cmd 80, một RX -34; parse hết special; `playerId>0`; `trailingBytes=0` hoặc giá trị lặp ổn định đã review. Nếu fail/mapping cần -23/decoder lệch: DỪNG ở `protocol investigation pending`, không tạo evidence/catalog, quay Spec review gate. Không tự thử cặp khác.
+Original expected `RX -34` was superseded by the native protocol-correction
+spec: production sends the reviewed six-byte `TX 80` and accepts the matching
+`RX 80` Park snapshot, while login `-34` remains the login-only packet. The
+corrected gate still requires `playerId>0`, sequential special parsing, and a
+stable reviewed trailing length. No `-23` fallback or unreviewed pair is used.
+
+Observed 2026-08-25: account `2`, map `5`, area `7` đã được user ủy quyền cho đúng một lần probe. TCP endpoint `27.0.14.120:19129` reachable, nhưng GameClient chuyển `status=error` trước khi online; probe trả `traffic=[]`, không có `cmd 80`/`-34` evidence. Step dừng tại `protocol investigation pending`; chưa tạo evidence hoặc catalog và không thử cặp khác.
+
+Retry observed 2026-08-25 after account logout: login đã vượt `waitUntilOnline`, probe gửi `TX -1` và `TX 80` (`map=5`, `area=7`), nhưng không nhận `RX -34` mới trong 5 giây và kết thúc `snapshot` timeout. Đây là bằng chứng login đã đi qua nhưng cặp join chưa được xác minh; vẫn không tạo evidence/catalog và không thử cặp khác.
+
+Second candidate observed 2026-08-25: sau khi user yêu cầu tiếp tục, probe `account=2`, `map=2`, `area=6` cũng vượt login, gửi `TX -1` + `TX 80`, nhưng timeout chờ `RX -34` mới. Hai candidate external (`5/7`, `2/6`) đều không chứng minh mapping `cmd 80 → enter-world`; dừng tại protocol investigation/Spec review gate, không tạo catalog.
+
+Direct-join retry observed 2026-08-25T05:40:58.328Z with the currently
+authorized account 2 / map 5 / area 7: login reached `online`, Park handler
+ACK completed, then exactly one `TX 80 len=6` received `RX 80 len=134`.
+Redacted prefix decode matched `room=5`, `board=7`, `x=0`, `y=0`, with two
+non-tour player records, marker/animation zero, native `specialCount=0`, and 21
+undecoded trailing bytes. A corrected native-list decode on
+2026-08-25T05:50:39.594Z reproduced the same response length and 21-byte
+suffix, with `listPlayerEnd=109` and `specialSectionEnd=113`. This verifies the
+requested direct join and an empty special list only; the stable-looking
+unknown suffix is not promoted to catalog data, and no production catalog or
+`npcMapCatalog.ts` is created yet.
+
+An additional authorized retry at `2026-08-25T06:08:54.133Z` reproduced the
+same redacted direct-join metadata: `TX 80 len=6`, `RX 80 len=134`, response
+room/board `5/7`, coordinates `0/0`, two player records, native
+`specialCount=0`, `specialSectionEnd=113`, and `trailingBytes=21`. This is
+repeatability evidence for the direct join only. The original Step 6 contract
+requiring a fresh `RX -34` is superseded for this candidate by the native
+`RX 80` parser branch; a protocol-correction review is still required before
+changing the production catalog gate, so no evidence doc or catalog is
+created.
+
+#### Native PositionMap coordinate correction 2026-08-25T06:18:02.122Z
+
+Disassembly of `LoadMap.doJoin` shows it copies the selected map's
+`PositionMap.x/y` into `LoadMap.xJoinCasino/yJoinCasino` before calling native
+`ParkService.doJoinPark`. For the static CityMap v3.4.4 entry `map=5` those
+coordinates are `(254,82)`. After one temporary login rejection and its
+bounded 10-second backoff, the authorized `2/5/7` probe sent one `TX 80 len=6`
+with that position and received one `RX 80 len=134` with response
+`room/board=5/7`, `x/y=254/82`, two players, `specialCount=0`,
+`specialSectionEnd=113`, and `trailingBytes=21`.
+
+This upgrades the candidate from a `0,0` baseline to native map-position
+evidence for `5/7`. It still does not satisfy the original fresh `RX -34` /
+complete-NPC catalog gate; no production catalog or evidence commit is made.
+
+#### Parser alignment and repeatability 2026-08-25T06:40:44.203Z
+
+The RX80 prefix parser was corrected from the earlier 18-byte-per-player-only
+layout to consume the native drop-part count and its 11-byte records after the
+player vector. The exact authorized `2/5/7` run then reproduced `RX 80 len=134`
+with response `room/board=5/7`, `x/y=254/82`, two players,
+`listPlayerEnd=110`, `specialCount=0`, `specialSectionEnd=114`, and
+`trailingBytes=20`. The earlier 21-byte suffix was therefore a one-byte prefix
+offset, not a catalog field. The native special list is still empty, so this
+remains direct-join evidence only; no production catalog is created.
+
+#### Static CityMap extraction 2026-08-25
+
+The bundled v3.4.4 `CityMap` TextAsset was decoded independently from the APK
+asset bundle. It contains seven static `PositionMap` entries in native order:
+`1 Khu sinh thái (473,100, handler 9, idToMap 13)`,
+`3 Khu giải trí (236,280, 9, 9)`, `4 Khu mua sắm (452,250, 9, 23)`,
+`5 Công viên (254,82, 9, 11)`, `7 Nông trại (524,423, 10, 25)`,
+`8 Ngoại ô (100,100, 9, 17)`, and `9 Mê cung (57,209, 9, 28)`.
+This is package/static map evidence only; it does not enumerate live areas or
+NPCs for account 2, and it is not promoted to `npcMapCatalog.ts`.
+
+#### Legacy Auto Tìm NPC candidate catalog 2026-08-25
+
+Independent inspection of the untracked legacy `avatar-auto.jar` found the
+older Auto Tìm NPC class's default map string
+`1,2,3,5,6,7,8,9,11,23` and its default inclusive area cursor `0..9`. The same
+archive's fast-travel labels call legacy map ID `5` `Khu tài xỉu` and legacy
+map ID `11` `Khu công viên`. This proves that the legacy server-map namespace
+is not the same as the Unity `CityMap` node namespace: `CityMap id=5` is the
+`Công viên` node whose `idToMap=11`. The legacy command writer independently
+confirms `i8 map, i8 area, i16 x, i16 y` for the direct join body.
+
+This supplies a static candidate catalog and explains why `5/7` was a valid
+legacy probe target, but it does not enumerate current server areas or NPCs.
+It therefore does not check Step 7 and does not justify creating
+`npcMapCatalog.ts`.
+
+#### NPC-name decoder verification 2026-08-25T06:46:53.895Z
+
+The bounded probe now consumes the native `ItemMapSpecial` fields and emits
+only `specialNames` in the redacted projection. A fresh exact `2/5/7` run
+reached `online`, sent one six-byte `TX 80`, received `RX 80 len=134`, and
+returned `specialCount=0`, `specialNames=[]`, `specialSectionEnd=114`, and
+`trailingBytes=20`. This confirms the decoder path but still supplies no live
+NPC/area catalog entry.
+
+#### Guarded repeat 2026-08-25T07:02:31.115Z
+
+The probe now rejects an unsupported map before opening the DB/socket instead
+of silently reusing map 5's reviewed `(254,82)` position. A negative map-4
+check produced no traffic/events. The authorized account `2`, map `5`, area
+`7` invocation then reproduced one Park-context `TX -1 len=1`, one `TX 80
+len=6`, and one `RX 80 len=134`; response metadata was `room/board=5/7`,
+`x/y=254/82`, two players, `specialCount=0`, `specialNames=[]`,
+`specialSectionEnd=114`, and `trailingBytes=20`. This is repeatable
+direct-join evidence only; the live area/NPC catalog gate remains open.
+
+#### Latest retry 2026-08-25T07:06:41.630Z
+
+An initial exact retry at `07:06:20.840Z` ended at login `status=error` and
+sent no `cmd 80`. The immediate retry reached `online` and reproduced one
+Park-context `TX -1 len=1`, one direct-join `TX 80 len=6`, and one `RX 80
+len=134`; decoded metadata again matched `room/board=5/7`, `x/y=254/82`, two
+players, `specialCount=0`, `specialNames=[]`, `specialSectionEnd=114`, and
+`trailingBytes=20`. This confirms repeatability after a transient login
+failure but does not create a live area/NPC catalog entry.
+
+#### Post-join event window 2026-08-25T07:16:30.494Z
+
+The probe now keeps the socket open for `3,000 ms` after `RX 80` and records
+redacted traffic from that passive window. The exact `2/5/7` run again returned
+`RX 80 len=134`, `room/board=5/7`, `x/y=254/82`, `specialCount=0`,
+`specialNames=[]`, and `trailingBytes=20`; no `RX 48` (`ITEM_MAP_SPECIAL`)
+arrived. Only `RX -3 len=25` and `RX 85` followed, so no asynchronous NPC
+evidence was found and no catalog entry was promoted.
+
+#### Native RX48 decoder adjustment 2026-08-25T07:31:09.332Z
+
+Native disassembly confirms that `GlobalMessageHandler.onMessage` dispatches
+command `48` at `0x5EDDDC`: it reads an `i8 mode`, calls
+`AvatarData.readItemDataMapSpecial @0xA0C280` for modes `0/1`, and reads an
+`i32 id` for `removeItemDataMapSpecial @0xA0C704` at mode `2`. The probe now
+captures RX48 during the passive post-join window and decodes the verified
+upsert fields (`id`, UTF name, `x`, `y`, `type`, image/menu counts) without
+retaining raw bytes. The exact `2/5/7` retry reached `online`, reproduced
+`TX 80 len=6` / `RX 80 len=134`, and emitted `mapSpecialUpdates=[]`; no RX48
+arrived in the three-second window. Therefore the decoder is ready for a
+future live event, but Step 7 remains unchecked and no dynamic catalog entry
+is justified.
+
+#### Native board-list catalog 2026-08-25T07:47:19.723Z
+
+Native disassembly identified the UI-matched `ParkService.doRequestBoardList`
+route: `TX 90` writes one signed `roomId` byte, and the native handler decodes
+`RX 90` as a signed count followed by that many signed occupancy bytes before
+passing the array to `Avatar.onParkList`. The standalone probe was extended
+with a strict board-list phase and redacted observation contract, then the
+authorized account `2`, map `5`, area `7` invocation completed with `TX 90
+len=1` / `RX 90 len=36`. The response decoded to `boardCount=35`, indexes
+`0..34` (0-based UI selection), all captured occupancy values `2`; requested
+area `7` was present with occupancy `2`.
+
+The same session then sent one native-position `TX 80 len=6` and received
+`RX 80 len=134` matching room/board `5/7` and `x/y=254/82`. The passive
+three-second window still had no `RX 48` and `mapSpecialUpdates=[]`. This
+checks the live area catalog portion of the evidence gate, but not a dynamic
+NPC name/location catalog; Step 7 remains unchecked and no production
+`npcMapCatalog.ts` is created.
+
+#### Production protocol correction and catalog wiring 2026-08-25T15:06:33+07:00
+
+The live response contract is now implemented in production. `ParkService` sends
+the native six-byte join for the reviewed map 5 position `(254,82)` and refuses
+maps without a reviewed position. `worldData.ts` has a bounded sequential
+RX80 parser for room/board/coordinates, list players, drop parts, map sections,
+animations, and `ItemMapSpecial[]`; the stable 20-byte suffix is exposed only
+as `trailingBytes`. `GameClient` emits the same `world-snapshot` event for RX80
+that `AutoFindNpc` already waits for, while login `-34` behavior remains
+unchanged.
+
+The production catalog now contains exactly `{map:5, area:7}` and is injected
+from `index.ts` into `SessionManager`. A bounded production-path acceptance
+session (account 2) sent `TX 80 len=6`, received `RX 80 len=134`, decoded
+`playerId>0`, room/board `5/7`, x/y `254/82`, `specialCount=0`,
+`specialSectionEnd=114`, and `trailingBytes=20`. This verifies protocol and
+catalog wiring; no live NPC target was present, so end-to-end tracking remains
+pending.
+
+The correction is detailed in
+`docs/superpowers/specs/2026-08-25-npc-park-runtime-correction-design.md` and
+`docs/superpowers/plans/2026-08-25-npc-park-runtime-correction.md`. Because the
+user did not request a commit, the evidence/catalog changes remain in the
+working tree for review.
+
+The correction supersedes the older Step 7 wording that required a commit
+before creating the catalog: the catalog is now present in the working tree
+because the user explicitly requested product-code implementation, while the
+actual git commit remains deferred until requested.
 
 - [ ] **Step 7: Commit redacted evidence rồi mới tạo catalog**
 

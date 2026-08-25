@@ -10,7 +10,11 @@ import {
 export interface AutoFindNpcClient {
   enterParkContext(): void;
   joinPark(map: number, area: number): void;
-  waitForWorldSnapshot(signal: AbortSignal, timeoutMs: number): Promise<EnterWorldSnapshot>;
+  waitForWorldSnapshot(
+    signal: AbortSignal,
+    timeoutMs: number,
+    expected?: { map: number; area: number },
+  ): Promise<EnterWorldSnapshot>;
 }
 
 export interface AutoFindNpcOptions {
@@ -210,6 +214,7 @@ export class AutoFindNpc {
       const pending = this.opts.client.waitForWorldSnapshot(
         this.abortController.signal,
         this.snapshotTimeoutMs,
+        { map: target.map, area: target.area },
       );
       this.opts.client.joinPark(target.map, target.area);
       this.lastJoinAt = this.now();
@@ -265,6 +270,7 @@ export class AutoFindNpc {
       const pending = this.opts.client.waitForWorldSnapshot(
         this.abortController.signal,
         this.snapshotTimeoutMs,
+        { map: here.map, area: here.area },
       );
       this.opts.client.joinPark(here.map, here.area);
       this.lastJoinAt = this.now();

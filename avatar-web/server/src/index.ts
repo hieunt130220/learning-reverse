@@ -7,6 +7,7 @@ import { authRouter } from './auth/routes.js';
 import { purgeExpiredSessions } from './auth/sessions.js';
 import { loadConfig } from './config.js';
 import { openDb } from './db/index.js';
+import { VERIFIED_NPC_MAP_CATALOG } from './game/npcMapCatalog.js';
 import { SessionManager } from './session/manager.js';
 import { sessionRouter } from './session/routes.js';
 import { shopRouter } from './session/shopRoutes.js';
@@ -32,6 +33,7 @@ const sessions = new SessionManager({
   maxSessions: config.maxSessions,
   shopRepository,
   shopPolicy: config.shopPolicy,
+  findNpcCatalog: VERIFIED_NPC_MAP_CATALOG,
   broadcast: (userId, accountId, type, payload) => hub.broadcast(userId, accountId, type, payload),
 });
 

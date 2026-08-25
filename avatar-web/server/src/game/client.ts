@@ -52,7 +52,12 @@ import {
   type ShopProtocolEvent,
   type ShopProtocolWarning,
 } from './shopProtocol.js';
-import { decodeEnterWorld, WorldDataDecodeError, type EnterWorldSnapshot } from './worldData.js';
+import {
+  decodeEnterWorld,
+  decodeParkJoinWorld,
+  WorldDataDecodeError,
+  type EnterWorldSnapshot,
+} from './worldData.js';
 
 /**
  * Giá trị handler cho `GET_HANDLER (-1)`. `GlobalLogicHandler.doGetHandler`
@@ -107,6 +112,7 @@ export interface TemporaryLoginRejection {
 }
 
 const MIN_LOGIN_RETRY_MS = 10_000;
+const PARK_ALREADY_IN_AREA_DIALOG = 'Bạn đã ở trong khu vực muốn chuyển đến';
 
 export function parseTemporaryLoginRejection(text: string): TemporaryLoginRejection | null {
   const isThrottle = /đang đăng nhập|đăng nhập quá nhanh|đăng nhập lại sau\s+\d+\s*s|quá tải/i.test(text);
@@ -205,6 +211,8 @@ export class GameClient extends EventEmitter {
   private device: DeviceProfile = { ...DEFAULT_DEVICE };
   /** Handler context hiện tại: 8 main, 9 park, 10 farm; 'unknown' khi chưa/đã đóng. */
   currentHandlerContext: 8 | 9 | 10 | 'unknown' = 'unknown';
+  /** RX80 Park gần nhất; không lấy snapshot login -34 làm cache Park. */
+  private latestParkSnapshot?: EnterWorldSnapshot;
   private keepAliveTimer?: NodeJS.Timeout;
   /** Đóng socket khi server không gửi gói nào trong `silenceTimeoutMs`. */
   private silenceTimer?: NodeJS.Timeout;
@@ -234,6 +242,7 @@ export class GameClient extends EventEmitter {
     this.session.on('message', (msg) => this.onMessage(msg));
     this.session.on('closed', (info) => {
       this.currentHandlerContext = 'unknown';
+      this.latestParkSnapshot = undefined;
       this.stopKeepAlive();
       this.stopSilenceWatchdog();
       const statusAtClose = this.status;
@@ -458,8 +467,15 @@ export class GameClient extends EventEmitter {
     this.park.doJoinPark(map, area);
   }
 
-  /** Chờ đúng MỘT snapshot enter-world mới; cleanup trọn trên resolve/timeout/abort/đóng socket. */
-  waitForWorldSnapshot(signal: AbortSignal, timeoutMs: number): Promise<EnterWorldSnapshot> {
+  /**
+   * Chờ RX80 mới; nếu server báo đã ở đúng Park room/board thì dùng lại
+   * snapshot RX80 gần nhất của chính connection đó, tránh timeout giả.
+   */
+  waitForWorldSnapshot(
+    signal: AbortSignal,
+    timeoutMs: number,
+    expected?: { map: number; area: number },
+  ): Promise<EnterWorldSnapshot> {
     return new Promise((resolve, reject) => {
       let timer: NodeJS.Timeout | undefined;
       const onSnapshot = (snap: EnterWorldSnapshot): void => {
@@ -474,6 +490,21 @@ export class GameClient extends EventEmitter {
             : new WorldDataDecodeError('enter-world', -1, error instanceof Error ? error.message : String(error)),
         );
       };
+      const onSameArea = (reason: string): void => {
+        if (!expected || reason.trim() !== PARK_ALREADY_IN_AREA_DIALOG) return;
+        const cached = this.latestParkSnapshot;
+        if (
+          !cached
+          || cached.roomId !== expected.map
+          || cached.boardId !== expected.area
+        ) return;
+        cleanup();
+        this.emit(
+          'log',
+          `Park snapshot cache: server xác nhận đã ở map ${expected.map} khu ${expected.area}`,
+        );
+        resolve(cloneParkSnapshot(cached));
+      };
       const onAbort = (): void => {
         cleanup();
         reject(new Error('chờ enter-world bị hủy'));
@@ -486,6 +517,7 @@ export class GameClient extends EventEmitter {
         if (timer) clearTimeout(timer);
         this.removeListener('world-snapshot', onSnapshot);
         this.removeListener('world-snapshot-error', onSnapshotError);
+        this.removeListener('dialog', onSameArea);
         signal.removeEventListener('abort', onAbort);
         this.session.removeListener('closed', onClosed);
       };
@@ -495,6 +527,7 @@ export class GameClient extends EventEmitter {
       }, timeoutMs);
       this.once('world-snapshot', onSnapshot);
       this.once('world-snapshot-error', onSnapshotError);
+      this.on('dialog', onSameArea);
       signal.addEventListener('abort', onAbort, { once: true });
       this.session.once('closed', onClosed);
       if (signal.aborted) onAbort();
@@ -694,6 +727,22 @@ export class GameClient extends EventEmitter {
         this.lastError = reason;
         this.setStatus('error');
         this.emit('log', `đăng nhập thất bại: ${reason}`);
+        break;
+      }
+      case 80: {
+        // AVATAR_JOIN_PARK — native response carries a new Park snapshot.
+        // It must not alter login status; only resolve a waiter registered by
+        // AutoFindNpc after the six-byte join request.
+        try {
+          const snap = decodeParkJoinWorld(msg.getData(), this.playerId ?? 0);
+          this.latestParkSnapshot = snap;
+          this.emit('world-snapshot', snap);
+        } catch (err) {
+          const section = (err as { section?: string }).section ?? '?';
+          const offset = (err as { offset?: number }).offset ?? -1;
+          this.emit('log', `decode Park snapshot lỗi tại ${section}@${offset}: ${(err as Error).message}`);
+          this.emit('world-snapshot-error', err);
+        }
         break;
       }
       case -37: // VERSION — server báo sai phiên bản
@@ -1175,6 +1224,17 @@ export class GameClient extends EventEmitter {
     }
     this.emit('message', msg);
   }
+}
+
+function cloneParkSnapshot(snapshot: EnterWorldSnapshot): EnterWorldSnapshot {
+  return {
+    ...snapshot,
+    specials: snapshot.specials.map((special) => ({
+      ...special,
+      imageIds: [...special.imageIds],
+      menuIds: [...special.menuIds],
+    })),
+  };
 }
 
 /** Nhiều gói lỗi/dialog mở đầu bằng 1 chuỗi UTF — đọc thử, hỏng thì bỏ qua. */

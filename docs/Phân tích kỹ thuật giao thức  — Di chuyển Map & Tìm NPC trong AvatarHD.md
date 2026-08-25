@@ -3,6 +3,22 @@
 > **Ngày:** 2026-08-21 · **Phạm vi:** APK AvatarHD 3.4.4 (`com.TeaM.Avatar`, server private `27.0.14.120:19129`) — disassembly native (`libil2cpp.so`) + `script.json`/`dump.cs` + jump table RX + probe thật phiên trước.
 > **Mức độ xác minh:** toàn bộ payload TX được xác minh bằng chuỗi lời gọi `myWriter` trong native; bảng handler/jump-table RX được xác minh bằng disassembly; gói `enter-world` (cmd -34) và `JOIN_OFFLINE_MAP` (-99) đã xác minh bằng probe thật. Chưa probe live được luồng vào khu có NPC (tài khoản test đang bị server giữ session / rate-limit) — các mục chưa chốt được đánh dấu ⚠️.
 
+> **Cập nhật 2026-08-25:** disassembly hiện tại của `ParkService.doJoinPark`
+> cho thấy native ghi thêm hai `writeShort` lấy từ
+> `LoadMap.xJoinCasino/yJoinCasino`; wire body thực tế là 6 byte. Với CityMap
+> v3.4.4, `LoadMap.doJoin` nạp `PositionMap.x/y` vào hai field này trước khi
+> join. Probe account 2, map 5, area 7 đã lặp lại `RX 80` với
+> `room/board=5/7` và `x/y=254/82`; đây là direct-join/map-position evidence,
+> chưa phải NPC catalog live.
+
+> **Bổ sung 2026-08-25:** native `GlobalMessageHandler.onMessage` dispatch
+> `cmd 48 (ITEM_MAP_SPECIAL)` ở `0x5EDDDC`: đọc `i8 mode`, với mode `0/1`
+> gọi `AvatarData.readItemDataMapSpecial @0xA0C280`, mode `2` đọc `i32 id` rồi
+> gọi `removeItemDataMapSpecial @0xA0C704`. Probe đã thêm decoder/capture RX48
+> trong cửa sổ thụ động 3 giây sau RX80. Retry account 2, map 5, area 7 lúc
+> `07:31:09Z` không nhận RX48 (`mapSpecialUpdates=[]`), nên chưa có NPC live để
+> đưa vào catalog.
+
 ## 1. Kết luận nhanh
 
 Để "tìm NPC" (NPC sự kiện như Ngưu Lang/Chức Nữ), bot cần 3 thứ: **đổi context bản đồ**, **di chuyển map/khu**, và **đọc danh sách NPC trên map hiện tại**.
@@ -10,7 +26,7 @@
 | Thứ | Command | Hàm | Body | Trạng thái |
 |---|---|---|---|---|
 | Context | `-1 GET_HANDLER` | `GlobalService.getHandler` | `[i8 index]` | ✅ verified |
-| Vào khu | `80 AVATAR_JOIN_PARK` | `ParkService.doJoinPark` | `[i8 roomID][i8 boardID]` | ✅ verified |
+| Vào khu | `80 AVATAR_JOIN_PARK` | `ParkService.doJoinPark` | `[i8 roomID][i8 boardID][i16 x][i16 y]` (6 byte) | ✅ verified |
 | Chọn khu | `-23 SELECTED_MINI_MAP` | `GlobalService.doSelectedMiniMap` | `[i8 idCityMap][i8 id]` | ✅ verified |
 | Xin map | `-24 REQUEST_CITY_MAP` | `GlobalService.requestCityMap` | `[i8 idMini]` (idMini<0 → body rỗng) | ✅ verified |
 | Join bất kỳ | `-21 REQUEST_JOIN_ANY` | `GlobalService.requestJoinAny` | `[i8 @0xC2][i8 @0xC1][i16 idJoin]` | ✅ verified |
@@ -46,9 +62,23 @@ cmd 80
 body:
   i8 roomID     // định danh bản đồ/khu (xem §6 — trùng hằng số zone)
   i8 boardID    // số hiệu bảng/khu con; -1 = board mặc định
+  i16 x         // LoadMap.xJoinCasino; CityMap node id=5 = 254
+  i16 y         // LoadMap.yJoinCasino; CityMap node id=5 = 82
 ```
 
-`ParkService.doJoinPark @0x718188`: `Message.create(80)` → `writeByte(roomID)` → `writeByte(boardID)` → `send`. Các call site quan trọng:
+`ParkService.doJoinPark @0x718188`: `Message.create(80)` → `writeByte(roomID)`
+→ `writeByte(boardID)` → `writeShort(xJoinCasino)` →
+`writeShort(yJoinCasino)` → `send`. Các call site quan trọng:
+
+> Các bảng/tài liệu cũ từng ghi body hai byte; disassembly và probe 2026-08-25
+> đã supersede cách ghi đó. Hai short là tọa độ native của trạng thái LoadMap,
+> không phải hai field tùy ý được phép bỏ qua.
+>
+> **Namespace warning:** `CityMap PositionMap.id=5` là node hiển thị `Công
+> viên` và có `idToMap=11`; nó không tự chứng minh rằng `cmd 80 roomID=5` có
+> tên `Công viên`. Legacy Auto Tìm NPC trong `avatar-auto.jar` labels the
+> server-map namespace's ID 5 as `Khu tài xỉu` and scans areas `0..9`. Keep
+> CityMap node IDs, `idToMap`, and live `roomID/boardID` as separate fields.
 
 - `GlobalLogicHandler.doGetHandler` (farm, case 10): `doJoinPark(0x19=25, 0)` → **nông trại = roomID 25 (NONG_TRAI), board 0**.
 - `MapScr.doJoin @0x6217E4` (bấm chọn vị trí trên màn hình map): `doJoinPark(zoneType, -1)` — `zoneType` đọc từ mảng zone của bản đồ (`ldrsb [x8+0x20]`).
