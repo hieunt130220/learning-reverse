@@ -4,7 +4,20 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 import { makeAccount, makeSnapshot } from '../test/fixtures.js';
+import type { AutomationSnapshot } from '../types.js';
 import { AccountCard } from './AccountCard.js';
+
+function makeAutomation(overrides: Partial<AutomationSnapshot> = {}): AutomationSnapshot {
+  return {
+    desiredMode: 'off',
+    activeMode: 'off',
+    transitionState: 'stable',
+    findNpcConfig: { revision: 0, config: { npcName: '' } },
+    findNpcRuntime: { phase: 'idle', running: false, targetName: '', cursor: 0, total: 0, timeoutStreak: 0 },
+    location: null,
+    ...overrides,
+  };
+}
 
 const api = vi.hoisted(() => ({ apiPost: vi.fn(), apiDelete: vi.fn() }));
 vi.mock('../api.js', () => api);
@@ -101,4 +114,40 @@ test('Xóa xác nhận, gọi DELETE và không mở drawer', async () => {
   expect(api.apiDelete).toHaveBeenCalledWith('/api/accounts/1');
   expect(reload).toHaveBeenCalledOnce();
   expect(screen.getByTestId('location')).toHaveTextContent('/accounts');
+});
+
+test('automation off thì card hiển thị đang tắt dù desiredConnected còn true', () => {
+  renderCard(makeAccount({
+    runtime: makeSnapshot({
+      status: 'online',
+      auto: { running: false, cycle: 0, lastActions: [] },
+      desiredConnected: true,
+      automation: makeAutomation(),
+    }),
+  }));
+  expect(screen.getByText('đang tắt')).toBeInTheDocument();
+  expect(screen.queryByText('đang chờ')).not.toBeInTheDocument();
+});
+
+test('automation desired auto_farm chưa chạy vòng thì hiển thị đang chờ', () => {
+  renderCard(makeAccount({
+    runtime: makeSnapshot({
+      status: 'idle',
+      auto: { running: false, cycle: 0, lastActions: [] },
+      desiredConnected: true,
+      automation: makeAutomation({ desiredMode: 'auto_farm' }),
+    }),
+  }));
+  expect(screen.getByText('đang chờ')).toBeInTheDocument();
+});
+
+test('không có automation thì giữ hành vi legacy theo desiredConnected', () => {
+  renderCard(makeAccount({
+    runtime: makeSnapshot({
+      status: 'idle',
+      auto: { running: false, cycle: 0, lastActions: [] },
+      desiredConnected: true,
+    }),
+  }));
+  expect(screen.getByText('đang chờ')).toBeInTheDocument();
 });
