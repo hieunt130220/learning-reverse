@@ -843,7 +843,56 @@ export class AvatarSession {
       });
     }
     if (this.pendingAutomationTransitions === 0) {
-      void this.resumeDesiredAutomation(client, epoch);
+      // Điểm danh "Báo danh hàng ngày" chạy TRƯỚC automation, best-effort:
+      // mọi kết quả (kể cả timeout/lỗi) đều phải đi tiếp tới resume. Wire
+      // contract: avatar-re/notes/daily-attendance.md.
+      // Log điểm danh phải được ghi TRƯỚC khi auto.start() gọi clearLogs()
+      // ở đầu vòng, nếu không dòng [điểm danh] bị xoá ngay khi vừa ghi.
+      this.pushLog('[điểm danh] đang gửi yêu cầu báo danh…');
+      void this.runDailyAttendanceBeforeAutomation(client, epoch).finally(() => {
+        if (
+          this.isCurrent(client, epoch)
+          && client.status === 'online'
+          && this.pendingAutomationTransitions === 0
+        ) {
+          void this.resumeDesiredAutomation(client, epoch);
+        }
+      });
+    }
+  }
+
+  /**
+   * Gửi yêu cầu báo danh đúng một lần cho mỗi connection epoch và ghi log kết
+   * quả. Không bao giờ throw: điểm danh không được chặn auto farm.
+   */
+  private async runDailyAttendanceBeforeAutomation(
+    client: GameClient,
+    epoch: number,
+  ): Promise<void> {
+    let result;
+    try {
+      result = await client.claimDailyAttendance();
+    } catch (err) {
+      if (this.isCurrent(client, epoch)) {
+        this.pushLog(`[điểm danh] lỗi: ${(err as Error).message} — vẫn tiếp tục tự động`);
+      }
+      return;
+    }
+    if (!this.isCurrent(client, epoch)) return;
+    switch (result.status) {
+      case 'claimed':
+        // rewardSummary là chính text dialog server — đã là mô tả phần quà.
+        this.pushLog(`[điểm danh] nhận thưởng thành công${result.rewardSummary ? `: ${result.rewardSummary}` : ''}`);
+        break;
+      case 'already-claimed':
+        this.pushLog('[điểm danh] hôm nay đã nhận thưởng');
+        break;
+      case 'rejected':
+        this.pushLog(`[điểm danh] server từ chối${result.reason ? `: ${result.reason}` : ''} — vẫn tiếp tục tự động`);
+        break;
+      case 'timeout':
+        this.pushLog('[điểm danh] hết thời gian chờ — vẫn tiếp tục tự động');
+        break;
     }
   }
 
@@ -1177,7 +1226,10 @@ export class AvatarSession {
         || !this.isCurrent(client, epoch)
         || client.status !== 'online'
       ) return false;
-      this.clearLogs();
+      // KHÔNG clearLogs ở đây: onOnline đã ghi log điểm danh trước khi resume
+      // tới đây, xoá bây giờ là mất dòng [điểm danh] của phiên. Log được dọn
+      // bởi AutoFarm.start (round mới ghi đè lastActions) và vòng lặp log có
+      // giới hạn 500 dòng nên không cần xoá thủ công nữa.
       this.auto!.start(this.lastAutoConfig);
       if (
         !this.isAutomationGenerationCurrent(generation)

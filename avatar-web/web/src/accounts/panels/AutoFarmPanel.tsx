@@ -59,7 +59,7 @@ const FIXED_AUTO_CONFIG = {
   maxSellsPerCycle: 0,
   autoBuy: true,
   buyBudgetXu: Number.MAX_SAFE_INTEGER,
-  stepDelayMs: 700,
+  stepDelayMs: 300,
   intervalMs: 300_000,
 } satisfies Partial<AutoFarmConfigDto>;
 
