@@ -1232,6 +1232,11 @@ export class AvatarSession {
     if (shouldLogout) {
       this.scheduleAutoCycle(intervalMs);
       this.cancelAutoSyncKickoff();
+      // Phải reset activeMode về 'off' trước teardown, tương tự onDisconnected:
+      // nếu giữ 'auto_farm', lần đăng nhập lại ở vòng kế sẽ bị resumeDesiredAutomation
+      // chặn tại điều kiện `activeMode !== 'off'` và không bao giờ khởi động lại auto.
+      this.activeMode = 'off';
+      this.emitAutomation();
       this.teardown();
       this.emit('status', 'idle');
     } else {
