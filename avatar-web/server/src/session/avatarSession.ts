@@ -843,7 +843,53 @@ export class AvatarSession {
       });
     }
     if (this.pendingAutomationTransitions === 0) {
-      void this.resumeDesiredAutomation(client, epoch);
+      // Điểm danh "Báo danh hàng ngày" chạy TRƯỚC automation, best-effort:
+      // mọi kết quả (kể cả timeout/lỗi) đều phải đi tiếp tới resume. Wire
+      // contract: avatar-re/notes/daily-attendance.md.
+      void this.runDailyAttendanceBeforeAutomation(client, epoch).finally(() => {
+        if (
+          this.isCurrent(client, epoch)
+          && client.status === 'online'
+          && this.pendingAutomationTransitions === 0
+        ) {
+          void this.resumeDesiredAutomation(client, epoch);
+        }
+      });
+    }
+  }
+
+  /**
+   * Gửi yêu cầu báo danh đúng một lần cho mỗi connection epoch và ghi log kết
+   * quả. Không bao giờ throw: điểm danh không được chặn auto farm.
+   */
+  private async runDailyAttendanceBeforeAutomation(
+    client: GameClient,
+    epoch: number,
+  ): Promise<void> {
+    let result;
+    try {
+      result = await client.claimDailyAttendance();
+    } catch (err) {
+      if (this.isCurrent(client, epoch)) {
+        this.pushLog(`[điểm danh] lỗi: ${(err as Error).message} — vẫn tiếp tục tự động`);
+      }
+      return;
+    }
+    if (!this.isCurrent(client, epoch)) return;
+    switch (result.status) {
+      case 'claimed':
+        // rewardSummary là chính text dialog server — đã là mô tả phần quà.
+        this.pushLog(`[điểm danh] nhận thưởng thành công${result.rewardSummary ? `: ${result.rewardSummary}` : ''}`);
+        break;
+      case 'already-claimed':
+        this.pushLog('[điểm danh] hôm nay đã nhận thưởng');
+        break;
+      case 'rejected':
+        this.pushLog(`[điểm danh] server từ chối${result.reason ? `: ${result.reason}` : ''} — vẫn tiếp tục tự động`);
+        break;
+      case 'timeout':
+        this.pushLog('[điểm danh] hết thời gian chờ — vẫn tiếp tục tự động');
+        break;
     }
   }
 

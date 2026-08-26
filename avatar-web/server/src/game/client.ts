@@ -44,6 +44,11 @@ import {
   DEFAULT_FARMER_QUEST_STATE,
 } from './progressQuests.js';
 import { FarmService } from './farmService.js';
+import {
+  classifyAttendanceDialog,
+  DailyAttendanceService,
+  type DailyAttendanceResult,
+} from './dailyAttendance.js';
 import { ParkService } from './parkService.js';
 import { cmdName } from './opcodes.js';
 import {
@@ -145,6 +150,8 @@ export class GameClient extends EventEmitter {
   readonly session = new Session();
   readonly farm = new FarmService(this.session);
   readonly park = new ParkService(this.session);
+  /** Điểm danh "Báo danh hàng ngày" — wire contract: notes/daily-attendance.md. */
+  readonly dailyAttendance = new DailyAttendanceService(this.session);
 
   status: ClientStatus = 'idle';
   lastError?: string;
@@ -540,6 +547,53 @@ export class GameClient extends EventEmitter {
     const m = Message.create(-94);
     m.writer!.writeInt(target);
     this.session.send(m);
+  }
+
+  /**
+   * Điểm danh "Báo danh hàng ngày" (menu NPC Lái buôn, userID 21).
+   *
+   * Best-effort: mọi kết quả — kể cả timeout/đóng kết nối — đều resolve thành
+   * `DailyAttendanceResult`, không throw, không retry. Server tự chặn khi báo
+   * danh lần 2 chưa đủ giờ nên client không tự bắn lại.
+   *
+   * Wire contract đã xác minh: `avatar-re/notes/daily-attendance.md`.
+   */
+  claimDailyAttendance(options: { timeoutMs?: number } = {}): Promise<DailyAttendanceResult> {
+    const timeoutMs = options.timeoutMs ?? 2_500;
+    if (this.status !== 'online') {
+      return Promise.resolve({ status: 'rejected', reason: 'chưa đăng nhập' });
+    }
+    return new Promise((resolve) => {
+      let timer: NodeJS.Timeout | undefined;
+      let settled = false;
+      const finish = (result: DailyAttendanceResult): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(result);
+      };
+      const onDialog = (text: string): void => {
+        // Chỉ dialog khớp mẫu báo danh mới kết thúc request; dialog nghiệp vụ
+        // khác (nhiệm vụ NPC, thông báo chung) phải đi tiếp đường cũ của nó.
+        const result = classifyAttendanceDialog(text);
+        if (result.status === 'rejected') return;
+        finish(result);
+      };
+      const onClosed = (): void => finish({ status: 'timeout' });
+      const cleanup = (): void => {
+        if (timer) clearTimeout(timer);
+        this.removeListener('dialog', onDialog);
+        this.session.removeListener('closed', onClosed);
+      };
+      timer = setTimeout(() => finish({ status: 'timeout' }), timeoutMs);
+      this.on('dialog', onDialog);
+      this.session.once('closed', onClosed);
+      try {
+        this.dailyAttendance.claim();
+      } catch (err) {
+        finish({ status: 'rejected', reason: (err as Error).message });
+      }
+    });
   }
 
   /** Gửi gói tự do — dùng để dò các opcode chưa chốt từ UI. */
