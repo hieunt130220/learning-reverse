@@ -1207,6 +1207,10 @@ export class AutoFarm extends EventEmitter {
             for (const item of [...(this.client.produce ?? []), ...(this.client.cookingMaterials ?? [])]) {
               availableMaterials.set(item.id, (availableMaterials.get(item.id) ?? 0) + item.num);
             }
+            const hasMaterials = (recipe: FoodRecipe): boolean =>
+              recipe.materials.every(
+                (material) => (availableMaterials.get(material.itemId) ?? 0) >= material.count,
+              );
 
             for (const slot of cookState.slots) {
               if (this.aborted) break;
@@ -1228,9 +1232,14 @@ export class AutoFarm extends EventEmitter {
 
               // Ưu tiên 1: Nhiệm vụ mở ô bếp Master chưa hoàn thành
               if (!targetRecipe && cfg.prioritizeCookingMissions && cookState.missions.length > 0) {
-                const pendingMission = cookState.missions.find((m) => !m.isDone && m.numCook < m.numNeed);
-                if (pendingMission) {
-                  targetRecipe = foodCatalog.find((f) => f.id === pendingMission.idFood);
+                for (const mission of cookState.missions) {
+                  if (mission.isDone || mission.numCook >= mission.numNeed) continue;
+
+                  const recipe = foodCatalog.find((food) => food.id === mission.idFood);
+                  if (!recipe || !hasMaterials(recipe)) continue;
+
+                  targetRecipe = recipe;
+                  break;
                 }
               }
 
