@@ -263,7 +263,7 @@ const DEFAULTS: AutoFarmConfig = {
   autoBuy: false,
   buyBudgetXu: 5_000,
   maxBuyPerItem: 99,
-  stepDelayMs: 700,
+  stepDelayMs: 300,
   intervalMs: DEFAULT_AUTO_INTERVAL_MS,
   startDelayMs: 3_000,
   logoutAfterCycle: true,
