@@ -846,6 +846,9 @@ export class AvatarSession {
       // Điểm danh "Báo danh hàng ngày" chạy TRƯỚC automation, best-effort:
       // mọi kết quả (kể cả timeout/lỗi) đều phải đi tiếp tới resume. Wire
       // contract: avatar-re/notes/daily-attendance.md.
+      // Log điểm danh phải được ghi TRƯỚC khi auto.start() gọi clearLogs()
+      // ở đầu vòng, nếu không dòng [điểm danh] bị xoá ngay khi vừa ghi.
+      this.pushLog('[điểm danh] đang gửi yêu cầu báo danh…');
       void this.runDailyAttendanceBeforeAutomation(client, epoch).finally(() => {
         if (
           this.isCurrent(client, epoch)
@@ -1223,7 +1226,10 @@ export class AvatarSession {
         || !this.isCurrent(client, epoch)
         || client.status !== 'online'
       ) return false;
-      this.clearLogs();
+      // KHÔNG clearLogs ở đây: onOnline đã ghi log điểm danh trước khi resume
+      // tới đây, xoá bây giờ là mất dòng [điểm danh] của phiên. Log được dọn
+      // bởi AutoFarm.start (round mới ghi đè lastActions) và vòng lặp log có
+      // giới hạn 500 dòng nên không cần xoá thủ công nữa.
       this.auto!.start(this.lastAutoConfig);
       if (
         !this.isAutomationGenerationCurrent(generation)
