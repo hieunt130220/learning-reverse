@@ -124,7 +124,6 @@ export interface SaveCanCauBatchOptions {
 export interface CanCauImageEntry {
   index: number;
   path: string;
-  bytes: number;
   sha256: string;
 }
 
@@ -217,7 +216,6 @@ export async function saveCanCauBatch(
       return {
         index,
         path: relPath,
-        bytes: buf.length,
         sha256: sha256Hex(buf),
       };
     };
@@ -239,8 +237,6 @@ export async function saveCanCauBatch(
       area: options.area,
       idFish: payload.idFish,
       timeDelayMs: payload.timeDelayMs,
-      imageCount: images.length,
-      imageNewCount: imagesNew.length,
       images,
       imagesNew,
     };
