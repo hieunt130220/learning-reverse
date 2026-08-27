@@ -63,6 +63,11 @@ import {
   WorldDataDecodeError,
   type EnterWorldSnapshot,
 } from './worldData.js';
+import {
+  decodeCaptchaChallenge,
+  decodeCaptchaImage,
+  type CaptchaChallenge,
+} from './captchaProtocol.js';
 
 /**
  * Giá trị handler cho `GET_HANDLER (-1)`. `GlobalLogicHandler.doGetHandler`
@@ -186,6 +191,14 @@ export interface TrafficEntry {
   name: string;
   len: number;
   hex: string;
+}
+
+export interface CaptchaEvent {
+  challenge: CaptchaChallenge | null;
+  decoded: { format: string; bytes: Buffer } | null;
+  sha256: string | null;
+  error: Error | null;
+  rawHex: string;
 }
 
 /**
@@ -1394,6 +1407,44 @@ export class GameClient extends EventEmitter {
           this.emit('log', `giải mã farm lỗi: ${(err as Error).message}`);
         }
         break;
+      case -60: {
+        const body = msg.getData();
+        const rawHex = body.toString('hex');
+        try {
+          const challenge = decodeCaptchaChallenge(body);
+          let decoded: { format: string; bytes: Buffer } | null = null;
+          let sha256: string | null = null;
+          let error: Error | null = null;
+          if (challenge.imageBytes) {
+            sha256 = crypto.createHash('sha256').update(challenge.imageBytes).digest('hex');
+            try {
+              decoded = decodeCaptchaImage(challenge);
+            } catch (e) {
+              error = e as Error;
+            }
+          }
+          this.emit('captcha', { challenge, decoded, sha256, error, rawHex } as CaptchaEvent);
+          const fmt = decoded?.format ?? (challenge.imageBytes ? 'unknown' : 'no-image');
+          const size = challenge.imageBytes?.length ?? 0;
+          this.emit(
+            'log',
+            `[captcha] nhận challenge targetId=${challenge.targetId} menuId=${challenge.menuId} prompt="${challenge.prompt.slice(0, 30)}" format=${fmt} bytes=${size} sha=${(sha256 ?? '').slice(0, 12)}${sha256 ? '...' : ''}`,
+          );
+          if (error) {
+            this.emit('log', `[captcha] lỗi nhận diện ảnh: ${error.message}`);
+          }
+        } catch (err) {
+          this.emit('captcha', {
+            challenge: null,
+            decoded: null,
+            sha256: null,
+            error: err as Error,
+            rawHex,
+          } as CaptchaEvent);
+          this.emit('log', `[captcha] lỗi decode: ${(err as Error).message} hex=${rawHex.slice(0, 64)}`);
+        }
+        break;
+      }
       default:
         break;
     }

@@ -10,11 +10,13 @@ import { AutoFarm, DEFAULT_AUTO_INTERVAL_MS, type AutoFarmConfig, type AutoFarmS
 import { AutoFindNpc, type AutoFindNpcOptions } from '../autoFindNpc.js';
 import {
   GameClient,
+  type CaptchaEvent,
   type ClientStatus,
   type DeviceProfile,
   type TemporaryLoginRejection,
   type TrafficEntry,
 } from '../game/client.js';
+import { saveCaptchaDiagnostic, savePassiveCaptcha } from '../game/captchaPassiveSaver.js';
 import { type QuestOverviewState } from '../game/farmData.js';
 import { MacroRunner, type Macro, type MacroState } from '../macro.js';
 import type { AccountMetricsPatch, CachedAccountMetrics } from '../accounts/repo.js';
@@ -809,6 +811,57 @@ export class AvatarSession {
       // Đóng client ở đây để phát `idle` và đi chung nhánh scheduleRetry; nếu
       // giữ socket ở `logging-in`, nút Kết nối sẽ gọi vào client cũ rồi no-op.
       client.logout();
+    });
+
+    client.on('captcha', (ev: CaptchaEvent) => {
+      if (!this.isCurrent(client, epoch)) return;
+      void (async (): Promise<void> => {
+        try {
+          if (!ev.challenge) {
+            const { fileName } = await saveCaptchaDiagnostic(
+              ev.rawHex,
+              ev.error?.message ?? 'unknown decode error',
+              this.opts.accountId,
+            );
+            this.pushLog(`[captcha] lỗi decode đã lưu diagnostic ${fileName}: ${ev.error?.message}`);
+            this.emit('captcha', {
+              accountId: this.opts.accountId,
+              targetId: null,
+              menuId: null,
+              prompt: '',
+              inputType: null,
+              format: null,
+              fileName,
+              sha256: null,
+              receivedAt: new Date().toISOString(),
+              isDiagnostic: true,
+              error: ev.error?.message ?? null,
+            });
+            return;
+          }
+          const result = await savePassiveCaptcha(ev.challenge, this.opts.accountId);
+          const fmt = result.format ?? (ev.decoded?.format ?? 'bin');
+          const size = ev.challenge.imageBytes?.length ?? 0;
+          this.pushLog(
+            `[captcha] đã lưu ${result.fileName} [${fmt}, ${size} bytes, sha=${(result.sha256 ?? '').slice(0, 12)}${result.sha256 ? '...' : ''}] prompt="${ev.challenge.prompt.slice(0, 30)}"`,
+          );
+          this.emit('captcha', {
+            accountId: this.opts.accountId,
+            targetId: ev.challenge.targetId,
+            menuId: ev.challenge.menuId,
+            prompt: ev.challenge.prompt,
+            inputType: ev.challenge.inputType,
+            format: result.format,
+            fileName: result.fileName,
+            savedPath: result.savedPath,
+            sha256: result.sha256,
+            receivedAt: new Date().toISOString(),
+            isDiagnostic: result.isDiagnostic,
+          });
+        } catch (err) {
+          this.pushLog(`[captcha] lỗi lưu file: ${(err as Error).message}`);
+        }
+      })();
     });
 
     this.auto!.on('state', (s: AutoFarmState) => {
