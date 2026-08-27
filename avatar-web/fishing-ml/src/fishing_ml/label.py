@@ -139,6 +139,8 @@ class LabelSession:
                 f"batch_id {self.manifest.batch_id!r}"
             )
         if existing.status == "ambiguous":
+            if existing.matches:
+                raise LabelSessionError("existing ambiguous label must have empty matches")
             self.selections.clear()
             return
         seen: set[int] = set()
@@ -149,6 +151,12 @@ class LabelSession:
                 )
             seen.add(match.new_index)
             self.select(match.new_index, match.img_index)
+        missing = self.missing_queries()
+        if missing:
+            raise LabelSessionError(
+                "existing complete label must contain exactly one match for every "
+                f"query; missing: {missing}"
+            )
 
     # --- navigation -----------------------------------------------------------
     def previous(self) -> int:
@@ -240,19 +248,19 @@ class LabelSession:
 # ---------------------------------------------------------------------------
 
 def label_path_for(labels_root: Path, batch_id: str) -> Path:
-    """Return the canonical label file path for a batch under ``labels_root``."""
-    return Path(labels_root) / batch_id / "label.json"
+    """Return the canonical flat label path under ``labels_root``."""
+    return Path(labels_root) / f"{batch_id}.json"
 
 
 def load_existing_label(labels_root: Path, batch_id: str) -> BatchLabel | None:
-    """Load an existing label for the batch, or ``None`` if absent/malformed."""
+    """Load an existing label for the batch, or ``None`` only if absent."""
     path = label_path_for(labels_root, batch_id)
-    if not path.is_file():
+    if not path.exists():
         return None
     try:
         return load_label(path)
-    except (LabelError, OSError):
-        return None
+    except (LabelError, ValueError, OSError) as exc:
+        raise LabelSessionError(f"failed to load existing label {path}: {exc}") from exc
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -270,7 +278,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--labels-root",
         required=True,
         type=Path,
-        help="Root where labels are written (<labels-root>/<batch-id>/label.json).",
+        help="Root where labels are written (<labels-root>/<batch-id>.json).",
     )
     parser.add_argument(
         "--batch-id",
@@ -340,13 +348,16 @@ def run_label_ui(
 
     THUMB = (96, 96)
 
+    root = tk.Tk()
+    root.title(f"Label — {session.manifest.batch_id}")
+
     def load_thumb(entry):
         path = Path(batch_dir) / entry.path
         try:
             with Image.open(path) as img:
                 img = img.convert("RGB")
                 img.thumbnail(THUMB, Image.LANCZOS)
-                return ImageTk.PhotoImage(img), entry.index
+                return ImageTk.PhotoImage(img, master=root), entry.index
         except Exception:  # noqa: BLE001 - missing/corrupt image -> placeholder
             return None, entry.index
 
@@ -355,9 +366,6 @@ def run_label_ui(
     for entry in session.manifest.images:
         photo, idx = load_thumb(entry)
         ref_thumbs[idx] = photo
-
-    root = tk.Tk()
-    root.title(f"Label — {session.manifest.batch_id}")
 
     # --- reference panel (all indexed references, with clear indices) ---------
     ref_frame = ttk.LabelFrame(root, text="References (arrImg)")
