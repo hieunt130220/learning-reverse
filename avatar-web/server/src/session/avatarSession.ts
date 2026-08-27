@@ -181,6 +181,9 @@ export class AvatarSession {
   private retryTimer?: NodeJS.Timeout;
   private connectionEpoch = 0;
   private onlineEpoch?: number;
+  /** Một promise điểm danh dùng chung cho mọi đường khởi động automation của epoch. */
+  private attendanceEpoch?: number;
+  private attendancePromise?: Promise<void>;
   private retryAfter?: { epoch: number; notBefore: number };
   private autoCycleTimer?: NodeJS.Timeout;
   private autoStartEpoch?: number;
@@ -831,6 +834,10 @@ export class AvatarSession {
     this.retries = 0;
     this.retryAfter = undefined;
     this.cancelAutoSyncKickoff();
+    // Mỗi LOGIN_SUCESS mở một vòng automation mới: dọn log vòng trước TRƯỚC
+    // khi ghi log điểm danh, để log điểm danh và toàn bộ vòng mới cùng tồn tại.
+    // Vòng không logout vẫn được dọn ở tryStartAuto().
+    if (this.desiredMode === 'auto_farm') this.clearLogs();
     if (!this.findNpcOwnsOrTargetsContext()) {
       this.autoSyncKickoff = setImmediate(() => {
         this.autoSyncKickoff = undefined;
@@ -842,14 +849,12 @@ export class AvatarSession {
         });
       });
     }
+    // Khởi động điểm danh bất kể có transition đang pending hay không. Khi user
+    // bật auto, switchAutomationMode đang chờ connect nên pending > 0 chính là
+    // ca phổ biến nhất; bỏ qua ở đây sẽ khiến auto đi thẳng vào farm.
+    this.ensureDailyAttendance(client, epoch);
     if (this.pendingAutomationTransitions === 0) {
-      // Điểm danh "Báo danh hàng ngày" chạy TRƯỚC automation, best-effort:
-      // mọi kết quả (kể cả timeout/lỗi) đều phải đi tiếp tới resume. Wire
-      // contract: avatar-re/notes/daily-attendance.md.
-      // Log điểm danh phải được ghi TRƯỚC khi auto.start() gọi clearLogs()
-      // ở đầu vòng, nếu không dòng [điểm danh] bị xoá ngay khi vừa ghi.
-      this.pushLog('[điểm danh] đang gửi yêu cầu báo danh…');
-      void this.runDailyAttendanceBeforeAutomation(client, epoch).finally(() => {
+      void this.attendancePromise!.finally(() => {
         if (
           this.isCurrent(client, epoch)
           && client.status === 'online'
@@ -859,6 +864,14 @@ export class AvatarSession {
         }
       });
     }
+  }
+
+  /** Khởi động đúng một request cho mỗi epoch; mọi caller await cùng Promise. */
+  private ensureDailyAttendance(client: GameClient, epoch: number): void {
+    if (this.attendanceEpoch === epoch && this.attendancePromise) return;
+    this.attendanceEpoch = epoch;
+    this.pushLog('[điểm danh] đang gửi yêu cầu báo danh…');
+    this.attendancePromise = this.runDailyAttendanceBeforeAutomation(client, epoch);
   }
 
   /**
@@ -1226,10 +1239,16 @@ export class AvatarSession {
         || !this.isCurrent(client, epoch)
         || client.status !== 'online'
       ) return false;
-      // KHÔNG clearLogs ở đây: onOnline đã ghi log điểm danh trước khi resume
-      // tới đây, xoá bây giờ là mất dòng [điểm danh] của phiên. Log được dọn
-      // bởi AutoFarm.start (round mới ghi đè lastActions) và vòng lặp log có
-      // giới hạn 500 dòng nên không cần xoá thủ công nữa.
+      // Mọi đường start (onOnline tự resume lẫn switchAutomationMode đang
+      // pending trong lúc connect) đều phải chờ cùng attendance Promise.
+      this.ensureDailyAttendance(client, epoch);
+      await this.attendancePromise;
+      if (
+        !this.isAutomationGenerationCurrent(generation)
+        || !this.isCurrent(client, epoch)
+        || client.status !== 'online'
+      ) return false;
+      // KHÔNG clearLogs ở đây: xoá bây giờ sẽ làm mất dòng [điểm danh] vừa ghi.
       this.auto!.start(this.lastAutoConfig);
       if (
         !this.isAutomationGenerationCurrent(generation)

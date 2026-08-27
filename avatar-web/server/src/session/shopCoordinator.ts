@@ -543,6 +543,21 @@ export class ShopCoordinator {
           };
         }
 
+        try {
+          await this.browseMarketCatalogInLane();
+        } catch (error) {
+          const normalized = asShopError(error);
+          try {
+            this.client?.emit('log', JSON.stringify({
+              scope: 'auto-sell-market-sync',
+              code: normalized.code,
+              message: normalized.message,
+            }));
+          } catch {
+            /* log best-effort không được làm hỏng vòng auto-sell */
+          }
+        }
+
         const collectCandidates: AutoCollectCandidate[] = (this.runtime.own?.data.slots ?? [])
           .flatMap((slot): AutoCollectCandidate[] => {
             if (slot.isSale) return [{ kind: 'sold', slot: { ...slot } }];
