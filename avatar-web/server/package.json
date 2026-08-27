@@ -9,7 +9,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "gen-key": "tsx src/tools/gen-key.ts",
-    "captcha:collect": "tsx src/tools/captcha-collector.ts"
+    "captcha:collect": "tsx src/tools/captcha-collector.ts",
+    "fishing:probe": "tsx src/tools/fishing-probe.ts",
+    "fishing:png-analyze": "tsx src/tools/fishing-png-analyze.ts"
   },
   "dependencies": {
     "argon2": "^0.44.0",
