@@ -28,3 +28,13 @@ avatar-re/notes/assembly-csharp.cs
 
 # --- ci/cd ---
 !.github/
+
+# --- fishing-ml pipeline (avatar-web/fishing-ml) ---
+avatar-web/fishing-ml/.venv/
+data/
+avatar-web/fishing-ml/artifacts/*/
+*.pt
+.pytest_cache/
+*.egg-info/
+# keep the publishable-bundle policy doc tracked
+!avatar-web/fishing-ml/artifacts/README.md

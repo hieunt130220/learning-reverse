@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fishing-ml"
+version = "0.1.0"
+description = "Offline dataset, labeling, and training pipeline for Avatar fishing image matching (Giai đoạn A)."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "Proprietary — reverse-engineering research" }
+dependencies = [
+    "numpy>=2.0,<3",
+    "Pillow>=10.4,<12",
+    "scikit-image>=0.24,<0.26",
+    "PyYAML>=6.0,<7",
+    "torch>=2.4,<3",
+]
+
+[project.scripts]
+fishing-import = "fishing_ml.import_data:main"
+fishing-label = "fishing_ml.label:main"
+fishing-validate = "fishing_ml.validate:main"
+fishing-split = "fishing_ml.split:main"
+fishing-baseline = "fishing_ml.baselines:main"
+fishing-train = "fishing_ml.train:main"
+fishing-freeze = "fishing_ml.calibrate:main"
+fishing-evaluate = "fishing_ml.evaluate:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+fishing_ml = ["py.typed"]
