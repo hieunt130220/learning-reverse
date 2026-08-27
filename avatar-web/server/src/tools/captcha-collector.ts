@@ -10,7 +10,13 @@ import {
   CaptchaProtocolDecodeError,
   type CaptchaChallenge,
 } from '../game/captchaProtocol.js';
-import { GameClient, type ClientStatus } from '../game/client.js';
+import {
+  GameClient,
+  APK_IDENTITY,
+  J2ME_IDENTITY,
+  type ClientIdentity,
+  type ClientStatus,
+} from '../game/client.js';
 import { GameGateService } from '../game/gameGateService.js';
 import { resolveJarGameServer } from '../game/jarServerExtractor.js';
 import type { Message } from '../proto/message.js';
@@ -24,6 +30,7 @@ interface CollectorArgs {
   host?: string;
   port?: number;
   jar?: string;
+  world?: 'apk' | 'j2me';
 }
 
 interface CaptchaFailureMetadata {
@@ -37,7 +44,7 @@ interface CaptchaFailureMetadata {
   errorOffset: number | null;
 }
 
-const ALLOWED_FLAGS = new Set(['--user', '--pass', '--count', '--output-dir', '--interval-ms', '--host', '--port', '--jar']);
+const ALLOWED_FLAGS = new Set(['--user', '--pass', '--count', '--output-dir', '--interval-ms', '--host', '--port', '--jar', '--world']);
 const MAX_CONSECUTIVE_FAILURES = 5;
 const MAX_CONSECUTIVE_DUPLICATES = 20;
 const LOGIN_TIMEOUT_MS = 15_000;
@@ -125,6 +132,15 @@ export function parseCollectorArgs(argv: string[]): CollectorArgs {
 
   const jar = parsed.get('--jar')?.trim();
 
+  let world: 'apk' | 'j2me' | undefined;
+  if (parsed.has('--world')) {
+    const rawWorld = parsed.get('--world')!.trim();
+    if (rawWorld !== 'apk' && rawWorld !== 'j2me') {
+      throw new Error(`--world phải là 'apk' hoặc 'j2me': "${rawWorld}"`);
+    }
+    world = rawWorld;
+  }
+
   return {
     user,
     pass,
@@ -134,6 +150,7 @@ export function parseCollectorArgs(argv: string[]): CollectorArgs {
     host,
     port,
     jar,
+    world,
   };
 }
 
@@ -237,16 +254,21 @@ export async function runCollector(args: CollectorArgs): Promise<void> {
     let targetHost: string;
     let targetPort: number;
     let serverSource: string;
+    let identity: ClientIdentity;
 
     if (args.host && args.port) {
       targetHost = args.host;
       targetPort = args.port;
       serverSource = 'CLI arguments (--host / --port)';
+      // Mặc định CLI host/port là thế giới APK; --world ghi đè.
+      identity = args.world === 'j2me' ? J2ME_IDENTITY : APK_IDENTITY;
     } else {
       const jarServer = await resolveJarGameServer({ jarPath: args.jar });
       targetHost = args.host ?? jarServer.host;
       targetPort = args.port ?? jarServer.port;
       serverSource = jarServer.source;
+      // Server lấy từ jar luôn là thế giới J2ME; --world apk ghi đè.
+      identity = args.world === 'apk' ? APK_IDENTITY : J2ME_IDENTITY;
     }
 
     console.log(`[CAPTCHA-COLLECTOR] Bắt đầu kết nối máy chủ ${targetHost}:${targetPort} (${serverSource})`);
@@ -260,6 +282,7 @@ export async function runCollector(args: CollectorArgs): Promise<void> {
       port: targetPort,
       user: args.user,
       pass: args.pass,
+      identity,
     });
 
     const onlineWait = new Promise<void>((resolve, reject) => {

@@ -82,6 +82,52 @@ export const GAME_MIDLET = {
   VERSIONCODE: 13, // mov w10,#0xd -> [+0x78]
 };
 
+/**
+ * Định danh client dùng để login. Thế giới APK (AvatarHD 3.4.4, Android) và
+ * thế giới J2ME (avatar-auto.jar, AngelChip 2.5.8) dùng opcode + layout gói
+ * login khác nhau — server jar đọc creds từ gói `-1` client-info (body rich) +
+ * `-2` LOGIN_ACC + `-79` SET_AGENT, trong khi avatar-web cũ chỉ gửi `-33`.
+ * Reverse từ `fv_0.do[]` trong jar: do[1]=-1, do[6]=-2, do[4]=-79.
+ */
+export type LoginMode = 'apk' | 'j2me';
+
+export interface ClientIdentity {
+  clientType: number; // j2me: 0 | apk: 8
+  version: string; // j2me: '2.5.8' | apk: '3.4.4'
+  provider: number; // j2me: 0 | apk: 0
+  agent: string; // từ config (jar: '0'/...)
+  loginMode: LoginMode;
+}
+
+export const J2ME_IDENTITY: ClientIdentity = {
+  clientType: 0,
+  version: '2.5.8',
+  provider: 0,
+  agent: '',
+  loginMode: 'j2me',
+};
+
+export const APK_IDENTITY: ClientIdentity = {
+  clientType: GAME_MIDLET.CLIENT_TYPE,
+  version: GAME_MIDLET.VERSION,
+  provider: GAME_MIDLET.PROVIDER,
+  agent: '',
+  loginMode: 'apk',
+};
+
+const CMD_CLIENT_INFO = -1; // fv_0.do[1] — client-info/login hello (thế giới J2ME)
+const CMD_LOGIN_J2ME = -2; // fv_0.do[6] — LOGIN_ACC thế giới J2ME (user, pass, token)
+const CMD_SET_AGENT = -79; // fv_0.do[4] — SET_AGENT
+// Opcode thực tế bắt được từ avatar-auto.jar trên MicroEmulator (pcap 2026-08-26, key 119028dd1862f297b06ee9aeba980982):
+const CMD_J2ME_80 = -80;
+const CMD_J2ME_17 = -17; // client-info J2ME thực tế (thay vì -1 suy đoán)
+const CMD_J2ME_52 = -52;
+// Body thô (plaintext trước XOR) của 4 gói J2ME bắt được:
+const J2ME_80_BODY_HEX = '034a';
+const J2ME_17_BODY_HEX =
+  '000000c000000d4d6963726f456d756c61746f7200000400000001cb0000025d01000005322e352e3801616672703271727861636d69675f2c6e6c6431636f6d2e6e6f69675f2c747266727031717233353535643332383832346438372d347432353069675f2c787334667270317172313132333372337972373833393337322d337432353169675f2c747266727031717233353535643332383832346438372d327432353069675f2c667666727031717234313132333372386464643438347372672d317432353269675f2c74726672703171723335353564333238383234643837307432353069675f2c66766672703171723431313233337238646464343834737267317432353269675f2c74726672703171723335353564333238383234643837327432353069675f2c78733466727031717231313233337233797237383339333732337432353169675f2c74726672703171723335353564333238383234643837347432353069675f2c66766672703171723431313233337238646464343834737267357432353200046e6c64310005346e6c6431';
+const J2ME_52_BODY_HEX = 'fe032b07';
+
 export interface DeviceProfile {
   /** SystemInfo.deviceUniqueIdentifier — chuỗi hex ổn định cho mỗi "máy". */
   imei: string;
@@ -216,6 +262,7 @@ export class GameClient extends EventEmitter {
   readonly lastPacket = new Map<number, string>();
 
   private device: DeviceProfile = { ...DEFAULT_DEVICE };
+  private identity: ClientIdentity = APK_IDENTITY;
   /** Handler context hiện tại: 8 main, 9 park, 10 farm; 'unknown' khi chưa/đã đóng. */
   currentHandlerContext: 8 | 9 | 10 | 'unknown' = 'unknown';
   /** RX80 Park gần nhất; không lấy snapshot login -34 làm cache Park. */
@@ -328,8 +375,10 @@ export class GameClient extends EventEmitter {
     user: string;
     pass: string;
     device?: Partial<DeviceProfile>;
+    identity?: ClientIdentity;
   }): Promise<void> {
     this.device = { ...DEFAULT_DEVICE, ...opts.device };
+    this.identity = opts.identity ?? APK_IDENTITY;
     this.setStatus('connecting');
     await this.session.connect(opts.host, opts.port);
     this.emit('log', `đã kết nối ${opts.host}:${opts.port}, xin khóa...`);
@@ -349,17 +398,25 @@ export class GameClient extends EventEmitter {
     await wait;
     this.emit('log', 'đã nhận khóa, gửi thông tin client');
 
-    this.setProviderAndClientType();
-
-    // GlobalService.getServerLoginInfo @0x699478 — cmd -87 sub-type 1.
-    // Là request duy nhất đã xác nhận có phản hồi ở giai đoạn trước đăng nhập,
-    // dùng làm kiểm chứng "server đang nghe và giải mã được ta".
-    const info = Message.create(-87);
-    info.writer!.writeByte(1);
-    this.session.send(info);
-
     this.setStatus('logging-in');
-    this.sendLogin(opts.user, opts.pass);
+    if (this.identity.loginMode === 'j2me') {
+      // Thế giới J2ME (avatar-auto.jar): server đọc creds từ gói -1 client-info
+      // (body rich) + -2 LOGIN_ACC + -79 SET_AGENT. Avatar-web cũ dùng -33 nên
+      // bị server jar "silent drop".
+      this.sendClientInfoJ2me();
+      this.sendLoginJ2me(opts.user, opts.pass);
+    } else {
+      this.setProviderAndClientType();
+
+      // GlobalService.getServerLoginInfo @0x699478 — cmd -87 sub-type 1.
+      // Là request duy nhất đã xác nhận có phản hồi ở giai đoạn trước đăng nhập,
+      // dùng làm kiểm chứng "server đang nghe và giải mã được ta".
+      const info = Message.create(-87);
+      info.writer!.writeByte(1);
+      this.session.send(info);
+
+      this.sendLogin(opts.user, opts.pass);
+    }
   }
 
   logout(): void {
@@ -439,6 +496,50 @@ export class GameClient extends EventEmitter {
     const m = Message.create(-33);
     m.writer!.writeUTF(user.toLowerCase()).writeUTF(pass).writeUTF(this.device.imei);
     this.session.send(m);
+  }
+
+  /**
+   * Gói client-info/login-hello của thế giới J2ME (avatar-auto.jar).
+   * Đã bắt trọn từ MicroEmulator (pcap 2026-08-26):
+   *   -80(034a) → -1(08) → -17(409B: provider 0, mem 49152, platform MicroEmulator,
+   *   1024×459, version 2.5.8 + 3 token fingerprint) → -79(0000) → -52(fe032b07).
+   * Trước đây suy đoán -1 là client-info là sai; thực tế -17 mới là client-info giàu.
+   * Body được hardcode nguyên văn plaintext (Session sẽ XOR với key mới).
+   */
+  private sendClientInfoJ2me(): void {
+    const m80 = Message.create(CMD_J2ME_80);
+    m80.writer!.writeBytes(Buffer.from(J2ME_80_BODY_HEX, 'hex'));
+    this.session.send(m80);
+    this.emit('log', 'J2ME: gửi -80');
+
+    const h = Message.create(CMD_CLIENT_INFO);
+    h.writer!.writeBytes(Buffer.from('08', 'hex')); // GET_HANDLER 8
+    this.session.send(h);
+    this.emit('log', 'J2ME: gửi -1 handler 08');
+
+    const m17 = Message.create(CMD_J2ME_17);
+    m17.writer!.writeBytes(Buffer.from(J2ME_17_BODY_HEX, 'hex'));
+    this.session.send(m17);
+    this.emit('log', 'J2ME: gửi -17 client-info 409B (fingerprint MicroEmulator)');
+
+    const agent = Message.create(CMD_SET_AGENT);
+    // Capture: -79 body 0000 (empty agent)
+    agent.writer!.writeBytes(Buffer.from('0000', 'hex'));
+    this.session.send(agent);
+    this.emit('log', 'J2ME: gửi SET_AGENT (-79) 0000');
+
+    const m52 = Message.create(CMD_J2ME_52);
+    m52.writer!.writeBytes(Buffer.from(J2ME_52_BODY_HEX, 'hex'));
+    this.session.send(m52);
+    this.emit('log', 'J2ME: gửi -52');
+  }
+
+  /** LOGIN_ACC thế giới J2ME: cmd -2, body = user, pass, version "2.5.8" (bắt được). */
+  private sendLoginJ2me(user: string, pass: string): void {
+    const m = Message.create(CMD_LOGIN_J2ME);
+    m.writer!.writeUTF(user.toLowerCase()).writeUTF(pass).writeUTF(this.identity.version);
+    this.session.send(m);
+    this.emit('log', 'J2ME: gửi LOGIN_ACC (-2) version ' + this.identity.version);
   }
 
   /**
@@ -725,6 +826,25 @@ export class GameClient extends EventEmitter {
     this.lastRxAt = Date.now();
     this.lastPacket.set(msg.command, msg.getData().toString('hex'));
     switch (msg.command) {
+      case -4: {
+        // LOGIN_SUCESS_J2ME — server J2ME dùng -4 thay vì -34, body = i32 id trực tiếp
+        // (khác APK: -34 body có i8 prefix trước i32 id).
+        const r4 = msg.reader!;
+        try {
+          const id = r4.readInt();
+          if (id > 0) {
+            this.playerId = id;
+            this.setStatus('online');
+            this.startKeepAlive();
+            this.emit('log', `đăng nhập J2ME thành công — id nhân vật = ${id}`);
+          } else {
+            this.emit('log', `đăng nhập J2ME không thành công (id = ${id})`);
+          }
+        } catch {
+          this.emit('log', `LOGIN_SUCESS_J2ME body lạ: ${msg.getData().toString('hex')}`);
+        }
+        break;
+      }
       case -34: {
         // LOGIN_SUCESS — body bắt đầu bằng i8 + i32 id; phần còn lại là dữ liệu
         // enter-world và các field Avatar (gồm xu, lượng, lượng khóa). id = -1
@@ -831,6 +951,7 @@ export class GameClient extends EventEmitter {
         }
         break;
       }
+      case -10: // thông báo lỗi phiên bản / từ chối đăng nhập (thế giới J2ME)
       case -40: { // hộp thoại thông báo chung của server (lỗi login, nhiệm vụ NPC, giục update…)
         const reason = safeUtf(msg);
         this.emit('log', `server: ${reason}`);
