@@ -1,0 +1,12 @@
+schemaVersion: 1
+seed: 20260827
+epochs: 100
+learningRate: 0.001
+weightDecay: 0.0001
+temperature: 0.07
+embeddingDim: 96
+channels: [32, 64, 96, 128]
+checkpointMetric: dev_top1_accuracy
+device: auto
+workers: 0
+reproducibilityTolerance: 0.002
