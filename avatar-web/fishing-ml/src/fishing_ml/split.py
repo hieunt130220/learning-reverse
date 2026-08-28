@@ -155,8 +155,15 @@ def _lexists(path: Path) -> bool:
 
 def _write_split_set(root: Path, values: Mapping[str, list[str]]) -> None:
     root.mkdir(parents=True, exist_ok=True); lock = root / ".fishing-split.lock"
-    try: lock_fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError as exc: raise FileExistsError(f"split creation lock exists: {lock}") from exc
+    try:
+        lock_fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        try:
+            if (os.stat(lock).st_mtime < __import__('time').time() - 3600): lock.unlink(); lock_fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            else: raise FileExistsError(f"split creation lock exists: {lock}") from exc
+        except OSError: raise FileExistsError(f"split creation lock exists: {lock}") from exc
+    os.write(lock_fd, f"pid={os.getpid()}\n".encode())
+    os.fsync(lock_fd)
     destinations = {name: root / f"{name}.txt" for name in _SPLITS}; temps: dict[str, Path] = {}; committed: list[Path] = []
     try:
         existing = [str(path) for path in destinations.values() if _lexists(path)]
