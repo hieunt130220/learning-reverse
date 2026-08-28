@@ -188,9 +188,13 @@ def _write_split_set(root: Path, values: Mapping[str, list[str]]) -> None:
 def create_splits(raw_root: Path, labels_root: Path, splits_root: Path, duplicate_reviews: Path, *, seed: int, train_count: int, dev_count: int, final_count: int) -> SplitValidation:
     counts = {"train": train_count, "dev": dev_count, "final": final_count}
     if counts != _CANONICAL: raise ValueError(f"canonical split counts must be {_CANONICAL}")
+    if seed != 20260827: raise ValueError("canonical creation requires seed 20260827")
+    if Path(duplicate_reviews).name == "": raise ValueError("duplicate review config is required")
     eligible, reviews, report, review_issues = _eligibility(Path(raw_root), Path(labels_root), Path(duplicate_reviews))
     dataset_issues = [entry for entry in report.issues if entry.code != "DUPLICATE_BLOB" and entry.batch_id == _ROOT]
     if dataset_issues or review_issues: raise ValueError("unresolved dataset/review issues: " + "; ".join(entry.detail for entry in dataset_issues + review_issues))
+    if report.labeled_pairs < 1000: raise ValueError(f"canonical creation requires at least 1000 labeled pairs, got {report.labeled_pairs}")
+    if Path(duplicate_reviews).name != "duplicate-reviews.json": raise ValueError("use the documented config/duplicate-reviews.json review config")
     if len(eligible) != 200: raise ValueError(f"canonical creation requires exactly 200 eligible batches, got {len(eligible)}")
     values = _allocate(eligible, reviews, seed, counts); _write_split_set(Path(splits_root), values)
     return validate_splits(raw_root, labels_root, splits_root, duplicate_reviews)
@@ -210,7 +214,10 @@ def _read_split(path: Path) -> tuple[list[str], list[ValidationIssue]]:
 
 def validate_splits(raw_root: Path, labels_root: Path, splits_root: Path, duplicate_reviews: Path, *, train_count: int = 140, dev_count: int = 30, final_count: int = 30) -> SplitValidation:
     expected = {"train": train_count, "dev": dev_count, "final": final_count}; eligible, reviews, report, review_issues = _eligibility(Path(raw_root), Path(labels_root), Path(duplicate_reviews))
-    issues = list(report.issues) + list(review_issues); values: dict[str, list[str]] = {}
+    if expected != _CANONICAL: issues = [_issue("SPLIT_COUNT", _ROOT, f"canonical validation requires {_CANONICAL}")]
+    else: issues = []
+    if report.labeled_pairs < 1000: issues.append(_issue("LABELED_PAIRS", _ROOT, f"requires at least 1000 labeled pairs, got {report.labeled_pairs}"))
+    issues.extend(report.issues); issues.extend(review_issues); values: dict[str, list[str]] = {}
     for name in _SPLITS:
         values[name], found = _read_split(Path(splits_root) / f"{name}.txt"); issues.extend(found)
         if len(values[name]) != expected[name]: issues.append(_issue("SPLIT_COUNT", _ROOT, f"{name}: expected {expected[name]}, got {len(values[name])}"))
