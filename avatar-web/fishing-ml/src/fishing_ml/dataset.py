@@ -30,16 +30,41 @@ def _image(path: Path) -> torch.Tensor:
         a = np.asarray(im, dtype=np.float32) / 255.0
     return torch.from_numpy(a).permute(2, 0, 1).contiguous()
 
+def _validate_normalization_stats(stats: NormalizationStats) -> tuple[torch.Tensor, torch.Tensor]:
+    try:
+        mean = tuple(stats.mean)
+        std = tuple(stats.std)
+    except (AttributeError, TypeError):
+        raise ValueError("normalization statistics must provide mean and std") from None
+    if len(mean) != 3 or len(std) != 3:
+        raise ValueError("normalization statistics must contain exactly three mean and std values")
+    try:
+        mean_array = np.asarray(mean, dtype=np.float64)
+        std_array = np.asarray(std, dtype=np.float64)
+    except (TypeError, ValueError):
+        raise ValueError("normalization statistics must be numeric") from None
+    if (not np.isfinite(mean_array).all() or not np.isfinite(std_array).all()
+            or (mean_array < 0).any() or (mean_array > 1).any()
+            or (std_array <= 0).any() or (std_array > 1).any()):
+        raise ValueError("normalization statistics contain non-finite or out-of-range values")
+    return torch.tensor(mean_array, dtype=torch.float32).view(3, 1, 1), torch.tensor(std_array, dtype=torch.float32).view(3, 1, 1)
+
 def _entries(raw_root: Path, labels_root: Path, batch_id: str, stats: NormalizationStats | None):
     d = raw_root / batch_id; m = load_manifest(d / "manifest.json"); l = load_label(labels_root / f"{batch_id}.json")
+    normalized = _validate_normalization_stats(stats) if stats is not None else None
     if l.status != "complete": raise ValueError(f"{batch_id}: label is not complete")
     refs = {x.index: _image(d / x.path) for x in m.images}
     qs = [_image(d / x.path) for x in m.images_new]
     target = [next(x.img_index for x in l.matches if x.new_index == i) for i in range(len(qs))]
     rids = sorted(refs)
     r = torch.stack([refs[i] for i in rids]); q = torch.stack(qs)
+<<<<<<< HEAD
     if stats:
         mean, std = torch.tensor(stats.mean).view(3,1,1), torch.tensor(stats.std).view(3,1,1)
+=======
+    if normalized is not None:
+        mean, std = normalized
+>>>>>>> 65157cf6 (fix: validate dataset normalization stats)
         r, q = (r-mean)/std, (q-mean)/std
     return r, q, torch.tensor([rids.index(i) for i in target], dtype=torch.long)
 
