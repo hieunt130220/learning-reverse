@@ -29,6 +29,7 @@ class MetricSummary:
     all_accepted_batch_count: int
     accepted_accuracy: float | None
     accepted_count: int
+    accepted_wrong_count: int
     abstention_count: int
     abstention_rate: float
     score_distribution: dict[str, float | int | None]
@@ -77,6 +78,7 @@ def summarize_predictions(
     correct_count = sum(row.predicted_img_index == row.expected_img_index for row in rows)
     accepted = tuple(row for row in rows if row.accepted)
     accepted_correct = sum(row.predicted_img_index == row.expected_img_index for row in accepted)
+    accepted_wrong = sum(row.predicted_img_index != row.expected_img_index for row in accepted)
     exact_count = sum(all(row.predicted_img_index == row.expected_img_index for row in batch) for batch in by_batch.values())
     all_accepted_count = sum(all(row.accepted for row in batch) for batch in by_batch.values())
     groups: dict[str, list[Prediction]] = defaultdict(list)
@@ -114,6 +116,7 @@ def summarize_predictions(
         all_accepted_batch_count=all_accepted_count,
         accepted_accuracy=accepted_correct / len(accepted) if accepted else None,
         accepted_count=len(accepted),
+        accepted_wrong_count=accepted_wrong,
         abstention_count=count - len(accepted),
         abstention_rate=(count - len(accepted)) / count if count else 0.0,
         score_distribution=_distribution([row.similarity for row in rows]),

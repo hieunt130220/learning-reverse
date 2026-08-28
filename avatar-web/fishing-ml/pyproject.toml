@@ -24,7 +24,7 @@ fishing-validate = "fishing_ml.validate:main"
 fishing-split = "fishing_ml.split:main"
 fishing-baseline = "fishing_ml.baselines:main"
 fishing-train = "fishing_ml.train:main"
-fishing-freeze = "fishing_ml.calibrate:main"
+fishing-freeze = "fishing_ml.artifacts:main"
 fishing-evaluate = "fishing_ml.evaluate:main"
 
 [tool.setuptools]

@@ -1,10 +1,10 @@
 # fishing-ml
 
-Offline dataset, labeling, and training pipeline for **Avatar fishing image matching**
-(Giai đoạn A). This package establishes the Python boundary only; the data-processing
-and training logic is added incrementally by later tasks.
+Offline dataset, labeling, training, calibration, freezing, and evaluation pipeline for
+**Avatar fishing image matching** (Giai đoạn A).
 
 No live inference and no service layer are included here — those belong to Giai đoạn B.
+No command submits TX43.
 
 ## Console commands
 
@@ -16,11 +16,12 @@ No live inference and no service layer are included here — those belong to Gia
 | `fishing-split` | `fishing_ml.split` |
 | `fishing-baseline` | `fishing_ml.baselines` |
 | `fishing-train` | `fishing_ml.train` |
-| `fishing-freeze` | `fishing_ml.calibrate` |
+| `python -m fishing_ml.calibrate` | `fishing_ml.calibrate` |
+| `fishing-freeze` | `fishing_ml.artifacts` |
 | `fishing-evaluate` | `fishing_ml.evaluate` |
 
-Each command currently prints a "not yet implemented" message and exits 0; later tasks
-replace the placeholder modules with real logic.
+Calibration reads development predictions and writes abstention thresholds. Freezing is a
+separate operation that snapshots the selected run, dataset, and splits before evaluation.
 
 ## Install (editable)
 
