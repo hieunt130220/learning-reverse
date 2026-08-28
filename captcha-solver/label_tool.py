@@ -119,7 +119,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<h1>Avatar Captcha Label Tool — __COUNT__ ảnh unique</h1>
+<h1>Avatar Captcha Label Tool — __COUNT__ ảnh unique <small style="color:#999;font-size:13px;font-weight:normal">v3-autosave</small></h1>
 <div id="toolbar">
   <button id="save">Save all</button>
   <span id="status"></span>
@@ -163,7 +163,14 @@ async function saveAll() {
 document.addEventListener('input', () => {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    try { await saveAll(); } catch (e) { /* ô Save all sẽ báo lỗi chi tiết */ }
+    try {
+      const saved = await saveAll();
+      const st = document.getElementById('status');
+      if (st && saved > 0) st.textContent = `Đã tự lưu ${saved} nhãn ✓`;
+    } catch (e) {
+      const st = document.getElementById('status');
+      if (st) st.textContent = 'Lỗi tự lưu: ' + e;
+    }
   }, 1000);
 });
 document.getElementById('save').onclick = async () => {
@@ -226,7 +233,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Avatar captcha label tool")
     parser.add_argument("--dataset", required=True, help="Thư mục captcha PNG")
     parser.add_argument("--out", default="captcha-solver/data/labels.csv")
-    parser.add_argument("--port", type=int, default=8641)
+    parser.add_argument("--port", type=int, default=8642)
     args = parser.parse_args()
 
     STATE = LabelState(Path(args.dataset), Path(args.out))
