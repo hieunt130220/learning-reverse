@@ -26,6 +26,7 @@ fishing-baseline = "fishing_ml.baselines:main"
 fishing-train = "fishing_ml.train:main"
 fishing-freeze = "fishing_ml.artifacts:main"
 fishing-evaluate = "fishing_ml.evaluate:main"
+fishing-phase2-dataset-version = "fishing_ml.dataset_version:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
