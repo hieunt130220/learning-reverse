@@ -92,9 +92,9 @@ def _augment(x: torch.Tensor, rng: random.Random) -> torch.Tensor:
     grid=torch.nn.functional.affine_grid(theta, (1,*x.shape), align_corners=False)
     return torch.nn.functional.grid_sample(x.unsqueeze(0),grid,mode="bilinear",padding_mode="border",align_corners=False)[0].clamp(-5,5)
 
-def _load(raw_root: Path, labels_root: Path, splits_root: Path, split: str, stats: NormalizationStats | None, *, train=False, seed=20260827, limit=None):
+def _load(raw_root: Path, labels_root: Path, splits_root: Path, split: str, stats: NormalizationStats | None, *, duplicate_reviews: Path | None = None, train=False, seed=20260827, limit=None):
     if split == "final": raise ValueError("final split is locked; use fishing_ml.evaluate final loader")
-    _validate_split_inputs(raw_root, labels_root, splits_root)
+    _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews)
     ids=_split_ids(splits_root,split)[:limit]; rng=random.Random(seed); out=[]
     for bid in ids:
         r,q,t=_entries(raw_root,labels_root,bid,stats)
@@ -104,8 +104,8 @@ def _load(raw_root: Path, labels_root: Path, splits_root: Path, split: str, stat
         out.append(FishingEpisode(bid,r,q,t))
     return out
 
-def load_training_episodes(raw_root, labels_root, splits_root, stats, *, seed=20260827, limit=None): return _load(Path(raw_root),Path(labels_root),Path(splits_root),"train",stats,train=True,seed=seed,limit=limit)
-def load_dev_episodes(raw_root, labels_root, splits_root, stats, *, limit=None): return _load(Path(raw_root),Path(labels_root),Path(splits_root),"dev",stats,limit=limit)
+def load_training_episodes(raw_root, labels_root, splits_root, stats, *, duplicate_reviews=None, seed=20260827, limit=None): return _load(Path(raw_root),Path(labels_root),Path(splits_root),"train",stats,duplicate_reviews=duplicate_reviews,train=True,seed=seed,limit=limit)
+def load_dev_episodes(raw_root, labels_root, splits_root, stats, *, duplicate_reviews=None, limit=None): return _load(Path(raw_root),Path(labels_root),Path(splits_root),"dev",stats,duplicate_reviews=duplicate_reviews,limit=limit)
 def _load_final_episodes(raw_root, labels_root, splits_root, stats, *, limit=None):
     _validate_split_inputs(raw_root, labels_root, splits_root)
     ids = [x.strip() for x in (Path(splits_root) / "final.txt").read_text().splitlines() if x.strip()][:limit]

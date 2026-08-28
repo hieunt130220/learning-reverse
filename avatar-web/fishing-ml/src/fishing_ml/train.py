@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hashlib
+import importlib.metadata
 import json
 import os
 import platform
 import random
+import shutil
 import subprocess
 import tempfile
 from dataclasses import asdict
@@ -177,6 +181,33 @@ def _git_revision() -> str:
         raise RuntimeError("training requires a readable Git revision") from error
 
 
+def _publish_directory_no_replace(staging_dir: Path, run_dir: Path) -> None:
+    """Atomically publish a sibling directory without replacing an existing run."""
+    if platform.system() == "Linux":
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, "renameat2", None)
+        if renameat2 is not None:
+            renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+            renameat2.restype = ctypes.c_int
+            if renameat2(-100, os.fsencode(staging_dir), -100, os.fsencode(run_dir), 1) == 0:
+                return
+            error_number = ctypes.get_errno()
+            if error_number not in {errno.ENOSYS, errno.EINVAL}:
+                raise OSError(error_number, os.strerror(error_number), run_dir)
+    elif platform.system() == "Darwin":
+        libc = ctypes.CDLL(None, use_errno=True)
+        renamex_np = getattr(libc, "renamex_np", None)
+        if renamex_np is not None:
+            renamex_np.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+            renamex_np.restype = ctypes.c_int
+            if renamex_np(os.fsencode(staging_dir), os.fsencode(run_dir), 0x00000004) == 0:
+                return
+            error_number = ctypes.get_errno()
+            if error_number not in {errno.ENOTSUP, errno.EINVAL}:
+                raise OSError(error_number, os.strerror(error_number), run_dir)
+    raise RuntimeError("atomic no-overwrite directory rename is unsupported on this platform")
+
+
 def _config_json(config: TrainingConfig) -> dict[str, object]:
     return {
         "schemaVersion": config.schema_version, "seed": config.seed, "epochs": config.epochs,
@@ -201,25 +232,36 @@ def run_training(
     raw_root: Path,
     labels_root: Path,
     splits_root: Path,
+    duplicate_reviews: Path,
     artifacts_root: Path,
     run_id: str,
 ) -> Path:
     """Train on train, select on dev, and atomically publish the run contract."""
     if not run_id or run_id in {".", ".."} or Path(run_id).name != run_id:
         raise ValueError("run-id must be one safe path component")
-    run_dir = Path(artifacts_root) / run_id
+    artifacts_root = Path(artifacts_root)
+    run_dir = artifacts_root / run_id
     if run_dir.exists():
         raise FileExistsError(f"run directory already exists: {run_dir}")
-    run_dir.mkdir(parents=True)
+    artifacts_root.mkdir(parents=True, exist_ok=True)
+    staging_dir: Path | None = None
     try:
+        git_revision = _git_revision()
+        staging_dir = Path(tempfile.mkdtemp(prefix=f".{run_id}.staging-", dir=artifacts_root))
         config = load_training_config(Path(config_path))
         limitations = set_reproducible_seed(config.seed)
-        stats = compute_train_normalization(Path(raw_root), Path(labels_root), Path(splits_root))
+        stats = compute_train_normalization(
+            Path(raw_root), Path(labels_root), Path(splits_root),
+            duplicate_reviews=Path(duplicate_reviews),
+        )
         # Load both permitted partitions before optimization so boundary errors fail early.
         first_train_episodes = load_training_episodes(
-            raw_root, labels_root, splits_root, stats, seed=config.seed
+            raw_root, labels_root, splits_root, stats,
+            duplicate_reviews=duplicate_reviews, seed=config.seed
         )
-        dev_episodes = load_dev_episodes(raw_root, labels_root, splits_root, stats)
+        dev_episodes = load_dev_episodes(
+            raw_root, labels_root, splits_root, stats, duplicate_reviews=duplicate_reviews
+        )
         device = _device(config.device)
         model = FishingEncoder(config.embedding_dim, config.channels).to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
@@ -230,7 +272,8 @@ def run_training(
         best_epoch = 0
         for epoch in range(1, config.epochs + 1):
             train_episodes = first_train_episodes if epoch == 1 else load_training_episodes(
-                raw_root, labels_root, splits_root, stats, seed=config.seed + epoch - 1
+                raw_root, labels_root, splits_root, stats,
+                duplicate_reviews=duplicate_reviews, seed=config.seed + epoch - 1
             )
             train_loss = train_epoch(model, train_episodes, optimizer, temperature=config.temperature, device=device)
             predictions, dev_loss, shapes = predict_episodes(
@@ -249,33 +292,43 @@ def run_training(
                 best_epoch = epoch
                 best_predictions = predictions
                 best_metrics = summary.to_json() | {"loss": dev_loss, "selectedEpoch": epoch}
-                _atomic_torch_save(run_dir / "checkpoints" / "best-dev.pt", {
+                _atomic_torch_save(staging_dir / "checkpoints" / "best-dev.pt", {
                     "schemaVersion": 1, "epoch": epoch, "modelStateDict": model.state_dict(),
                     "optimizerStateDict": optimizer.state_dict(), "config": _config_json(config),
                     "normalization": asdict(stats), "devMetrics": best_metrics,
                 })
-        checkpoint = run_dir / "checkpoints" / "best-dev.pt"
+        checkpoint = staging_dir / "checkpoints" / "best-dev.pt"
         checkpoint_sha256 = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
-        atomic_write_json(run_dir / "model-config.json", _config_json(config))
-        atomic_write_json(run_dir / "normalization.json", {"mean": list(stats.mean), "std": list(stats.std)})
-        atomic_write_json(run_dir / "dev-predictions.json", {
+        atomic_write_json(staging_dir / "model-config.json", _config_json(config))
+        atomic_write_json(staging_dir / "normalization.json", {"mean": list(stats.mean), "std": list(stats.std)})
+        atomic_write_json(staging_dir / "dev-predictions.json", {
             "schemaVersion": 1, "split": "dev", "selectedEpoch": best_epoch,
             "predictions": [_prediction_json(row) for row in best_predictions],
         })
-        atomic_write_json(run_dir / "dev-metrics.json", {"schemaVersion": 1, **best_metrics})
-        atomic_write_json(run_dir / "training-history.json", {"schemaVersion": 1, "epochs": history})
-        atomic_write_json(run_dir / "environment.json", {
+        atomic_write_json(staging_dir / "dev-metrics.json", {"schemaVersion": 1, **best_metrics})
+        atomic_write_json(staging_dir / "training-history.json", {"schemaVersion": 1, "epochs": history})
+        ending_git_revision = _git_revision()
+        if ending_git_revision != git_revision:
+            raise RuntimeError(
+                f"Git revision changed during training: {git_revision} -> {ending_git_revision}"
+            )
+        atomic_write_json(staging_dir / "environment.json", {
             "schemaVersion": 1, "pythonVersion": platform.python_version(),
             "pytorchVersion": torch.__version__, "numpyVersion": np.__version__,
-            "platform": platform.platform(), "device": str(device), "gitRevision": _git_revision(),
+            "pillowVersion": importlib.metadata.version("Pillow"),
+            "scikitImageVersion": importlib.metadata.version("scikit-image"),
+            "pyyamlVersion": importlib.metadata.version("PyYAML"),
+            "platform": platform.platform(), "device": str(device), "gitRevision": git_revision,
             "checkpointSha256": checkpoint_sha256, "deterministicAlgorithmsEnabled": torch.are_deterministic_algorithms_enabled(),
             "determinismLimitations": limitations,
         })
+        # The sibling rename is the only publication point; existing runs are never replaced.
+        _publish_directory_no_replace(staging_dir, run_dir)
         return run_dir
     except BaseException:
         # A failed run must never resemble a complete artifact set.
-        import shutil
-        shutil.rmtree(run_dir, ignore_errors=True)
+        if staging_dir is not None:
+            shutil.rmtree(staging_dir, ignore_errors=True)
         raise
 
 
@@ -285,10 +338,14 @@ def main(argv=None) -> int:
     parser.add_argument("--raw-root", type=Path, required=True)
     parser.add_argument("--labels-root", type=Path, required=True)
     parser.add_argument("--splits-root", type=Path, required=True)
+    parser.add_argument("--duplicate-reviews", type=Path, required=True)
     parser.add_argument("--artifacts-root", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     args = parser.parse_args(argv)
-    run_dir = run_training(args.config, args.raw_root, args.labels_root, args.splits_root, args.artifacts_root, args.run_id)
+    run_dir = run_training(
+        args.config, args.raw_root, args.labels_root, args.splits_root,
+        args.duplicate_reviews, args.artifacts_root, args.run_id,
+    )
     print(json.dumps({"runDirectory": str(run_dir)}, sort_keys=True))
     return 0
 
