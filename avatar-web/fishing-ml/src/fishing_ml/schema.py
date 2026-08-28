@@ -69,7 +69,7 @@ _LABEL_KEYS = frozenset({"schemaVersion", "batchId", "status", "matches"})
 # Required per-match keys.
 _MATCH_KEYS = frozenset({"newIndex", "imgIndex"})
 
-_HEX64_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class ManifestError(ValueError):
@@ -145,13 +145,13 @@ def _is_int(value: object) -> bool:
 def _check_safe_relpath(value: str) -> None:
     if not value:
         raise ManifestError("path must not be empty")
+    if "\\" in value:
+        raise ManifestError(f"path must use POSIX separators: {value!r}")
     parsed = PurePosixPath(value)
     if parsed.is_absolute():
         raise ManifestError(f"unsafe absolute path: {value!r}")
-    if ".." in parsed.parts:
-        raise ManifestError(f"unsafe path with '..': {value!r}")
-    if any(part in ("", "/") for part in parsed.parts):
-        raise ManifestError(f"unsafe path: {value!r}")
+    if parsed.as_posix() != value or any(part in ("", ".", "..") for part in parsed.parts):
+        raise ManifestError(f"path must be a normalized relative POSIX path: {value!r}")
 
 
 def _parse_utc_iso(value: object) -> str:
@@ -200,9 +200,9 @@ def _parse_image_entries(raw: object, field: str) -> tuple[ImageEntry, ...]:
             raise ManifestError(f"{field} has duplicate index {index}")
         seen.add(index)
         entries.append(ImageEntry(index=index, path=path, sha256=digest))
-    indices = sorted(e.index for e in entries)
+    indices = [entry.index for entry in entries]
     if indices != list(range(len(indices))):
-        raise ManifestError(f"{field} indices are not contiguous from 0")
+        raise ManifestError(f"{field} entries must be ordered and contiguous from index 0")
     return tuple(entries)
 
 
@@ -238,18 +238,18 @@ def parse_manifest(data: object) -> BatchManifest:
         )
 
     batch_id = data["batchId"]
-    if not isinstance(batch_id, str) or not batch_id:
-        raise ManifestError("batchId must be a non-empty string")
+    if not isinstance(batch_id, str) or not batch_id or batch_id.strip() != batch_id:
+        raise ManifestError("batchId must be a non-empty string without surrounding whitespace")
 
     captured_at = _parse_utc_iso(data["capturedAt"])
 
     id_fish = data["idFish"]
-    if not _is_int(id_fish):
-        raise ManifestError("idFish must be an int")
+    if not _is_int(id_fish) or id_fish < 0:
+        raise ManifestError("idFish must be a non-negative int")
 
     time_delay_ms = data["timeDelayMs"]
-    if not _is_int(time_delay_ms):
-        raise ManifestError("timeDelayMs must be an int")
+    if not _is_int(time_delay_ms) or time_delay_ms < 0:
+        raise ManifestError("timeDelayMs must be a non-negative int")
 
     map_value = _parse_opt_int(data["map"], "map")
     area_value = _parse_opt_int(data["area"], "area")
@@ -301,8 +301,8 @@ def parse_label(data: object) -> BatchLabel:
         )
 
     batch_id = data["batchId"]
-    if not isinstance(batch_id, str) or not batch_id:
-        raise LabelError("batchId must be a non-empty string")
+    if not isinstance(batch_id, str) or not batch_id or batch_id.strip() != batch_id:
+        raise LabelError("batchId must be a non-empty string without surrounding whitespace")
 
     status = data["status"]
     if status not in ("complete", "ambiguous"):
@@ -312,6 +312,8 @@ def parse_label(data: object) -> BatchLabel:
     if not isinstance(raw_matches, list):
         raise LabelError("matches must be a list")
     matches: list[MatchLabel] = []
+    seen_new_indices: set[int] = set()
+    seen_img_indices: set[int] = set()
     for i, item in enumerate(raw_matches):
         if not isinstance(item, dict):
             raise LabelError(f"matches[{i}] must be an object")
@@ -323,10 +325,16 @@ def parse_label(data: object) -> BatchLabel:
                 raise LabelError(f"matches[{i}] unknown field {key!r}")
         new_index = item["newIndex"]
         img_index = item["imgIndex"]
-        if not _is_int(new_index):
-            raise LabelError(f"matches[{i}].newIndex must be an int")
-        if not _is_int(img_index):
-            raise LabelError(f"matches[{i}].imgIndex must be an int")
+        if not _is_int(new_index) or new_index < 0:
+            raise LabelError(f"matches[{i}].newIndex must be a non-negative int")
+        if not _is_int(img_index) or img_index < 0:
+            raise LabelError(f"matches[{i}].imgIndex must be a non-negative int")
+        if new_index in seen_new_indices:
+            raise LabelError(f"matches has duplicate newIndex {new_index}")
+        if img_index in seen_img_indices:
+            raise LabelError(f"matches has duplicate imgIndex {img_index}")
+        seen_new_indices.add(new_index)
+        seen_img_indices.add(img_index)
         matches.append(MatchLabel(new_index=new_index, img_index=img_index))
 
     return BatchLabel(
