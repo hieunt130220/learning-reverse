@@ -10,12 +10,28 @@ export interface NativeParkJoinPosition {
 }
 
 /**
- * PositionMap values copied from the reviewed native CityMap asset. Only map 5
- * has a complete live direct-join proof on the current server build; refusing
- * other maps is safer than sending a guessed coordinate pair.
+ * PositionMap values extracted from the CityMap TextAsset in AvatarHD 3.4.4.
+ * Node IDs:
+ *   1: Khu sinh thái (473, 100)
+ *   3: Khu giải trí (236, 280)
+ *   4: Khu mua sắm (452, 250)
+ *   5: Công viên (254, 82)
+ *   7: Nông trại (524, 423)
+ *   8: Ngoại ô (100, 100)
+ *   9: Mê cung (57, 209)
+ *   14: Khu cá rô (254, 82) — sub-area verified in auto-fishing spec
  */
 export const NATIVE_PARK_JOIN_POSITIONS: Readonly<Record<number, NativeParkJoinPosition>> =
-  Object.freeze({ 5: Object.freeze({ x: 254, y: 82 }) });
+  Object.freeze({
+    1: Object.freeze({ x: 473, y: 100 }),
+    3: Object.freeze({ x: 236, y: 280 }),
+    4: Object.freeze({ x: 452, y: 250 }),
+    5: Object.freeze({ x: 254, y: 82 }),
+    7: Object.freeze({ x: 524, y: 423 }),
+    8: Object.freeze({ x: 100, y: 100 }),
+    9: Object.freeze({ x: 57, y: 209 }),
+    14: Object.freeze({ x: 254, y: 82 }),
+  });
 
 /** V1 chỉ encode cmd 80 — không có REQUEST_JOIN_ANY/-23 hay opcode tương tác. */
 export class ParkService {
