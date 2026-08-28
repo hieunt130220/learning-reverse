@@ -8,6 +8,8 @@ export interface GameServerEndpoint {
   host: string;
   port: number;
   source: string;
+  /** Thế giới J2ME (avatar-auto.jar) luôn login bằng giao thức J2ME. */
+  loginMode: 'j2me';
 }
 
 const JAR_XOR_KEY = Buffer.from('NguyenHuuQuyet', 'utf8');
@@ -188,7 +190,8 @@ async function readCache(): Promise<(GameServerEndpoint & { fetchedAt: string })
     if (
       typeof parsed.host === 'string' &&
       typeof parsed.port === 'number' &&
-      typeof parsed.fetchedAt === 'string'
+      typeof parsed.fetchedAt === 'string' &&
+      parsed.loginMode === 'j2me'
     ) {
       return parsed;
     }
@@ -257,6 +260,7 @@ export async function resolveJarGameServer(
       host: server.host,
       port: server.port,
       source: `dynamic config (${configHost}) → ${server.groupName} / ${server.serverName}`,
+      loginMode: 'j2me',
     };
     try {
       await writeCache(endpoint);
@@ -275,6 +279,7 @@ export async function resolveJarGameServer(
         host: cached.host,
         port: cached.port,
         source: `${cached.source} (cache ${cached.fetchedAt})`,
+        loginMode: 'j2me',
       };
     }
     throw new Error(
