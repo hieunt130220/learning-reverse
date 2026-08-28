@@ -38,3 +38,6 @@ avatar-web/fishing-ml/artifacts/*/
 *.egg-info/
 # keep the publishable-bundle policy doc tracked
 !avatar-web/fishing-ml/artifacts/README.md
+avatar-web/server/captcha-dataset/
+# Python venv
+.venv-captcha312/

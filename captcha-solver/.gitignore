@@ -1,0 +1,8 @@
+# Python venvs tạm
+.venv-captcha/
+.venv-captcha312/
+__pycache__/
+*.pyc
+
+# Captcha solver checkpoints (tạo bởi train)
+captcha-solver/checkpoints/*.pt
