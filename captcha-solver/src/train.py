@@ -111,7 +111,7 @@ def train(args) -> None:
 
     model = CaptchaCRNN(charset.size)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.5)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=150, gamma=0.5)
 
     best_acc = 0.0
     t0 = time.time()
