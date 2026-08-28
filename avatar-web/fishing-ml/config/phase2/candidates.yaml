@@ -1,0 +1,64 @@
+# Phase 2 enumerated candidate matrix (FINITE by construction).
+#
+# This file is the ONLY source of candidate variation for Phase 2 tuning.
+# Every combination is enumerated explicitly; experiments.py rejects unknown
+# keys and refuses to expand any list below. The cartesian product of the
+# `candidates` lists is bounded and fully enumerable.
+#
+# SAFETY (design spec §2.2 / §3.2):
+#   - Tuning happens ONLY on train/dev. The Phase A final split is NEVER read
+#     here and is opened at most once, only by evaluate_final_once.
+#   - The Phase A final 3 errors are NOT used to set any value here.
+#   - augmentation / hard-negative options are metadata passed to run_training
+#     via TrainingConfig overlays; they never touch prediction thresholds.
+#   - coverage/latency gates live in config/phase2/gate.yaml (read, not inferred).
+schemaVersion: 1
+
+# Fixed training hyperparameters inherited by every candidate. Per-candidate
+# values below OVERRIDE the matching key. Only schema-v1 TrainingConfig keys are
+# allowed as overrides (strictly checked by config.py).
+baseConfig:
+  schemaVersion: 1
+  seed: 20260827
+  epochs: 80
+  learningRate: 0.001
+  weightDecay: 0.0001
+  embeddingDim: 96
+  channels: [32, 64, 96, 128]
+  checkpointMetric: dev_top1_accuracy
+  device: auto
+  workers: 0
+  reproducibilityTolerance: 0.002
+
+# The enumerated, bounded candidate axes. Each artifact is a fixed string token
+# that maps to a TrainingConfig overlay inside experiments.py (AUGMENTATION /
+# HARD_NEGATIVE / EMBEDDING maps). `temperature` is a real TrainingConfig key.
+candidates:
+  # 3 options. Tokens are quoted: YAML 1.1 parses bare `none`/`off` as null/bool.
+  augmentation:
+    - "none"
+    - "photometric"
+    - "photometric_plus_geom"
+  # 2 options.
+  hardNegative:
+    - "off"
+    - "ratio_0.25"
+  # 2 options (real TrainingConfig temperature floats).
+  temperature:
+    - 0.05
+    - 0.07
+  # 2 options.
+  embedding:
+    - "dim_96"
+    - "dim_128"
+
+# Selection gate ordering (design §3.2). Strictly dev-only metrics.
+selectionGate:
+  # Primary, mandatory.
+  requireZeroWrongAccepted: true
+  # Tie-breakers applied ONLY among candidates that satisfy requireZeroWrongAccepted.
+  tieBreakers:
+    # Higher is better for each; compared in order.
+    - acceptedRate
+    - top1Accuracy
+    - batchExactMatch
