@@ -196,14 +196,15 @@ def create_splits(raw_root: Path, labels_root: Path, splits_root: Path, duplicat
     counts = {"train": train_count, "dev": dev_count, "final": final_count}
     if counts != _CANONICAL: raise ValueError(f"canonical split counts must be {_CANONICAL}")
     if seed != 20260827: raise ValueError("canonical creation requires seed 20260827")
-    if Path(duplicate_reviews).name == "": raise ValueError("duplicate review config is required")
+    if Path(duplicate_reviews).name != "duplicate-reviews.json": raise ValueError("use config/duplicate-reviews.json")
     eligible, reviews, report, review_issues = _eligibility(Path(raw_root), Path(labels_root), Path(duplicate_reviews))
     dataset_issues = [entry for entry in report.issues if entry.code != "DUPLICATE_BLOB" and entry.batch_id == _ROOT]
     if dataset_issues or review_issues: raise ValueError("unresolved dataset/review issues: " + "; ".join(entry.detail for entry in dataset_issues + review_issues))
     if report.labeled_pairs < 1000: raise ValueError(f"canonical creation requires at least 1000 labeled pairs, got {report.labeled_pairs}")
-    if Path(duplicate_reviews).name != "duplicate-reviews.json": raise ValueError("use the documented config/duplicate-reviews.json review config")
     if len(eligible) != 200: raise ValueError(f"canonical creation requires exactly 200 eligible batches, got {len(eligible)}")
     values = _allocate(eligible, reviews, seed, counts)
+    selected = set().union(*(set(items) for items in values.values()))
+    if selected != eligible or any(not _SAFE_ID.fullmatch(batch) or batch in (".", "..") for batch in selected): raise ValueError("generated split contains unsafe or ineligible IDs")
     # Publish only after the single authoritative dataset snapshot has passed all gates.
     _write_split_set(Path(splits_root), values)
     return SplitValidation(True, {name: len(values[name]) for name in _SPLITS}, (), ())
@@ -226,15 +227,17 @@ def validate_splits(raw_root: Path, labels_root: Path, splits_root: Path, duplic
     if expected != _CANONICAL: issues = [_issue("SPLIT_COUNT", _ROOT, f"canonical validation requires {_CANONICAL}")]
     else: issues = []
     if report.labeled_pairs < 1000: issues.append(_issue("LABELED_PAIRS", _ROOT, f"requires at least 1000 labeled pairs, got {report.labeled_pairs}"))
-    issues.extend(report.issues); issues.extend(review_issues); values: dict[str, list[str]] = {}
+    values: dict[str, list[str]] = {}
     for name in _SPLITS:
         values[name], found = _read_split(Path(splits_root) / f"{name}.txt"); issues.extend(found)
         if len(values[name]) != expected[name]: issues.append(_issue("SPLIT_COUNT", _ROOT, f"{name}: expected {expected[name]}, got {len(values[name])}"))
     sets = {name: set(values[name]) for name in _SPLITS}
+    assigned = set().union(*sets.values())
+    issues.extend(entry for entry in report.issues if entry.batch_id == _ROOT or entry.batch_id in assigned)
+    issues.extend(review_issues)
     for index, left in enumerate(_SPLITS):
         for right in _SPLITS[index + 1:]:
             for batch in sorted(sets[left] & sets[right]): issues.append(_issue("SPLIT_OVERLAP", batch, f"present in {left} and {right}"))
-    assigned = set().union(*sets.values())
     for batch in sorted(assigned - eligible): issues.append(_issue("SPLIT_INELIGIBLE", batch, "not an eligible batch"))
     for batch in sorted(eligible - assigned): issues.append(_issue("SPLIT_OMISSION", batch, "eligible batch absent from splits"))
     placement = {batch: name for name, batches in sets.items() for batch in batches}; accepted: list[str] = []
@@ -255,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Create and validate frozen fishing dataset splits"); subparsers = parser.add_subparsers(dest="command", required=True)
     for command in ("create", "validate"):
         current = subparsers.add_parser(command)
-        for flag in ("raw-root", "labels-root", "splits-root", "duplicate-reviews"): current.add_argument(f"--{flag}", type=Path, required=True)
+        for flag in ("raw-root", "labels-root", "splits-root", "duplicate-reviews"): current.add_argument(f"--{flag}", type=Path, required=flag != "duplicate-reviews", default=Path("config/duplicate-reviews.json") if flag == "duplicate-reviews" else None)
         current.add_argument("--train-count", type=int, default=140); current.add_argument("--dev-count", type=int, default=30); current.add_argument("--final-count", type=int, default=30)
         if command == "create": current.add_argument("--seed", type=int, required=True)
     args = parser.parse_args(argv); counts = dict(train_count=args.train_count, dev_count=args.dev_count, final_count=args.final_count)
