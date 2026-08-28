@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from src.captcha_io import alpha_sha256, list_dataset_images, load_alpha_binary  # noqa: E402
 from src.denoise import remove_isolated_noise  # noqa: E402
 
-LABEL_RE = re.compile(r"^[0-9]{1,2}Đ[a-zà-ỹđ]+$")
+LABEL_RE = re.compile(r"^[0-9]{1,2}[dDđĐ][a-zà-ỹđ]+$")
 RENDER_SCALE = 8
 
 
@@ -81,8 +81,15 @@ class LabelState:
     def save(self, rows: list[dict]) -> int:
         """Ghi danh sách {filename,label} vào CSV. Trả về số dòng đã ghi."""
         self.out_csv.parent.mkdir(parents=True, exist_ok=True)
-        cleaned = [(r["filename"].strip(), r["label"].strip()) for r in rows
-                   if r.get("filename") and r.get("label")]
+        cleaned = []
+        for r in rows:
+            fname = (r.get("filename") or "").strip()
+            label = (r.get("label") or "").strip()
+            if not fname or not label:
+                continue
+            # chuẩn hóa: 1dnai / 1Dnai / 1Đnai -> 1Đnai
+            label = re.sub(r"^([0-9]{1,2})[dDđĐ]", r"\1Đ", label)
+            cleaned.append((fname, label))
         with open(self.out_csv, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["filename", "label"])
@@ -126,7 +133,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 </div>
 <div id="list"></div>
 <script>
-const PATTERN = __PATTERN__;
+const PATTERN = new RegExp(__PATTERN__);
 const items = __ITEMS__.items;
 const list = document.getElementById('list');
 items.forEach(it => {
@@ -136,7 +143,7 @@ items.forEach(it => {
     <div class="meta">
       <div class="file">${it.file}</div>
       <input class="label" data-file="${it.file}" value="${it.existing}"
-             placeholder="VD: 1Dnai">
+             placeholder="VD: 1dnai">
     </div>`;
   list.appendChild(div);
 });
