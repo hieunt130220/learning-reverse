@@ -27,6 +27,7 @@ fishing-train = "fishing_ml.train:main"
 fishing-freeze = "fishing_ml.artifacts:main"
 fishing-evaluate = "fishing_ml.evaluate:main"
 fishing-phase2-dataset-version = "fishing_ml.dataset_version:main"
+fishing-phase2-inference-contract = "fishing_ml.inference_contract:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

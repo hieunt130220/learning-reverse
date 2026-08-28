@@ -55,6 +55,25 @@ never escape `data/phase2/` or point at a Phase A mutable root.
 | Command | Module |
 |---------|--------|
 | `fishing-phase2-dataset-version` | `fishing_ml.dataset_version` |
+| `fishing-phase2-inference-contract` | `fishing_ml.inference_contract` |
+
+```bash
+# Verify an inference request/response document (exit 1 on rejected).
+python -m fishing_ml.inference_contract check-request path/to/request.json
+python -m fishing_ml.inference_contract check-response path/to/response.json
+```
+
+The inference contract (`src/fishing_ml/inference_contract.py`) is the strictly-typed
+**wire schema** both the Python service (Task 5) and the Node shadow client (Task 7/8)
+speak. It performs validation + serialization only — no ML, no HTTP server, no image
+persistence. PNG bytes are decoded in-memory (75×75 RGB/RGBA) for validation only;
+they are never written to disk or echoed in errors. Counts are capped at 64 per list
+(`_MAX_IMAGES`) and total decoded PNG bytes at `_MAX_BODY_BYTES` = (64+64)×7500.
+
+Request: `{"schemaVersion":1,"references":[{"index":0,"pngBase64":"..."}],"queries":[...]}`.
+Response: `{"schemaVersion":1,"modelId":"phase2-cnn-...","predictions":[{"queryIndex":0,"referenceIndex":1,"similarity":0.98,"margin":0.12,"accepted":true}],"latencyMs":18}`.
+`modelId` is echoed verbatim (the service's frozen-candidate run-id from Task 3); no
+model-id scheme is invented here. Errors carry a stable `code` + short `reason`.
 
 ```bash
 # Verify a Phase-2 dataset-version document (exit 2 on malformed/refused).
