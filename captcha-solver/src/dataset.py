@@ -37,10 +37,14 @@ def _add_noise(arr: np.ndarray, rng: np.random.Generator, rate: float) -> np.nda
 
 
 def _erode(arr: np.ndarray) -> np.ndarray:
-    """Bào mòn 1 pixel (nét mảnh hơn) — loại pixel biên có <4 láng giềng."""
+    """Bào mòn nhẹ: chỉ loại pixel đầu mút nét (<=1 láng giềng).
+
+    KHÔNG dùng ngưỡng cao (<4) vì sẽ xóa sạch nét ngang 1px
+    (thanh ngang của Đ, viền trên/dưới chữ) làm hỏng glyph.
+    """
     from src.denoise import _neighbor_count
     n = _neighbor_count(arr)
-    return np.where(arr & (n < 4), 0, arr).astype(np.uint8)
+    return np.where(arr & (n <= 1), 0, arr).astype(np.uint8)
 
 
 def _dilate(arr: np.ndarray) -> np.ndarray:

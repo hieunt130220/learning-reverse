@@ -28,14 +28,16 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from src.captcha_io import alpha_sha256, list_dataset_images, load_alpha_binary  # noqa: E402
+from src.denoise import remove_isolated_noise  # noqa: E402
 
 LABEL_RE = re.compile(r"^[0-9]{1,2}Đ[a-zà-ỹđ]+$")
 RENDER_SCALE = 8
 
 
 def render_b64(arr: np.ndarray, scale: int = RENDER_SCALE) -> str:
-    """Render mảng binary thành PNG base64: nền trắng, chữ đen, upscale NEAREST."""
-    binimg = np.where(arr > 0, 0, 255).astype(np.uint8)
+    """Render mảng binary (đã denoise) thành PNG base64: nền trắng, chữ đen."""
+    den = remove_isolated_noise(arr)
+    binimg = np.where(den > 0, 0, 255).astype(np.uint8)
     im = Image.fromarray(binimg, mode="L").resize(
         (arr.shape[1] * scale, arr.shape[0] * scale), Image.NEAREST)
     buf = io.BytesIO()
