@@ -35,7 +35,6 @@ SCHEMA_VERSION = 1
 # never point at Phase A mutable roots (``data/`` directly, ``data/raw``,
 # ``data/labels``, ``data/splits``, ``data/batch`` …).
 PHASE2_DATA_ROOT = "data/phase2"
-DATASET_VERSION_FILE = "dataset-version.json"
 
 # Exact top-level document keys for dataset-version.json.
 _VERSION_KEYS = frozenset(
@@ -50,19 +49,6 @@ _VERSION_KEYS = frozenset(
 
 # Phase A safe-id rule (mirrors split.py ``_SAFE_ID`` plus ``.``/``..`` rejection).
 _SAFE_ID = re.compile(r"^[^/\\\s]+$")
-# Phase A mutable data roots, expressed relative to the project base, that a
-# Phase-2 name must never alias. ``resolve_phase2_dir`` compares the candidate's
-# path relative to ``data/phase2/`` against this set.
-_PHASE_A_ROOTS = (
-    "data",
-    "data/raw",
-    "data/labels",
-    "data/splits",
-    "data/batch",
-)
-
-# Documented subdirs under data/phase2 (kept in sync with config/phase2/dataset.yaml).
-PHASE2_SUBDIRS = ("incoming", "raw", "labels", "splits")
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,16 +199,15 @@ def resolve_phase2_dir(base: Path, name: str) -> Path:
     candidate_abs = candidate.resolve()
     phase2_root = (base / PHASE2_DATA_ROOT).resolve()
 
-    # Must be nested strictly under <base>/data/phase2/.
+    # The containment check below is the sole protection: after resolving
+    # symlinks/filesystem, the candidate must nest strictly under
+    # <base>/data/phase2/. Any alias of a Phase A mutable root (data/, data/raw,
+    # data/labels, data/splits, data/batch …) lands outside phase2_root and is
+    # refused here — there is no separate allow-list to keep in sync.
     if candidate_abs == phase2_root or phase2_root not in (candidate_abs, *candidate_abs.parents):
         raise ManifestError(
             f"phase2 path escapes {PHASE2_DATA_ROOT}: {name!r}"
         )
-
-    # Refuse any name that aliases a Phase A mutable data root.
-    rel = candidate_abs.relative_to(phase2_root).as_posix()
-    if rel in _PHASE_A_ROOTS or rel.startswith(".."):
-        raise ManifestError(f"phase2 path points at a Phase A root: {name!r}")
 
     return candidate_abs
 
