@@ -84,10 +84,15 @@ def summarize_predictions(
         unknown = set(by_batch) - set(batch_shapes)
         if unknown:
             raise ValueError(f"missing batch shapes for: {', '.join(sorted(unknown))}")
-        for batch_id, batch in by_batch.items():
-            references, queries = batch_shapes[batch_id]
-            if references <= 0 or queries != len(batch):
+        for batch_id, (references, queries) in batch_shapes.items():
+            if references <= 0 or queries <= 0:
                 raise ValueError(f"invalid R/Q shape for {batch_id}")
+            batch = by_batch.get(batch_id, [])
+            query_indices = {row.new_index for row in batch}
+            if len(batch) != queries or query_indices != set(range(queries)):
+                raise ValueError(f"invalid predictions for {batch_id}: expected query indices 0..{queries - 1}")
+            if any(row.expected_img_index >= references or row.predicted_img_index >= references for row in batch):
+                raise ValueError(f"prediction image index outside R={references} for {batch_id}")
             groups[f"R={references},Q={queries}"].extend(batch)
     grouped_metrics = {
         name: {
