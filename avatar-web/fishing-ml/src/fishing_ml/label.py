@@ -350,6 +350,10 @@ def run_label_ui(
 
     root = tk.Tk()
     root.title(f"Label — {session.manifest.batch_id}")
+    root.update_idletasks()
+    _w, _h = root.winfo_width(), root.winfo_height()
+    _sw, _sh = root.winfo_screenwidth(), root.winfo_screenheight()
+    root.geometry(f"+{(_sw - _w) // 2 - _w}+{(_sh - _h) // 2 - _h}")  # center on screen
 
     def load_thumb(entry):
         path = Path(batch_dir) / entry.path
@@ -381,6 +385,20 @@ def run_label_ui(
     ref_canvas.configure(yscrollcommand=ref_scroll.set)
     ref_canvas.grid(row=0, column=0, sticky="nsew")
     ref_scroll.grid(row=0, column=1, sticky="ns")
+    # Fixed width for the reference column; height is content-driven (see build_refs).
+    ref_canvas.configure(width=THUMB[0] + 24)
+
+    def _on_ref_wheel(event):  # mouse wheel / trackpad scroll for reference panel
+        if event.delta:
+            ref_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        elif event.num == 4:
+            ref_canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            ref_canvas.yview_scroll(1, "units")
+
+    ref_canvas.bind("<MouseWheel>", _on_ref_wheel)
+    ref_canvas.bind("<Button-4>", _on_ref_wheel)
+    ref_canvas.bind("<Button-5>", _on_ref_wheel)
 
     def choose(img_index: int) -> None:
         session.select(session.current_new_index, img_index)
@@ -403,6 +421,13 @@ def run_label_ui(
             )
             btn.pack(padx=2, pady=2, anchor="w")
             ref_buttons[entry.index] = btn
+        # Auto-size canvas height to the reference count, capped to the screen
+        # so very large reference sets still fit and the scrollbar is the fallback.
+        _ref_count = len(session.manifest.images)
+        _per_btn = THUMB[1] + 8  # 96px thumb + ~8px padding
+        _desired = _ref_count * _per_btn + 8
+        _max_h = int(root.winfo_screenheight() * 0.85)
+        ref_canvas.configure(height=min(_desired, _max_h))
 
     # --- query panel ----------------------------------------------------------
     query_frame = ttk.LabelFrame(root, text="Current query (arrImgNew)")
@@ -466,6 +491,14 @@ def run_label_ui(
     ttk.Button(actions, text="Mark Ambiguous", command=do_mark_ambiguous).grid(
         row=0, column=1, padx=8
     )
+
+    # --- keyboard shortcuts ---------------------------------------------------
+    # Left/Right navigate queries; Enter saves the complete label. Bound on the
+    # root window so they fire regardless of widget focus (no editable text
+    # fields exist; the reference combobox is readonly).
+    root.bind("<Left>", lambda e: (session.previous(), refresh()))
+    root.bind("<Right>", lambda e: (session.next(), refresh()))
+    root.bind("<Return>", lambda e: do_save_complete())
 
     # --- refresh --------------------------------------------------------------
     def refresh() -> None:

@@ -313,7 +313,6 @@ def parse_label(data: object) -> BatchLabel:
         raise LabelError("matches must be a list")
     matches: list[MatchLabel] = []
     seen_new_indices: set[int] = set()
-    seen_img_indices: set[int] = set()
     for i, item in enumerate(raw_matches):
         if not isinstance(item, dict):
             raise LabelError(f"matches[{i}] must be an object")
@@ -329,12 +328,11 @@ def parse_label(data: object) -> BatchLabel:
             raise LabelError(f"matches[{i}].newIndex must be a non-negative int")
         if not _is_int(img_index) or img_index < 0:
             raise LabelError(f"matches[{i}].imgIndex must be a non-negative int")
+        # Each query (newIndex) must map to exactly one reference; the same
+        # reference may serve many queries (many-to-one, allowed by the spec).
         if new_index in seen_new_indices:
             raise LabelError(f"matches has duplicate newIndex {new_index}")
-        if img_index in seen_img_indices:
-            raise LabelError(f"matches has duplicate imgIndex {img_index}")
         seen_new_indices.add(new_index)
-        seen_img_indices.add(img_index)
         matches.append(MatchLabel(new_index=new_index, img_index=img_index))
 
     return BatchLabel(
