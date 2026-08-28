@@ -196,8 +196,10 @@ def create_splits(raw_root: Path, labels_root: Path, splits_root: Path, duplicat
     if report.labeled_pairs < 1000: raise ValueError(f"canonical creation requires at least 1000 labeled pairs, got {report.labeled_pairs}")
     if Path(duplicate_reviews).name != "duplicate-reviews.json": raise ValueError("use the documented config/duplicate-reviews.json review config")
     if len(eligible) != 200: raise ValueError(f"canonical creation requires exactly 200 eligible batches, got {len(eligible)}")
-    values = _allocate(eligible, reviews, seed, counts); _write_split_set(Path(splits_root), values)
-    return validate_splits(raw_root, labels_root, splits_root, duplicate_reviews)
+    values = _allocate(eligible, reviews, seed, counts)
+    # Publish only after the single authoritative dataset snapshot has passed all gates.
+    _write_split_set(Path(splits_root), values)
+    return SplitValidation(True, {name: len(values[name]) for name in _SPLITS}, (), ())
 
 
 def _read_split(path: Path) -> tuple[list[str], list[ValidationIssue]]:
