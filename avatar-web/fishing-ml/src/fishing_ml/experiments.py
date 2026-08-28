@@ -36,7 +36,6 @@ import json
 import re
 import subprocess
 import sys
-import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -44,16 +43,13 @@ from typing import Any, Mapping
 import yaml
 
 from .dataset_version import DatasetVersion
-from .schema import atomic_write_json, read_json, sha256_file
+from .schema import atomic_write_json, read_json
 
 # Lazy-friendly imports: these modules import torch at module load, so we import
 # them inside the functions that need them (run_experiment / confirm_final_once)
 # rather than at top level. This keeps the pure-Python gate/matrix logic usable
 # without torch installed.
 #   from . import train, calibrate, artifacts, evaluate, config
-
-_GIT_HEX = re.compile(r"^[0-9a-f]{40}$")
-_HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 # Allowed override keys: a strict subset of schema-v1 TrainingConfig fields.
 _ALLOWED_OVERRIDE_KEYS = frozenset(
@@ -199,19 +195,17 @@ class ExperimentResult:
 # --------------------------------------------------------------------------- #
 
 
-def _checksum_file(path: Path) -> str:
-    return sha256_file(Path(path))
-
-
 def _split_checksum(splits_root: Path) -> str:
-    """Single checksum over the train/dev/final split membership files.
+    """Checksum over the TRAIN/DEV split membership files only.
 
-    Includes ALL three split files so the checksum captures the full split
-    definition (provenance), even though final is never opened during selection.
+    Selection must never read the final split, even for provenance — the final
+    split is opened solely by ``evaluate_final_once`` (one-shot, after
+    selection). Restricting the checksum to train/dev keeps that boundary
+    literal: no ``final.txt`` bytes are ever touched during candidate selection.
     """
     root = Path(splits_root)
     parts: list[bytes] = []
-    for name in ("train", "dev", "final"):
+    for name in ("train", "dev"):
         parts.append(root.joinpath(f"{name}.txt").read_bytes())
     return hashlib.sha256(b"\n".join(parts)).hexdigest()
 
@@ -452,7 +446,6 @@ def run_experiment(
     metrics_doc = read_json(run_dir / "dev-metrics.json")
 
     accepted_wrong = int(metrics_doc.get("wrongCount", 0))
-    query_count = int(metrics_doc.get("queryCount", 0)) or 1
     abstention_rate = float(metrics_doc.get("abstentionRate", 0.0))
     top1 = float(metrics_doc.get("top1Accuracy", 0.0))
     batch_exact = float(metrics_doc.get("batchExactMatch", 0.0))
