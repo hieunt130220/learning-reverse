@@ -149,6 +149,23 @@ function validate() {
 }
 document.addEventListener('input', validate);
 validate();
+let saveTimer = null;
+async function saveAll() {
+  const rows = [...document.querySelectorAll('input.label')]
+    .filter(inp => inp.value.trim() !== '')
+    .map(inp => ({filename: inp.dataset.file, label: inp.value.trim()}));
+  if (rows.length === 0) return 0;
+  const res = await fetch('/save', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(rows)});
+  return (await res.json()).saved;
+}
+document.addEventListener('input', () => {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try { await saveAll(); } catch (e) { /* ô Save all sẽ báo lỗi chi tiết */ }
+  }, 1000);
+});
 document.getElementById('save').onclick = async () => {
   const btn = document.getElementById('save');
   const status = document.getElementById('status');
@@ -158,11 +175,8 @@ document.getElementById('save').onclick = async () => {
   if (rows.length === 0) { status.textContent = 'Chưa có nhãn nào.'; return; }
   btn.disabled = true; status.textContent = 'Đang lưu...';
   try {
-    const res = await fetch('/save', {method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(rows)});
-    const data = await res.json();
-    status.textContent = `Đã lưu ${data.saved} nhãn vào labels.csv OK`;
+    const saved = await saveAll();
+    status.textContent = `Đã lưu ${saved} nhãn vào labels.csv OK`;
   } catch (e) { status.textContent = 'Lỗi: ' + e; }
   btn.disabled = false;
 };
