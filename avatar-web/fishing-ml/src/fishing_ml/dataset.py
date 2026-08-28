@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse, json, random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 import torch
@@ -32,7 +31,7 @@ def _image(path: Path) -> torch.Tensor:
     return torch.from_numpy(a).permute(2, 0, 1).contiguous()
 
 def _entries(raw_root: Path, labels_root: Path, batch_id: str, stats: NormalizationStats | None):
-    d = raw_root / batch_id; m = load_manifest(d / "manifest.json"); l = load_label(labels_root / batch_id / "label.json")
+    d = raw_root / batch_id; m = load_manifest(d / "manifest.json"); l = load_label(labels_root / f"{batch_id}.json")
     if l.status != "complete": raise ValueError(f"{batch_id}: label is not complete")
     refs = {x.index: _image(d / x.path) for x in m.images}
     qs = [_image(d / x.path) for x in m.images_new]
@@ -44,7 +43,14 @@ def _entries(raw_root: Path, labels_root: Path, batch_id: str, stats: Normalizat
         r, q = (r-mean)/std, (q-mean)/std
     return r, q, torch.tensor([rids.index(i) for i in target], dtype=torch.long)
 
+def _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews=None):
+    review_path = Path(duplicate_reviews) if duplicate_reviews is not None else Path(splits_root).parent / "config" / "duplicate-reviews.json"
+    result = validate_splits(Path(raw_root), Path(labels_root), Path(splits_root), review_path)
+    if not result.valid:
+        raise ValueError("invalid dataset splits: " + "; ".join(f"{x.code}: {x.detail}" for x in result.issues))
+
 def compute_train_normalization(raw_root: Path, labels_root: Path, splits_root: Path, *, duplicate_reviews: Path | None = None) -> NormalizationStats:
+    _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews)
     ids = _split_ids(splits_root, "train")
     values=[]
     for b in ids:
@@ -60,7 +66,6 @@ def _split_ids(root: Path, name: str) -> list[str]:
     return [x.strip() for x in p.read_text().splitlines() if x.strip()]
 
 def _augment(x: torch.Tensor, rng: random.Random) -> torch.Tensor:
-    # Affine translation/scale and mild photometric changes; no flips/crops.
     x = x * (1 + rng.uniform(-.08,.08)) + rng.uniform(-.04,.04)
     dx,dy = rng.randint(-3,3),rng.randint(-3,3); scale=rng.uniform(.95,1.05)
     theta=torch.tensor([[[scale,0,dx/37.5],[0,scale,dy/37.5]]],dtype=x.dtype)
@@ -68,6 +73,8 @@ def _augment(x: torch.Tensor, rng: random.Random) -> torch.Tensor:
     return torch.nn.functional.grid_sample(x.unsqueeze(0),grid,mode="bilinear",padding_mode="border",align_corners=False)[0].clamp(-5,5)
 
 def _load(raw_root: Path, labels_root: Path, splits_root: Path, split: str, stats: NormalizationStats | None, *, train=False, seed=20260827, limit=None):
+    if split == "final": raise ValueError("final split is locked; use fishing_ml.evaluate final loader")
+    _validate_split_inputs(raw_root, labels_root, splits_root)
     ids=_split_ids(splits_root,split)[:limit]; rng=random.Random(seed); out=[]
     for bid in ids:
         r,q,t=_entries(raw_root,labels_root,bid,stats)
@@ -79,7 +86,10 @@ def _load(raw_root: Path, labels_root: Path, splits_root: Path, split: str, stat
 
 def load_training_episodes(raw_root, labels_root, splits_root, stats, *, seed=20260827, limit=None): return _load(Path(raw_root),Path(labels_root),Path(splits_root),"train",stats,train=True,seed=seed,limit=limit)
 def load_dev_episodes(raw_root, labels_root, splits_root, stats, *, limit=None): return _load(Path(raw_root),Path(labels_root),Path(splits_root),"dev",stats,limit=limit)
-def _load_final_episodes(*args, **kwargs): return _load(*args, "final", **kwargs)
+def _load_final_episodes(raw_root, labels_root, splits_root, stats, *, limit=None):
+    _validate_split_inputs(raw_root, labels_root, splits_root)
+    ids = [x.strip() for x in (Path(splits_root) / "final.txt").read_text().splitlines() if x.strip()][:limit]
+    return [FishingEpisode(bid, *_entries(Path(raw_root), Path(labels_root), bid, stats)) for bid in ids]
 
 def main(argv=None):
     p=argparse.ArgumentParser(); p.add_argument("--raw-root",type=Path,required=True); p.add_argument("--labels-root",type=Path,required=True); p.add_argument("--splits-root",type=Path,required=True); p.add_argument("--split",choices=["train","dev","final"],required=True); p.add_argument("--limit",type=int,default=5); a=p.parse_args(argv)
