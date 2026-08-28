@@ -9,7 +9,7 @@ Mở http://localhost:8641:
 - Ô input pre-fill từ labels.csv nếu đã có; viền đỏ nếu label lệch format.
 - Nút "Save all" POST /save ghi toàn bộ nhãn xuống labels.csv (UTF-8).
 
-Format nhãn mong muốn: `<1-2 chữ số>Đ<từ tiếng Việt thường>` (VD: 1Đnai, 7Đbông).
+Format nhãn mong muốn: chuỗi 4 chữ số (0000 - 9999) — đúng nội dung captcha.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from src.captcha_io import alpha_sha256, list_dataset_images, load_alpha_binary  # noqa: E402
 from src.denoise import remove_isolated_noise  # noqa: E402
 
-LABEL_RE = re.compile(r"^[0-9]{1,2}[dDđĐ][a-zà-ỹđ]+$")
+LABEL_RE = re.compile(r"^[0-9]{4}$")
 RENDER_SCALE = 8
 
 
@@ -81,15 +81,8 @@ class LabelState:
     def save(self, rows: list[dict]) -> int:
         """Ghi danh sách {filename,label} vào CSV. Trả về số dòng đã ghi."""
         self.out_csv.parent.mkdir(parents=True, exist_ok=True)
-        cleaned = []
-        for r in rows:
-            fname = (r.get("filename") or "").strip()
-            label = (r.get("label") or "").strip()
-            if not fname or not label:
-                continue
-            # chuẩn hóa: 1dnai / 1Dnai / 1Đnai -> 1Đnai
-            label = re.sub(r"^([0-9]{1,2})[dDđĐ]", r"\1Đ", label)
-            cleaned.append((fname, label))
+        cleaned = [(r["filename"].strip(), r["label"].strip()) for r in rows
+                   if r.get("filename") and r.get("label")]
         with open(self.out_csv, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["filename", "label"])
@@ -126,7 +119,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<h1>Avatar Captcha Label Tool — __COUNT__ ảnh unique <small style="color:#999;font-size:13px;font-weight:normal">v3-autosave</small></h1>
+<h1>Avatar Captcha Label Tool — __COUNT__ ảnh unique <small style="color:#999;font-size:13px;font-weight:normal">v4-digits</small></h1>
 <div id="toolbar">
   <button id="save">Save all</button>
   <span id="status"></span>
@@ -143,7 +136,7 @@ items.forEach(it => {
     <div class="meta">
       <div class="file">${it.file}</div>
       <input class="label" data-file="${it.file}" value="${it.existing}"
-             placeholder="VD: 1dnai">
+             placeholder="VD: 1192">
     </div>`;
   list.appendChild(div);
 });
