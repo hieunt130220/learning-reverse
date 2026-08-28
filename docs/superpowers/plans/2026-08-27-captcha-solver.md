@@ -1,5 +1,14 @@
 # Avatar Captcha Solver Implementation Plan
 
+> **Status (2026-08-28):** Tasks 1–3, 5–10 hoàn thành theo hướng triển khai đã linh hoạt
+> (chi tiết ở dưới). **Task 4 (gán nhãn 24+ ảnh) là GATE DUY NHẤT còn lại do user thực hiện**
+> — chạy `captcha-solver/label_tool.py`, gõ nhãn, bấm Save all, rồi `train` để đạt mục tiêu.
+>
+> **Điều chỉnh so với plan gốc:** synthetic generator (`Task 6`) KHÔNG dùng cho training vì
+> glyphs đè nhau không tách được (đã chứng minh bằng đo lường). Thay bằng train trực tiếp
+> trên ảnh thật + augmentation (dịch, nhiễu, erode/dilate). `src.library` giữ vai trò công cụ
+> hỗ trợ (build/dump/decode), không bắt buộc. Tesseract/EasyOCR không đọc được font này.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Pipeline Python train model CRNN+CTC giải captcha game Avatar (ảnh 100x15 RGBA, chữ ở kênh alpha, dạng `số+Đ+từ tiếng Việt`) → xuất chuỗi ký tự.
