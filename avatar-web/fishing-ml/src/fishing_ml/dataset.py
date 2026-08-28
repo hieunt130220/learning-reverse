@@ -58,13 +58,8 @@ def _entries(raw_root: Path, labels_root: Path, batch_id: str, stats: Normalizat
     target = [next(x.img_index for x in l.matches if x.new_index == i) for i in range(len(qs))]
     rids = sorted(refs)
     r = torch.stack([refs[i] for i in rids]); q = torch.stack(qs)
-<<<<<<< HEAD
-    if stats:
-        mean, std = torch.tensor(stats.mean).view(3,1,1), torch.tensor(stats.std).view(3,1,1)
-=======
     if normalized is not None:
         mean, std = normalized
->>>>>>> 65157cf6 (fix: validate dataset normalization stats)
         r, q = (r-mean)/std, (q-mean)/std
     return r, q, torch.tensor([rids.index(i) for i in target], dtype=torch.long)
 
