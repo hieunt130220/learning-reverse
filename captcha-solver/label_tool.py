@@ -127,7 +127,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 <div id="list"></div>
 <script>
 const PATTERN = __PATTERN__;
-const items = __ITEMS__;
+const items = __ITEMS__.items;
 const list = document.getElementById('list');
 items.forEach(it => {
   const div = document.createElement('div');
