@@ -128,7 +128,7 @@ def calibrate_run(run_dir: Path, require_zero_wrong_accepted: bool = True) -> Pa
         "source": {"file": source.name, "sha256": sha256_file(source), "split": "dev"},
         "objective": {"requireZeroWrongAccepted": require_zero_wrong_accepted, "tieBreak": ["acceptedCount", "minSimilarity", "minMargin"]},
         "thresholds": {"minSimilarity": result.thresholds.min_similarity, "minMargin": result.thresholds.min_margin},
-        "metrics": {"acceptedCount": result.accepted_count, "acceptedAccuracy": result.accepted_accuracy, "abstentionRate": result.abstention_rate, "wrongAcceptedCount": result.wrong_accepted_count},
+        "metrics": {"acceptedCount": result.accepted_count, "acceptedAccuracy": result.accepted_accuracy, "abstentionRate": result.abstention_rate, "wrongAcceptedCount": result.accepted_wrong_count},
     })
     return output
 

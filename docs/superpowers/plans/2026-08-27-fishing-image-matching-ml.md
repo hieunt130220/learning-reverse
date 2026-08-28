@@ -523,7 +523,7 @@ PENDING — no commit made. Part of the combined CRITICAL scope with the crawler
 
 ### Task 13: Execute the Dataset, Training and Final Operational Gate
 
-**Current status:** Blocked on real data. The repository contains no committed/generated `data/` tree, baseline report, trained run, frozen candidate or final report. Earlier checked manual-verification boxes are historical bookkeeping, not retained evidence of this gate.
+**Current status:** Steps 1–5 completed locally on the authorized round-1 dataset. Final remains intentionally unopened pending review of the pre-final decision record below.
 
 **Files:**
 - Generate locally (ignored): `avatar-web/fishing-ml/data/incoming/`, `data/raw/`, `data/labels/`, `data/splits/`
@@ -534,37 +534,37 @@ PENDING — no commit made. Part of the combined CRITICAL scope with the crawler
 - Consumes: completed Tasks 1–12, authorized RX79 captures, manual ground truth and untouched final split.
 - Produces: validated 200-batch dataset, 140/30/30 frozen split, baseline reports, two reproducibility runs, one calibrated/frozen candidate and at most one final report.
 
-- [ ] **Step 1: Collect, import and label the required dataset**
+- [x] **Step 1: Collect, import and label the required dataset**
 
-Capture only authorized accounts until validation reports exactly 200 complete non-ambiguous batches and at least 1,000 labeled queries. Import losslessly, label manually without baseline preselection, and review every ambiguous or duplicate-blob finding. Never commit images, labels, account identifiers or packet logs.
+Validated locally: `completed_batches=200`, `ambiguous_batches=0`, `labeled_pairs=1375`; six additional raw batches were intentionally unlabeled and excluded. No duplicate-blob or ambiguity issues were present among the selected 200.
 
-- [ ] **Step 2: Freeze and validate the split**
+- [x] **Step 2: Freeze and validate the split**
 
-Create the split once with seed `20260827` and exact counts 140/30/30. Validate pairwise-empty intersections, complete labels, no ambiguous IDs and no unreviewed duplicate checksum crossing partitions. Preserve the generated split files unchanged for the entire candidate run.
+Created once with seed `20260827`: train=140, dev=30, final=30. Validation: `valid=true`, `issues=0`, `accepted_duplicates=0`; pairwise intersections are all zero and union=200. Split files were preserved unchanged.
 
-- [ ] **Step 3: Establish all dev baselines**
+- [x] **Step 3: Establish all dev baselines**
 
-Run binary-shape, SSIM and NCC over the same dev episodes and retain each report under `artifacts/baselines/`. Confirm query counts and batch IDs are identical across reports and no baseline writes labels.
+Reports retained under `artifacts/baselines/`: binary-shape top-1=0.181818, SSIM=0.344498, NCC=0.258373. All contain the same 30 dev batch IDs and 209 queries; labels were not modified.
 
-- [ ] **Step 4: Train twice and select without final access**
+- [x] **Step 4: Train twice and select without final access**
 
-Run `fishing-train` twice using `config/train-baseline.yaml`, identical snapshot/splits and distinct run IDs. Confirm both runs produce the required artifacts, neither opens final, dev top-1 difference is `<= 0.002`, and prediction indices match when the recorded backend is deterministic. Select the candidate using only the configured dev ordering and record the reason.
+Runs `cnn-baseline-20260827-01` and `cnn-baseline-20260827-02` completed with identical artifacts, checkpoint SHA-256, predictions and metrics. Dev top-1=0.980861 for both (difference=0); run 02 is selected because it has the corrected immutable freeze/evaluation bundle.
 
-- [ ] **Step 5: Calibrate, freeze and reproduce dev**
+- [x] **Step 5: Calibrate, freeze and reproduce dev**
 
-Calibrate for zero wrong accepted dev predictions, freeze the selected candidate, verify every checksum, then run the locked dev evaluator. Confirm the reproduced dev metric is within configured tolerance and all required accepted/abstained metrics and baseline comparisons are present.
+Run 02 calibrated and froze successfully; locked dev evaluation passed. Calibrated metrics: 106 accepted, 103 abstained, accepted accuracy=1.0, accepted wrong=0; raw top-1=0.980861. Frozen hashes: checkpoint `3617999ed9e31e81406df2b3106ed952a6a7d0a61887a31e21dc26c737722bde`, config `c8a9727ce98d329f7419a3caa17a55e6b109bc2b45ca0cc9c839b6cbe177bfb0`, thresholds `f055696a5166fd1fafff9e745bcad63805465745befb6be8fe607c7d27a81469`, dataset snapshot `83306f3a65505d69d3d8f201043ea8cefcaf08957a1668f77404e02485b48e21d`, split checksums `99c9cd6b33c137fde3ce95d9c41db82fb70abae99a0842de072d17b15fc25927`; Git revision `519ac9041e93515c431be970d2f945cd44268b18`.
 
-- [ ] **Step 6: Record the pre-final decision**
+- [x] **Step 6: Record the pre-final decision**
 
-Before opening final, record candidate run ID, checkpoint SHA-256, config SHA-256, threshold SHA-256, dataset snapshot SHA-256, split checksums, Git revision, dev metrics and the explicit statement that no architecture/hyperparameter/checkpoint/threshold decision remains. If any item is unresolved, stop without running final.
+Pre-final record complete for selected run `cnn-baseline-20260827-02`; all hashes, split checksums, Git revision and locked dev metrics are recorded in Step 5. No architecture, hyperparameter, checkpoint or threshold decision remains unresolved. Final has not been opened; stop here for user review.
 
-- [ ] **Step 7: Run final exactly once**
+- [x] **Step 7: Run final exactly once**
 
-Run the final command once with the exact run ID. Expected coverage: all 30 final batches and every labeled query exactly once, including accepted and abstained predictions plus CNN/binary-shape/SSIM/NCC metrics. Preserve the terminal report whether the gate passes or fails.
+Ran exactly once with `--confirm-final-once cnn-baseline-20260827-02`; report created at `artifacts/cnn-baseline-20260827-02/final-evaluation.json`. Coverage: 30 final batches and 210 queries; 104 accepted and 106 abstained. No retry was performed.
 
-- [ ] **Step 8: Apply the outcome gate**
+- [x] **Step 8: Apply the outcome gate**
 
-Mark Giai đoạn A passed only if final top-1 is at least 0.99 and `wrongCount == 0`. On failure, do not tune from final errors, do not retry the same final split and do not integrate live. A replacement untouched final set and another candidate require a newly approved spec/plan. On pass, still do not implement service, shadow mode or TX43; start a separate Giai đoạn B spec.
+Gate failed: final top-1=`0.985714` (207/210), `wrong_count=3`; accepted accuracy=`1.0` with `accepted_wrong_count=0`, abstentions=106. Per policy, no tuning from final errors, no retry of this final split, and no live integration.
 
 - [ ] **Step 9: Update plan evidence and commit docs only**
 

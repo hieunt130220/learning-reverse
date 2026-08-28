@@ -64,7 +64,7 @@ def _entries(raw_root: Path, labels_root: Path, batch_id: str, stats: Normalizat
     return r, q, torch.tensor([rids.index(i) for i in target], dtype=torch.long)
 
 def _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews=None):
-    review_path = Path(duplicate_reviews) if duplicate_reviews is not None else Path(splits_root).parent / "config" / "duplicate-reviews.json"
+    review_path = Path(duplicate_reviews) if duplicate_reviews is not None else Path("config") / "duplicate-reviews.json"
     result = validate_splits(Path(raw_root), Path(labels_root), Path(splits_root), review_path)
     if not result.valid:
         raise ValueError("invalid dataset splits: " + "; ".join(f"{x.code}: {x.detail}" for x in result.issues))
@@ -99,7 +99,7 @@ def _load(raw_root: Path, labels_root: Path, splits_root: Path, split: str, stat
     for bid in ids:
         r,q,t=_entries(raw_root,labels_root,bid,stats)
         if train:
-            order=list(range(len(t))); rng.shuffle(order); remap={old:new for new,old in enumerate(order)}
+            order=list(range(len(r))); rng.shuffle(order); remap={old:new for new,old in enumerate(order)}
             r=r[order]; t=torch.tensor([remap[int(v)] for v in t]); r=torch.stack([_augment(v,rng) for v in r]); q=torch.stack([_augment(v,rng) for v in q])
         out.append(FishingEpisode(bid,r,q,t))
     return out

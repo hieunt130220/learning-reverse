@@ -23,6 +23,7 @@ _FROZEN_INPUTS = {
     "normalization.json": "normalization.json",
     "thresholds.json": "thresholds.json",
     "environment.json": "environment.json",
+    "dev-metrics.json": "dev-metrics.json",
     "best-dev.pt": "checkpoints/best-dev.pt",
 }
 _GENERATED = ("dataset-snapshot.json", "split-checksums.json")
@@ -147,7 +148,7 @@ def verify_current_dataset(frozen_dir: Path, raw_root: Path, labels_root: Path, 
     if not isinstance(expected, dict) or set(expected) != {"schemaVersion", "batches"} or expected["schemaVersion"] != 1 or not isinstance(expected["batches"], list):
         raise ValueError("invalid dataset snapshot")
     for batch in expected["batches"]:
-        if not isinstance(batch, dict) or set(batch) != {"batchId", "split", "manifestSha256", "labelSha256", "files"}:
+        if not isinstance(batch, dict) or set(batch) != {"batchId", "split", "manifest", "manifestSha256", "label", "labelSha256", "files"}:
             raise ValueError("invalid snapshot batch")
         batch_dir = Path(raw_root) / batch["batchId"]
         if sha256_file(batch_dir / "manifest.json") != batch["manifestSha256"] or sha256_file(Path(labels_root) / f"{batch['batchId']}.json") != batch["labelSha256"]:
