@@ -112,8 +112,8 @@ def _load_final_episodes(raw_root, labels_root, splits_root, stats, *, limit=Non
     return [FishingEpisode(bid, *_entries(Path(raw_root), Path(labels_root), bid, stats)) for bid in ids]
 
 def main(argv=None):
-    p=argparse.ArgumentParser(); p.add_argument("--raw-root",type=Path,required=True); p.add_argument("--labels-root",type=Path,required=True); p.add_argument("--splits-root",type=Path,required=True); p.add_argument("--split",choices=["train","dev","final"],required=True); p.add_argument("--limit",type=int,default=5); a=p.parse_args(argv)
+    p=argparse.ArgumentParser(); p.add_argument("--raw-root",type=Path,required=True); p.add_argument("--labels-root",type=Path,required=True); p.add_argument("--splits-root",type=Path,required=True); p.add_argument("--duplicate-reviews",type=Path,required=True); p.add_argument("--split",choices=["train","dev","final"],required=True); p.add_argument("--limit",type=int,default=5); a=p.parse_args(argv)
     if a.split=="final": p.error("final is locked; use fishing_ml.evaluate final loader")
-    s=compute_train_normalization(a.raw_root,a.labels_root,a.splits_root); e=load_training_episodes(a.raw_root,a.labels_root,a.splits_root,s,limit=a.limit) if a.split=="train" else load_dev_episodes(a.raw_root,a.labels_root,a.splits_root,s,limit=a.limit)
+    s=compute_train_normalization(a.raw_root,a.labels_root,a.splits_root,duplicate_reviews=a.duplicate_reviews); e=load_training_episodes(a.raw_root,a.labels_root,a.splits_root,s,duplicate_reviews=a.duplicate_reviews,limit=a.limit) if a.split=="train" else load_dev_episodes(a.raw_root,a.labels_root,a.splits_root,s,duplicate_reviews=a.duplicate_reviews,limit=a.limit)
     print(json.dumps({"count":len(e),"episodes":[{"batchId":x.batch_id,"references":list(x.references.shape),"queries":list(x.queries.shape),"targets":list(x.targets.shape)} for x in e]})); return 0
 if __name__ == "__main__": raise SystemExit(main())
