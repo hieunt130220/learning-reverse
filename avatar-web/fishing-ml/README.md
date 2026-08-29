@@ -77,8 +77,10 @@ Decoded PNG pixels stay in request memory; error bodies carry only a stable
 Startup verifies and loads the frozen candidate **once** — a missing, tampered, or
 revision-mismatched `--frozen-dir` fails closed and the service refuses to start
 (``verify_freeze``'s hash/manifest checks propagate as a startup error). The
-service requires exactly one canonical decimal `Content-Length` header and rejects
-missing/duplicate/conflicting framing and unsupported `Transfer-Encoding`; it never
+service requires exactly one ASCII-decimal `Content-Length` value; leading zeroes are
+accepted and surrounding header whitespace is normalized. Missing, duplicate,
+conflicting, signed, Unicode-digit, or malformed lengths and unsupported
+`Transfer-Encoding` are rejected; it never
 uses an unbounded keep-alive body read. The request body is size-bounded **before**
 parsing (`--max-body-bytes`) and read under one absolute request deadline. Inference
 uses one bounded worker slot: a timed-out worker retains the slot until it exits,

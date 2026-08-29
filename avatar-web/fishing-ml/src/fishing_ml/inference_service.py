@@ -456,7 +456,7 @@ def _parse_and_infer(matcher: FrozenMatcher, raw_body: bytes) -> tuple[Inference
     """Parse a bounded JSON body and infer within the same timeout budget."""
     try:
         document = json.loads(raw_body)
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
         raise ContractError("bad_json", "request body is not valid JSON") from None
     request = parse_request(document)
     return _infer(matcher, request)
@@ -652,6 +652,11 @@ def _make_handler(matcher: FrozenMatcher, config: InferenceServerConfig):
 
         def setup(self) -> None:
             super().setup()
+            # Safe defaults let a pre-parser timeout serialize without touching
+            # fields BaseHTTPRequestHandler normally initializes while parsing.
+            self.command = None
+            self.requestline = ""
+            self.request_version = "HTTP/1.1"
             # setup() is the beginning of the complete request lifecycle; the
             # deadline is intentionally not reset by do_POST after parsing.
             self._request_deadline = time.monotonic() + config.timeout_ms / 1000.0
@@ -673,11 +678,14 @@ def _make_handler(matcher: FrozenMatcher, config: InferenceServerConfig):
             self.close_connection = True
             try:
                 body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Connection", "close")
-                self.end_headers()
+                response_head = (
+                    f"{self.protocol_version} {status} {HTTPStatus(status).phrase}\r\n"
+                    "Content-Type: application/json\r\n"
+                    f"Content-Length: {len(body)}\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
+                ).encode("ascii")
+                self.wfile.write(response_head)
                 if getattr(self, "command", None) != "HEAD":
                     self.wfile.write(body)
             except (BrokenPipeError, ConnectionResetError, OSError):
