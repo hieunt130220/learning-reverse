@@ -14,6 +14,7 @@ import {
   saveCanCauBatch,
   type CanCauPayload,
 } from '../game/fishingDecode.js';
+import { maybeShadowMatch } from '../fishing/shadowMatcher.js';
 import type { Message } from '../proto/message.js';
 import { MyReader } from '../proto/reader.js';
 import type { SessionCloseInfo, SessionCloseKind } from '../proto/session.js';
@@ -513,6 +514,7 @@ async function runProbe(
         if (msg.command !== 79) return;
         try {
           const payload = decodeCanCau(msg.getData());
+          maybeShadowMatch(payload); // fire-and-forget, read-only, no gameplay effect
           canCauSeen.push(payload.idFish);
           void (async (): Promise<void> => {
             try {
@@ -790,6 +792,8 @@ async function runCrawl(
       await delayCancellable(delayMs, signal);
       continue;
     }
+
+    maybeShadowMatch(payload); // fire-and-forget, read-only, no gameplay effect
 
     // ── Step 4: Save batch (immutable, atomic) ──
     try {
