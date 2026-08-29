@@ -135,18 +135,19 @@ def patch_fj_bytecode(data: bytes) -> bytes:
     patched[i + 16] = 0x05
     print("  patch fJ.class: var5,var6 index 1->2 (auto OCR)")
 
-    # Patch de skip manual dialog va chay thay OCR code:
-    # 1. Thay invokestatic if(I)Z (3 bytes) bang pop + nop + nop (3 bytes)
-    #    de consume boolean value ma khong can invoke method
-    # 2. Thay ifeq 7290 (3 bytes) bang goto 7290 (3 bytes) de nhay toi OCR code
-    # Pattern: iload 5 (15 05) invokestatic (b8 01 df) ifeq 7290 (99 00 68)
-    iload_invokestatic_ifeq = bytes.fromhex("1505b801df990068")
-    idx = data.index(iload_invokestatic_ifeq)
-    # Replace invokestatic if(I)Z with pop nop nop
-    patched[idx+2:idx+5] = bytes.fromhex("570000")
-    # Replace ifeq 7290 with goto 7290
-    patched[idx+5:idx+8] = bytes.fromhex("a70068")
-    print(f"  patch fJ.class: skip var5 check + goto 7290 at offset {idx}")
+    # Fix logic dao nguoc: doi ifeq (0x99) thanh ifne (0x9c)
+    # Tim ifeq instruction ma branch toi OCR code (offset 19088)
+    count = 0
+    for offset in range(i, i + 120):
+        if data[offset] == 0x99:  # ifeq opcode
+            branch_offset = int.from_bytes(data[offset+1:offset+3], 'big', signed=True)
+            target = offset + 3 + branch_offset
+            if target == 19088:  # OCR code
+                patched[offset] = 0x9c  # ifeq -> ifne
+                count += 1
+    print(f"  patch fJ.class: ifeq->ifne x{count}")
+    if count != 2:
+        raise SystemExit(f"!! patch_fj: expected 2 ifeq to OCR, found {count}")
 
     return bytes(patched)
 
