@@ -18,8 +18,9 @@ $PY -c "import torch, PIL, numpy; print('ok')"
 
 ## Chạy Resolver API
 
-Runtime production dùng `requirements-runtime.txt` với Python 3.12, PyTorch CPU,
-NumPy và Pillow được pin đúng phiên bản đã verify. Resolver cần bốn assets:
+Runtime production dùng `requirements-runtime.txt` với Python 3.10.12 trên VPS,
+PyTorch CPU 2.13.0, NumPy 2.2.6 và Pillow 12.3.0. Local training/debug vẫn
+dùng Python 3.12. Resolver cần bốn assets:
 
 - `checkpoints/crnn_ctc.pt`
 - `data/cached_chip_config.bin`

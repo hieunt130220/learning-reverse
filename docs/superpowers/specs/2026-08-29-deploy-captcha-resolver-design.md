@@ -58,12 +58,13 @@ Ngày: 2026-08-29
    - Bind loopback trên VPS; local development vẫn giữ default `127.0.0.1:8643`.
 
 2. **Runtime dependency và assets**
-   - Tạo `captcha-solver/requirements-runtime.txt` khóa đúng bộ đã chạy local:
+   - Tạo `captcha-solver/requirements-runtime.txt` khóa bộ tương thích Python
+     3.10.12 đang có trên VPS; local training/debug vẫn dùng Python 3.12.13:
 
      ```text
      --index-url https://download.pytorch.org/whl/cpu
      torch==2.13.0
-     numpy==2.5.2
+     numpy==2.2.6
      pillow==12.3.0
      ```
 

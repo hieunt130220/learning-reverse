@@ -6,7 +6,7 @@
 
 **Architecture:** Python resolver chỉ bind `127.0.0.1:8643`; `avatar-web` mount một raw binary proxy tại `/api/solver` trước `express.json()` để dùng lại Nginx/TLS hiện có. GitHub Actions cài Python venv, quản lý cả `captcha-solver` và `avatar-web` bằng PM2, rồi chỉ lưu process list sau khi local/public health checks đều pass.
 
-**Tech Stack:** Python 3.12, PyTorch CPU, NumPy, Pillow, Node.js 22+, Express 4, TypeScript 5.7, PM2, GitHub Actions, J2ME JAR bytecode/resource patching.
+**Tech Stack:** Python 3.10.12 production / 3.12 local, PyTorch CPU, NumPy, Pillow, Node.js 22+, Express 4, TypeScript 5.7, PM2, GitHub Actions, J2ME JAR bytecode/resource patching.
 
 **Spec:** `docs/superpowers/specs/2026-08-29-deploy-captcha-resolver-design.md`
 
@@ -42,7 +42,7 @@
 - Add: `captcha-solver/data/cached_teacher_php.bin`
 
 **Interfaces:**
-- Consumes: Local runtime đã verify gồm Python `3.12.13`, torch `2.13.0`, numpy `2.5.2`, Pillow `12.3.0`.
+- Consumes: Local runtime đã verify gồm Python `3.12.13`, torch `2.13.0`, numpy `2.5.2`, Pillow `12.3.0`; production VPS có Python `3.10.12` nên dùng numpy `2.2.6` tương thích.
 - Produces: Một Git checkout đủ model/cache/dependencies để resolver boot độc lập trên VPS.
 
 - [x] **Step 1: Thêm ignore exceptions có allowlist**
@@ -68,7 +68,7 @@ Create `captcha-solver/requirements-runtime.txt` với đúng nội dung:
 ```text
 --index-url https://download.pytorch.org/whl/cpu
 torch==2.13.0
-numpy==2.5.2
+numpy==2.2.6
 pillow==12.3.0
 ```
 
