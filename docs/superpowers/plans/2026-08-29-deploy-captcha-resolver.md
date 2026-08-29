@@ -344,10 +344,19 @@ Workflow phải fail ngay với message rõ ràng nếu checkout thiếu runtime
 
 - [x] **Step 2: Create/reuse venv và install pinned runtime**
 
-Run trên VPS:
+Run trên VPS; nếu Debian/Ubuntu thiếu `python3-venv`, dùng PyPA virtualenv zipapp
+theo đúng Python minor để không cần quyền `sudo`:
 
 ```bash
-python3 -m venv "$SOLVER_VENV"
+if ! python3 -m venv "$SOLVER_VENV"; then
+  PYTHON_MINOR=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+  VIRTUALENV_PYZ="$TARGET_DIR/.cache/virtualenv-${PYTHON_MINOR}.pyz"
+  mkdir -p "$TARGET_DIR/.cache"
+  curl --fail --silent --show-error --location \
+    "https://bootstrap.pypa.io/virtualenv/${PYTHON_MINOR}/virtualenv.pyz" \
+    -o "$VIRTUALENV_PYZ"
+  python3 "$VIRTUALENV_PYZ" --clear "$SOLVER_VENV"
+fi
 "$SOLVER_VENV/bin/python" -m pip install --upgrade pip
 "$SOLVER_VENV/bin/python" -m pip install \
   -r "$SOLVER_ROOT/requirements-runtime.txt"
@@ -758,7 +767,7 @@ Expected:
 
 Nếu staged scope sai, run `git restore --staged <unexpected-path>`; không sửa hoặc discard working-tree content.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run only after staged scope passes:
 
