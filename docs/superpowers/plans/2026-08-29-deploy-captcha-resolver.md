@@ -775,7 +775,7 @@ Run only after staged scope passes:
 git commit -m "feat: deploy production captcha resolver"
 ```
 
-- [ ] **Step 5: Push main và monitor GitHub Actions**
+- [x] **Step 5: Push main và monitor GitHub Actions**
 
 Run:
 
@@ -787,7 +787,7 @@ gh run watch --exit-status
 
 Select/watch the run whose `headSha` equals the just-pushed commit. If workflow fails, capture failing step/log and stop; không retry mù hoặc sửa ngoài plan.
 
-- [ ] **Step 6: Verify public production endpoint**
+- [x] **Step 6: Verify public production endpoint**
 
 Run:
 
@@ -810,7 +810,9 @@ Confirm GitHub Actions logs show both PM2 processes `online`. Open `avatar-jar/a
 
 Because local SSH key is not accepted by VPS, runtime request evidence must come from GitHub Actions logs/public health unless user supplies a valid SSH credential in a separate request.
 
-- [ ] **Step 8: Update GitNexus index after commit**
+Automated evidence completed: PM2 reports both processes online, production JAR embeds the HTTPS base and loads in MicroEmulator, and a real captcha bitmap passed through the public endpoint. Manual in-game captcha triggering remains the final user smoke check.
+
+- [x] **Step 8: Update GitNexus index after commit**
 
 Current `.gitnexus/meta.json` has `stats.embeddings = 0`, so run:
 
