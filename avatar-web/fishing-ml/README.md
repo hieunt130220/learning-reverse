@@ -77,8 +77,23 @@ Decoded PNG pixels stay in request memory; error bodies carry only a stable
 Startup verifies and loads the frozen candidate **once** — a missing, tampered, or
 revision-mismatched `--frozen-dir` fails closed and the service refuses to start
 (``verify_freeze``'s hash/manifest checks propagate as a startup error). The
-request body is size-bounded **before** parsing (`--max-body-bytes`), and each
-inference is guarded by `--timeout-ms` so a stuck request cannot hang the process.
+service requires exactly one canonical decimal `Content-Length` header and rejects
+missing/duplicate/conflicting framing and unsupported `Transfer-Encoding`; it never
+uses an unbounded keep-alive body read. The request body is size-bounded **before**
+parsing (`--max-body-bytes`) and read under one absolute request deadline. Inference
+uses one bounded worker slot: a timed-out worker retains the slot until it exits,
+while later requests fail fast with sanitized `busy`/timeout status instead of
+accumulating daemon workers. The revision check resolves Git from the package
+repository rather than relying on the caller's current working directory.
+Every parser, method, framing, contract, timeout, and internal failure returns only
+`{"code": ..., "reason": ...}` JSON when the client remains connected; disconnects
+are closed quietly.
+
+The strict framing policy intentionally does not accept HTTP/1.1 requests without a
+single `Content-Length`; chunked or otherwise ambiguous bodies are rejected before
+inference. `evaluate._git()` remains unchanged for the existing evaluation CLI; the
+service's frozen revision check resolves the repository explicitly so service startup
+is not dependent on the caller's current working directory.
 
 ```bash
 # Serve one verified frozen candidate (Task 3 artifact dir) on 127.0.0.1:8080.

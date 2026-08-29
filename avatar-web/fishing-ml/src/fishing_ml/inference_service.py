@@ -25,11 +25,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
+import subprocess
 import threading
 import time
 from base64 import b64decode
 from collections.abc import Mapping
 from dataclasses import dataclass
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
@@ -67,9 +70,102 @@ _INFER_PATH = "/infer"
 # contract violations are malformed/invalid requests and map to HTTP 400.
 _SIZE_CODES = frozenset({"body_too_large", "too_many_images"})
 
+# A process-wide cap prevents timed-out inference workers from accumulating.
+# The slot is released only after the worker actually exits.
+_MAX_INFERENCE_WORKERS = 1
+_INFERENCE_SLOTS = threading.BoundedSemaphore(_MAX_INFERENCE_WORKERS)
+
+
+class _QuietThreadingHTTPServer(ThreadingHTTPServer):
+    """Threaded server that never emits request tracebacks or access data."""
+
+    def handle_error(self, _request: Any, _client_address: Any) -> None:
+        # BaseServer would print a traceback for an exception raised while a
+        # handler is being constructed or after a disconnect. There is no safe
+        # response channel in that case, so close quietly instead of logging
+        # request-adjacent data.
+        return
+
 
 class _RequestTimeout(Exception):
-    """Raised when in-memory inference exceeds the per-request timeout."""
+    """Raised when a body read or in-memory inference exceeds its deadline."""
+
+
+class _ClientDisconnected(Exception):
+    """Raised when a peer closes the connection during request parsing."""
+
+
+class _InferenceBusy(Exception):
+    """Raised when the single bounded inference slot is still occupied."""
+
+
+class _DeadlineReader:
+    """Unbuffered request reader enforcing one absolute connection deadline."""
+
+    def __init__(self, raw: Any, connection: Any, deadline: float) -> None:
+        self._raw = raw
+        self._connection = connection
+        self._deadline = deadline
+
+    def settimeout(self, _timeout: float | None) -> None:
+        # The absolute deadline controls every parser/body read; ignore any
+        # resettable timeout requested by an underlying parser.
+        return
+
+    def _read_once(self, size: int) -> bytes:
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise _RequestTimeout()
+        try:
+            self._connection.settimeout(remaining)
+            value = self._raw.read(size)
+        except (socket.timeout, TimeoutError):
+            raise _RequestTimeout() from None
+        except OSError:
+            # A peer disconnect is a closed request, not a server error. Keep
+            # parser failures from escaping into the serving loop/logging path.
+            raise _ClientDisconnected() from None
+        return b"" if value is None else value
+
+    def read(self, size: int = -1) -> bytes:
+        if size == 0:
+            return b""
+        if size < 0:
+            raise ValueError("unbounded request reads are not supported")
+        return self._read_once(size)
+
+    def readline(self, size: int = -1) -> bytes:
+        if size == 0:
+            return b""
+        line = bytearray()
+        while size < 0 or len(line) < size:
+            chunk = self._read_once(1)
+            if not chunk:
+                break
+            line.extend(chunk)
+            if chunk == b"\n":
+                break
+        return bytes(line)
+
+    def read1(self, size: int = -1) -> bytes:
+        return self.read(size)
+
+    def readinto(self, buffer: Any) -> int:
+        value = self.read(len(buffer))
+        buffer[: len(value)] = value
+        return len(value)
+
+    def readable(self) -> bool:
+        return True
+
+    def fileno(self) -> int:
+        return self._raw.fileno()
+
+    def close(self) -> None:
+        self._raw.close()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._raw, name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +211,25 @@ class FrozenMatcher:
     model_id: str
 
 
+def _current_git_revision() -> str:
+    """Resolve HEAD from this source tree, not the process CWD.
+
+    ``evaluate._git`` intentionally follows the caller's Git working directory;
+    the service is a long-running entry point and must not change that shared
+    policy. Resolve the package repository explicitly for this fail-closed check.
+    """
+    root = Path(__file__).resolve().parents[4]
+    try:
+        return subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise RuntimeError("frozen service requires a readable Git revision") from error
+
+
 def load_frozen_matcher(frozen_dir: Path) -> FrozenMatcher:
     """Load + verify EXACTLY ONE frozen candidate ONCE.
 
@@ -145,7 +260,7 @@ def load_frozen_matcher(frozen_dir: Path) -> FrozenMatcher:
         # inventory. Also reject a valid-but-different revision here: the
         # service must not run a candidate produced from another checkout.
         revision = manifest_doc.get("gitRevision")
-        if not isinstance(revision, str) or revision != evaluate._git():
+        if not isinstance(revision, str) or revision != _current_git_revision():
             raise RuntimeError("frozen Git revision does not match current revision")
 
     config_model_id = config_doc.get("runId") if isinstance(config_doc, Mapping) else None
@@ -341,82 +456,183 @@ def _parse_and_infer(matcher: FrozenMatcher, raw_body: bytes) -> tuple[Inference
     """Parse a bounded JSON body and infer within the same timeout budget."""
     try:
         document = json.loads(raw_body)
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
         raise ContractError("bad_json", "request body is not valid JSON") from None
     request = parse_request(document)
     return _infer(matcher, request)
 
 
-def _with_timeout(timeout_ms: int, function: Callable[..., Any], *args: Any) -> Any:
-    """Run ``function`` on a worker thread, raising if it overruns.
 
-    A stuck inference cannot keep the serving/request thread alive indefinitely.
-    The worker is daemonized because Python cannot safely cancel arbitrary torch
-    work; a timed-out request gets a bounded response while the worker winds down.
+def _with_timeout(
+    timeout_ms: int,
+    function: Callable[..., Any],
+    *args: Any,
+    deadline: float | None = None,
+) -> Any:
+    """Run one inference worker with a bounded slot and absolute deadline.
+
+    A timed-out worker cannot be safely cancelled from Python. It therefore
+    retains the single inference slot until it really exits; concurrent or
+    subsequent requests fail fast rather than creating an unbounded thread
+    population. When ``deadline`` is supplied, it is authoritative over the
+    relative timeout and is checked both before starting and after joining.
     """
     if timeout_ms <= 0:
         raise ValueError("timeout_ms must be positive")
+    wait_seconds = timeout_ms / 1000.0
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _RequestTimeout()
+        wait_seconds = min(wait_seconds, remaining)
+    if not _INFERENCE_SLOTS.acquire(blocking=False):
+        if deadline is not None and deadline <= time.monotonic():
+            raise _RequestTimeout()
+        raise _InferenceBusy()
 
     box: dict[str, Any] = {}
+    release_lock = threading.Lock()
+    slot_released = False
+
+    def release_slot() -> None:
+        nonlocal slot_released
+        with release_lock:
+            if not slot_released:
+                slot_released = True
+                _INFERENCE_SLOTS.release()
 
     def target() -> None:
         try:
             box["value"] = function(*args)
         except BaseException as error:  # noqa: BLE001 - surfaced to caller below
             box["error"] = error
+        finally:
+            release_slot()
+
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            release_slot()
+            raise _RequestTimeout()
+        wait_seconds = min(wait_seconds, remaining)
 
     worker = threading.Thread(target=target, daemon=True)
-    worker.start()
-    worker.join(timeout_ms / 1000.0)
+    try:
+        worker.start()
+    except BaseException:
+        # Thread.start() can fail before the target runs. Do not permanently
+        # consume the only inference slot on that rare startup/resource error.
+        # The locked release also handles the unusual race where the target
+        # starts before start() reports an error.
+        release_slot()
+        raise
+
+    worker.join(wait_seconds)
     if worker.is_alive():
+        raise _RequestTimeout()
+    if deadline is not None and time.monotonic() >= deadline:
         raise _RequestTimeout()
     if "error" in box:
         raise box["error"]
     return box["value"]
 
 
-def _read_body(handler: BaseHTTPRequestHandler, max_body_bytes: int) -> bytes:
-    """Read the request body, enforcing ``max_body_bytes`` before JSON parsing."""
+def _read_header_values(handler: BaseHTTPRequestHandler, name: str) -> list[str]:
+    """Return all header values, preserving duplicate-field validation."""
+    get_all = getattr(handler.headers, "get_all", None)
+    if callable(get_all):
+        return list(get_all(name) or [])
+    value = handler.headers.get(name)
+    return [] if value is None else [value]
+
+
+def _read_body(
+    handler: BaseHTTPRequestHandler,
+    max_body_bytes: int,
+    *,
+    deadline: float | None = None,
+) -> bytes:
+    """Read one framed body with a hard size bound and absolute deadline."""
     if max_body_bytes <= 0:
         raise ValueError("max_body_bytes must be positive")
+    if deadline is None:
+        raise ValueError("an absolute request deadline is required")
 
-    transfer_encoding = handler.headers.get("Transfer-Encoding")
-    if transfer_encoding and transfer_encoding.lower() != "identity":
+    if deadline <= time.monotonic():
+        raise _RequestTimeout()
+
+    transfer_values = _read_header_values(handler, "Transfer-Encoding")
+    transfer_tokens = [
+        token.strip().lower()
+        for value in transfer_values
+        for token in value.split(",")
+    ]
+    if transfer_tokens and transfer_tokens != ["identity"]:
         raise ContractError("bad_request", "unsupported transfer encoding")
+    if len(transfer_values) > 1:
+        raise ContractError("bad_request", "duplicate transfer encoding")
 
-    length_value = handler.headers.get("Content-Length")
-    if length_value is not None:
-        try:
-            declared = int(length_value)
-        except (TypeError, ValueError):
-            raise ContractError("bad_request", "invalid Content-Length") from None
-        if declared < 0:
+    length_values = _read_header_values(handler, "Content-Length")
+    lengths: list[int] = []
+    for value in length_values:
+        parts = [part.strip() for part in value.split(",")]
+        if not parts or any(not part for part in parts):
             raise ContractError("bad_request", "invalid Content-Length")
-        if declared > max_body_bytes:
-            raise ContractError("body_too_large", "request body exceeds size limit")
-        body = handler.rfile.read(declared)
-        if len(body) != declared:
-            raise ContractError("bad_request", "request body is truncated")
-        return body
+        for part in parts:
+            if not part or any(char not in "0123456789" for char in part):
+                raise ContractError("bad_request", "invalid Content-Length")
+            try:
+                declared = int(part, 10)
+            except (TypeError, ValueError):
+                raise ContractError("bad_request", "invalid Content-Length") from None
+            if declared < 0:
+                raise ContractError("bad_request", "invalid Content-Length")
+            lengths.append(declared)
+    if len(set(lengths)) > 1:
+        raise ContractError("bad_request", "conflicting Content-Length")
+    if len(lengths) > 1:
+        raise ContractError("bad_request", "duplicate Content-Length")
+    if transfer_tokens and lengths:
+        raise ContractError("bad_request", "conflicting body framing")
+    if not lengths:
+        raise ContractError("bad_request", "Content-Length is required")
 
-    # Some test/embedded handlers do not provide Content-Length. Bound that
-    # fallback read too, and fail as soon as max_body_bytes+1 bytes arrive; do not
-    # read an additional byte, which could block on a keep-alive connection.
+    declared = lengths[0]
+    if declared > max_body_bytes:
+        raise ContractError("body_too_large", "request body exceeds size limit")
+
+    remaining = declared
     chunks: list[bytes] = []
-    total = 0
-    while total <= max_body_bytes:
-        chunk = handler.rfile.read(min(65536, max_body_bytes + 1 - total))
+    while remaining:
+        seconds = deadline - time.monotonic()
+        if seconds <= 0:
+            raise _RequestTimeout()
+        try:
+            handler.connection.settimeout(seconds)
+            chunk = handler.rfile.read(min(65536, remaining))
+        except (socket.timeout, TimeoutError):
+            raise _RequestTimeout() from None
+        except OSError:
+            raise _ClientDisconnected() from None
         if not chunk:
-            break
+            raise ContractError("bad_request", "request body is truncated")
+        if len(chunk) > remaining:
+            raise ContractError("bad_request", "request body framing is invalid")
         chunks.append(chunk)
-        total += len(chunk)
-        if total > max_body_bytes:
-            raise ContractError("body_too_large", "request body exceeds size limit")
+        remaining -= len(chunk)
     return b"".join(chunks)
 
 
 def _status_for_code(code: str) -> int:
     return 413 if code in _SIZE_CODES else 400
+
+
+def _request_path(raw_path: str) -> str:
+    """Return the URL path without exposing malformed parser details."""
+    try:
+        return urlparse(raw_path).path
+    except ValueError:
+        raise ContractError("bad_request", "malformed request path") from None
 
 
 def _make_handler(matcher: FrozenMatcher, config: InferenceServerConfig):
@@ -429,14 +645,70 @@ def _make_handler(matcher: FrozenMatcher, config: InferenceServerConfig):
         server_version = "fishing-phase2-inference/1.0"
         timeout = read_timeout
 
+        # BaseHTTPRequestHandler's buffered reader can read ahead past the body
+        # boundary. An unbuffered stream keeps framing bytes owned by the socket;
+        # each read below is explicitly capped by the declared Content-Length.
+        rbufsize = 0
+
+        def setup(self) -> None:
+            super().setup()
+            # setup() is the beginning of the complete request lifecycle; the
+            # deadline is intentionally not reset by do_POST after parsing.
+            self._request_deadline = time.monotonic() + config.timeout_ms / 1000.0
+            self.connection.settimeout(max(0.001, self._request_deadline - time.monotonic()))
+            self.rfile = _DeadlineReader(self.rfile, self.connection, self._request_deadline)
+            self._request_input = self.rfile
+
+        def handle_one_request(self) -> None:
+            try:
+                super().handle_one_request()
+            except _RequestTimeout:
+                self.send_error(HTTPStatus.REQUEST_TIMEOUT)
+            except _ClientDisconnected:
+                self.close_connection = True
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                self.close_connection = True
+
         def _send_json(self, status: int, payload: Mapping[str, object]) -> None:
-            body = json.dumps(payload).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Connection", "close")
-            self.end_headers()
-            self.wfile.write(body)
+            self.close_connection = True
+            try:
+                body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                if getattr(self, "command", None) != "HEAD":
+                    self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                self.close_connection = True
+
+        def send_error(
+            self,
+            code: int,
+            message: str | None = None,
+            explain: str | None = None,
+        ) -> None:
+            # BaseHTTPRequestHandler's default is HTML and echoes parser text.
+            # Keep every parser/method/fallback failure on the same safe JSON wire.
+            if code == HTTPStatus.REQUEST_TIMEOUT:
+                status = 504
+                error_code = "timeout"
+                reason = "request exceeded time limit"
+            elif code == HTTPStatus.REQUEST_ENTITY_TOO_LARGE:
+                status = 413
+                error_code = "body_too_large"
+                reason = "request body exceeds size limit"
+            elif code == HTTPStatus.NOT_IMPLEMENTED:
+                status = 405
+                error_code = "method_not_allowed"
+                reason = "use POST"
+            else:
+                status = int(code) if 400 <= int(code) <= 599 else 400
+                error_code = "bad_request"
+                reason = "malformed HTTP request"
+            self._send_json(status, {"code": error_code, "reason": reason})
+            self.close_connection = True
 
         def log_message(self, _format: str, *_args: Any) -> None:
             # Disable BaseHTTPRequestHandler access logging entirely. The request
@@ -444,17 +716,51 @@ def _make_handler(matcher: FrozenMatcher, config: InferenceServerConfig):
             # telemetry alongside image/base64 or identity data.
             return
 
-        def do_GET(self) -> None:
+        def _method_not_allowed(self) -> None:
             self._send_json(405, {"code": "method_not_allowed", "reason": "use POST"})
+
+        def do_GET(self) -> None:
+            self._method_not_allowed()
+
+        def do_HEAD(self) -> None:
+            self._method_not_allowed()
+
+        def do_OPTIONS(self) -> None:
+            self._method_not_allowed()
+
+        def do_PUT(self) -> None:
+            self._method_not_allowed()
+
+        def do_PATCH(self) -> None:
+            self._method_not_allowed()
+
+        def do_DELETE(self) -> None:
+            self._method_not_allowed()
 
         def do_POST(self) -> None:
             started = time.monotonic()
             try:
-                if urlparse(self.path).path != _INFER_PATH:
+                if _request_path(self.path) != _INFER_PATH:
                     self._send_json(404, {"code": "not_found", "reason": "unknown path"})
                     return
-                raw = _read_body(self, config.max_body_bytes)
-                predictions = _with_timeout(config.timeout_ms, _parse_and_infer, matcher, raw)
+                deadline = self._request_deadline
+                raw = _read_body(self, config.max_body_bytes, deadline=deadline)
+                remaining_seconds = deadline - time.monotonic()
+                if remaining_seconds <= 0:
+                    raise _RequestTimeout()
+                # Pass a floor only after the strict expiry check. The worker's
+                # millisecond guard is never allowed to start after the request
+                # deadline has elapsed; its join budget is at most this remainder.
+                remaining_ms = int(remaining_seconds * 1000)
+                if remaining_ms <= 0:
+                    raise _RequestTimeout()
+                predictions = _with_timeout(
+                    remaining_ms,
+                    _parse_and_infer,
+                    matcher,
+                    raw,
+                    deadline=deadline,
+                )
                 response = InferenceResponse(
                     schema_version=1,
                     model_id=matcher.model_id,
@@ -471,6 +777,14 @@ def _make_handler(matcher: FrozenMatcher, config: InferenceServerConfig):
                 self._send_json(
                     504, {"code": "timeout", "reason": "request exceeded time limit"}
                 )
+            except _InferenceBusy:
+                self._send_json(
+                    503, {"code": "busy", "reason": "inference slot is unavailable"}
+                )
+            except _ClientDisconnected:
+                self.close_connection = True
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                self.close_connection = True
             except Exception:  # noqa: BLE001 - never leak internals/images/identity
                 self._send_json(
                     500, {"code": "internal_error", "reason": "inference failed"}
@@ -483,7 +797,7 @@ def serve(config: InferenceServerConfig) -> None:
     """Blocking loop: load one frozen candidate, then serve bounded requests."""
     matcher = load_frozen_matcher(config.frozen_dir)
     handler = _make_handler(matcher, config)
-    httpd = ThreadingHTTPServer((config.host, config.port), handler)
+    httpd = _QuietThreadingHTTPServer((config.host, config.port), handler)
     try:
         httpd.serve_forever()
     finally:
