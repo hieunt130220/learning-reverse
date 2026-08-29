@@ -247,10 +247,17 @@ def _read_response(response: Any) -> bytes:
     if declared is not None:
         if declared > _MAX_RESPONSE_BYTES:
             raise InferenceClientError("response_too_large", "wire_body_exceeds_limit")
-        raw = response.read(declared)
-        if len(raw) != declared:
-            raise InferenceClientError("invalid_response", "truncated_response_body")
-        return raw
+        chunks: list[bytes] = []
+        remaining = declared
+        while remaining > 0:
+            chunk = response.read(remaining)
+            if not chunk:
+                raise InferenceClientError(
+                    "invalid_response", "truncated_response_body"
+                )
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
     raw = response.read(_MAX_RESPONSE_BYTES + 1)
     if len(raw) > _MAX_RESPONSE_BYTES:
         raise InferenceClientError("response_too_large", "wire_body_exceeds_limit")
