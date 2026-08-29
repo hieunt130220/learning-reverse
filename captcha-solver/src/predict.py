@@ -20,11 +20,12 @@ from src.captcha_io import load_alpha_binary
 from src.charset import CharSet
 from src.denoise import remove_isolated_noise
 from src.model import CaptchaCRNN
+from src.train import greedy_decode
 
 
 def load_model(ckpt_path: str | Path) -> tuple[CaptchaCRNN, CharSet]:
     """Nạp checkpoint → (model eval mode, charset)."""
-    ckpt = torch.load(ckpt_path, map_location="cpu")
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     charset = CharSet.from_serialized(ckpt["charset"])
     model = CaptchaCRNN(charset.size)
     model.load_state_dict(ckpt["model"])
@@ -38,24 +39,43 @@ def preprocess(path: str | Path) -> torch.Tensor:
     return torch.from_numpy(arr.astype(np.float32)).unsqueeze(0).unsqueeze(0)
 
 
+def predict_array(arr: np.ndarray, model: CaptchaCRNN,
+                  charset: CharSet) -> tuple[str, float]:
+    """Predict từ mảng binary 0/1 (H, W) đã được denoise.
+
+    Args:
+        arr: numpy uint8 array shape (15, 100) hoặc (1, 15, 100),
+             giá trị 1 = pixel chữ, 0 = nền.
+        model: CaptchaCRNN đã load state dict.
+        charset: CharSet tương ứng.
+
+    Returns:
+        (text, confidence) — confidence = mean max-prob over timesteps.
+    """
+    if arr.ndim == 2:
+        arr = arr[np.newaxis, ...]  # (1, H, W)
+    if arr.ndim == 3:
+        arr = arr[np.newaxis, ...]  # (1, 1, H, W)
+    tensor = torch.from_numpy(arr.astype(np.float32))
+    with torch.no_grad():
+        logp = model(tensor)  # (B, T, C)
+        probs = logp.exp().max(dim=-1).values.mean().item()
+        text = greedy_decode(logp, charset)[0]
+    return text.strip(), probs
+
+
 def predict_image(path: str | Path, model: CaptchaCRNN,
                   charset: CharSet) -> tuple[str, float]:
     """Predict 1 ảnh. Trả về (text, conf)."""
-    x = preprocess(path)
-    with torch.no_grad():
-        logp = model(x)  # (1, 25, C)
-        probs = logp.exp().max(dim=-1).values.mean().item()
-        from src.train import greedy_decode
-        text = greedy_decode(logp, charset)[0]
-    return text.strip(), probs
+    arr = remove_isolated_noise(load_alpha_binary(path))
+    return predict_array(arr, model, charset)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Predict captcha")
     parser.add_argument("--image", help="Đường dẫn 1 ảnh")
     parser.add_argument("--dir", help="Thư mục chứa nhiều ảnh")
-    parser.add_argument("--ckpt", required=True,
-                        default="checkpoints/crnn_ctc.pt")
+    parser.add_argument("--ckpt", default="checkpoints/crnn_ctc.pt")
     args = parser.parse_args()
 
     if not args.image and not args.dir:
