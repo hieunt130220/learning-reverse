@@ -185,6 +185,28 @@ data root, its `incoming/ raw/ labels/ splits/` subdirs, and the `dataset-versio
 file name. It is documentation/metadata consistent with `config/train-baseline.yaml`; the
 authoritative validation rules live in `src/fishing_ml/dataset_version.py`.
 
+### Rollout gates (Phase 2 result)
+
+The authoritative gate record is
+`docs/superpowers/plans/2026-08-28-fishing-phase-2-results.md`. Summary of the
+binding safety outcomes (spec §5):
+
+- **2C shadow mode is OFF by default** and fail-closed: `FISHING_SHADOW_SAMPLE_RATE=0`
+  → no request; a kill switch and finite sample-rate gate are honored; service
+  failure/timeout/malformed response is recorded as a code and **never** fails the
+  fishing session.
+- **No game-control side effect:** the Node shadow adapter (`server/src/fishing/`)
+  never calls `finishFishing()`, never sends TX43, and never alters TX41/TX44/TX45.
+  It forwards **image bytes only** — no `idUser`/`idFish`/`timeDelayMs` reach the
+  wire request or the sanitized telemetry (`{shadow, status, errorCode?,
+  predictionCount?, acceptedCount?}`).
+- **Authorized live shadow** is the final 2C rollout stage and remains gated
+  behind an explicit runtime flag plus out-of-band authorization; this worktree
+  wires replay-only and local-shadow stages but performs no live run.
+- Numeric 2A/2B gates (real zero-wrong-accepted, coverage, p50/p95/p99 latency)
+  are **pending a real training/eval + frozen-checkpoint run** unavailable in this
+  environment and are recorded as blocked, not claimed.
+
 ## Install (editable)
 
 ```bash
