@@ -35,13 +35,15 @@ body = sep1 + "".join(bitmap) + sep2 + str(w) + sep3 + str(h)
 - Connection: close
 
 ### Response
-- byte 0: status (0=OK)
-- UTF string: answer (4 digits)
+- byte `1` (status): `1` = OK (gửi đáp án), `0`/`-1`/`3` = thông báo/error/update
+- Khi status `1`: tiếp `byte resultType` (0) + `UTF answer` (4 chữ số)
+- Khi status `0`/`-1`/`3`: tiếp các trường UTF message/metadata (KHÔNG phải đáp án)
+> **Bug đã fix 2026-08-29:** `solver_server.py` cũ trả `0` + UTF (sai) → az.class nhận status 0 → không gửi đáp án → treo dialog "Xin chờ". Sửa thành `1,0` + UTF.
 
 ## Key Findings
 - URL tu br.do(index) - config XOR-encoded
 - Body: <sep1><bitmap><sep2><width><sep3><height>
-- Response: byte status + UTF answer
+- Response: byte status (1=OK) + byte resultType + UTF answer
 
 ## Implementation
 1. Solver API nhan bitmap + width + height
@@ -60,3 +62,11 @@ body = sep1 + "".join(bitmap) + sep2 + str(w) + sep3 + str(h)
 - Patch: 1 byte trong fJ.class — iconst_1 -> iconst_2 (offset site 7087,
   pattern 20-byte duy nhat) -> var5 = do[2](=1) luon vuot nguong ->
   moi captcha co anh deu new az(...) -> goi solver -> tu dien.
+  Round 2b: patch thêm 2x ifeq→ifne (target 19088) để đảo logic hiển thị dialog nhập tay;
+  bản patch hiện tại (`tools/jar/patch_jar.py`) đã gồm cả 2 phần.
+
+## Bugfix 2026-08-29 (dialog "Xin chờ" treo)
+
+- Nguyên nhân 1: `solver_server.py` trả `status 0` → az.class không gửi đáp án → treo.
+- Nguyên nhân 2: bitmap JAR `1=nền,0=chữ` ngược với model `1=chữ` (alpha>0) → model đoán sai → server game reject → treo "Xin chờ".
+- Fix: trả `01 00` + UTF (status 1, resultType 0) và `arr = 1 - arr` trước denoise.

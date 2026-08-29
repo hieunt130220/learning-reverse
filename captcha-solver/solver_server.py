@@ -2,7 +2,9 @@
 """Solver API server - drop-in mimic + transparent proxy cho avatar-auto.jar.
 
 - Request captcha (body chứa bitmap 0/1 dài >= 500 ký tự) -> giải bằng model AI,
-  trả response byte-level giống OCR gốc: byte status (0=OK) + Java modified UTF.
+  trả response byte-level giống OCR gốc: byte status (1=OK) + byte resultType (0) + Java modified UTF.
+  Theo az.class: status 1 + readByte() + readUTF() mới là path gửi đáp án về game;
+  status 0 là message/error và sẽ KHÔNG gửi đáp án (gây treo dialog "Xin chờ").
 - Mọi request khác (tải dữ liệu Auto lúc khởi động...) -> forward nguyên xi
   về server gốc (ORIGIN), trả về response gốc byte-for-byte.
 
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import re
 import sys
+import threading
 import time
 import urllib.request
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -25,20 +28,72 @@ from src.predict import load_model, predict_array
 from src.denoise import remove_isolated_noise
 
 import numpy as np
+import struct
 
 MODEL = None
 CHARSET = None
 MODEL_PATH = str(Path(__file__).resolve().parent / "checkpoints" / "crnn_ctc.pt")
 ORIGIN = "http://chip.vcdn.io.vn/avatar/full/"
 LOG_FILE = "/tmp/solver.log"
+_XOR_KEY = b"NguyenHuuQuyet"
+_LOG_LOCK = threading.Lock()
+_MODEL_LOCK = threading.Lock()
+
+
+def _xor(data: bytes) -> bytes:
+    return bytes(b ^ _XOR_KEY[i % len(_XOR_KEY)] for i, b in enumerate(data))
+
+
+def _patch_chip_config(data: bytes, new_host: str = "127.0.0.1:8643") -> bytes:
+    """Patch config 1074 bytes của chip server: thay host chip -> solver host.
+
+    Config được XOR với key NguyenHuuQuyet, chứa các URL dạng UTF (2-byte BE len + bytes)
+    như `http://chip.vcdn.io.vn/avatar/full/captcha.php`. Thay host giữ nguyên path,
+    cập nhật length prefix cho đúng. Nếu không phải config (không chứa chip) thì trả nguyên.
+    """
+    try:
+        dec = _xor(data)
+    except Exception:
+        return data
+    if b"chip.vcdn.io.vn" not in dec:
+        return data
+    # Danh sách URL gốc cần patch (đã xác định từ live capture 1074 bytes)
+    olds = [
+        b"http://chip.vcdn.io.vn/avatar/full/data.php",
+        b"http://chip.vcdn.io.vn/avatar/full/captcha.php",
+        b"http://chip.vcdn.io.vn/avatar/teacher.php",
+        b"http://chip.vcdn.io.vn/avatar/avdata.php?_t=",
+        b"http://chip.vcdn.io.vn/avatar/full/",
+    ]
+    # Sắp xếp dài trước để tránh thay thế lồng nhau (vd captcha.php chứa full/)
+    olds.sort(key=len, reverse=True)
+    new_dec = dec
+    patched = 0
+    for old in olds:
+        new = old.replace(b"chip.vcdn.io.vn", new_host.encode())
+        old_enc = struct.pack(">H", len(old)) + old
+        new_enc = struct.pack(">H", len(new)) + new
+        if old_enc in new_dec:
+            new_dec = new_dec.replace(old_enc, new_enc)
+            patched += 1
+        elif old in new_dec:
+            # Fallback: thay raw host trong decoded (trường hợp length đã lệch do patch trước)
+            # thì tìm raw và thay, nhưng cần cập nhật length prefix thủ công
+            # Đơn giản: thay raw host, sau đó sẽ được xử lý ở lần lặp sau nếu còn
+            pass
+    if patched:
+        log(f"PATCH config: thay {patched} URL chip -> {new_host}, {len(data)} -> {len(new_dec)} bytes (xor)")
+        return _xor(new_dec)
+    return data
 
 
 def log(msg: str) -> None:
     line = f'[{time.strftime("%H:%M:%S")}] {msg}'
     print(line, flush=True)
     try:
-        with open(LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
+        with _LOG_LOCK:
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
     except OSError:
         pass
 
@@ -52,8 +107,22 @@ def _load() -> None:
 
 def _solve_bitmap(bitmap: str, width: int, height: int) -> tuple[str, float]:
     arr = np.array([int(c) for c in bitmap], dtype=np.uint8).reshape(height, width)
+    # JAR bitmap: 1=nền, 0=chữ; model train với alpha: 1=chữ, 0=nền → đảo bit
+    arr = 1 - arr
     arr = remove_isolated_noise(arr)
-    return predict_array(arr, MODEL, CHARSET)
+    with _MODEL_LOCK:
+        ans, conf = predict_array(arr, MODEL, CHARSET)
+    # Đảm bảo luôn trả 4 chữ số: model đôi khi CTC decode ra 5 ký tự (ví dụ 21217 cho label 2127)
+    # Cắt/pad để tránh server reject gây treo "Xin chờ"
+    if len(ans) != 4:
+        fixed = ans[:4].ljust(4, "0") if len(ans) >= 4 else ans.ljust(4, "0")
+        # chỉ giữ chữ số
+        fixed = "".join(c if c.isdigit() else "0" for c in fixed)
+        if len(fixed) != 4:
+            fixed = (fixed + "0000")[:4]
+        log(f"  FIX answer length {len(ans)}->{len(fixed)}: {ans!r}->{fixed!r}")
+        ans = fixed
+    return ans, conf
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -72,16 +141,30 @@ class Handler(BaseHTTPRequestHandler):
         encoded = answer.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
-        self.send_header("Content-Length", str(1 + 2 + len(encoded)))
+        self.send_header("Content-Length", str(1 + 1 + 2 + len(encoded)))
         self.end_headers()
-        self.wfile.write(bytes([0]))                       # status 0 = OK
+        self.wfile.write(bytes([1, 0]))                    # status 1 = OK, resultType 0 (không phải 2)
         self.wfile.write(len(encoded).to_bytes(2, "big"))  # Java modified UTF len
         self.wfile.write(encoded)
 
     def _proxy(self, body: bytes | None) -> None:
         """Forward request về ORIGIN, trả response gốc byte-for-byte."""
-        path = self.path if self.path not in ("", "/") else ""
-        url = ORIGIN.rstrip("/") + "/" + path.lstrip("/")
+        # PATH MAPPING FIX (2026-08-29): JAR đã patch trỏ các URL chip
+        #   http://chip.vcdn.io.vn/avatar/full/captcha.php
+        #   -> http://127.0.0.1:8643/avatar/full/captcha.php
+        # nên self.path sẽ là "/avatar/full/captcha.php". Nếu dùng
+        # ORIGIN + path sẽ thành "/avatar/full/avatar/full/..." (duplicate) -> 404 -> treo "Xin chờ".
+        # Cần map đúng về host gốc.
+        if self.path in ("", "/"):
+            url = ORIGIN
+        elif self.path.startswith("/avatar/"):
+            # Giữ nguyên path + query, chỉ đổi host về chip
+            # ORIGIN = http://chip.vcdn.io.vn/avatar/full/ -> host = http://chip.vcdn.io.vn
+            url = "http://chip.vcdn.io.vn" + self.path
+        else:
+            # Fallback: các path khác (hiếm) nối vào ORIGIN
+            path = self.path
+            url = ORIGIN.rstrip("/") + "/" + path.lstrip("/")
         req = urllib.request.Request(url, data=body, method=self.command)
         for h in ("Content-Type", "User-Agent", "Accept"):
             v = self.headers.get(h)
@@ -90,6 +173,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
                 data = r.read()
+                # Nếu là config của chip (chứa URL OCR), patch host về solver để không bị server override
+                # Config được XOR, nên thử patch mọi response có chứa chip host sau xor
+                patched = _patch_chip_config(data)
+                if patched is not data:
+                    data = patched
+                    log(f"PROXY PATCH config {url} -> {len(data)} bytes (đã đổi chip -> 127.0.0.1:8643)")
                 self.send_response(r.status)
                 ct = r.headers.get("Content-Type")
                 if ct:
@@ -110,26 +199,54 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- methods ----------
 
     def do_GET(self):
+        if self.path in ("/health", "/healthz"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"ok")
+            log(f"HEALTH check {self.path}")
+            return
         self._proxy(None)
 
     def do_POST(self):
         body = self._read_body()
         text = body.decode("utf-8", errors="replace")
+        # Log mọi POST để debug treo "Xin chờ"
+        preview = text[:300].replace("\n", "\\n")
+        log(f"POST {self.path} len={len(body)} body[:300]={preview!r}")
+        if len(body) > 0 and len(text) < 50:
+            # body có thể là binary, log hex
+            log(f"  POST hex[:100]={body[:100].hex()}")
 
-        # Captcha OCR: bitmap là chuỗi 0/1 dài
-        m = re.search(r"[01]{500,}", text)
-        if m:
-            bitmap = m.group(0)
-            nums = re.findall(r"\d+", text.replace(bitmap, " "))
+        # Captcha OCR: bitmap là chuỗi 0/1 dài (>=500)
+        candidates = re.findall(r"[01]{500,}", text)
+        if candidates:
+            bitmap = max(candidates, key=len)  # lấy đoạn dài nhất
+            # Thử parse width/height từ phần còn lại
+            rest = text.replace(bitmap, " ")
+            nums = re.findall(r"\d+", rest)
             width = height = None
             if len(nums) >= 2:
-                width, height = int(nums[-2]), int(nums[-1])
+                try:
+                    width, height = int(nums[-2]), int(nums[-1])
+                except ValueError:
+                    pass
+            # Fallback: nếu không parse được mà bitmap len =1500 thì đoán 100x15
+            if (width is None or height is None) and len(bitmap) == 1500:
+                width, height = 100, 15
+                log(f"  Fallback đoán 100x15 cho bitmap 1500")
             if width and height and len(bitmap) == width * height:
-                answer, conf = _solve_bitmap(bitmap, width, height)
-                log(f"CAPTCHA {width}x{height} -> {answer} (conf {conf:.3f})")
+                try:
+                    answer, conf = _solve_bitmap(bitmap, width, height)
+                except Exception as e:
+                    log(f"  CAPTCHA solve error: {e}")
+                    self._proxy(body)
+                    return
+                log(f"CAPTCHA {width}x{height} -> {answer} (conf {conf:.3f}) -> trả status 1,0 + UTF")
                 self._send_captcha_answer(answer)
                 return
-            log(f"CAPTCHA? bitmap {len(bitmap)} chars nhung w/h khong khop: {nums[-5:]}")
+            log(f"CAPTCHA? bitmap {len(bitmap)} chars nhung w/h khong khop: nums={nums[-5:]} w={width} h={height} bitmap==w*h? {width and height and len(bitmap)==width*height}")
             # không parse được -> vẫn proxy để không làm hỏng request
 
         self._proxy(body)
@@ -140,7 +257,7 @@ def main() -> None:
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8643)
-    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--ckpt", default=MODEL_PATH)
     ap.add_argument("--origin", default=ORIGIN)
     args = ap.parse_args()
@@ -150,7 +267,7 @@ def main() -> None:
     _load()
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    log(f"Solver server (mimic+proxy) on {args.host}:{args.port} -> origin {ORIGIN}")
+    log(f"Solver server (mimic+proxy) on {args.host}:{args.port} -> origin {ORIGIN} (bind 0.0.0.0 để MicroEmulator/điện thoại đều tới được)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
