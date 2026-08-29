@@ -2,7 +2,7 @@
 
 **Plan:** `docs/superpowers/plans/2026-08-28-fishing-phase-2.md`
 **Spec:** `docs/superpowers/specs/2026-08-28-fishing-phase-2-design.md`
-**Branch:** `worktree-fishing-phase-2`, base `259f775a` → HEAD `e26797a` (16 commits).
+**Branch:** `worktree-fishing-phase-2`, base `259f775a` → HEAD `bdab732` (17 commits).
 
 > Evidence rule: every gate below records what was actually executed in this
 > worktree. Where a step requires a running model/torch environment or a live
@@ -130,6 +130,16 @@ reasons leak no base64/pixel/identity. Reviewer Minors were non-blocking.
 3. **Authorized live shadow** (2C final rollout stage) requires a separate
    authorization decision + an explicit live run — out of Phase 2 implementation
    scope; any TX43 / automated-submit work is deferred to a new Phase 3 spec.
+4. **Contract vs service body-budget units (known, no operational impact):**
+   `inference_contract.py` caps *decoded* PNG bytes at `_MAX_BODY_BYTES = 960000`
+   (`(64+64)*7500`); a request at that boundary is contract-valid. `inference_service.py`
+   caps the *raw* request body (`--max-body-bytes`, default `960000`) and rejects
+   before parse. A maximal contract-valid request (~1.28 MB base64+envelope) would be
+   rejected by the service as `body_too_large`. Real RX79 payloads are tiny 75×75 PNGs
+   (a few KB each, even at 64+64 images), so this never occurs in practice. The service
+   default is intentionally left at the Task 5 reviewed fail-closed boundary; reconciling
+   the two caps (raise service default or document client cap as raw bytes) is a follow-up,
+   not a Phase 2 blocker.
 
 ## Completion criteria (spec §291) status
 
