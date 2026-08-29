@@ -112,8 +112,8 @@ def patch_fj_bytecode(data: bytes) -> bytes:
         12 02 b6 02 36 58      ldc #2; invokevirtual length; pop2
         b2 01 37 04 2e 36 05   getstatic do:[I; iconst_1; iaload; istore 5
         b2 01 37 04 2e 36 06   getstatic do:[I; iconst_1; iaload; istore 6
-    Chỉ patch byte thứ 9 (iconst_1 -> iconst_2 cho var5), giữ nguyên var6
-    và gate az.do/bX.do.
+    Patch CA HAI byte iconst_1 (offset 9 va 16) -> iconst_2 (05) de ca
+    var5 = do[2] (=1) va var6 = do[2] (=1). OCR chi chay khi ca 2 != 0.
     """
     pat = bytes.fromhex(
         "1202b60236" + "58"
@@ -126,13 +126,14 @@ def patch_fj_bytecode(data: bytes) -> bytes:
             f"!! patch_fj: tìm thấy {count} occurrence (cần đúng 1) — không patch"
         )
     i = data.index(pat)
-    # Chỉ đổi byte iconst_1 (0x04) -> iconst_2 (0x05) tại offset 9 (var5).
-    # Byte tại offset 16 (var6) giữ nguyên để không làm thay đổi flow khác.
+    # Patch CA HAI iconst_1 (0x04) -> iconst_2 (0x05) cho var5 (offset 9) va var6 (offset 16).
+    # Ca 2 deu = do[2] = 1 -> OCR gate var5!=0 AND var6!=0 passed.
     patched = bytearray(data)
-    if patched[i + 9] != 0x04:
-        raise SystemExit(f"!! patch_fj: byte tại offset 9 không phải iconst_1")
+    if patched[i + 9] != 0x04 or patched[i + 16] != 0x04:
+        raise SystemExit(f"!! patch_fj: byte khong phai iconst_1")
     patched[i + 9] = 0x05
-    print("  patch fJ.class: var5 index 1->2 (auto OCR khi az.do enable)")
+    patched[i + 16] = 0x05
+    print("  patch fJ.class: var5,var6 index 1->2 (auto OCR)")
     return bytes(patched)
 
 
