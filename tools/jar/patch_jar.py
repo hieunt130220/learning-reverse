@@ -135,13 +135,14 @@ def patch_fj_bytecode(data: bytes) -> bytes:
     patched[i + 16] = 0x05
     print("  patch fJ.class: var5,var6 index 1->2 (auto OCR)")
 
-    # Skip manual dialog (bx.do.do) - NOP out the call so flow continues to OCR code.
-    # Manual dialog is blocking, preventing OCR from running.
-    # Pattern: getstatic #246 aload 9 new #107 dup iload_2 iload 8 invokespecial #452 iload_3 invokevirtual #427
-    dialog_pattern = bytes.fromhex("b200f61909bb006b591c1508b701c41db601ab")
-    dialog_idx = data.index(dialog_pattern)
-    patched[dialog_idx:dialog_idx + len(dialog_pattern)] = b"\x00" * len(dialog_pattern)
-    print(f"  patch fJ.class: NOP manual dialog at offset {dialog_idx}")
+    # Patch ifeq 7290 -> goto 7290 de skip manual dialog va chay thang den OCR code.
+    # ifeq opcode 0x99 -> goto opcode 0xa7
+    goto_pattern = bytes.fromhex("990068")  # ifeq 7290
+    goto_idx = data.index(goto_pattern)
+    if patched[goto_idx] != 0x99:
+        raise SystemExit("!! patch_fj: expected ifeq opcode")
+    patched[goto_idx] = 0xa7  # goto
+    print(f"  patch fJ.class: ifeq->goto 7290 at offset {goto_idx}")
 
     return bytes(patched)
 
