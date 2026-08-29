@@ -8,9 +8,16 @@ import type { ShadowConfig } from './shadowConfig.js';
 let config: ShadowConfig = loadShadowConfig();
 let client: InferenceClient | undefined;
 
-function getClient(): InferenceClient {
-  if (client === undefined) client = new InferenceClient(config);
-  return client;
+// The production path (`maybeShadowMatch`) passes no config, so `cfg` is the
+// module singleton and the client is built once and cached. A caller-supplied
+// config always drives its own client from that config — never the singleton —
+// so `runShadowMatch(payload, cfg)` honors `cfg` end to end.
+function getClient(cfg: ShadowConfig): InferenceClient {
+  if (cfg === config) {
+    if (client === undefined) client = new InferenceClient(config);
+    return client;
+  }
+  return new InferenceClient(cfg);
 }
 
 /**
@@ -37,7 +44,7 @@ export async function runShadowMatch(
 
   try {
     // Never forward idUser/idFish/timeDelayMs — image bytes only.
-    return await getClient().match(imageOnly);
+    return await getClient(cfg).match(imageOnly);
   } catch {
     return { status: 'unavailable', errorCode: 'connection_failed' };
   }
