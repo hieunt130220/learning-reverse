@@ -88,6 +88,10 @@ function parseSampleRate(value: string | undefined): number {
 
 function parseEndpoint(value: string | undefined): string {
   const endpoint = value?.trim() || DEFAULT_ENDPOINT;
+  // Reject a raw literal '#' before parsing: `http://host/infer#` yields an empty
+  // URL.hash, which the post-parse hash check cannot catch. Percent-encoded '%23'
+  // contains no literal '#' and remains allowed.
+  if (/#/.test(endpoint)) throw new ShadowConfigParseError('invalid_endpoint');
   let parsed: URL;
   try {
     parsed = new URL(endpoint);
