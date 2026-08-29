@@ -28,26 +28,26 @@
 **Interfaces:**
 - Produces: URL OCR gốc + format request (tên trường form) + format response (byte status + thứ tự UTF) — đầu vào bắt buộc của Task 3, 4.
 
-- [ ] **Step 1: Tải CFR decompiler**
+- [x] **Step 1: Tải CFR decompiler**
   Run: `curl -L -o tools/jar/cfr.jar https://github.com/leibnitz27/cfr/releases/download/0.152/cfr-0.152.jar`
   Expected: file ~2MB, `java -jar tools/jar/cfr.jar --version` chạy được.
 
-- [ ] **Step 2: Trích `az.class`, `br.class`, `cU.class`, `fJ.class` an toàn (tên file có hậu tố hash tránh va chạm hoa/thường)**
+- [x] **Step 2: Trích `az.class`, `br.class`, `cU.class`, `fJ.class` an toàn (tên file có hậu tố hash tránh va chạm hoa/thường)**
   Script `extract_classes.py` dùng `ZipFile('avatar-jar/avatar-auto.jar').read(name)` ghi ra `tools/jar/out/az_<hash8>.class`.
   Run: `../.venv-captcha312/bin/python tools/jar/extract_classes.py`
   Expected: 4 file .class trong `tools/jar/out/`.
 
-- [ ] **Step 3: Decompile + phân tích**
+- [x] **Step 3: Decompile + phân tích**
   Run: `java -jar tools/jar/cfr.jar tools/jar/out/az_*.class --outputdir tools/jar/out/decompiled`
   Expected: có source Java. Đọc và chốt:
   1. URL OCR: string constant trong `az.class`? default trong `br.class`? động từ `cU.class`?
   2. Request: method, Content-Type, tên trường form, encoding bitmap.
   3. Response: byte status nghĩa gì (giá trị nào = success), thứ tự/tên các trường UTF, có checksum không.
 
-- [ ] **Step 4: Ghi kết quả vào `docs/protocol/az-ocr-notes.md`**
+- [x] **Step 4: Ghi kết quả vào `docs/protocol/az-ocr-notes.md`**
   Nội dung bắt buộc: URL gốc (hoặc cơ chế cấu hình), schema request, schema response (byte-level), quyết định điểm patch.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
   `git commit -m "docs(jar): reverse az.class - url + format request/response OCR"`
 
 ### Task 2: Expose `predict_array()` dùng chung
@@ -59,8 +59,8 @@
 - Produces: `predict_array(arr: np.ndarray, model, charset) -> tuple[str, float]` — (digits, confidence = mean per-char prob).
 - Consumes: `CharSet.from_serialized`, `CaptchaCRNN`, `load_alpha_binary`, `remove_isolated_noise`.
 
-- [ ] **Step 1: Refactor predict.py** — tách hàm nhận mảng binary (1,15,100) đã denoise; CLI cũ gọi lại hàm này. Load model/charset từ checkpoint (key `charset` đã lưu trong .pt).
-- [ ] **Step 2: Verify** — chạy predict CLI trên 1 ảnh có nhãn: digits khớp nhãn.
+- [x] **Step 1: Refactor predict.py** — tách hàm nhận mảng binary (1,15,100) đã denoise; CLI cũ gọi lại hàm này. Load model/charset từ checkpoint (key `charset` đã lưu trong .pt).
+- [x] **Step 2: Verify** — chạy predict CLI trên 1 ảnh có nhãn: digits khớp nhãn.
   Run: `cd captcha-solver && ../.venv-captcha312/bin/python -m src.predict --image ../avatar-web/server/captcha-dataset/captcha-20260827-213938-641-46f9e1-j2me.png --ckpt checkpoints/crnn_ctc.pt`
   Expected: `1192`.
 
@@ -76,10 +76,10 @@
   - `POST /solve` JSON `{"imageBase64"}` → `{"digits","confidence"}`
   - `POST /` form URL-encoded theo format az.class → byte-status + UTF response giống OCR gốc
 
-- [ ] **Step 1: Viết server** — `ThreadingHTTPServer` (mẫu như `label_tool.py`), load model 1 lần khi boot, port 8643. Parse bitmap payload từ form-encoded theo đúng schema Task 1 → dựng mảng binary → predict → trả response byte-level mimic.
-- [ ] **Step 2: Smoke test /solve** — POST base64 của 5 ảnh có nhãn → digits khớp ≥ 4/5.
+- [x] **Step 1: Viết server** — `ThreadingHTTPServer` (mẫu như `label_tool.py`), load model 1 lần khi boot, port 8643. Parse bitmap payload từ form-encoded theo đúng schema Task 1 → dựng mảng binary → predict → trả response byte-level mimic.
+- [x] **Step 2: Smoke test /solve** — POST base64 của 5 ảnh có nhãn → digits khớp ≥ 4/5.
   Run: `curl -s -X POST localhost:8643/solve -H 'Content-Type: application/json' -d "{\"imageBase64\":\"$(base64 -i <png>)\"}"`
-- [ ] **Step 3: Smoke test mimic OCR** — dựng request giả theo schema Task 1 → đối chiếu response byte-level với kỳ vọng từ bytecode.
+- [x] **Step 3: Smoke test mimic OCR** — dựng request giả theo schema Task 1 → đối chiếu response byte-level với kỳ vọng từ bytecode.
 - [ ] **Step 4: Commit**
   `git commit -m "feat(jar-integration): solver_server mimic OCR format + /solve endpoint"`
 
@@ -93,13 +93,13 @@
 - Consumes: URL gốc + URL mới (Task 1, 3).
 - Produces: JAR đã patch, mọi entry khác giữ nguyên byte-for-byte.
 
-- [ ] **Step 1: Viết patcher** — đọc `avatar-auto.jar` bằng `ZipFile`, với mỗi entry: nếu là class chứa URL target → tìm byte pattern của URL string constant (Java modified-UTF8: 2-byte length prefix + chars) → thay bằng URL mới. Ưu tiên URL mới pad cho bằng độ dài cũ để không đụng length prefix; nếu buộc đổi độ dài thì parse constant pool và cập nhật length prefix đúng chuẩn. Các entry khác ghi nguyên xi; giữ META-INF/MANIFEST.MF.
-- [ ] **Step 2: Verify patch** — extract class từ patched jar, grep URL mới; decompile lại xác nhận chỉ URL đổi.
+- [x] **Step 1: Viết patcher** — đọc `avatar-auto.jar` bằng `ZipFile`, với mỗi entry: nếu là class chứa URL target → tìm byte pattern của URL string constant (Java modified-UTF8: 2-byte length prefix + chars) → thay bằng URL mới. Ưu tiên URL mới pad cho bằng độ dài cũ để không đụng length prefix; nếu buộc đổi độ dài thì parse constant pool và cập nhật length prefix đúng chuẩn. Các entry khác ghi nguyên xi; giữ META-INF/MANIFEST.MF.
+- [x] **Step 2: Verify patch** — extract class từ patched jar, grep URL mới; decompile lại xác nhận chỉ URL đổi.
   Run: `../.venv-captcha312/bin/python tools/jar/patch_jar.py --in avatar-jar/avatar-auto.jar --out avatar-jar/avatar-auto-patched.jar`
   Expected: patched jar tạo thành công, đúng số entry như gốc.
 - [ ] **Step 3: Chạy JAR patched trong emulator** (cần user phối hợp) — captcha thật: solver log nhận request từ JAR → trả digits → JAR điền.
 - [ ] **Step 4: E2E live** — server game accept đáp án (xác minh cuối, chưa từng pass trước đây).
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
   `git commit -m "feat(jar-integration): patch_jar.py - redirect OCR URL tới solver local"`
 
 ## Rollback
