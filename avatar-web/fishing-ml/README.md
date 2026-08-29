@@ -56,12 +56,46 @@ never escape `data/phase2/` or point at a Phase A mutable root.
 |---------|--------|
 | `fishing-phase2-dataset-version` | `fishing_ml.dataset_version` |
 | `fishing-phase2-inference-contract` | `fishing_ml.inference_contract` |
+| `fishing-phase2-inference-service` | `fishing_ml.inference_service` |
 
 ```bash
 # Verify an inference request/response document (exit 1 on rejected).
 python -m fishing_ml.inference_contract check-request path/to/request.json
 python -m fishing_ml.inference_contract check-response path/to/response.json
 ```
+
+### Inference service (frozen candidate)
+
+`fishing-phase2-inference-service` loads **exactly one verified frozen Phase 2
+candidate** at startup and serves read-only contract-shaped inference over HTTP
+(POST `/infer`). It composes the Task 4 wire contract and the frozen-candidate
+loaders (``evaluate._inputs`` → ``verify_freeze``); it performs no training, no
+game/client/TX code, no per-request model selection, and no image persistence.
+Decoded PNG pixels stay in request memory; error bodies carry only a stable
+`code` + short `reason`.
+
+Startup verifies and loads the frozen candidate **once** — a missing, tampered, or
+revision-mismatched `--frozen-dir` fails closed and the service refuses to start
+(``verify_freeze``'s hash/manifest checks propagate as a startup error). The
+request body is size-bounded **before** parsing (`--max-body-bytes`), and each
+inference is guarded by `--timeout-ms` so a stuck request cannot hang the process.
+
+```bash
+# Serve one verified frozen candidate (Task 3 artifact dir) on 127.0.0.1:8080.
+fishing-phase2-inference-service \
+  --frozen-dir path/to/run/frozen \
+  --host 127.0.0.1 --port 8080 \
+  --max-body-bytes 960000 --timeout-ms 5000
+
+# Infer (contract request → contract response, schemaVersion 1):
+curl -s -X POST http://127.0.0.1:8080/infer \
+  -H 'Content-Type: application/json' \
+  -d '{"schemaVersion":1,"references":[{"index":0,"pngBase64":"..."}],"queries":[{"index":0,"pngBase64":"..."}]}'
+```
+
+Request/response shapes and error `code`s are identical to the contract documented
+above. `modelId` in the response is the frozen candidate's `runId`; the request
+cannot choose a model.
 
 The inference contract (`src/fishing_ml/inference_contract.py`) is the strictly-typed
 **wire schema** both the Python service (Task 5) and the Node shadow client (Task 7/8)
