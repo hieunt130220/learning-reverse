@@ -114,6 +114,50 @@ Request/response shapes and error `code`s are identical to the contract document
 above. `modelId` in the response is the frozen candidate's `runId`; the request
 cannot choose a model.
 
+### Inference replay (operational evidence)
+
+The dependency-light Python replay client consumes an explicitly supplied inference
+URL; it does not append `/infer`, retry, follow redirects, or select a model. The URL
+must be an absolute `http`/`https` URL without credentials or a fragment, and timeout
+configuration is bounded. Responses are size-capped and accepted only after strict
+Task 4 schema validation, request-relative index/duplicate checks, a non-empty
+`modelId`, and per-client model-ID pinning.
+
+Replay enumerates `<batches-root>/<batch-id>/manifest.json` directories in sorted
+order, validates schema-v1 manifests, PNGs, and checksums, then base64-encodes PNG
+bytes only in memory. A missing `imagesNew`, malformed batch, client timeout,
+unavailable endpoint, HTTP failure, oversized response, invalid response, or model
+identity change is isolated to that batch; later batches continue. Optional labels
+are read from `<labels-root>/<batch-id>.json`. Only a matching, complete reviewer
+label covering every query is ground truth; missing, ambiguous, foreign, malformed,
+or incomplete labels remain unknown and are never repaired or pseudo-labeled.
+
+```bash
+# The endpoint is the complete POST target; pass /infer explicitly.
+python -m fishing_ml.replay \
+  --batches-root path/to/raw-batches \
+  --labels-root path/to/labels \
+  --endpoint http://127.0.0.1:8080/infer \
+  --timeout-ms 5000
+```
+
+The command prints one deterministic aggregate JSON document to stdout. It reports
+batch/query/request counts; accepted, abstained, omitted, labeled, and unknown
+counts/rates (outcome rates cover successful response query outcomes, so pre-request
+or failed-request queries are not silently treated as abstentions); correct/wrong
+accepted counts only where complete reviewer ground truth
+exists; stable error counts; `R=<references>,Q=<queries>` breakdowns; observed model
+IDs and optional caller-supplied frozen checksums; and client-observed p50/p95/p99
+latencies. Percentiles use nearest rank over every terminal HTTP client call (success
+or failure), never the service-reported `latencyMs`. No accuracy claim is valid when
+labels are absent, and stub-server replay is operational/fault evidence only—not real
+checkpoint or matcher-accuracy evidence.
+
+Replay writes no report by default and never persists generated request JSON, PNG,
+base64, packet bytes, credentials, cookies, or account identity. It is read-only
+operational validation: it does not alter labels, thresholds, candidates, frozen
+artifacts, game state, client/opcode flows, or any TX sequence.
+
 The inference contract (`src/fishing_ml/inference_contract.py`) is the strictly-typed
 **wire schema** both the Python service (Task 5) and the Node shadow client (Task 7/8)
 speak. It performs validation + serialization only — no ML, no HTTP server, no image
