@@ -17,13 +17,9 @@ Chạy: ../../.venv-captcha312/bin/python tools/jar/patch_jar.py [--url URL]
 from __future__ import annotations
 
 import argparse
-import os
-import shutil
 import struct
-import subprocess
-import tempfile
 from pathlib import Path
-from zipfile import ZipFile, ZIP_DEFLATED
+from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 JAR_IN = ROOT / "avatar-jar" / "avatar-auto.jar"
@@ -162,21 +158,22 @@ def main() -> None:
         if name == CONFIG_ENTRY:
             print(f"  verify: {data.decode('utf-8')!r}")
 
-    # Không dùng ZipFile để repack toàn bộ JAR: MicroEmulator cũ yêu cầu
-    # metadata ZIP kiểu MS-DOS/Info-ZIP giống JAR build bằng Ant. Thay vào
-    # đó copy JAR gốc rồi dùng `zip -u` chỉ cập nhật đúng hai entry.
-    with tempfile.TemporaryDirectory(prefix="captcha-jar-") as tmp:
-        tmp_path = Path(tmp)
-        (tmp_path / RES).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / RES).write_bytes(new_res)
-        patched_fj = patch_fj_bytecode(dict(all_entries)["fJ.class"])
-        (tmp_path / "fJ.class").write_bytes(patched_fj)
-        shutil.copy2(JAR_IN, args.out)
-        subprocess.run(
-            ["/usr/bin/zip", "-q", "-u", str(Path(args.out).resolve()), RES, "fJ.class"],
-            cwd=tmp,
-            check=True,
-        )
+    # Repack JAR bằng Python ZipFile nhưng giữ nguyên metadata MS-DOS giống
+    # JAR gốc (create_system=0). MicroEmulator cũ đọc sai nếu dùng zip -u.
+    patched_fj = patch_fj_bytecode(dict(all_entries)["fJ.class"])
+    new_entries = {RES: new_res, "fJ.class": patched_fj}
+
+    with ZipFile(JAR_IN, "r") as src, ZipFile(args.out, "w", ZIP_DEFLATED) as dst:
+        for info in src.infolist():
+            data = new_entries.get(info.filename, src.read(info.filename))
+            # Giữ nguyên create_system=0, compress_type từ entry gốc
+            new_info = ZipInfo(info.filename, info.date_time)
+            new_info.compress_type = info.compress_type
+            new_info.create_system = 0  # MS-DOS
+            new_info.external_attr = info.external_attr
+            if info.flag_bits & 0x01:  # ZIP_ENCRYPTED
+                new_info.flag_bits |= 0x01
+            dst.writestr(new_info, data)
 
     print(f"\n✅ Đã ghi {args.out} ({Path(args.out).stat().st_size} bytes)")
     print(f"   Bản gốc giữ nguyên: {JAR_IN}")
