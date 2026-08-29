@@ -135,14 +135,18 @@ def patch_fj_bytecode(data: bytes) -> bytes:
     patched[i + 16] = 0x05
     print("  patch fJ.class: var5,var6 index 1->2 (auto OCR)")
 
-    # Patch ifeq 7290 -> goto 7290 de skip manual dialog va chay thang den OCR code.
-    # ifeq opcode 0x99 -> goto opcode 0xa7
-    goto_pattern = bytes.fromhex("990068")  # ifeq 7290
-    goto_idx = data.index(goto_pattern)
-    if patched[goto_idx] != 0x99:
-        raise SystemExit("!! patch_fj: expected ifeq opcode")
-    patched[goto_idx] = 0xa7  # goto
-    print(f"  patch fJ.class: ifeq->goto 7290 at offset {goto_idx}")
+    # Patch de skip manual dialog va chay thay OCR code:
+    # 1. Thay invokestatic if(I)Z (3 bytes) bang pop + nop + nop (3 bytes)
+    #    de consume boolean value ma khong can invoke method
+    # 2. Thay ifeq 7290 (3 bytes) bang goto 7290 (3 bytes) de nhay toi OCR code
+    # Pattern: iload 5 (15 05) invokestatic (b8 01 df) ifeq 7290 (99 00 68)
+    iload_invokestatic_ifeq = bytes.fromhex("1505b801df990068")
+    idx = data.index(iload_invokestatic_ifeq)
+    # Replace invokestatic if(I)Z with pop nop nop
+    patched[idx+2:idx+5] = bytes.fromhex("570000")
+    # Replace ifeq 7290 with goto 7290
+    patched[idx+5:idx+8] = bytes.fromhex("a70068")
+    print(f"  patch fJ.class: skip var5 check + goto 7290 at offset {idx}")
 
     return bytes(patched)
 
