@@ -103,21 +103,21 @@ def patch_config(entries: list[tuple[str, bytes]], new_url: str) -> list[tuple[s
 def patch_fj_bytecode(data: bytes) -> bytes:
     """Patch fJ.class: mọi captcha có ảnh -> luôn đi qua OCR worker (az).
 
-    Case -60 (cmd -60) khởi tạo:
-        var5 = do[1], var6 = do[1]
-    rồi chỉ auto OCR khi cả var5 và var6 khác 0. Ta đổi cả hai giá trị
-    initial từ do[1] (=0) thành do[2] (=1) — tức iconst_1 -> iconst_2 —
-    để vượt qua gate và luôn new az(...).
+    Theo docs/protocol/az-ocr-notes.md:
+    - Case -60 (cmd -60) trong class fJ khởi tạo var5 = do[1] (=0).
+    - Chỉ auto OCR khi var5 >= do[36] (=1) VÀ flag az.do:B != 0 (server
+      trả khi login) VÀ màn hình là al/bS. Nếu không -> bx.do.do(img)
+      hiện captcha nhập tay.
+    - Patch: đổi 1 byte iconst_1 -> iconst_2 khi load index vào var5.
+      Lúc đó var5 = do[2] (=1) luôn >= do[36] (=1) -> auto OCR trigger.
+      Gate az.do vẫn phải pass (server phải enable OCR) — KHÔNG bypass.
 
-    Pattern 20 bytes (duy nhất trong class — có prefix ldc #2; invokevirtual
-    String.length; pop2 đứng ngay trước + istore 6 theo sau):
+    Pattern 20 bytes (duy nhất trong class):
         12 02 b6 02 36 58      ldc #2; invokevirtual length; pop2
         b2 01 37 04 2e 36 05   getstatic do:[I; iconst_1; iaload; istore 5
         b2 01 37 04 2e 36 06   getstatic do:[I; iconst_1; iaload; istore 6
-    Patch cả hai byte iconst_1 (index 9 và 16) -> iconst_2 (05), đồng thời
-    bỏ qua hai gate `az.do` và `bX.do != null` ngay sau đó. Hai gate này
-    vẫn giữ nguyên kích thước instruction bằng `pop; nop; nop`, để branch
-    offsets của method không thay đổi.
+    Chỉ patch byte thứ 9 (iconst_1 -> iconst_2 cho var5), giữ nguyên var6
+    và gate az.do/bX.do.
     """
     pat = bytes.fromhex(
         "1202b60236" + "58"
@@ -130,28 +130,13 @@ def patch_fj_bytecode(data: bytes) -> bytes:
             f"!! patch_fj: tìm thấy {count} occurrence (cần đúng 1) — không patch"
         )
     i = data.index(pat)
-    # Pattern contains two iconst_1 instructions: var5 at +9 and var6 at +16.
+    # Chỉ đổi byte iconst_1 (0x04) -> iconst_2 (0x05) tại offset 9 (var5).
+    # Byte tại offset 16 (var6) giữ nguyên để không làm thay đổi flow khác.
     patched = bytearray(data)
+    if patched[i + 9] != 0x04:
+        raise SystemExit(f"!! patch_fj: byte tại offset 9 không phải iconst_1")
     patched[i + 9] = 0x05
-    patched[i + 16] = 0x05
-
-    # Sau var5/var6 là:
-    #   getstatic az.do; invokestatic if(I)Z; ifeq 7165
-    #   getstatic bX.do; invokestatic do(Object)Z; ifeq 7165
-    # Thay mỗi chuỗi 3-byte `ifeq target` bằng pop/nop/nop: bỏ boolean
-    # trên operand stack và luôn fall-through vào phần xử lý captcha.
-    gate1 = bytes.fromhex("b200c4b801df")  # az.do; if(I)Z
-    gate2 = bytes.fromhex("b200ecb801d9")  # bX.do; do(Object)Z
-    # Resolve the exact `ifeq` bytes by the known method bytecode sequence.
-    for gate in (gate1, gate2):
-        start = data.find(gate, i)
-        if start < 0:
-            raise SystemExit("!! patch_fj: không tìm thấy gate captcha")
-        branch = start + len(gate)
-        if patched[branch] != 0x99:
-            raise SystemExit("!! patch_fj: gate không phải ifeq")
-        patched[branch:branch + 3] = b"\x57\x00\x00"
-    print("  patch fJ.class: var5,var6 + 2 gate -> luôn auto OCR")
+    print("  patch fJ.class: var5 index 1->2 (auto OCR khi az.do enable)")
     return bytes(patched)
 
 
