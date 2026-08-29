@@ -38,7 +38,6 @@ body = sep1 + "".join(bitmap) + sep2 + str(w) + sep3 + str(h)
 - byte `1` (status): `1` = OK (gửi đáp án), `0`/`-1`/`3` = thông báo/error/update
 - Khi status `1`: tiếp `byte resultType` (0) + `UTF answer` (4 chữ số)
 - Khi status `0`/`-1`/`3`: tiếp các trường UTF message/metadata (KHÔNG phải đáp án)
-> **Bug đã fix 2026-08-29:** `solver_server.py` cũ trả `0` + UTF (sai) → az.class nhận status 0 → không gửi đáp án → treo dialog "Xin chờ". Sửa thành `1,0` + UTF.
 
 ## Key Findings
 - URL tu br.do(index) - config XOR-encoded
@@ -50,23 +49,14 @@ body = sep1 + "".join(bitmap) + sep2 + str(w) + sep3 + str(h)
 2. Patch JAR doi URL sang 127.0.0.1:8643
 3. Fallback: patch bytecode hoac redirect DNS
 
-## Patch auto-fill (round 2, finding sau khi test MicroEmulator)
+## Patch Bytecode fJ.class (Bypass OCR Gate & Jump Fix)
 
-- JAR dung CUNG URL config (key 2=) cho ca: tai du lieu Auto luc khoi dong
-  VA gui captcha OCR -> solver server phai la transparent proxy cho request
-  khong phai bitmap (solver_server.py v2).
-- cmd -60 handler nam trong class **fJ** (fJ hoa, khong phai fj):
-  var5 = do[1](=0), var6 = do[1]; chi auto OCR khi var >= do[36](=1)
-  VA flag az.do:B != 0 (server tra khi login) VA man hinh la al/bS.
-  Neu khong -> bx.do.do(img) hien captcha nhap tay.
-- Patch: 1 byte trong fJ.class — iconst_1 -> iconst_2 (offset site 7087,
-  pattern 20-byte duy nhat) -> var5 = do[2](=1) luon vuot nguong ->
-  moi captcha co anh deu new az(...) -> goi solver -> tu dien.
-  Round 2b: patch thêm 2x ifeq→ifne (target 19088) để đảo logic hiển thị dialog nhập tay;
-  bản patch hiện tại (`tools/jar/patch_jar.py`) đã gồm cả 2 phần.
-
-## Bugfix 2026-08-29 (dialog "Xin chờ" treo)
-
-- Nguyên nhân 1: `solver_server.py` trả `status 0` → az.class không gửi đáp án → treo.
-- Nguyên nhân 2: bitmap JAR `1=nền,0=chữ` ngược với model `1=chữ` (alpha>0) → model đoán sai → server game reject → treo "Xin chờ".
-- Fix: trả `01 00` + UTF (status 1, resultType 0) và `arr = 1 - arr` trước denoise.
+- cmd -60 handler nằm trong class **fJ**:
+  - Gốc: `var5 = do[1]` (=0), `var6 = do[1]` (=0).
+  - Gate kiểm tra: `getstatic az.do:B; if:(I)Z; ifeq 7165`. Nếu server không bật cờ OCR (`az.do:B == 0`), execution nhảy qua việc gán `var5/var6 = 1`, làm 2 biến này luôn bằng 0.
+- Patch trong `tools/jar/patch_jar.py`:
+  1. Đổi `iconst_1` -> `iconst_2` cho `var5` và `var6` để mặc định luôn là `do[2] = 1`.
+  2. NOP 9 bytes kiểm tra `az.do:B` (`b2 00 c4 b8 01 df 99 00 3d` -> 9x `0x00`) để bypass hoàn toàn OCR gate từ server.
+  3. Giữ nguyên opcode `ifeq` (`0x99`) tại offset `18973` và `18981` để khi `var5 != 0` hoặc `var6 != 0`, game nhảy thẳng qua manual dialog vào khối OCR (`7290`).
+  4. Runtime attach cho thấy `al.do` đã chứa instance `az`, nhưng screen tick không gọi `az.if()` khi overlay "Xin chờ" active. Gọi phản chiếu `az.if()` trên chính instance này lập tức tạo POST captcha và solver trả `4104` (`conf 0.966`).
+  5. Fix cuối: append `Methodref az.if:()V` vào constant pool và thay `putstatic al.do/bS.do + invokestatic wakeup` bằng `invokevirtual az.if() + nop + nop + nop`. OCR request vì thế chạy ngay trong cmd -60 handler, không phụ thuộc screen scheduler.

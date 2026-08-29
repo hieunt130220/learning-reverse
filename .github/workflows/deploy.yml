@@ -23,6 +23,8 @@ jobs:
           RAW_PORT: ${{ secrets.SERVER_PORT }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/avatar-web' }}
         run: |
+          set -euo pipefail
+
           # 1. Làm sạch và chuẩn hóa biến môi trường
           CLEAN_USER=$(echo "$RAW_USER" | tr -d '[:space:]')
           CLEAN_HOST=$(echo "$RAW_HOST" | tr -d '[:space:]')
@@ -72,7 +74,7 @@ jobs:
 
           # 4. Kết nối SSH và chạy script deploy
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p "$TARGET_PORT" "$TARGET_USER@$TARGET_HOST" "TARGET_DIR='$TARGET_DIR' bash -s" << 'EOF'
-            set -e
+            set -euo pipefail
 
             echo "========================================="
             echo "🚀 Bắt đầu quá trình tự động Deploy trên VPS..."
@@ -98,27 +100,86 @@ jobs:
               BASE_PATH="."
             fi
 
-            # 3. Triển khai Backend Server
-            echo "📦 [1/2] Đang cập nhật Backend Server..."
+            SOLVER_ROOT="$TARGET_DIR/captcha-solver"
+            SOLVER_VENV="$TARGET_DIR/.venv-captcha"
+            PUBLIC_SOLVER_URL="https://avt3xauto.duckdns.org/api/solver/"
+
+            echo "🔎 Đang kiểm tra runtime assets của captcha solver..."
+            for required_file in \
+              "$SOLVER_ROOT/solver_server.py" \
+              "$SOLVER_ROOT/requirements-runtime.txt" \
+              "$SOLVER_ROOT/checkpoints/crnn_ctc.pt" \
+              "$SOLVER_ROOT/data/cached_chip_config.bin" \
+              "$SOLVER_ROOT/data/cached_data_php.bin" \
+              "$SOLVER_ROOT/data/cached_teacher_php.bin"
+            do
+              if [ ! -f "$required_file" ]; then
+                echo "❌ Thiếu runtime asset: $required_file"
+                exit 1
+              fi
+            done
+
+            # 3. Triển khai Captcha Solver
+            echo "🧠 [1/3] Đang cập nhật Captcha Solver..."
+            python3 -m venv "$SOLVER_VENV"
+            "$SOLVER_VENV/bin/python" -m pip install --upgrade pip
+            "$SOLVER_VENV/bin/python" -m pip install \
+              -r "$SOLVER_ROOT/requirements-runtime.txt"
+            "$SOLVER_VENV/bin/python" -c \
+              "import sys, torch, numpy, PIL; print(sys.version); print(torch.__version__, numpy.__version__, PIL.__version__)"
+
+            cd "$SOLVER_ROOT"
+            pm2 delete captcha-solver >/dev/null 2>&1 || true
+            pm2 start solver_server.py \
+              --name captcha-solver \
+              --interpreter "$SOLVER_VENV/bin/python" \
+              -- \
+              --host 127.0.0.1 \
+              --port 8643 \
+              --public-base-url "$PUBLIC_SOLVER_URL"
+
+            if ! curl --fail --silent --show-error \
+              --retry 12 --retry-delay 2 --retry-all-errors \
+              http://127.0.0.1:8643/health
+            then
+              echo "❌ Captcha solver local health check thất bại"
+              pm2 logs captcha-solver --lines 120 --nostream || true
+              exit 1
+            fi
+
+            # 4. Triển khai Backend Server
+            echo "📦 [2/3] Đang cập nhật Backend Server..."
             cd "$TARGET_DIR/$BASE_PATH/server"
             npm install
             npm run build
 
             # Reload lại tiến trình PM2 (hoặc start mới nếu chưa tồn tại)
-            if pm2 list | grep -q "avatar-web"; then
+            if pm2 describe avatar-web >/dev/null 2>&1; then
               echo "🔄 Đang reload PM2 service avatar-web..."
               pm2 reload avatar-web --update-env
             else
               echo "▶️ Đang khởi động PM2 service avatar-web lần đầu..."
               pm2 start dist/index.js --name "avatar-web"
             fi
-            pm2 save
 
-            # 4. Triển khai Frontend Web UI
-            echo "🎨 [2/2] Đang cập nhật Frontend Web UI..."
+            if ! curl --fail --silent --show-error \
+              --retry 12 --retry-delay 2 --retry-all-errors \
+              "${PUBLIC_SOLVER_URL}health"
+            then
+              echo "❌ Public captcha solver health check thất bại"
+              pm2 logs captcha-solver --lines 120 --nostream || true
+              pm2 logs avatar-web --lines 120 --nostream || true
+              exit 1
+            fi
+
+            # 5. Triển khai Frontend Web UI
+            echo "🎨 [3/3] Đang cập nhật Frontend Web UI..."
             cd "$TARGET_DIR/$BASE_PATH/web"
             npm install
             npm run build
+
+            pm2 save
+            pm2 status
 
             echo "========================================="
             echo "✅ Deploy hoàn tất thành công 100%!"

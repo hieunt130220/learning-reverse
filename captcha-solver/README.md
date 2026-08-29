@@ -16,6 +16,78 @@ PY=.venv-captcha312/bin/python       # đã cài torch/pillow/numpy
 $PY -c "import torch, PIL, numpy; print('ok')"
 ```
 
+## Chạy Resolver API
+
+Runtime production dùng `requirements-runtime.txt` với Python 3.12, PyTorch CPU,
+NumPy và Pillow được pin đúng phiên bản đã verify. Resolver cần bốn assets:
+
+- `checkpoints/crnn_ctc.pt`
+- `data/cached_chip_config.bin`
+- `data/cached_data_php.bin`
+- `data/cached_teacher_php.bin`
+
+Chạy local cho MicroEmulator/JAR local:
+
+```bash
+cd /Users/hieunt/learning-reverse
+.venv-captcha312/bin/python captcha-solver/solver_server.py \
+  --host 127.0.0.1 \
+  --port 8643 \
+  --public-base-url http://127.0.0.1:8643/
+
+curl -fsS http://127.0.0.1:8643/health
+```
+
+Trên production, resolver chỉ bind loopback và được public qua raw proxy của
+`avatar-web`:
+
+```text
+https://avt3xauto.duckdns.org/api/solver/
+  -> avatar-web
+  -> http://127.0.0.1:8643/
+```
+
+PM2 command tương ứng:
+
+```bash
+pm2 start captcha-solver/solver_server.py \
+  --name captcha-solver \
+  --interpreter /var/www/avatar-web/.venv-captcha/bin/python \
+  -- \
+  --host 127.0.0.1 \
+  --port 8643 \
+  --public-base-url https://avt3xauto.duckdns.org/api/solver/
+```
+
+Health checks:
+
+```bash
+curl -fsS http://127.0.0.1:8643/health
+curl -fsS https://avt3xauto.duckdns.org/api/solver/health
+```
+
+Production được deploy bằng `.github/workflows/deploy.yml` và repository secret
+`SERVER_SSH_KEY`; SSH key trên máy local hiện không được VPS chấp nhận.
+
+## Build JAR Resolver
+
+Giữ hai output riêng để rollback nhanh:
+
+```bash
+# Local resolver
+python3 tools/jar/patch_jar.py \
+  --url http://127.0.0.1:8643/ \
+  --out avatar-jar/avatar-auto-patched.jar
+
+# Production resolver
+python3 tools/jar/patch_jar.py \
+  --url https://avt3xauto.duckdns.org/api/solver/ \
+  --out avatar-jar/avatar-auto-production.jar
+```
+
+- Dùng `avatar-auto-production.jar` khi không chạy resolver local.
+- Rollback về `avatar-auto-patched.jar` để debug với resolver trên máy hiện tại.
+
 ## Pipeline (6 bước)
 
 ```bash
@@ -81,3 +153,5 @@ $PY -m src.predict --image ../avatar-web/server/captcha-dataset/<file>.png \
 | `src/train.py` | Vòng lặp CTC training, lưu checkpoint kèm charset |
 | `src/predict.py` | Suy luận (greedy decode) |
 | `src/evaluate.py` | Bảng đánh giá exact-match + per-char |
+| `solver_server.py` | HTTP solver, offline cache và config URL rewrite |
+| `requirements-runtime.txt` | Runtime dependencies pin cho VPS production |

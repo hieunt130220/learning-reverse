@@ -41,3 +41,11 @@ avatar-web/fishing-ml/artifacts/*/
 avatar-web/server/captcha-dataset/
 # Python venv
 .venv-captcha312/
+
+# --- captcha resolver production runtime ---
+!captcha-solver/data/
+captcha-solver/data/*
+!captcha-solver/data/cached_chip_config.bin
+!captcha-solver/data/cached_data_php.bin
+!captcha-solver/data/cached_teacher_php.bin
+!captcha-solver/checkpoints/crnn_ctc.pt

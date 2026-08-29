@@ -13,6 +13,7 @@ import { sessionRouter } from './session/routes.js';
 import { shopRouter } from './session/shopRoutes.js';
 import { attachWebSocket, type WsHub } from './ws.js';
 import { captchaRouter } from './game/captchaRoute.js';
+import { captchaSolverProxy } from './game/captchaSolverProxy.js';
 
 // Ném ngay nếu thiếu MASTER_KEY / INVITE_CODE — dừng còn hơn lặng lẽ chạy bằng
 // khoá mặc định rồi ghi cả DB bằng nó.
@@ -24,6 +25,7 @@ const app = express();
 // Rate limit đếm theo IP; sau reverse proxy thì `req.ip` phải là IP thật chứ
 // không phải 127.0.0.1, nếu không cả thế giới dùng chung một bộ đếm.
 app.set('trust proxy', true);
+app.use('/api/solver', captchaSolverProxy());
 // Captcha upload từ J2ME jar cần raw body, mount trước json để không bị json parser nuốt
 app.use('/api/captcha', captchaRouter());
 app.use(express.json());

@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Patch avatar-auto.jar → avatar-auto-patched.jar (trỏ OCR về solver local).
+"""Patch avatar-auto.jar thành JAR dùng captcha resolver được chỉ định.
 
 Cách hoạt động (xem docs/protocol/az-ocr-notes.md):
 - Config OCR nằm trong resource `normal/lg.png` (archive packed, XOR key
   'NguyenHuuQuyet'), entry `u.png` chứa text `0=...|1=...|2=<URL OCR>|...`.
-- Patch: đổi value của key `2` thành URL solver local (mặc định
+- Patch: đổi value của key `2` thành URL solver (mặc định local
   http://127.0.0.1:8643/), rebuild entry u.png + offsets, ghi JAR mới.
 - Bản gốc KHÔNG bị đụng vào. Cấu trúc archive giữ nguyên nên br.class
   đọc bình thường.
+- Patch fJ.class bytecode:
+  1. Gán default var5 = do[2] (=1) và var6 = do[2] (=1) bằng iconst_2.
+  2. NOP 9 bytes kiểm tra cờ az.do:B từ server để bypass hoàn toàn gate OCR.
+  3. Giữ nguyên ifeq (0x99) nhảy thẳng vào khối khởi tạo OCR worker az,
+     rồi gọi az.if() ngay thay vì chờ screen tick đang bị dialog chặn.
 
-⚠️ Lưu ý: server game có thể đẩy config override lúc login (key "2=") —
-khi đó cần patch bytecode (xem notes §6). Verify bằng live capture.
-
-Chạy: ../../.venv-captcha312/bin/python tools/jar/patch_jar.py [--url URL]
+Chạy:
+    python3 tools/jar/patch_jar.py [--url URL] [--out OUTPUT_JAR]
 """
 from __future__ import annotations
 
@@ -99,22 +102,57 @@ def patch_config(entries: list[tuple[str, bytes]], new_url: str) -> list[tuple[s
 def patch_fj_bytecode(data: bytes) -> bytes:
     """Patch fJ.class: mọi captcha có ảnh -> luôn đi qua OCR worker (az).
 
-    Theo docs/protocol/az-ocr-notes.md:
-    - Case -60 (cmd -60) trong class fJ khởi tạo var5 = do[1] (=0).
-    - Chỉ auto OCR khi var5 >= do[36] (=1) VÀ flag az.do:B != 0 (server
-      trả khi login) VÀ màn hình là al/bS. Nếu không -> bx.do.do(img)
-      hiện captcha nhập tay.
-    - Patch: đổi 1 byte iconst_1 -> iconst_2 khi load index vào var5.
-      Lúc đó var5 = do[2] (=1) luôn >= do[36] (=1) -> auto OCR trigger.
-      Gate az.do vẫn phải pass (server phải enable OCR) — KHÔNG bypass.
-
-    Pattern 20 bytes (duy nhất trong class):
+    Chi tiết:
+    - Offset i:
         12 02 b6 02 36 58      ldc #2; invokevirtual length; pop2
         b2 01 37 04 2e 36 05   getstatic do:[I; iconst_1; iaload; istore 5
         b2 01 37 04 2e 36 06   getstatic do:[I; iconst_1; iaload; istore 6
-    Patch CA HAI byte iconst_1 (offset 9 va 16) -> iconst_2 (05) de ca
-    var5 = do[2] (=1) va var6 = do[2] (=1). OCR chi chay khi ca 2 != 0.
+    1. Patch iconst_1 -> iconst_2 cho cả var5 (offset +9) và var6 (offset +16).
+       Lúc này var5 = do[2] (=1) và var6 = do[2] (=1) làm giá trị mặc định.
+    2. NOP 9 bytes kiểm tra cờ az.do:B từ server (offset +20 đến +28):
+       b2 00 c4 b8 01 df 99 00 3d -> 9 bytes 0x00 (NOP).
+       Execution rơi thẳng vào kiểm tra bX.do instanceof al / bS mà không phụ thuộc server flag.
+    3. Giữ nguyên ifeq (0x99) ở các lệnh jump tới 7290 (offset +100 và +108).
+    4. Thêm Methodref az.if:()V vào cuối constant pool, rồi thay hai chuỗi
+       putstatic al.do/bS.do + invokestatic wakeup thành invokevirtual az.if
+       + 3 NOP. Stack effect và độ dài bytecode không đổi.
     """
+    cp_count = int.from_bytes(data[8:10], "big")
+    cp_end = 10
+    cp_index = 1
+    while cp_index < cp_count:
+        tag = data[cp_end]
+        cp_end += 1
+        if tag == 1:  # Utf8
+            length = int.from_bytes(data[cp_end:cp_end + 2], "big")
+            cp_end += 2 + length
+        elif tag in (3, 4):  # Integer, Float
+            cp_end += 4
+        elif tag in (5, 6):  # Long, Double — chiếm hai constant-pool slots
+            cp_end += 8
+            cp_index += 1
+        elif tag in (7, 8, 16, 19, 20):
+            cp_end += 2
+        elif tag in (9, 10, 11, 12, 17, 18):
+            cp_end += 4
+        elif tag == 15:
+            cp_end += 3
+        else:
+            raise SystemExit(f"!! patch_fj: constant-pool tag không hỗ trợ: {tag}")
+        cp_index += 1
+
+    # fJ constant pool đã có Class #64 = az và NameAndType #784 = if:()V.
+    # Append Methodref mới để không thay đổi index của các entry hiện có.
+    az_if_methodref = cp_count
+    methodref_entry = bytes([10]) + struct.pack(">HH", 64, 784)
+    data = (
+        data[:8]
+        + struct.pack(">H", cp_count + 1)
+        + data[10:cp_end]
+        + methodref_entry
+        + data[cp_end:]
+    )
+
     pat = bytes.fromhex(
         "1202b60236" + "58"
         + "b20137" + "04" + "2e3605"
@@ -126,37 +164,69 @@ def patch_fj_bytecode(data: bytes) -> bytes:
             f"!! patch_fj: tìm thấy {count} occurrence (cần đúng 1) — không patch"
         )
     i = data.index(pat)
-    # Patch CA HAI iconst_1 (0x04) -> iconst_2 (0x05) cho var5 (offset 9) va var6 (offset 16).
-    # Ca 2 deu = do[2] = 1 -> OCR gate var5!=0 AND var6!=0 passed.
     patched = bytearray(data)
+
+    # 1. Patch iconst_1 (0x04) -> iconst_2 (0x05) cho var5 và var6
     if patched[i + 9] != 0x04 or patched[i + 16] != 0x04:
-        raise SystemExit(f"!! patch_fj: byte khong phai iconst_1")
+        raise SystemExit(f"!! patch_fj: byte không phải iconst_1")
     patched[i + 9] = 0x05
     patched[i + 16] = 0x05
-    print("  patch fJ.class: var5,var6 index 1->2 (auto OCR)")
+    print("  patch fJ.class: var5, var6 default index 1->2 (do[2]=1)")
 
-    # Fix logic dao nguoc: doi ifeq (0x99) thanh ifne (0x9c)
-    # Tim ifeq instruction ma branch toi OCR code (offset 19088)
-    count = 0
-    for offset in range(i, i + 120):
-        if data[offset] == 0x99:  # ifeq opcode
-            branch_offset = int.from_bytes(data[offset+1:offset+3], 'big', signed=True)
-            target = offset + 3 + branch_offset
-            if target == 19088:  # OCR code
-                patched[offset] = 0x9c  # ifeq -> ifne
-                count += 1
-    print(f"  patch fJ.class: ifeq->ifne x{count}")
-    if count != 2:
-        raise SystemExit(f"!! patch_fj: expected 2 ifeq to OCR, found {count}")
+    # 2. NOP 9 bytes của az.do:B gate check: b2 00 c4 b8 01 df 99 00 3d
+    az_gate_pat = bytes.fromhex("b200c4b801df99003d")
+    if patched[i + 20 : i + 29] != az_gate_pat:
+        raise SystemExit(f"!! patch_fj: không khớp pattern az.do:B check")
+    for k in range(9):
+        patched[i + 20 + k] = 0x00  # NOP
+    print("  patch fJ.class: NOP 9 bytes az.do:B server check (bypass OCR gate)")
+
+    # 3. Đảm bảo các lệnh jump tới khối OCR giữ nguyên opcode ifeq (0x99)
+    # Offset +100 (18973) và +108 (18981)
+    ifeq1_offset = i + 100
+    ifeq2_offset = i + 108
+    if patched[ifeq1_offset] != 0x99 or patched[ifeq2_offset] != 0x99:
+        raise SystemExit(f"!! patch_fj: opcode jump không phải ifeq (0x99)")
+    print("  patch fJ.class: giữ nguyên ifeq (0x99) nhảy thẳng vào OCR worker block")
+
+    # 4. az instance đang được giữ trong al.do/bS.do nhưng popup "Xin chờ"
+    # chặn screen tick, nên az.if() không bao giờ chạy. Gọi trực tiếp ngay sau
+    # constructor; thay đúng 6 bytes nên không cần sửa branch offsets/StackMap.
+    al_worker = bytes.fromhex("b300b1b8018a")  # putstatic al.do; invokestatic aQ.for
+    bs_worker = bytes.fromhex("b300dab8018e")  # putstatic bS.do; invokestatic aQ.this
+    direct_call = bytes([0xB6]) + struct.pack(">H", az_if_methodref) + b"\x00\x00\x00"
+    if patched.count(al_worker) != 1 or patched.count(bs_worker) != 1:
+        raise SystemExit("!! patch_fj: không tìm thấy đúng một OCR holder/wakeup sequence")
+    patched = bytearray(bytes(patched).replace(al_worker, direct_call, 1))
+    patched = bytearray(bytes(patched).replace(bs_worker, direct_call, 1))
+    print(f"  patch fJ.class: gọi trực tiếp invokevirtual #{az_if_methodref} az.if() cho al/bS")
 
     return bytes(patched)
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default=DEFAULT_URL)
-    ap.add_argument("--out", default=str(JAR_OUT))
+    ap = argparse.ArgumentParser(
+        description="Patch Avatar Auto JAR để gọi captcha resolver được chỉ định",
+    )
+    ap.add_argument(
+        "--url",
+        default=DEFAULT_URL,
+        help=f"base URL của captcha resolver (default: {DEFAULT_URL})",
+    )
+    ap.add_argument(
+        "--out",
+        default=str(JAR_OUT),
+        help=f"đường dẫn JAR output (default: {JAR_OUT})",
+    )
     args = ap.parse_args()
+
+    target_url = args.url.strip()
+    if not target_url:
+        ap.error("--url không được rỗng")
+    target_url = target_url.rstrip("/") + "/"
+    output_path = Path(args.out).expanduser().resolve()
+    print(f"Target resolver URL: {target_url}")
+    print(f"Output JAR: {output_path}")
 
     with ZipFile(JAR_IN) as jar:
         raw_res = jar.read(RES)
@@ -165,7 +235,7 @@ def main() -> None:
 
     sub_entries, _ = parse_archive(raw_res)
     print(f"{RES}: {len(sub_entries)} entries: {[n for n, _ in sub_entries]}")
-    patched_sub = patch_config(sub_entries, args.url)
+    patched_sub = patch_config(sub_entries, target_url)
     new_res = build_archive(patched_sub)
 
     # verify round-trip ngay: parse lại config từ archive mới
@@ -179,7 +249,7 @@ def main() -> None:
     patched_fj = patch_fj_bytecode(dict(all_entries)["fJ.class"])
     new_entries = {RES: new_res, "fJ.class": patched_fj}
 
-    with ZipFile(JAR_IN, "r") as src, ZipFile(args.out, "w", ZIP_DEFLATED) as dst:
+    with ZipFile(JAR_IN, "r") as src, ZipFile(output_path, "w", ZIP_DEFLATED) as dst:
         for info in src.infolist():
             data = new_entries.get(info.filename, src.read(info.filename))
             # Giữ nguyên create_system=0, compress_type từ entry gốc
@@ -191,7 +261,7 @@ def main() -> None:
                 new_info.flag_bits |= 0x01
             dst.writestr(new_info, data)
 
-    print(f"\n✅ Đã ghi {args.out} ({Path(args.out).stat().st_size} bytes)")
+    print(f"\n✅ Đã ghi {output_path} ({output_path.stat().st_size} bytes)")
     print(f"   Bản gốc giữ nguyên: {JAR_IN}")
 
 
