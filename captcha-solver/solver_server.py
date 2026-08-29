@@ -38,6 +38,12 @@ LOG_FILE = "/tmp/solver.log"
 _XOR_KEY = b"NguyenHuuQuyet"
 _LOG_LOCK = threading.Lock()
 _MODEL_LOCK = threading.Lock()
+# OFFLINE: không gọi chip.vcdn.io.vn ra ngoài (tránh treo 20s khi chip chậm)
+OFFLINE = True
+CACHED_DIR = Path(__file__).resolve().parent / "data"
+CACHED_CONFIG = CACHED_DIR / "cached_chip_config.bin"  # 1070 bytes đã patch 127.0.0.1:8643
+CACHED_DATA_PHP = CACHED_DIR / "cached_data_php.bin"
+CACHED_TEACHER = CACHED_DIR / "cached_teacher_php.bin"
 
 
 def _xor(data: bytes) -> bytes:
@@ -148,21 +154,78 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def _proxy(self, body: bytes | None) -> None:
-        """Forward request về ORIGIN, trả response gốc byte-for-byte."""
-        # PATH MAPPING FIX (2026-08-29): JAR đã patch trỏ các URL chip
-        #   http://chip.vcdn.io.vn/avatar/full/captcha.php
-        #   -> http://127.0.0.1:8643/avatar/full/captcha.php
-        # nên self.path sẽ là "/avatar/full/captcha.php". Nếu dùng
-        # ORIGIN + path sẽ thành "/avatar/full/avatar/full/..." (duplicate) -> 404 -> treo "Xin chờ".
-        # Cần map đúng về host gốc.
+        """Forward request về ORIGIN, trả response gốc byte-for-byte.
+        OFFLINE=True -> KHÔNG gọi chip.vcdn.io.vn ra ngoài, phục vụ từ cache cục bộ để tránh treo 20s.
+        """
+        # 1. Nếu là config hoặc data đã cache -> trả cache ngay, không gọi chip
+        # path có thể chứa query string (vd /avatar/full/data.php?_t=...)
+        p = self.path.split("?")[0]
+        try:
+            if p in ("", "/", "/avatar/full", "/avatar/full/"):
+                if CACHED_CONFIG.exists():
+                    data = CACHED_CONFIG.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    log(f"CACHE  {self.command} {self.path} -> {len(data)} bytes (cached_chip_config, KHÔNG gọi chip)")
+                    return
+            elif p == "/avatar/full/data.php":
+                if CACHED_DATA_PHP.exists():
+                    data = CACHED_DATA_PHP.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    log(f"CACHE  {self.command} {self.path} -> {len(data)} bytes (cached_data_php, KHÔNG gọi chip)")
+                    return
+            elif p == "/avatar/teacher.php":
+                if CACHED_TEACHER.exists():
+                    data = CACHED_TEACHER.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    log(f"CACHE  {self.command} {self.path} -> {len(data)} bytes (cached_teacher, KHÔNG gọi chip)")
+                    return
+            elif p == "/avatar/avdata.php":
+                # avdata có query _t thay đổi, trả cache nếu có, không thì 200 empty để không treo
+                if (CACHED_DIR / "cached_avdata.bin").exists():
+                    data = (CACHED_DIR / "cached_avdata.bin").read_bytes()
+                else:
+                    # dữ liệu mẫu 15 bytes lấy từ chip, trả về để client không treo
+                    data = b"LgtHek:\x14\x05\x0cyetN"
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                log(f"CACHE  {self.command} {self.path} -> {len(data)} bytes (avdata offline, KHÔNG gọi chip)")
+                return
+        except Exception as e:
+            log(f"CACHE FAIL {self.path}: {e}")
+
+        if OFFLINE:
+            # Không gọi chip, trả 200 empty nhanh để không treo Xin chờ 20s (thay vì 502)
+            log(f"OFFLINE {self.command} {self.path} -> 200 empty (không gọi chip.vcdn.io.vn)")
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            except Exception:
+                pass
+            return
+
+        # ONLINE fallback (khi OFFLINE=False): forward về chip
         if self.path in ("", "/"):
             url = ORIGIN
         elif self.path.startswith("/avatar/"):
-            # Giữ nguyên path + query, chỉ đổi host về chip
-            # ORIGIN = http://chip.vcdn.io.vn/avatar/full/ -> host = http://chip.vcdn.io.vn
             url = "http://chip.vcdn.io.vn" + self.path
         else:
-            # Fallback: các path khác (hiếm) nối vào ORIGIN
             path = self.path
             url = ORIGIN.rstrip("/") + "/" + path.lstrip("/")
         req = urllib.request.Request(url, data=body, method=self.command)
@@ -173,8 +236,6 @@ class Handler(BaseHTTPRequestHandler):
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
                 data = r.read()
-                # Nếu là config của chip (chứa URL OCR), patch host về solver để không bị server override
-                # Config được XOR, nên thử patch mọi response có chứa chip host sau xor
                 patched = _patch_chip_config(data)
                 if patched is not data:
                     data = patched
