@@ -97,6 +97,38 @@ def patch_config(entries: list[tuple[str, bytes]], new_url: str) -> list[tuple[s
     return out
 
 
+def patch_fj_bytecode(data: bytes) -> bytes:
+    """Patch fJ.class: mọi captcha có ảnh -> luôn đi qua OCR worker (az).
+
+    Case -60 (cmd -60) khởi tạo:
+        var5 = do[1]  →  var6 = do[1]
+    rồi chỉ auto OCR khi var5/var6 >= do[36] (được bật qua flag server/màn
+    hình auto). Ta đổi initial var5 từ do[1] (=0) thành do[2] (=1) — tức
+    iconst_1 -> iconst_2 — để var5 luôn vượt ngưỡng -> luôn new az(...).
+
+    Pattern 20 bytes (duy nhất trong class — có prefix ldc #2; invokevirtual
+    String.length; pop2 đứng ngay trước + istore 6 theo sau):
+        12 02 b6 02 36 58      ldc #2; invokevirtual length; pop2
+        b2 01 37 04 2e 36 05   getstatic do:[I; iconst_1; iaload; istore 5
+        b2 01 37 04 2e 36 06   getstatic do:[I; iconst_1; iaload; istore 6
+    Patch byte iconst_1 (index 9) -> iconst_2 (05).
+    """
+    pat = bytes.fromhex(
+        "1202b60236" + "58"
+        + "b20137" + "04" + "2e3605"
+        + "b20137" + "04" + "2e3606"
+    )
+    count = data.count(pat)
+    if count != 1:
+        raise SystemExit(
+            f"!! patch_fj: tìm thấy {count} occurrence (cần đúng 1) — không patch"
+        )
+    i = data.index(pat)
+    patched = data[: i + 9] + b"\x05" + data[i + 10 :]
+    print("  patch fJ.class: iconst_1 -> iconst_2 (var5 = do[2], luôn auto OCR)")
+    return patched
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default=DEFAULT_URL)
@@ -121,7 +153,11 @@ def main() -> None:
 
     with ZipFile(args.out, "w", ZIP_DEFLATED) as jar:
         for name, data in all_entries:
-            jar.writestr(name, new_res if name == RES else data)
+            if name == RES:
+                data = new_res
+            elif name == "fJ.class":
+                data = patch_fj_bytecode(data)
+            jar.writestr(name, data)
 
     print(f"\n✅ Đã ghi {args.out} ({Path(args.out).stat().st_size} bytes)")
     print(f"   Bản gốc giữ nguyên: {JAR_IN}")
