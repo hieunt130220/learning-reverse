@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import socket
 import threading
 from collections.abc import Mapping
@@ -29,9 +30,18 @@ from .inference_contract import (
 # A legitimate Task 4 request contains at most 960,000 decoded PNG bytes.  Base64
 # expansion plus the small JSON envelope remains below this wire-size ceiling.
 _MAX_REQUEST_BYTES = 1_500_000
+# Base64 is 4 chars per 3 bytes; the decoded budget used by the contract is
+# (64+64)*7500 = 960,000 bytes.  A preflight counts only base64 characters, so
+# cap base64 length at the decoded budget * 4/3 (rounded up) without decoding.
+_MAX_DECODED_PNG_BYTES = (64 + 64) * 7500
+_MAX_BASE64_CHARS = _MAX_DECODED_PNG_BYTES * 4 // 3 + 4
 _MAX_RESPONSE_BYTES = 1_048_576
 _MAX_TIMEOUT_MS = 120_000
 _MAX_MODEL_ID_CHARS = 1024
+# JSON documents are bounded before parsing so a deeply nested body raises a
+# stable error instead of RecursionError escaping the batch boundary.
+_MAX_RESPONSE_DOC_BYTES = 1_048_576
+_MAX_JSON_DOC_BYTES = 2_000_000
 
 CLIENT_ERROR_CODES = frozenset(
     {
@@ -107,6 +117,29 @@ def _validate_endpoint(endpoint: object) -> str:
     return endpoint
 
 
+def _read_bounded(path: str, limit: int) -> bytes:
+    """Read at most ``limit`` bytes from a regular, non-symlinked file."""
+
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        raise InferenceClientError("invalid_response", "unsafe_file_path") from None
+    try:
+        chunks: list[bytes] = []
+        remaining = limit
+        while remaining > 0:
+            chunk = os.read(descriptor, min(65536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if remaining == 0 and os.read(descriptor, 1):
+            raise InferenceClientError("invalid_response", "body_exceeds_limit")
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
 def _validate_timeout(timeout_ms: object) -> int:
     if (
         not isinstance(timeout_ms, int)
@@ -132,10 +165,35 @@ def _request_document(request: InferenceRequest) -> dict[str, object]:
     }
 
 
+def _is_strict_utf8(text: object) -> bool:
+    """Reject lone surrogates that ``str.encode`` would raise on."""
+
+    if not isinstance(text, str):
+        return False
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _preflight_base64_budget(request: InferenceRequest) -> None:
+    """Reject oversized typed requests before any base64 decode or JSON build."""
+
+    total_chars = sum(
+        len(image.png_base64) for image in (*request.references, *request.queries)
+    )
+    if total_chars > _MAX_BASE64_CHARS:
+        raise InferenceClientError("request_too_large", "base64_budget_exceeded")
+
+
 def _serialize_request(request: object) -> bytes:
     if not isinstance(request, InferenceRequest):
         raise InferenceClientError("invalid_request", "wrong_request_type")
     try:
+        # Preflight first: counts only base64 characters, so an oversized typed
+        # request is rejected without decoding megabytes.
+        _preflight_base64_budget(request)
         document = _request_document(request)
         # Validate the exact outbound document without replacing or mutating the
         # caller-owned typed request.
@@ -177,13 +235,40 @@ def _declared_response_length(headers: Any) -> int | None:
 
 
 def _read_response(response: Any) -> bytes:
+    """Return exactly the declared body, bounded, or raise a stable error.
+
+    When a ``Content-Length`` is declared, read exactly that many bytes (after the
+    wire-size cap) and require the stream to deliver the full count; a short body is
+    a truncated response, not a silently accepted short JSON document. Without a
+    declared length the ``+1`` overflow guard still bounds an unbounded read.
+    """
+
     declared = _declared_response_length(response.headers)
-    if declared is not None and declared > _MAX_RESPONSE_BYTES:
-        raise InferenceClientError("response_too_large", "wire_body_exceeds_limit")
+    if declared is not None:
+        if declared > _MAX_RESPONSE_BYTES:
+            raise InferenceClientError("response_too_large", "wire_body_exceeds_limit")
+        raw = response.read(declared)
+        if len(raw) != declared:
+            raise InferenceClientError("invalid_response", "truncated_response_body")
+        return raw
     raw = response.read(_MAX_RESPONSE_BYTES + 1)
     if len(raw) > _MAX_RESPONSE_BYTES:
         raise InferenceClientError("response_too_large", "wire_body_exceeds_limit")
     return raw
+
+
+def _read_response_doc(response: Any) -> object:
+    raw = _read_response(response)
+    if len(raw) > _MAX_RESPONSE_DOC_BYTES:
+        raise InferenceClientError("response_too_large", "doc_exceeds_limit")
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
+        raise InferenceClientError("invalid_response", "malformed_json") from None
+
+
+def _has_surrogate(text: str) -> bool:
+    return any(0xD800 <= ord(character) <= 0xDFFF for character in text)
 
 
 def _is_timeout_error(error: BaseException) -> bool:
@@ -198,6 +283,13 @@ def _parse_response(raw: bytes) -> InferenceResponse:
         document = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
         raise InferenceClientError("invalid_response", "malformed_json") from None
+    try:
+        return validate_response(document)
+    except ContractError as error:
+        raise InferenceClientError("invalid_response", error.code) from None
+
+
+def _parse_response_doc(document: object) -> InferenceResponse:
     try:
         return validate_response(document)
     except ContractError as error:
@@ -251,7 +343,7 @@ class InferenceClient:
                         "status_failure",
                         status=status if _is_http_status(status) else None,
                     )
-                raw_response = _read_response(response)
+                document = _read_response_doc(response)
         except InferenceClientError:
             raise
         except HTTPError as error:
@@ -270,12 +362,15 @@ class InferenceClient:
             # than leaking endpoint-adjacent exception text.
             raise InferenceClientError("unavailable", "connection_failed") from None
 
-        response = _parse_response(raw_response)
+        response = _parse_response_doc(document)
         if not response.model_id:
             raise InferenceClientError("invalid_response", "empty_model_id")
-        if len(response.model_id) > _MAX_MODEL_ID_CHARS or any(
-            ord(character) < 0x20 or ord(character) == 0x7F
-            for character in response.model_id
+        if (
+            len(response.model_id) > _MAX_MODEL_ID_CHARS
+            or not _is_strict_utf8(response.model_id)
+            or _has_surrogate(response.model_id)
+            or any(ord(character) < 0x20 or ord(character) == 0x7F
+                   for character in response.model_id)
         ):
             raise InferenceClientError("invalid_response", "invalid_model_id")
 

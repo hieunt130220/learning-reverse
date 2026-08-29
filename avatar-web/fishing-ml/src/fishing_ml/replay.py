@@ -9,29 +9,53 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
+import io
 import json
 import math
+import os
+import re
 import time
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping as TypingMapping
 
 from .inference_client import InferenceClient, InferenceClientError
 from .inference_contract import InferenceImage, InferenceRequest, InferenceResponse
 from .label import label_path_for
 from .schema import (
     BatchManifest,
+    EXPECTED_SIZE,
     ImageEntry,
     LabelError,
     ManifestError,
+    PNG_SIGNATURE,
     ValidationError,
     load_label,
     load_manifest,
+    parse_label,
     validate_batch,
 )
 
+from PIL import Image
+
 _REPLAY_SCHEMA_VERSION = 1
+
+# A single 75x75 RGBA PNG is 22,500 raw bytes; the contract permits a 4x headroom
+# per file before the capture is rejected, and a hard aggregate decoded budget
+# across references + queries matching the contract's (64+64)*7500.
+_PER_IMAGE_PNG_BYTES = EXPECTED_SIZE[0] * EXPECTED_SIZE[1] * 4
+_MAX_SINGLE_IMAGE_BYTES = _PER_IMAGE_PNG_BYTES * 4
+_MAX_DECODED_PNG_BYTES = (64 + 64) * 7500
+_MAX_BATCH_JSON_BYTES = 2_000_000
+_MAX_LABEL_JSON_BYTES = 2_000_000
+
+# Single safe POSIX component: non-empty, no separators, no empty/``.``/``..``
+# parts, no leading/trailing dotted parts.  Reused to validate manifest batchId
+# and label batchId before any path is built from them.
+_SAFE_COMPONENT_RE = re.compile(r"^[^\s/\\.][^\s/\\]*$")
 
 # Error keys are stable aggregate categories.  Client errors preserve the typed
 # client's stable code with a ``client_`` prefix; filesystem/contract failures
@@ -40,6 +64,8 @@ _MALFORMED_MANIFEST = "malformed_manifest"
 _INVALID_BATCH = "invalid_batch"
 _MISSING_IMAGES_NEW = "missing_images_new"
 _INVALID_LABEL = "invalid_label"
+_UNSAFE_BATCH_DIR = "unsafe_batch_dir"
+_UNRESOLVED_LABEL = "unresolved_label"
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,11 +170,15 @@ class ReplayReport:
         }
 
     def to_json(self) -> str:
-        """Serialize deterministically as compact UTF-8-safe JSON."""
+        """Serialize deterministically as compact JSON with ASCII escaping.
+
+        ``ensure_ascii=True`` is defense in depth: any stray non-UTF-8 value
+        cannot crash stdout when the report is printed.
+        """
 
         return json.dumps(
             self.to_dict(),
-            ensure_ascii=False,
+            ensure_ascii=True,
             sort_keys=True,
             separators=(",", ":"),
         )
@@ -219,11 +249,55 @@ def _client_error_category(error: InferenceClientError) -> str:
     return f"client_{error.code}"
 
 
-def _read_image(batch_dir: Path, entry: ImageEntry) -> InferenceImage:
-    # validate_batch has already checked path safety, checksum, PNG shape/mode and
-    # complete decode.  This second read is bounded by those exact captured bytes
-    # and is encoded directly into the immutable in-memory request value.
-    raw = (batch_dir / entry.path).read_bytes()
+def _is_safe_component(value: str) -> bool:
+    """A single safe POSIX component: no separators, no relative/empty parts."""
+
+    return bool(_SAFE_COMPONENT_RE.match(value))
+
+
+def _read_image_once(batch_dir: Path, entry: ImageEntry) -> InferenceImage:
+    """Read one image exactly once with no-follow regular-file semantics.
+
+    The validated bytes are the transmitted bytes: this single read performs the
+    SHA-256 check, the PNG signature/mode/size check, and the base64 encoding
+    against the exact same bytes, closing the validation/use race.  ``O_NOFOLLOW``
+    refuses a symlinked image; a hard per-file cap refuses a swapped oversized file.
+    """
+
+    path = batch_dir / entry.path
+    if path.is_symlink():
+        raise ValidationError("image path is a symlink")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        chunks: list[bytes] = []
+        remaining = _MAX_SINGLE_IMAGE_BYTES
+        while remaining > 0:
+            chunk = os.read(descriptor, min(65536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if remaining == 0 and os.read(descriptor, 1):
+            raise ValidationError("image exceeds per-file byte limit")
+    finally:
+        os.close(descriptor)
+    raw = b"".join(chunks)
+    if hashlib.sha256(raw).hexdigest() != entry.sha256:
+        raise ValidationError("sha256 mismatch for image bytes")
+    if not raw.startswith(PNG_SIGNATURE):
+        raise ValidationError("image is not a PNG (bad signature)")
+    try:
+        with io.BytesIO(raw) as buffer:
+            with Image.open(buffer) as image:
+                image.load()
+                if image.mode not in ("RGB", "RGBA"):
+                    raise ValidationError("image mode must be RGB/RGBA")
+                if image.size != EXPECTED_SIZE:
+                    raise ValidationError("image must be 75x75")
+    except ValidationError:
+        raise
+    except (OSError, ValueError):
+        raise ValidationError("image is not a decodable PNG") from None
     return InferenceImage(
         index=entry.index,
         png_base64=base64.b64encode(raw).decode("ascii"),
@@ -231,11 +305,67 @@ def _read_image(batch_dir: Path, entry: ImageEntry) -> InferenceImage:
 
 
 def _build_request(batch_dir: Path, manifest: BatchManifest) -> InferenceRequest:
+    """Read each image once, bounding the aggregate decoded PNG budget."""
+
+    decoded = 0
+    references: list[InferenceImage] = []
+    for entry in manifest.images:
+        image = _read_image_once(batch_dir, entry)
+        decoded += len(image.png_base64) * 3 // 4 + 1
+        references.append(image)
+    queries: list[InferenceImage] = []
+    for entry in manifest.images_new:
+        image = _read_image_once(batch_dir, entry)
+        decoded += len(image.png_base64) * 3 // 4 + 1
+        queries.append(image)
+    if decoded > _MAX_DECODED_PNG_BYTES:
+        raise ValidationError("aggregate decoded PNG bytes exceed budget")
     return InferenceRequest(
         schema_version=manifest.schema_version,
-        references=tuple(_read_image(batch_dir, entry) for entry in manifest.images),
-        queries=tuple(_read_image(batch_dir, entry) for entry in manifest.images_new),
+        references=tuple(references),
+        queries=tuple(queries),
     )
+
+
+def _read_label_doc_once(labels_root: Path, batch_id: str) -> Mapping[str, object] | None:
+    """Read a label file once, no-follow, under labels_root, or return None.
+
+    The manifest batchId is a validated single component, so the resolved path
+    cannot escape labels_root.  Symlinked or out-of-root label files are rejected
+    rather than counted as reviewer ground truth.
+    """
+
+    if not _is_safe_component(batch_id):
+        return None
+    path = label_path_for(labels_root, batch_id)
+    resolved = path.resolve()
+    if not resolved.is_relative_to(labels_root.resolve()):
+        return None
+    if resolved.is_symlink():
+        return None
+    if not resolved.is_file():
+        return None
+    descriptor = os.open(str(resolved), os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        chunks: list[bytes] = []
+        remaining = _MAX_LABEL_JSON_BYTES
+        while remaining > 0:
+            chunk = os.read(descriptor, min(65536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if remaining == 0 and os.read(descriptor, 1):
+            raise LabelError("label file exceeds byte limit")
+    finally:
+        os.close(descriptor)
+    try:
+        document = json.loads(b"".join(chunks).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
+        raise LabelError("label is not valid JSON")
+    if not isinstance(document, dict):
+        raise LabelError("label must be a JSON object")
+    return document
 
 
 def _ground_truth(
@@ -246,12 +376,15 @@ def _ground_truth(
 
     if labels_root is None:
         return None, False
-    path = label_path_for(labels_root, manifest.batch_id)
-    if not path.exists():
+    try:
+        document = _read_label_doc_once(labels_root, manifest.batch_id)
+    except (LabelError, ManifestError, OSError, ValueError, RecursionError):
+        return None, True
+    if document is None:
         return None, False
     try:
-        label = load_label(path)
-    except (LabelError, ManifestError, OSError, ValueError):
+        label = parse_label(document)
+    except (LabelError, ManifestError, OSError, ValueError, RecursionError):
         return None, True
     if label.status != "complete" or label.batch_id != manifest.batch_id:
         return None, False
@@ -394,6 +527,13 @@ def _validated_checksums(model_checksums: tuple[str, ...] | None) -> tuple[str, 
         for value in model_checksums
     ):
         raise ValueError("model_checksums must be bounded non-empty strings")
+    for value in model_checksums:
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError("model_checksums must be strictly UTF-8 encodable") from None
+        if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+            raise ValueError("model_checksums must not contain lone surrogates")
     return tuple(sorted(set(model_checksums)))
 
 
@@ -427,14 +567,43 @@ def replay_batches(
     )
     for batch_dir in batch_dirs:
         accumulator.batch_count += 1
+
+        # Containment: reject symlinked batch directories and any unsafe/foreign
+        # manifest batchId before trusting any bytes from the directory.
+        if batch_dir.is_symlink():
+            key = _rq_key(0, 0)
+            bucket = _rq_bucket(accumulator, key)
+            bucket.batches += 1
+            _record_error(accumulator, key, _UNSAFE_BATCH_DIR)
+            accumulator.unknown_batch_count += 1
+            continue
+        if not _is_safe_component(batch_dir.name):
+            key = _rq_key(0, 0)
+            bucket = _rq_bucket(accumulator, key)
+            bucket.batches += 1
+            _record_error(accumulator, key, _UNSAFE_BATCH_DIR)
+            accumulator.unknown_batch_count += 1
+            continue
+
         manifest: BatchManifest
         try:
             manifest = load_manifest(batch_dir / "manifest.json")
-        except (ManifestError, OSError, ValueError):
+        except (ManifestError, OSError, ValueError, RecursionError):
             key = _rq_key(0, 0)
             bucket = _rq_bucket(accumulator, key)
             bucket.batches += 1
             _record_error(accumulator, key, _MALFORMED_MANIFEST)
+            accumulator.unknown_batch_count += 1
+            continue
+
+        # The manifest batchId must be a single safe component equal to the
+        # directory name, so a ``../../outside`` or absolute or mismatched id
+        # cannot be trusted to name a label or escape the batch.
+        if manifest.batch_id != batch_dir.name or not _is_safe_component(manifest.batch_id):
+            key = _rq_key(0, 0)
+            bucket = _rq_bucket(accumulator, key)
+            bucket.batches += 1
+            _record_error(accumulator, key, _UNSAFE_BATCH_DIR)
             accumulator.unknown_batch_count += 1
             continue
 
@@ -446,9 +615,29 @@ def replay_batches(
         bucket.queries += queries
         accumulator.query_count += queries
 
+        # Resolve ground truth as soon as a trustworthy manifest + query shape are
+        # known, before any image/request failure.  This keeps a valid complete
+        # label counted as labeled even when its PNG/checksum is corrupt or the
+        # HTTP call fails.
+        ground_truth, invalid_label = _ground_truth(labels_root, manifest)
+        if invalid_label:
+            accumulator.errors[_INVALID_LABEL] += 1
+            bucket.errors[_INVALID_LABEL] += 1
+
         if not manifest.images_new:
+            # Even with no queries, validate the captured references so corrupt
+            # references are reported instead of silently accepted.
+            try:
+                validate_batch(batch_dir, manifest)
+            except (ValidationError, OSError, ValueError):
+                _record_error(accumulator, key, _INVALID_BATCH)
+                accumulator.unknown_batch_count += 1
+                continue
             _record_error(accumulator, key, _MISSING_IMAGES_NEW)
-            accumulator.unknown_batch_count += 1
+            if ground_truth is None:
+                accumulator.unknown_batch_count += 1
+            else:
+                accumulator.labeled_batch_count += 1
             continue
 
         try:
@@ -456,14 +645,13 @@ def replay_batches(
             request = _build_request(batch_dir, manifest)
         except (ValidationError, OSError, ValueError):
             _record_error(accumulator, key, _INVALID_BATCH)
-            accumulator.unknown_batch_count += 1
-            accumulator.unknown_query_count += queries
+            if ground_truth is None:
+                accumulator.unknown_batch_count += 1
+                accumulator.unknown_query_count += queries
+            else:
+                accumulator.labeled_batch_count += 1
+                accumulator.labeled_query_count += queries
             continue
-
-        ground_truth, invalid_label = _ground_truth(labels_root, manifest)
-        if invalid_label:
-            accumulator.errors[_INVALID_LABEL] += 1
-            bucket.errors[_INVALID_LABEL] += 1
 
         # Timing starts immediately before the client call and every returned or
         # raised terminal outcome contributes exactly one client-observed sample.
