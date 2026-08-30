@@ -13,6 +13,7 @@ import {
   type StoredAutoConfigState,
 } from './autoConfig.js';
 import { deleteFarmProfile } from './farmProfileRepo.js';
+import { deleteRuntimeSnapshotCache } from './runtimeSnapshotRepo.js';
 
 /**
  * Bản ghi tài khoản avatar như phần còn lại của ứng dụng được phép nhìn thấy.
@@ -230,6 +231,7 @@ export function updateAccount(
     db.prepare(`UPDATE avatar_accounts SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`).run(...args);
     if (normalizedGameUser !== undefined && normalizedGameUser !== current.gameUser.trim()) {
       deleteFarmProfile(db, id);
+      deleteRuntimeSnapshotCache(db, id);
     }
     return getAccount(db, userId, id);
   })();

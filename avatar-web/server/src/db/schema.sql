@@ -67,6 +67,14 @@ CREATE TABLE IF NOT EXISTS avatar_shop_cache (
   updated_at          INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS avatar_runtime_snapshot_cache (
+  account_id  INTEGER PRIMARY KEY
+              REFERENCES avatar_accounts(id) ON DELETE CASCADE,
+  payload_json TEXT NOT NULL,
+  captured_at  INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS avatar_shop_transactions (
   id              TEXT PRIMARY KEY,
   account_id      INTEGER NOT NULL

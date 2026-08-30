@@ -42,6 +42,11 @@ import {
   type LoadedAutomationIntent,
   type NpcMapLocation,
 } from './automationTypes.js';
+import {
+  emptyRuntimeSnapshot,
+  runtimeSnapshotPatchFromEvent,
+  type CachedRuntimeSnapshot,
+} from './runtimeCache.js';
 
 export const RETRY_BASE_MS = 10_000;
 export const RETRY_MAX_MS = 5 * 60 * 1000;
@@ -132,6 +137,8 @@ export interface AvatarSessionOptions {
   onAutomationLocation: (location: NpcMapLocation | null) => void;
   onMetrics?: (patch: AccountMetricsPatch) => void;
   cachedMetrics?: CachedAccountMetrics;
+  /** Snapshot nhiệm vụ/tài sản gần nhất để hiển thị khi chờ vòng auto kế tiếp. */
+  cachedSnapshot?: CachedRuntimeSnapshot;
   /** Production luôn truyền đủ hai dependency; optional giữ tương thích cho harness cũ. */
   shopRepository?: ShopRepository;
   shopPolicy?: ShopPolicy;
@@ -211,6 +218,7 @@ export class AvatarSession {
   private farmSync: FarmSyncState = EMPTY_FARM_SYNC;
   private farmSyncPromise?: Promise<void>;
   private cachedMetrics: CachedAccountMetrics;
+  private runtimeSnapshot: CachedRuntimeSnapshot;
   private autoSyncKickoff?: NodeJS.Immediate;
   private readonly shop?: ShopCoordinator;
   private shopClientAttached = false;
@@ -229,6 +237,7 @@ export class AvatarSession {
     this.now = opts.now ?? Date.now;
     this.random = opts.random ?? Math.random;
     this.cachedMetrics = { ...opts.cachedMetrics };
+    this.runtimeSnapshot = opts.cachedSnapshot ?? emptyRuntimeSnapshot();
     if (opts.shopRepository && opts.shopPolicy) {
       this.shop = new ShopCoordinator({
         accountId: opts.accountId,
@@ -256,27 +265,47 @@ export class AvatarSession {
   }
 
   getQuestOverview(): QuestOverviewState {
-    const c = this.client;
-    if (typeof c?.syncProgressQuests === 'function') {
-      c.syncProgressQuests();
+    const c = this.client?.status === 'online' ? this.client : undefined;
+    if (!c) {
+      return this.runtimeSnapshot.quests ?? {
+        daily: null,
+        beginner: null,
+        farmer: null,
+        updatedAt: this.now(),
+      };
     }
-    const daily = c?.dailyQuestState ?? null;
-    const beginner = c?.beginnerQuestState ?? null;
-    const farmer = c?.farmerQuestState ?? null;
-    const upgradeRequirements = c?.farmUpgradeRequirements ?? null;
-    const updatedAt = Math.max(
-      daily?.updatedAt ?? 0,
-      beginner?.updatedAt ?? 0,
-      farmer?.updatedAt ?? 0,
-    ) || Date.now();
-
-    return {
+    if (typeof c.syncProgressQuests === 'function') c.syncProgressQuests();
+    const daily = c.dailyQuestState ?? null;
+    const beginner = c.beginnerQuestState ?? null;
+    const farmer = c.farmerQuestState ?? null;
+    const overview: QuestOverviewState = {
       daily,
       beginner,
       farmer,
-      upgradeRequirements,
-      updatedAt,
+      upgradeRequirements: c.farmUpgradeRequirements ?? null,
+      updatedAt: Math.max(
+        daily?.updatedAt ?? 0,
+        beginner?.updatedAt ?? 0,
+        farmer?.updatedAt ?? 0,
+      ) || this.now(),
     };
+    this.runtimeSnapshot = {
+      ...this.runtimeSnapshot,
+      quests: overview,
+      capturedAt: this.now(),
+    };
+    return overview;
+  }
+
+  private patchRuntimeSnapshot(type: string, payload: unknown): void {
+    const patch = runtimeSnapshotPatchFromEvent(type, payload);
+    if (patch) {
+      this.runtimeSnapshot = {
+        ...this.runtimeSnapshot,
+        ...patch,
+        capturedAt: this.now(),
+      };
+    }
   }
 
   refreshProgressQuests(): void {
@@ -586,6 +615,7 @@ export class AvatarSession {
 
   snapshot(): AvatarSessionSnapshot {
     const c = this.client;
+    const live = c?.status === 'online' ? c : undefined;
     return {
       accountId: this.opts.accountId,
       status: c?.status ?? 'idle',
@@ -598,10 +628,10 @@ export class AvatarSession {
       playerLevel: c?.playerLevel ?? this.cachedMetrics.playerLevel,
       farmLevel: c?.farmLevel ?? this.cachedMetrics.farmLevel,
       metricsSyncedAt: this.cachedMetrics.syncedAt,
-      farm: c?.farmState,
-      cooking: c?.cookingState,
-      foods: c?.foods ?? [],
-      foodCatalogReady: c?.foodCatalogReady ?? false,
+      farm: live?.farmState ?? this.runtimeSnapshot.farm,
+      cooking: live?.cookingState ?? this.runtimeSnapshot.cooking,
+      foods: live?.foods ?? this.runtimeSnapshot.foods,
+      foodCatalogReady: live?.foodCatalogReady ?? false,
       quests: this.getQuestOverview(),
       farmSync: this.farmSync,
       auto: this.auto?.state() ?? EMPTY_AUTO,
@@ -609,12 +639,12 @@ export class AvatarSession {
       macro: this.macros?.state() ?? EMPTY_MACRO,
       shop: this.shopState(),
       produce: this.shopProduceState(),
-      inventory: c?.inventory ?? [],
-      farmProduce: c?.produce ?? [],
-      cookingMaterials: c?.cookingMaterials ?? [],
-      trees: c?.trees ?? [],
-      items: c?.items ?? [],
-      animals: c?.animals ?? [],
+      inventory: live?.inventory ?? this.runtimeSnapshot.inventory,
+      farmProduce: live?.produce ?? this.runtimeSnapshot.farmProduce,
+      cookingMaterials: live?.cookingMaterials ?? this.runtimeSnapshot.cookingMaterials,
+      trees: live?.trees ?? this.runtimeSnapshot.trees,
+      items: live?.items ?? this.runtimeSnapshot.items,
+      animals: live?.animals ?? this.runtimeSnapshot.animals,
       logs: [...this.logs],
       traffic: [...this.traffic],
       retries: this.retries,
@@ -747,19 +777,34 @@ export class AvatarSession {
     });
 
     client.on('farm', (state: unknown) => {
-      if (this.isCurrent(client, epoch)) this.emit('farm', state);
+      if (this.isCurrent(client, epoch)) {
+        this.patchRuntimeSnapshot('farm', state);
+        this.emit('farm', state);
+      }
     });
     client.on('inventory', (inv: unknown) => {
-      if (this.isCurrent(client, epoch)) this.emit('inventory', inv);
+      if (this.isCurrent(client, epoch)) {
+        this.patchRuntimeSnapshot('inventory', inv);
+        this.emit('inventory', inv);
+      }
     });
     client.on('produce', (produce: unknown) => {
-      if (this.isCurrent(client, epoch)) this.emit('farm-produce', produce);
+      if (this.isCurrent(client, epoch)) {
+        this.patchRuntimeSnapshot('farm-produce', produce);
+        this.emit('farm-produce', produce);
+      }
     });
     client.on('cooking-materials', (materials: unknown) => {
-      if (this.isCurrent(client, epoch)) this.emit('cooking-materials', materials);
+      if (this.isCurrent(client, epoch)) {
+        this.patchRuntimeSnapshot('cooking-materials', materials);
+        this.emit('cooking-materials', materials);
+      }
     });
     client.on('trees', (t: unknown) => {
-      if (this.isCurrent(client, epoch)) this.emit('trees', t);
+      if (this.isCurrent(client, epoch)) {
+        this.patchRuntimeSnapshot('trees', t);
+        this.emit('trees', t);
+      }
     });
     client.on('money', (m: unknown) => {
       if (!this.isCurrent(client, epoch)) return;
@@ -782,10 +827,15 @@ export class AvatarSession {
       this.emit('money', m);
     });
     client.on('cooking', (cook: unknown) => {
-      if (this.isCurrent(client, epoch)) this.emit('cooking', cook);
+      if (this.isCurrent(client, epoch)) {
+        this.patchRuntimeSnapshot('cooking', cook);
+        this.emit('cooking', cook);
+      }
     });
     client.on('quests', () => {
-      if (this.isCurrent(client, epoch)) this.emit('quests', this.getQuestOverview());
+      if (this.isCurrent(client, epoch)) {
+        this.emit('quests', this.getQuestOverview());
+      }
     });
     client.on('metrics', (patch: unknown) => {
       if (!this.isCurrent(client, epoch)) return;

@@ -9,6 +9,10 @@ import {
 import { ShopRepository, type ProduceSnapshot, type ShopRuntimeState } from '../accounts/shopRepo.js';
 import type { ShopPolicy } from '../config.js';
 import { updateFarmCells } from '../accounts/farmProfileRepo.js';
+import {
+  readRuntimeSnapshotCache,
+  saveRuntimeSnapshotCache,
+} from '../accounts/runtimeSnapshotRepo.js';
 import type { AutoFarmConfig } from '../autoFarm.js';
 import type { Db } from '../db/index.js';
 import type { DeviceProfile } from '../game/client.js';
@@ -25,6 +29,7 @@ import type {
   NpcMapLocation,
 } from './automationTypes.js';
 import { FIND_NPC_DISABLED } from './featureFlags.js';
+import { runtimeSnapshotPatchFromEvent } from './runtimeCache.js';
 import { ShopCoordinator } from './shopCoordinator.js';
 
 /** Giãn cách giữa các lần đăng nhập lúc khởi động. */
@@ -253,6 +258,7 @@ export class SessionManager {
       shopPolicy: this.shopPolicy,
       findNpcCatalog: this.deps.findNpcCatalog ?? [],
       cachedMetrics: account.cachedMetrics,
+      cachedSnapshot: readRuntimeSnapshotCache(db, accountId),
       onMetrics: (patch) => updateCachedMetrics(db, accountId, patch),
       onAutomationLocation: (location) => saveFindNpcLocation(db, accountId, location),
       onAutomationFailure: () => {
@@ -294,6 +300,10 @@ export class SessionManager {
               return;
             }
           }
+        }
+        const cachePatch = runtimeSnapshotPatchFromEvent(type, payload);
+        if (cachePatch) {
+          saveRuntimeSnapshotCache(db, accountId, cachePatch);
         }
         broadcast(userId, accountId, type, payload);
       },
