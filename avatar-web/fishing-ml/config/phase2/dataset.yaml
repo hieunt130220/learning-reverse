@@ -1,0 +1,37 @@
+# Phase 2 dataset namespace — provenance metadata only.
+#
+# This namespace is SEPARATE from Giai đoạn A (data/raw, data/labels,
+# data/splits). Phase 2 never overwrites Phase A artifacts. The dataset-version
+# document is the immutable provenance record for each Phase-2 dataset snapshot.
+schemaVersion: 1
+
+# Relative data root for all Phase-2 data, resolved under the project base.
+# resolve_phase2_dir() refuses any name that would escape this root or point
+# at a Phase A mutable root (data/raw, data/labels, data/splits, ...).
+dataRoot: data/phase2
+
+# Documented subdirs under dataRoot.
+subdirs:
+  - incoming
+  - raw
+  - labels
+  - splits
+
+# Canonical provenance document name written/loaded by dataset_version.py.
+datasetVersionFile: dataset-version.json
+
+# dataset-version.json exact top-level keys (unknown keys are rejected).
+datasetVersionKeys:
+  - schemaVersion
+  - datasetId
+  - parentDatasetId
+  - createdAt
+  - sourceBatches
+
+# Constraints enforced by dataset_version.py.
+constraints:
+  acceptedSchemaVersions: [1]
+  timestamp: ISO-8601 UTC (timezone required, offset must be 0, trailing Z allowed)
+  batchIdRule: '^[^/\\\s]+$ and not "." or "..", no surrounding whitespace'
+  sourceBatches: sorted, unique tuple (dedupe + sort on construction)
+  parentDatasetId: explicit null or a valid safe id (never empty string)

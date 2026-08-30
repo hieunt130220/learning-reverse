@@ -1,0 +1,44 @@
+# Phase 2 quality gates — explicit coverage and latency thresholds.
+#
+# IMPORTANT: These thresholds are PRE-AGREED PLACEHOLDERS, NOT inferred from the
+# Phase A final results. Real Phase 2 data does not exist in this worktree yet.
+# They are intentionally conservative and MUST be revisited at Gate 2A (see
+# design spec §5, gate 2A-2) once Phase 2 dev data is collected and the
+# candidate's dev metrics are available. Do not tune these against final results
+# — tuning on final errors violates the Phase A safety rule.
+schemaVersion: 1
+
+# Provenance / intent of this gate document.
+meta:
+  # True => thresholds below are agreed-upon placeholders, not derived from data.
+  preAgreedPlaceholders: true
+  # Gate where these values are revisited with real data.
+  revisitAt: "2A"
+  # Safety invariant: Phase A final errors must never be used to set these.
+  notTunedOnPhaseAFinal: true
+
+# Coverage gates. The primary gate is zero wrong accepted; coverage gates are
+# secondary but still mandatory before shadow rollout (design §3.2 / §5).
+coverage:
+  # Minimum share of queries the service accepts (acceptedCount / queryCount).
+  # Conservative placeholder; a candidate below this is not ready for shadow.
+  minAcceptedRate: 0.85
+  # Minimum batch-level exact-match rate (every query correct per batch).
+  minBatchExactMatch: 0.95
+  # Accuracy gate for the SHADOW-ELIGIBILITY decision (reported, secondary).
+  minTop1Accuracy: 0.98
+
+# Latency gates for the inference service / replay (design §3.3 / §5).
+latency:
+  # Soft per-request budget the service should stay within.
+  budgetMs: 50
+  # p95 latency ceiling the replay report must satisfy before local shadow.
+  p95Ms: 100
+  # Hard ceiling; replay/service results at or above this fail the gate.
+  maxMs: 250
+
+# Hard acceptance gates. These are non-negotiable (design §1, §3.2).
+gate:
+  # Wrongly-accepted queries must be exactly zero (primary gate).
+  acceptedWrongMustBeZero: true
+  requireZeroWrongAccepted: true

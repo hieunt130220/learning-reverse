@@ -84,6 +84,23 @@ Hoặc chạy nhanh không cần UI:
 cd server && npx tsx src/tools/login-test.ts <user> <pass>
 ```
 
+## Shadow Fishing Mode (Phase 2, disabled by default)
+
+Chế độ shadow là một kênh **chỉ đọc** gửi ảnh CAN_CAU RX79 đến một dịch vụ suy luận
+ngoài băng (inference service) để đối chiếu offline. Nó **không ảnh hưởng đến
+gameplay**: không gửi TX43, không gọi `finishFishing()`, không submit đáp án.
+
+- **Mặc định TẮT** (`FISHING_SHADOW_SAMPLE_RATE=0`) → không gửi yêu cầu nào.
+- Biến môi trường (tiền tố `FISHING_SHADOW_`): `ENABLED`, `KILL_SWITCH`,
+  `ENDPOINT`, `TIMEOUT_MS`, `SAMPLE_RATE`, `FAILURE_THRESHOLD`, `RESET_MS`,
+  `MAX_IN_FLIGHT`. Khi cấu hình không hợp lệ, fail-closed (tắt + kill-switch bật).
+- **Best-effort, fire-and-forget**: lỗi mạng/timeout/phản hồi sai → ghi mã lỗi và
+  bỏ qua, luồng probe/crawl gốc chạy nguyên vẹn.
+- **Telemetry được sanitize**: chỉ log `{ shadow, status, errorCode?,
+  predictionCount?, acceptedCount? }` — không bao giờ `modelId`, predictions,
+  idUser/idFish, raw packet, base64 ảnh, cookie, hay credentials.
+- Chỉ gửi ảnh (PNG blob), không forward `idUser`/`idFish`/`timeDelayMs`.
+
 ## Cấu trúc
 
 ```
