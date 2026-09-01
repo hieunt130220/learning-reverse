@@ -8,7 +8,6 @@ import { useAccountRuntime } from './useAccountRuntime.js';
 import { useDialogFocus } from './useDialogFocus.js';
 import { AssetsPanel } from './panels/AssetsPanel.js';
 import { AutoFarmPanel } from './panels/AutoFarmPanel.js';
-import { CaptchaPanel } from './panels/CaptchaPanel.js';
 import { CookingPanel } from './panels/CookingPanel.js';
 import { FindNpcPanel } from './panels/FindNpcPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
@@ -24,7 +23,6 @@ const PANEL_TABS = [
   ['cooking', 'Nấu ăn'],
   ['assets', 'Tài sản'],
   ['shop', 'Sạp'],
-  ['captcha', 'Captcha'],
   ['logs', 'Log'],
 ] as const;
 type PanelId = (typeof PANEL_TABS)[number][0];
@@ -235,9 +233,6 @@ function LoadedOperations({
             items={snapshot?.items ?? []}
             foods={snapshot?.foods ?? []}
           />
-        </div>
-        <div id="drawer-panel-captcha" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-captcha' : undefined} hidden={!visible('captcha')}>
-          <CaptchaPanel accountId={account.id} />
         </div>
         <div id="drawer-panel-logs" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-logs' : undefined} hidden={!visible('logs')}>
           <LogPanel logs={snapshot?.logs ?? []} />
