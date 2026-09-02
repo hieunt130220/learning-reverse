@@ -43,6 +43,7 @@ from .inference_contract import (
     ContractError,
     InferencePrediction,
     InferenceResponse,
+    MAX_CANONICAL_REQUEST_BYTES,
     parse_request,
     serialize_response,
 )
@@ -61,6 +62,10 @@ else:
     NormalizationStats = Any
     Thresholds = Any
 
+
+# Upper safety cap for the CLI override so an operator cannot inadvertently
+# remove the body bound entirely.
+_MAX_BODY_OVERRIDE_CAP = MAX_CANONICAL_REQUEST_BYTES * 2
 
 # Inference mount path. The Python service and the Node shadow client (Task 7/8)
 # both POST contract requests here.
@@ -828,8 +833,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--max-body-bytes",
         type=int,
-        default=960000,
-        help="Reject request bodies larger than this many bytes (before parsing)",
+        default=MAX_CANONICAL_REQUEST_BYTES,
+        help=(
+            f"Reject request bodies larger than this many bytes (before parsing); "
+            f"default {MAX_CANONICAL_REQUEST_BYTES}, max {_MAX_BODY_OVERRIDE_CAP}"
+        ),
     )
     parser.add_argument(
         "--timeout-ms",
@@ -838,6 +846,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Per-request inference timeout in milliseconds",
     )
     args = parser.parse_args(argv)
+
+    if args.max_body_bytes < 1 or args.max_body_bytes > _MAX_BODY_OVERRIDE_CAP:
+        parser.error(
+            f"--max-body-bytes must be in [1, {_MAX_BODY_OVERRIDE_CAP}]"
+        )
 
     try:
         config = InferenceServerConfig(

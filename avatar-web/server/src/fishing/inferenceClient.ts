@@ -42,6 +42,8 @@ interface InferenceResponseDocument {
 
 const MAX_IMAGES_PER_LIST = 64;
 const MAX_PNG_BYTES = 960_000;
+/** Maximum canonical raw JSON request body size at decoded/count limits. */
+export const MAX_CANONICAL_REQUEST_BYTES = 1_283_950;
 const MAX_RESPONSE_BYTES = 1_048_576;
 const MAX_MODEL_ID_CHARS = 1_024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -435,13 +437,18 @@ export class InferenceClient {
     timer.unref?.();
 
     try {
+      const body = JSON.stringify(request);
+      if (Buffer.byteLength(body, 'utf8') > MAX_CANONICAL_REQUEST_BYTES) {
+        // Release nothing — no body was sent; the error is local and stable.
+        return { status: 'invalid', errorCode: 'request_too_large' };
+      }
       const response = await fetch(this.#config.endpoint, {
         method: 'POST',
         headers: {
           accept: 'application/json',
           'content-type': 'application/json',
         },
-        body: JSON.stringify(request),
+        body, // The exact validated string — no second serialization.
         redirect: 'error',
         signal: controller.signal,
       });

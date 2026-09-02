@@ -24,24 +24,21 @@ from .inference_contract import (
     ContractError,
     InferenceRequest,
     InferenceResponse,
+    MAX_CANONICAL_REQUEST_BYTES,
     validate_response,
 )
 
-# A legitimate Task 4 request contains at most 960,000 decoded PNG bytes.  Base64
-# expansion plus the small JSON envelope remains below this wire-size ceiling.
-_MAX_REQUEST_BYTES = 1_500_000
-# Base64 is 4 chars per 3 bytes; the decoded budget used by the contract is
-# (64+64)*7500 = 960,000 bytes.  A preflight counts only base64 characters, so
-# cap base64 length at the decoded budget * 4/3 (rounded up) without decoding.
-_MAX_DECODED_PNG_BYTES = (64 + 64) * 7500
-_MAX_BASE64_CHARS = _MAX_DECODED_PNG_BYTES * 4 // 3 + 4
+_MAX_REQUEST_BYTES = MAX_CANONICAL_REQUEST_BYTES
+# Worst-case base64 char count for 960,000 decoded bytes across 128 images:
+# 4 * ceil(d/3) per image, maximized at sum_ceil = 320,085 (all images d ≡ 1
+# mod 3 except one d ≡ 2 mod 3).
+_MAX_BASE64_CHARS = 1_280_340
 _MAX_RESPONSE_BYTES = 1_048_576
 _MAX_TIMEOUT_MS = 120_000
 _MAX_MODEL_ID_CHARS = 1024
 # JSON documents are bounded before parsing so a deeply nested body raises a
 # stable error instead of RecursionError escaping the batch boundary.
 _MAX_RESPONSE_DOC_BYTES = 1_048_576
-_MAX_JSON_DOC_BYTES = 2_000_000
 
 CLIENT_ERROR_CODES = frozenset(
     {
@@ -115,29 +112,6 @@ def _validate_endpoint(endpoint: object) -> str:
     if parsed.username is not None or parsed.password is not None:
         raise ValueError("endpoint must not contain embedded credentials")
     return endpoint
-
-
-def _read_bounded(path: str, limit: int) -> bytes:
-    """Read at most ``limit`` bytes from a regular, non-symlinked file."""
-
-    try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-    except OSError:
-        raise InferenceClientError("invalid_response", "unsafe_file_path") from None
-    try:
-        chunks: list[bytes] = []
-        remaining = limit
-        while remaining > 0:
-            chunk = os.read(descriptor, min(65536, remaining))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        if remaining == 0 and os.read(descriptor, 1):
-            raise InferenceClientError("invalid_response", "body_exceeds_limit")
-        return b"".join(chunks)
-    finally:
-        os.close(descriptor)
 
 
 def _validate_timeout(timeout_ms: object) -> int:
@@ -283,17 +257,6 @@ def _is_timeout_error(error: BaseException) -> bool:
         return True
     reason = getattr(error, "reason", None)
     return isinstance(reason, (TimeoutError, socket.timeout))
-
-
-def _parse_response(raw: bytes) -> InferenceResponse:
-    try:
-        document = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
-        raise InferenceClientError("invalid_response", "malformed_json") from None
-    try:
-        return validate_response(document)
-    except ContractError as error:
-        raise InferenceClientError("invalid_response", error.code) from None
 
 
 def _parse_response_doc(document: object) -> InferenceResponse:
