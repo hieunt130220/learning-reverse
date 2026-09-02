@@ -42,9 +42,19 @@ from typing import Any, Mapping
 
 import yaml
 
+import os
 from .dataset_version import DatasetVersion
 from .phase2_gate import load_gate_policy
-from .schema import atomic_write_json, read_json
+from .schema import atomic_write_json, read_json, sha256_file
+
+# CLI exit codes (spec §3.9): 0 = stage completed / adjudication pass;
+# 2 = input/schema/provenance/checksum/infrastructure invalid;
+# 3 = at least one mandatory gate failure; 4 = gate blocked (missing evidence
+# or policy not approved). Non-adjudication commands return 0 or 2 only.
+EXIT_OK = 0
+EXIT_INVALID = 2
+EXIT_GATE_FAIL = 3
+EXIT_BLOCKED = 4
 
 # Lazy-friendly imports: these modules import torch at module load, so we import
 # them inside the functions that need them (run_experiment / confirm_final_once)
@@ -504,6 +514,7 @@ def _write_experiment_manifest(
         "stage": "train-dev-selection",
         "runId": result.run_id,
         "matrixKey": result.spec.matrix_key,
+        "spec": asdict(result.spec),
         "runDir": result.run_dir,
         "thresholdsPath": result.thresholds_path,
         "provenance": {
@@ -719,6 +730,393 @@ def confirm_final_once(
     return final
 
 
+def write_selection(
+    path: Path,
+    selected: ExperimentResult,
+    selected_manifest_path: Path,
+    dataset_version_path: Path,
+    version: DatasetVersion,
+    *,
+    git_revision: str,
+    require_zero_wrong_accepted: bool,
+) -> None:
+    """Write the immutable phase2-selection.json (spec §5.3).
+
+    Byte-equivalent existing artifact → idempotent success (publish_no_replace);
+    existing artifact with different bytes → FileExistsError (fail closed).
+    """
+    document = {
+        "schemaVersion": 1,
+        "stage": "phase2-selection",
+        "selectedRunId": selected.run_id,
+        "selectedMatrixKey": selected.spec.matrix_key,
+        "candidateManifestSha256": hashlib.sha256(selected_manifest_path.read_bytes()).hexdigest(),
+        "provenance": {
+            "datasetId": version.dataset_id,
+            "parentDatasetId": version.parent_dataset_id,
+            "datasetVersionSha256": hashlib.sha256(dataset_version_path.read_bytes()).hexdigest(),
+            "splitSha256": selected.split_checksum,
+            "configSha256": selected.config_checksum,
+            "gitRevision": git_revision,
+        },
+        "policy": {
+            "requireZeroWrongAccepted": require_zero_wrong_accepted,
+            "tieBreakers": ["acceptedRate", "top1Accuracy", "batchExactMatch", "runId"],
+        },
+    }
+    from .schema import publish_no_replace
+    publish_no_replace(path, document)
+
+
+def _result_from_manifest(doc: dict[str, Any], manifest_path: str = "") -> ExperimentResult:
+    """Rebuild a frozen ExperimentResult from its immutable manifest document."""
+    spec_doc = doc["spec"]
+    raw_doc = doc["rawDevMetrics"]
+    calibrated_doc = doc["calibratedMetrics"]
+    spec = ExperimentSpec(
+        augmentation=spec_doc["augmentation"],
+        hard_negative=spec_doc["hard_negative"],
+        temperature=float(spec_doc["temperature"]),
+        embedding=spec_doc["embedding"],
+        seed=int(spec_doc["seed"]),
+        split_checksum=spec_doc["split_checksum"],
+        config_checksum=spec_doc["config_checksum"],
+        parent_dataset_id=spec_doc.get("parent_dataset_id"),
+        config_overlay=dict(spec_doc.get("config_overlay", {})),
+    )
+    thresholds = dict(doc["thresholds"])
+    return ExperimentResult(
+        spec=spec,
+        run_id=doc["runId"],
+        run_dir=doc["runDir"],
+        thresholds_path=doc["thresholdsPath"],
+        thresholds=thresholds,
+        # Raw dev metrics: the manifest's camelCase section is normalized back
+        # to the same snake_case shape run_experiment stores (dev_metrics).
+        dev_metrics={
+            "query_count": int(raw_doc["queryCount"]),
+            "batch_count": int(raw_doc["batchCount"]),
+            "wrong_count": int(raw_doc["wrongCount"]),
+            "top1_accuracy": float(raw_doc["top1Accuracy"]),
+            "batch_exact_match": float(raw_doc["batchExactMatch"]),
+            "abstention_rate": float(raw_doc["abstentionRate"]),
+        },
+        accepted_wrong_count=int(calibrated_doc["wrongAcceptedCount"]),
+        accepted_rate=float(calibrated_doc["acceptedRate"]),
+        top1_accuracy=float(raw_doc["top1Accuracy"]),
+        batch_exact_match=float(raw_doc["batchExactMatch"]),
+        manifest_path=manifest_path,
+        config_checksum=doc["provenance"]["configSha256"],
+        split_checksum=doc["provenance"]["splitSha256"],
+        git_revision=doc["provenance"]["gitRevision"],
+        passed_gate=bool(doc["devSelectionPassed"]),
+    )
+
+
+def _cmd_list(args: argparse.Namespace) -> int:
+    from .dataset_version import load_dataset_version
+
+    version = load_dataset_version(args.dataset_version)
+    specs = enumerate_specs(
+        Path(args.candidates),
+        Path(args.splits_root),
+        version,
+    )
+    out = {
+        "schemaVersion": 1,
+        "count": len(specs),
+        "dataset": {
+            "datasetId": version.dataset_id,
+            "parentDatasetId": version.parent_dataset_id,
+            "createdAt": version.created_at,
+        },
+        "axes": {
+            "augmentation": len({s.augmentation for s in specs}),
+            "hardNegative": len({s.hard_negative for s in specs}),
+            "temperature": len({s.temperature for s in specs}),
+            "embedding": len({s.embedding for s in specs}),
+        },
+        "candidates": [
+            {"runId": s.run_id, "matrixKey": s.matrix_key,
+             "configChecksum": s.config_checksum[:12], "splitChecksum": s.split_checksum[:12]}
+            for s in specs
+        ],
+    }
+    print(json.dumps(out, sort_keys=True, indent=2))
+    return EXIT_OK
+
+
+def _cmd_run(args: argparse.Namespace) -> int:
+    from .dataset_version import load_dataset_version
+
+    try:
+        version = load_dataset_version(args.dataset_version)
+        specs = enumerate_specs(Path(args.candidates), Path(args.splits_root), version)
+    except (ValueError, OSError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return EXIT_INVALID
+    if (args.matrix_key is None) == (args.run_id is None):
+        print("error: exactly one of --matrix-key or --run-id is required", file=sys.stderr)
+        return EXIT_INVALID
+    if args.run_id is not None:
+        matches = [s for s in specs if s.run_id == args.run_id]
+    else:
+        matches = [s for s in specs if s.matrix_key == args.matrix_key]
+    if len(matches) != 1:
+        print(f"error: expected exactly one matching spec, got {len(matches)}", file=sys.stderr)
+        return EXIT_INVALID
+
+    spec = matches[0]
+    # Spec §3.6  reuse-or-fail-closed: an existing complete manifest for this
+    # run is verified and returned; an incomplete/tampered one fails closed. No
+    # overwrite, no auto-delete.
+    manifest_path = Path(args.artifacts_root) / "phase2-experiments" / f"{spec.run_id}.json"
+    if manifest_path.exists():
+        return _cmd_run_reuse(manifest_path, spec, args)
+
+    try:
+        result = run_experiment(
+            spec,
+            raw_root=Path(args.raw_root),
+            labels_root=Path(args.labels_root),
+            splits_root=Path(args.splits_root),
+            duplicate_reviews=Path(args.duplicate_reviews),
+            artifacts_root=Path(args.artifacts_root),
+            require_zero_wrong_accepted=not args.allow_wrong_accepted,
+            # Task 8 manifest requires sealed dataset provenance (spec §5.2).
+            dataset_version=version,
+            dataset_version_sha256=sha256_file(Path(args.dataset_version)),
+        )
+    except (OSError, ValueError, RuntimeError, FileExistsError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return EXIT_INVALID
+    print(json.dumps(result.to_json(), sort_keys=True, indent=2))
+    # Spec §3.9:  is a non-adjudication command → 0 or 2 only. Whether the
+    # candidate satisfies the dev-selection gate is decided by  (3 there);
+    # here the stage completed (with require_zero_wrong_accepted, a failing
+    # calibration raises above instead of producing a result).
+    return EXIT_OK
+
+
+def _cmd_run_reuse(manifest_path: Path, spec: ExperimentSpec, args: argparse.Namespace) -> int:
+    """Verify an existing complete manifest and return it (spec §3.6 reuse)."""
+    try:
+        doc = read_json(manifest_path)
+    except (OSError, ValueError) as error:
+        print(f"error: existing manifest is unreadable: {error}", file=sys.stderr)
+        return EXIT_INVALID
+    # Required-file completeness: frozen dir, dev-metrics.json, thresholds.json.
+    run_dir = Path(doc.get("runDir", ""))
+    if not run_dir.is_absolute() or not (run_dir / "frozen").is_dir():
+        print("error: existing manifest references a non-frozen run dir", file=sys.stderr)
+        return EXIT_INVALID
+    for required in ("dev-metrics.json", "thresholds.json"):
+        if not (run_dir / required).is_file():
+            print(f"error: existing run is missing {required}", file=sys.stderr)
+            return EXIT_INVALID
+    # Provenance: run id, dataset/split/config/Git checksums must all match
+    # (split/config/Git checksums live under  in the §5.2 manifest).
+    provenance = doc.get("provenance")
+    if (not isinstance(provenance, dict)
+            or spec.run_id != doc.get("runId")
+            or spec.split_checksum != provenance.get("splitSha256")
+            or spec.config_checksum != provenance.get("configSha256")
+            or not provenance.get("gitRevision")):
+        print("error: existing manifest provenance conflicts with the enumerated spec", file=sys.stderr)
+        return EXIT_INVALID
+    result = _result_from_manifest(doc, str(manifest_path))
+    print(json.dumps(result.to_json(), sort_keys=True, indent=2))
+    # Non-adjudication command → 0 or 2 only (spec §3.9); the dev-gate verdict
+    # belongs to .
+    return EXIT_OK
+
+
+def _cmd_compare(args: argparse.Namespace) -> int:
+    from .dataset_version import load_dataset_version
+
+    try:
+        version = load_dataset_version(args.dataset_version)
+        specs = enumerate_specs(Path(args.candidates), Path(args.splits_root), version)
+    except (ValueError, OSError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return EXIT_INVALID
+    # Spec §3.6 : every expected run must have a manifest; duplicates,
+    # mismatches, and invalid metrics fail closed.
+    results: list[ExperimentResult] = []
+    seen_run_ids: dict[str, str] = {}
+    for spec in specs:
+        manifest_path = Path(args.artifacts_root) / "phase2-experiments" / f"{spec.run_id}.json"
+        if not manifest_path.exists():
+            print(f"error: missing manifest for {spec.run_id}", file=sys.stderr)
+            return EXIT_INVALID
+        other = seen_run_ids.get(spec.run_id)
+        if other is not None:
+            print(f"error: duplicate run id {spec.run_id} in {other} and {manifest_path}", file=sys.stderr)
+            return EXIT_INVALID
+        seen_run_ids[spec.run_id] = str(manifest_path)
+        doc = read_json(manifest_path)
+        # The manifest's spec document is sealed snake_case (asdict of ExperimentSpec).
+        spec_doc = doc.get("spec")
+        if not isinstance(spec_doc, dict) or spec_doc.get("config_checksum") != spec.config_checksum                 or spec_doc.get("split_checksum") != spec.split_checksum:
+            print(f"error: checksum mismatch for {spec.run_id}", file=sys.stderr)
+            return EXIT_INVALID
+        results.append(_result_from_manifest(doc, str(manifest_path)))
+
+    if len(results) != len(specs):
+        print("error: resolved candidate count does not match enumeration", file=sys.stderr)
+        return EXIT_INVALID
+    # Deterministic tie-breakers per spec §3.7 order (never passed from the CLI).
+    selected = compare_experiments(
+        results,
+        require_zero_wrong_accepted=not args.allow_wrong_accepted,
+        tie_breakers=("acceptedRate", "top1Accuracy", "batchExactMatch"),
+    )
+    if selected is None:
+        print("error: no candidate passed the zero-wrong-accepted gate", file=sys.stderr)
+        return EXIT_GATE_FAIL
+    # Spec §3.6: an existing byte-equivalent selection is verified and returned;
+    # a conflicting selection fails closed. publish_no_replace implements exactly
+    # that (byte-equivalent → idempotent; different → FileExistsError).
+    selected_manifest = Path(args.artifacts_root) / "phase2-experiments" / f"{selected.run_id}.json"
+    git_revision = _git_revision()
+    try:
+        write_selection(
+            Path(args.selection_path),
+            selected,
+            selected_manifest,
+            Path(args.dataset_version),
+            version,
+            git_revision=git_revision,
+            require_zero_wrong_accepted=not args.allow_wrong_accepted,
+        )
+    except FileExistsError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return EXIT_INVALID
+    print(json.dumps(
+        {"selectedRunId": selected.run_id, "selectedMatrixKey": selected.spec.matrix_key},
+        sort_keys=True, indent=2,
+    ))
+    return EXIT_OK
+
+
+def _cmd_freeze(args: argparse.Namespace) -> int:
+    selection = read_json(Path(args.selection))
+    if selection.get("stage") != "phase2-selection":
+        print(f"error: not a phase2-selection artifact: {args.selection}", file=sys.stderr)
+        return EXIT_INVALID
+    selected_run_id = selection["selectedRunId"]
+    # Spec §3.6 : NEVER accepts an arbitrary result; it reads the selection
+    # artifact and re-resolves the selected candidate's sealed manifest.
+    manifest_path = Path(args.artifacts_root) / "phase2-experiments" / f"{selected_run_id}.json"
+    if not manifest_path.exists():
+        print(f"error: selected manifest missing: {manifest_path}", file=sys.stderr)
+        return EXIT_INVALID
+    doc = read_json(manifest_path)
+    if doc.get("runId") != selected_run_id:
+        print("error: selection/manifest run-id mismatch", file=sys.stderr)
+        return EXIT_INVALID
+    result = _result_from_manifest(doc, str(manifest_path))
+    # Spec §3.6 : existing verified frozen output is accepted; only an
+    # invalid/conflicting existing output fails closed. The frozen dir is a
+    # fully expected path (run_dir/frozen), so check it BEFORE freeze_selected
+    # (which calls freeze_run, which unconditionally FileExistsErrors).
+    from . import artifacts
+
+    frozen_dir = Path(result.run_dir) / "frozen"
+    if os.path.lexists(frozen_dir):
+        try:
+            artifacts.verify_freeze(frozen_dir)
+        except (OSError, ValueError, RuntimeError) as error:
+            print(f"error: existing frozen candidate is invalid: {error}", file=sys.stderr)
+            return EXIT_INVALID
+        print(f"frozen: {frozen_dir} (existing verified)")
+        return EXIT_OK
+    try:
+        frozen_dir = freeze_selected(
+            result,
+            raw_root=Path(args.raw_root),
+            labels_root=Path(args.labels_root),
+            splits_root=Path(args.splits_root),
+            duplicate_reviews=Path(args.duplicate_reviews),
+        )
+    except (OSError, ValueError, RuntimeError, FileExistsError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return EXIT_INVALID
+    print(f"frozen: {frozen_dir}")
+    return EXIT_OK
+
+
+def _cmd_confirm_final(args: argparse.Namespace) -> int:
+    from . import phase2_gate
+
+    selection = read_json(Path(args.selection))
+    if selection.get("selectedRunId") != args.confirm_final_once:
+        print(
+            f"error: --confirm-final-once must equal selection.selectedRunId "
+            f"(got {args.confirm_final_once!r}, selection has {selection.get('selectedRunId')!r})",
+            file=sys.stderr,
+        )
+        return EXIT_INVALID
+
+    # Spec §3.10: placeholder policy or missing approval provenance → BLOCKED, and
+    # final.txt must NOT be opened. load_gate_policy raises ValueError on a
+    # malformed/placeholder-inconsistent document; status comes from adjudication.
+    try:
+        policy = phase2_gate.load_gate_policy(Path(args.gate_config))
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return EXIT_INVALID
+    if policy.pre_agreed_placeholders:
+        print("error: gate policy is not approved (preAgreedPlaceholders still true)", file=sys.stderr)
+        return EXIT_BLOCKED
+
+    manifest_path = Path(args.artifacts_root) / "phase2-experiments" / f"{args.confirm_final_once}.json"
+    if not manifest_path.exists():
+        print(f"error: selected manifest missing: {manifest_path}", file=sys.stderr)
+        return EXIT_INVALID
+    result = _result_from_manifest(read_json(manifest_path), str(manifest_path))
+    try:
+        final = confirm_final_once(
+            result,
+            raw_root=Path(args.raw_root),
+            labels_root=Path(args.labels_root),
+            splits_root=Path(args.splits_root),
+            duplicate_reviews=Path(args.duplicate_reviews),
+            gate_path=Path(args.gate_config),
+        )
+    except RuntimeError as error:
+        # Current confirm_final_once raises RuntimeError for a gate failure
+        # (post-evaluation, non-placeholder policy). Exit 3 = gate fail.
+        print(f"gate fail: {error}", file=sys.stderr)
+        return EXIT_GATE_FAIL
+    print(json.dumps(final, sort_keys=True, indent=2))
+    return EXIT_OK
+
+
+def _cmd_adjudicate_replay(args: argparse.Namespace) -> int:
+    from . import phase2_gate
+
+    try:
+        policy = phase2_gate.load_gate_policy(Path(args.gate_config))
+        replay_doc = read_json(Path(args.replay_report))
+        freeze_doc = read_json(Path(args.frozen_dir) / "freeze-manifest.json")
+    except (OSError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return EXIT_INVALID
+    report = phase2_gate.adjudicate_replay(
+        policy,
+        replay_doc,
+        freeze_doc,
+        policy_sha256=hashlib.sha256(Path(args.gate_config).read_bytes()).hexdigest(),
+        evidence_sha256=hashlib.sha256(Path(args.replay_report).read_bytes()).hexdigest(),
+    )
+    if args.output:
+        phase2_gate.publish_gate_report(args.output, report)
+    if args.stdout or not args.output:
+        print(report.to_json())
+    return phase2_gate.exit_code_for_status(report.status)
+
+
 # --------------------------------------------------------------------------- #
 # CLI                                                                          #
 # --------------------------------------------------------------------------- #
@@ -728,32 +1126,74 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
+    # list — enumerate the finite matrix from REAL dataset provenance (never final.txt)
     ls = sub.add_parser("list", help="Enumerate the finite candidate matrix and exit (no training).")
     ls.add_argument("--candidates", type=Path, required=True)
     ls.add_argument("--splits-root", type=Path, required=True)
     ls.add_argument("--dataset-version", type=Path, required=True)
-    ls.add_argument("--parent-dataset-id", type=str, default=None)
+
+    # run — train+calibrate exactly one candidate (train/dev only)
+    run = sub.add_parser("run", help="Train and calibrate one candidate (train/dev only).")
+    run.add_argument("--candidates", type=Path, required=True)
+    run.add_argument("--splits-root", type=Path, required=True)
+    run.add_argument("--dataset-version", type=Path, required=True)
+    run.add_argument("--raw-root", type=Path, required=True)
+    run.add_argument("--labels-root", type=Path, required=True)
+    run.add_argument("--duplicate-reviews", type=Path, required=True)
+    run.add_argument("--artifacts-root", type=Path, required=True)
+    run.add_argument("--matrix-key", type=str, default=None)
+    run.add_argument("--run-id", type=str, default=None)
+    # Mirrors calibrate.py's --allow-wrong-accepted (store_true, default False):
+    run.add_argument("--allow-wrong-accepted", action="store_true", default=False)
+
+    # compare — select the best candidate from the complete matrix
+    cmp = sub.add_parser("compare", help="Select best candidate from complete matrix (dev-only).")
+    cmp.add_argument("--candidates", type=Path, required=True)
+    cmp.add_argument("--splits-root", type=Path, required=True)
+    cmp.add_argument("--dataset-version", type=Path, required=True)
+    cmp.add_argument("--artifacts-root", type=Path, required=True)
+    cmp.add_argument("--selection-path", type=Path, required=True)
+    cmp.add_argument("--allow-wrong-accepted", action="store_true", default=False)
+
+    # freeze — read phase2-selection.json, verify, freeze (no-replace)
+    frz = sub.add_parser("freeze", help="Freeze selected candidate (no-replace).")
+    frz.add_argument("--selection", type=Path, required=True)
+    frz.add_argument("--artifacts-root", type=Path, required=True)  # resolves the manifest
+    frz.add_argument("--raw-root", type=Path, required=True)
+    frz.add_argument("--labels-root", type=Path, required=True)
+    frz.add_argument("--splits-root", type=Path, required=True)
+    frz.add_argument("--duplicate-reviews", type=Path, required=True)
+
+    # confirm-final — one-shot final evaluation, gated BEFORE opening final
+    cf = sub.add_parser("confirm-final", help="One-shot final evaluation with gate (the only path to final).")
+    cf.add_argument("--selection", type=Path, required=True)
+    cf.add_argument("--artifacts-root", type=Path, required=True)
+    cf.add_argument("--gate-config", type=Path, required=True)
+    cf.add_argument("--confirm-final-once", type=str, required=True)
+    cf.add_argument("--raw-root", type=Path, required=True)
+    cf.add_argument("--labels-root", type=Path, required=True)
+    cf.add_argument("--splits-root", type=Path, required=True)
+    cf.add_argument("--duplicate-reviews", type=Path, required=True)
+
+    # adjudicate-replay — gate existing replay evidence; NEVER runs the service
+    ar = sub.add_parser("adjudicate-replay", help="Adjudicate existing replay evidence against gate policy.")
+    ar.add_argument("--gate-config", type=Path, required=True)
+    ar.add_argument("--replay-report", type=Path, required=True)
+    ar.add_argument("--frozen-dir", type=Path, required=True)
+    ar.add_argument("--output", type=Path, default=None)
+    ar.add_argument("--stdout", action="store_true")
 
     args = parser.parse_args(argv)
 
-    if args.command == "list":
-        version = DatasetVersion(1, "dry-run", args.parent_dataset_id, "2026-08-28T00:00:00Z", [])
-        specs = enumerate_specs(args.candidates, args.splits_root, version)
-        out = {
-            "schemaVersion": 1,
-            "count": len(specs),
-            "axes": {
-                "augmentation": 3, "hardNegative": 2, "temperature": 2, "embedding": 2,
-            },
-            "candidates": [
-                {"runId": s.run_id, "matrixKey": s.matrix_key,
-                 "configChecksum": s.config_checksum[:12], "splitChecksum": s.split_checksum[:12]}
-                for s in specs
-            ],
-        }
-        print(json.dumps(out, sort_keys=True, indent=2))
-        return 0
-    raise AssertionError("unreachable")
+    handlers = {
+        "list": _cmd_list,
+        "run": _cmd_run,
+        "compare": _cmd_compare,
+        "freeze": _cmd_freeze,
+        "confirm-final": _cmd_confirm_final,
+        "adjudicate-replay": _cmd_adjudicate_replay,
+    }
+    return handlers[args.command](args)
 
 
 if __name__ == "__main__":
