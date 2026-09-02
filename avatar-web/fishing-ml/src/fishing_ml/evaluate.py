@@ -51,11 +51,9 @@ def _inputs(frozen_dir: Path) -> tuple[dict, NormalizationStats, Thresholds, Fis
 
 
 def load_training_config_from_document(doc: dict):
-    required = {"schemaVersion", "seed", "epochs", "learningRate", "weightDecay", "temperature", "embeddingDim", "channels", "checkpointMetric", "device", "workers", "reproducibilityTolerance"}
-    if set(doc) != required:
-        raise ValueError("model config fields mismatch")
-    from .config import TrainingConfig
-    return TrainingConfig(doc["schemaVersion"], doc["seed"], doc["epochs"], doc["learningRate"], doc["weightDecay"], doc["temperature"], doc["embeddingDim"], tuple(doc["channels"]), doc["checkpointMetric"], doc["device"], doc["workers"], doc["reproducibilityTolerance"])
+    """Canonical parser delegating to config.py (supports schema v1 and v2)."""
+    from .config import load_training_config_from_document as _canonical
+    return _canonical(doc)
 
 
 def _evaluate(episodes, model, device, temperature, thresholds):
