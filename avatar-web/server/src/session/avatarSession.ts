@@ -421,11 +421,14 @@ export class AvatarSession {
         this.automationLocation = intent.location;
         this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
         const client = this.client;
-        const epoch = this.connectionEpoch;
-        if (!client || client.status !== 'online') {
-          this.activeMode = 'off';
-          this.emitAutomation();
+      const epoch = this.connectionEpoch;
+      if (!client || client.status !== 'online') {
+        if (this.retryAfter?.epoch === epoch && this.desiredMode === 'auto_farm') {
           return 'connect-pending';
+        }
+        this.activeMode = 'off';
+        this.emitAutomation();
+        return 'connect-pending';
         }
         if (!(await this.startDesiredAutomation(client, generation, epoch))) {
           return 'connect-pending';
@@ -739,6 +742,13 @@ export class AvatarSession {
       });
     } catch (err) {
       if (!this.isCurrent(client, epoch)) return;
+      const retryAfterState = this.retryAfter as
+        | { epoch: number; notBefore: number }
+        | undefined;
+      if (retryAfterState?.epoch === epoch) {
+        this.pushLog(`server từ chối đăng nhập: ${(err as Error).message}`);
+        return;
+      }
       this.pushLog(`kết nối lỗi: ${(err as Error).message}`);
       this.scheduleRetry(epoch);
       if (client.status !== 'idle' && client.status !== 'error') client.logout();
@@ -1494,7 +1504,23 @@ export class AvatarSession {
     this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
     this.emitAutomation();
     this.macros?.stop();
-    if (this.autoCycleTimer || !this.wanted || this.permanentlyFailed || epoch !== this.connectionEpoch) return;
+    if (!this.wanted || this.permanentlyFailed || epoch !== this.connectionEpoch) return;
+
+    const rejection = this.retryAfter?.epoch === epoch ? this.retryAfter : undefined;
+    if (this.desiredMode === 'auto_farm' && rejection) {
+      const rawInterval = this.lastAutoConfig.intervalMs;
+      const intervalMs = typeof rawInterval === 'number' && Number.isFinite(rawInterval)
+        ? Math.max(0, rawInterval)
+        : DEFAULT_AUTO_INTERVAL_MS;
+      const waitMs = Math.max(intervalMs, Math.max(0, rejection.notBefore - this.now()));
+      this.scheduleAutoCycle(waitMs);
+      this.pushLog(
+        `bỏ qua vòng auto hiện tại vì lỗi đăng nhập tạm thời; đặt lịch vòng mới sau ${Math.round(waitMs / 1000)}s`,
+      );
+      return;
+    }
+
+    if (this.autoCycleTimer) return;
     this.scheduleRetry(epoch);
   }
 
