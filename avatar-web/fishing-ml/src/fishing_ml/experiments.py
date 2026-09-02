@@ -108,17 +108,6 @@ _AXIS_MAPS = {
 }
 # temperature is a real TrainingConfig key, handled separately (float).
 
-# Tie-breaker name (as written in candidates.yaml) -> the camelCase key in the
-# raw ``dev-metrics.json`` document that ``run_experiment`` stores in
-# ``dev_metrics``. ``acceptedRate`` is derived from ``abstentionRate`` (inverted).
-_TIE_BREAKER_METRIC_KEY = {
-    "acceptedRate": "abstentionRate",
-    "top1Accuracy": "top1Accuracy",
-    "batchExactMatch": "batchExactMatch",
-}
-# Tie-breakers whose value must be inverted so that HIGHER is better.
-_TIE_BREAKER_INVERT = frozenset({"acceptedRate"})
-
 
 @dataclass(frozen=True, slots=True)
 class ExperimentSpec:
@@ -337,6 +326,92 @@ def _yaml_config_path(spec: ExperimentSpec, overlay: Mapping[str, Any], artifact
     return path
 
 
+def _non_negative_int(doc: dict, key: str) -> int:
+    value = doc.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{key} must be a non-negative integer")
+    return value
+
+
+def _rate(doc: dict, key: str) -> float:
+    value = doc.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{key} must be a number")
+    value = float(value)
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"{key} must be in [0, 1]")
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class RawDevMetrics:
+    query_count: int
+    batch_count: int
+    wrong_count: int
+    top1_accuracy: float
+    batch_exact_match: float
+    abstention_rate: float
+
+
+_RAW_DEV_METRIC_KEYS = frozenset({
+    "query_count",
+    "batch_count",
+    "wrong_count",
+    "top1_accuracy",
+    "batch_exact_match",
+    "abstention_rate",
+})
+
+
+def _parse_raw_dev_metrics(doc: dict) -> RawDevMetrics:
+    """Strict parser for the RAW dev-metrics document (SNAKE_CASE keys).
+
+    dev-metrics.json is written by ``run_training`` as
+    ``MetricSummary.to_json()`` = asdict -> snake_case (i.e. ``wrong_count``,
+    never ``wrongCount``). No .get(key, 0) defaults (spec §3.13).
+    """
+    missing = sorted(_RAW_DEV_METRIC_KEYS - set(doc))
+    if missing:
+        raise ValueError(f"dev-metrics.json missing keys: {', '.join(missing)}")
+    return RawDevMetrics(
+        query_count=_non_negative_int(doc, "query_count"),
+        batch_count=_non_negative_int(doc, "batch_count"),
+        wrong_count=_non_negative_int(doc, "wrong_count"),
+        top1_accuracy=_rate(doc, "top1_accuracy"),
+        batch_exact_match=_rate(doc, "batch_exact_match"),
+        abstention_rate=_rate(doc, "abstention_rate"),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibratedMetrics:
+    accepted_count: int
+    accepted_accuracy: float | None
+    accepted_rate: float
+    abstention_rate: float
+    wrong_accepted_count: int
+
+
+def _parse_calibrated_metrics(doc: dict) -> CalibratedMetrics:
+    """Strict parser for thresholds.json.metrics (camelCase, spec §5.2)."""
+    keys = {"acceptedCount", "acceptedAccuracy", "abstentionRate", "wrongAcceptedCount"}
+    missing = sorted(keys - set(doc))
+    if missing:
+        raise ValueError(f"thresholds.json metrics missing keys: {', '.join(missing)}")
+    accuracy = doc["acceptedAccuracy"]
+    if accuracy is not None and not isinstance(accuracy, (int, float)):
+        raise ValueError("acceptedAccuracy must be a number or null")
+    abstention_rate = _rate(doc, "abstentionRate")
+    result = CalibratedMetrics(
+        accepted_count=_non_negative_int(doc, "acceptedCount"),
+        accepted_accuracy=None if accuracy is None else float(accuracy),
+        accepted_rate=1.0 - abstention_rate,
+        abstention_rate=abstention_rate,
+        wrong_accepted_count=_non_negative_int(doc, "wrongAcceptedCount"),
+    )
+    return result
+
+
 def _git_revision() -> str:
     try:
         return subprocess.run(
@@ -366,14 +441,14 @@ def _select_by_gate(
     def sort_key(result: ExperimentResult) -> tuple[float, ...]:
         keys: list[float] = []
         for name in tie_breakers:
-            metric_key = _TIE_BREAKER_METRIC_KEY.get(name)
-            if metric_key is None:
-                continue
-            value = float(result.dev_metrics.get(metric_key, 0.0))  # type: ignore[arg-type]
-            if name in _TIE_BREAKER_INVERT:
-                # accepted rate := 1 - abstentionRate (higher is better)
-                value = 1.0 - value
-            keys.append(value)
+            if name == "acceptedRate":
+                keys.append(result.accepted_rate)
+            elif name == "top1Accuracy":
+                keys.append(result.top1_accuracy)
+            elif name == "batchExactMatch":
+                keys.append(result.batch_exact_match)
+            else:
+                raise ValueError(f"unknown tie breaker: {name!r}")
         return tuple(keys)
 
     ranked = sorted(eligible, key=lambda r: (sort_key(r), r.run_id))
@@ -385,6 +460,69 @@ def _select_by_gate(
 # --------------------------------------------------------------------------- #
 
 
+def _raw_metrics_document(raw: RawDevMetrics) -> dict[str, object]:
+    return {
+        "queryCount": raw.query_count,
+        "batchCount": raw.batch_count,
+        "wrongCount": raw.wrong_count,
+        "top1Accuracy": raw.top1_accuracy,
+        "batchExactMatch": raw.batch_exact_match,
+        "abstentionRate": raw.abstention_rate,
+    }
+
+
+def _calibrated_metrics_document(calibrated: CalibratedMetrics) -> dict[str, object]:
+    return {
+        "acceptedCount": calibrated.accepted_count,
+        "acceptedAccuracy": calibrated.accepted_accuracy,
+        "acceptedRate": calibrated.accepted_rate,
+        "abstentionRate": calibrated.abstention_rate,
+        "wrongAcceptedCount": calibrated.wrong_accepted_count,
+    }
+
+
+def _write_experiment_manifest(
+    result: ExperimentResult,
+    artifacts_root: Path,
+    raw: RawDevMetrics,
+    calibrated: CalibratedMetrics,
+    dataset_version: DatasetVersion | None,
+    dataset_version_sha256: str | None,
+) -> str:
+    artifacts_root = Path(artifacts_root)
+    if dataset_version is None or dataset_version_sha256 is None:
+        # No silent provenance gaps in a sealed manifest (spec §5.2 + §3.13).
+        raise ValueError("candidate manifest requires dataset version provenance")
+    manifest_dir = artifacts_root / "phase2-experiments"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    path = manifest_dir / f"{result.run_id}.json"
+    # Spec §5.2 defines the REQUIRED keys ("chứa tối thiểu"); runDir/thresholdsPath
+    # are allowed extras the CLI re-resolution needs (they are themselves immutable
+    # run outputs, never operator input).
+    atomic_write_json(path, {
+        "schemaVersion": 2,
+        "stage": "train-dev-selection",
+        "runId": result.run_id,
+        "matrixKey": result.spec.matrix_key,
+        "runDir": result.run_dir,
+        "thresholdsPath": result.thresholds_path,
+        "provenance": {
+            "datasetId": dataset_version.dataset_id,
+            "parentDatasetId": dataset_version.parent_dataset_id,
+            "datasetVersionSha256": dataset_version_sha256,
+            "splitSha256": result.split_checksum,
+            "configSha256": result.config_checksum,
+            "gitRevision": result.git_revision,
+        },
+        "effectiveConfig": dict(result.spec.config_overlay),
+        "thresholds": dict(result.thresholds),
+        "rawDevMetrics": _raw_metrics_document(raw),
+        "calibratedMetrics": _calibrated_metrics_document(calibrated),
+        "devSelectionPassed": result.passed_gate,
+    })
+    return str(path)
+
+
 def run_experiment(
     spec: ExperimentSpec,
     *,
@@ -394,6 +532,8 @@ def run_experiment(
     duplicate_reviews: Path,
     artifacts_root: Path,
     require_zero_wrong_accepted: bool = True,
+    dataset_version: DatasetVersion | None = None,
+    dataset_version_sha256: str | None = None,
 ) -> ExperimentResult:
     """Train + calibrate ONE candidate on train/dev ONLY; never opens final.
 
@@ -442,10 +582,8 @@ def run_experiment(
     thresholds_doc = read_json(thresholds_path)
     metrics_doc = read_json(run_dir / "dev-metrics.json")
 
-    accepted_wrong = int(metrics_doc.get("wrongCount", 0))
-    abstention_rate = float(metrics_doc.get("abstentionRate", 0.0))
-    top1 = float(metrics_doc.get("top1Accuracy", 0.0))
-    batch_exact = float(metrics_doc.get("batchExactMatch", 0.0))
+    raw = _parse_raw_dev_metrics(metrics_doc)
+    calibrated = _parse_calibrated_metrics(thresholds_doc["metrics"])
 
     result = ExperimentResult(
         spec=spec,
@@ -454,45 +592,26 @@ def run_experiment(
         thresholds_path=str(thresholds_path),
         thresholds=dict(thresholds_doc["thresholds"]),
         dev_metrics=dict(metrics_doc),
-        accepted_wrong_count=accepted_wrong,
-        accepted_rate=1.0 - abstention_rate,
-        top1_accuracy=top1,
-        batch_exact_match=batch_exact,
+        accepted_wrong_count=calibrated.wrong_accepted_count,
+        accepted_rate=calibrated.accepted_rate,
+        top1_accuracy=raw.top1_accuracy,
+        batch_exact_match=raw.batch_exact_match,
         manifest_path="",  # set after writing below
         config_checksum=spec.config_checksum,
         split_checksum=spec.split_checksum,
         git_revision=_git_revision(),
-        passed_gate=(not require_zero_wrong_accepted) or accepted_wrong == 0,
+        passed_gate=(not require_zero_wrong_accepted) or calibrated.wrong_accepted_count == 0,
     )
-    manifest_path = _write_experiment_manifest(result, artifacts_root)
+    manifest_path = _write_experiment_manifest(
+        result,
+        artifacts_root,
+        raw,
+        calibrated,
+        dataset_version,
+        dataset_version_sha256,
+    )
     object.__setattr__(result, "manifest_path", manifest_path)
     return result
-
-
-def _write_experiment_manifest(result: ExperimentResult, artifacts_root: Path) -> str:
-    artifacts_root = Path(artifacts_root)
-    manifest_dir = artifacts_root / "phase2-experiments"
-    manifest_dir.mkdir(parents=True, exist_ok=True)
-    path = manifest_dir / f"{result.run_id}.json"
-    atomic_write_json(path, {
-        "schemaVersion": 1,
-        "stage": "train-dev-selection",
-        "runId": result.run_id,
-        "gitRevision": result.git_revision,
-        "configChecksum": result.config_checksum,
-        "splitChecksum": result.split_checksum,
-        "spec": asdict(result.spec),
-        "thresholds": dict(result.thresholds),
-        "devMetrics": dict(result.dev_metrics),
-        "acceptedWrongCount": result.accepted_wrong_count,
-        "acceptedRate": result.accepted_rate,
-        "top1Accuracy": result.top1_accuracy,
-        "batchExactMatch": result.batch_exact_match,
-        "passedGate": result.passed_gate,
-        "thresholdsPath": result.thresholds_path,
-        "runDir": result.run_dir,
-    })
-    return str(path)
 
 
 def compare_experiments(
