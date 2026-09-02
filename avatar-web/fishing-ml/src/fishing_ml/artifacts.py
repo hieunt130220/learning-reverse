@@ -128,6 +128,15 @@ def freeze_run(run_dir: Path, raw_root: Path, labels_root: Path, splits_root: Pa
             source_path = run_dir / source
             if not source_path.is_file():
                 raise FileNotFoundError(source_path)
+            if destination == "model-config.json":
+                # Spec §4.1: the frozen bundle must carry a schema-valid model
+                # config. phase2-training writes schema v2; Phase A froze v1.
+                from .config import load_training_config_from_document
+
+                config_doc = read_json(source_path)
+                if not isinstance(config_doc, dict):
+                    raise ValueError("invalid model-config.json: not a mapping")
+                load_training_config_from_document(config_doc)  # strict v1/v2 parse
             shutil.copyfile(source_path, staging / destination)
         atomic_write_json(staging / "dataset-snapshot.json", build_dataset_snapshot(raw_root, labels_root, splits_root))
         atomic_write_json(staging / "split-checksums.json", checksum_split_files(splits_root))
@@ -141,9 +150,27 @@ def freeze_run(run_dir: Path, raw_root: Path, labels_root: Path, splits_root: Pa
         raise
 
 
-def verify_current_dataset(frozen_dir: Path, raw_root: Path, labels_root: Path, splits_root: Path) -> None:
+def verify_current_dataset(
+    frozen_dir: Path,
+    raw_root: Path,
+    labels_root: Path,
+    splits_root: Path,
+    duplicate_reviews: Path | None = None,
+) -> None:
     frozen_dir = Path(frozen_dir)
-    validate_splits(raw_root, labels_root, splits_root, Path(__file__).resolve().parents[3] / "config" / "duplicate-reviews.json")
+    if duplicate_reviews is None:
+        # Default: the committed review file location (parents[2] = fishing-ml).
+        # The historical parents[3] (avatar-web/config) never existed; keeping a
+        # default that points nowhere would make this always fail validation.
+        duplicate_reviews = Path(__file__).resolve().parents[2] / "config" / "duplicate-reviews.json"
+    result = validate_splits(
+        Path(raw_root), Path(labels_root), Path(splits_root), duplicate_reviews
+    )
+    if not result.valid:
+        raise ValueError(
+            "split validation failed: "
+            + "; ".join(f"{item.code}:{item.detail}" for item in result.issues)
+        )
     expected = read_json(frozen_dir / "dataset-snapshot.json")
     if not isinstance(expected, dict) or set(expected) != {"schemaVersion", "batches"} or expected["schemaVersion"] != 1 or not isinstance(expected["batches"], list):
         raise ValueError("invalid dataset snapshot")

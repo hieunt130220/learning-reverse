@@ -41,6 +41,7 @@ __all__ = [
     "validate_png",
     "validate_batch",
     "atomic_write_json",
+    "publish_no_replace",
     "main",
 ]
 
@@ -437,6 +438,40 @@ def atomic_write_json(path: Path, value: Mapping[str, object]) -> None:
     try:
         with open(tmp, "w", encoding="utf-8") as handle:
             handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            if tmp.exists():
+                os.remove(tmp)
+        except OSError:
+            pass
+
+
+def publish_no_replace(path: Path, value: dict[str, object]) -> None:
+    """Publish JSON atomically with no-replace semantics.
+
+    If the path already exists with byte-equivalent content, succeeds idempotently
+    (spec §5.3: "indempotent nếu nội dung giống byte nhau"). If it exists with
+    different content, raises FileExistsError and leaves the existing file intact.
+    Reused for terminal artifacts: phase2-selection.json, final gate report.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    )
+    target_bytes = text.encode("utf-8")
+    if path.exists():
+        if path.read_bytes() == target_bytes:
+            return
+        raise FileExistsError(f"refusing to overwrite existing artifact: {path}")
+    tmp = path.parent / f".{path.name}.tmp.{os.getpid()}.{os.urandom(6).hex()}"
+    try:
+        with open(tmp, "wb") as handle:
+            handle.write(target_bytes)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(tmp, path)
