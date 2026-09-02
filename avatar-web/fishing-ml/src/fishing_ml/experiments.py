@@ -67,6 +67,9 @@ _ALLOWED_OVERRIDE_KEYS = frozenset(
         "device",
         "workers",
         "reproducibilityTolerance",
+        "augmentationProfile",
+        "hardNegativeRatio",
+        "hardNegativeMargin",
     }
 )
 
@@ -76,17 +79,16 @@ _ALLOWED_OVERRIDE_KEYS = frozenset(
 # (config.py, read-only and strict — unknown keys are rejected) does not yet
 # carry augmentation fields, so these tokens are recorded in the manifest but are
 # NOT injected into the TrainingConfig overlay passed to ``run_training``.
-AUGMENTATION: Mapping[str, str] = {
-    "none": "none",
-    "photometric": "photometric",
-    "photometric_plus_geom": "photometric_plus_geom",
+AUGMENTATION: Mapping[str, Mapping[str, Any]] = {
+    "none": {"augmentationProfile": "none"},
+    "photometric": {"augmentationProfile": "photometric"},
+    "photometric_plus_geom": {"augmentationProfile": "photometric_plus_geom"},
 }
 
-# Finite hard-negative tokens. Same status as AUGMENTATION: recorded for
-# provenance, not (yet) consumed by schema-v1 TrainingConfig.
-HARD_NEGATIVE: Mapping[str, str] = {
-    "off": "off",
-    "ratio_0.25": "ratio_0.25",
+# Finite hard-negative tokens -> schema-v2 config overlay.
+HARD_NEGATIVE: Mapping[str, Mapping[str, Any]] = {
+    "off": {"hardNegativeRatio": 0.0},
+    "ratio_0.25": {"hardNegativeRatio": 0.25},
 }
 
 # Finite embedding -> training-config overlay (the ONLY augmentation/embd axis
@@ -225,8 +227,8 @@ def load_candidate_matrix(path: Path) -> tuple[dict[str, Any], list[dict[str, An
     unknown_top = set(document) - allowed_top
     if unknown_top:
         raise ValueError(f"unknown candidates.yaml keys: {sorted(unknown_top)}")
-    if document.get("schemaVersion") != 1:
-        raise ValueError("candidates.yaml schemaVersion must be 1")
+    if document.get("schemaVersion") != 2:
+        raise ValueError("candidates.yaml schemaVersion must be 2")
 
     base_config = document.get("baseConfig")
     if not isinstance(base_config, dict):
@@ -277,14 +279,12 @@ def enumerate_specs(
         for hn in candidates["hardNegative"]:
             for temp in candidates["temperature"]:
                 for emb in candidates["embedding"]:
-                    # The TrainingConfig overlay contains ONLY schema-v1 keys
-                    # (strict config.py rejects unknown keys). Augmentation and
-                    # hard-negative tokens are recorded in ``config_overlay`` for
-                    # provenance but never injected into the training config today.
                     overlay = (
                         dict(base_config)
                         | EMBEDDING[emb]
                         | {"temperature": float(temp)}
+                        | AUGMENTATION[aug]
+                        | HARD_NEGATIVE[hn]
                     )
                     unknown_overlay = set(overlay) - _ALLOWED_OVERRIDE_KEYS
                     if unknown_overlay:  # defensive; maps are curated
@@ -292,11 +292,7 @@ def enumerate_specs(
                     config_text = json.dumps(overlay, sort_keys=True)
                     config_checksum = hashlib.sha256(config_text.encode("utf-8")).hexdigest()
                     spec_seed = seed if seed is not None else int(overlay.get("seed", 20260827))
-                    provenance_overlay = dict(overlay) | {
-                        "augmentation": AUGMENTATION[aug],
-                        "hardNegative": HARD_NEGATIVE[hn],
-                        "embedding": emb,
-                    }
+                    provenance_overlay = dict(overlay)
                     specs.append(ExperimentSpec(
                         augmentation=aug,
                         hard_negative=hn,
@@ -317,7 +313,7 @@ def enumerate_specs(
 
 
 def _yaml_config_path(spec: ExperimentSpec, overlay: Mapping[str, Any], artifacts_root: Path) -> Path:
-    """Write a strict schema-v1 TrainingConfig YAML for one candidate.
+    """Write a strict schema-v2 TrainingConfig YAML for one candidate.
 
     ``overlay`` must contain ONLY schema-valid keys (the caller builds it from
     ``baseConfig`` + the candidate's ``embeddingDim`` + ``temperature``). Augmentation
@@ -411,11 +407,8 @@ def run_experiment(
 
     artifacts_root = Path(artifacts_root)
     run_id = spec.run_id
-    # The strict TrainingConfig overlay: only schema-v1 keys (baseConfig + the
-    # candidate's embeddingDim + temperature). Augmentation / hard-negative tokens
-    # are provenance only and are not sent to run_training.
     strict_overlay: dict[str, Any] = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "seed": spec.seed,
         "epochs": 80,
         "learningRate": 0.001,
@@ -427,6 +420,9 @@ def run_experiment(
         "workers": 0,
         "reproducibilityTolerance": 0.002,
         "temperature": spec.temperature,
+        "augmentationProfile": AUGMENTATION[spec.augmentation]["augmentationProfile"],
+        "hardNegativeRatio": HARD_NEGATIVE[spec.hard_negative]["hardNegativeRatio"],
+        "hardNegativeMargin": 0.10,
     }
     config_path = _yaml_config_path(spec, strict_overlay, artifacts_root / ".p2-configs")
 
