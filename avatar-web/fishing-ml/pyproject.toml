@@ -29,6 +29,9 @@ fishing-evaluate = "fishing_ml.evaluate:main"
 fishing-phase2-dataset-version = "fishing_ml.dataset_version:main"
 fishing-phase2-inference-contract = "fishing_ml.inference_contract:main"
 fishing-phase2-inference-service = "fishing_ml.inference_service:main"
+fishing-phase2-experiment = "fishing_ml.experiments:main"
+fishing-phase2-replay = "fishing_ml.replay:main"
+fishing-phase2-gate = "fishing_ml.phase2_gate:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

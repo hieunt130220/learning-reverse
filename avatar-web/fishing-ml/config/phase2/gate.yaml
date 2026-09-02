@@ -37,6 +37,11 @@ latency:
   # Hard ceiling; replay/service results at or above this fail the gate.
   maxMs: 250
 
+errorBudget:
+  maxErroredBatchRate: 0.01
+  maxOmittedRate: 0.0
+  requireSingleModelIdentity: true
+
 # Hard acceptance gates. These are non-negotiable (design §1, §3.2).
 gate:
   # Wrongly-accepted queries must be exactly zero (primary gate).

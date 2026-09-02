@@ -67,6 +67,8 @@ def train_epoch(
     *,
     temperature: float,
     device: torch.device,
+    config: TrainingConfig | None = None,
+    epoch: int = 0,
 ) -> float:
     """Optimize one pass over variable-size train episodes."""
     model.train()
@@ -83,7 +85,27 @@ def train_epoch(
         query_embeddings = model(queries)
         logits = episode_logits(query_embeddings, reference_embeddings, temperature)
         loss = episode_loss(logits, targets)
-        _finite_tensor(loss, "training loss")
+        if config is not None and config.hard_negative_ratio > 0:
+            from .phase2_training import compute_hard_negative_loss
+
+            # Same normalized embeddings already used for the CE loss; the model
+            # output is L2-normalized, so no re-normalization and NO no_grad —
+            # the auxiliary loss must backpropagate through the encoder.
+            hn_loss = compute_hard_negative_loss(
+                query_embeddings,
+                reference_embeddings,
+                targets,
+                ratio=config.hard_negative_ratio,
+                margin=config.hard_negative_margin,
+                global_seed=config.seed,
+                epoch=epoch,
+                batch_id=episode.batch_id,
+            )
+            _finite_tensor(loss, "training loss")
+            _finite_tensor(hn_loss, "hard-negative loss")
+            loss = loss + hn_loss
+        else:
+            _finite_tensor(loss, "training loss")
         loss.backward()
         for parameter in model.parameters():
             if parameter.grad is not None:
@@ -209,14 +231,8 @@ def _publish_directory_no_replace(staging_dir: Path, run_dir: Path) -> None:
 
 
 def _config_json(config: TrainingConfig) -> dict[str, object]:
-    return {
-        "schemaVersion": config.schema_version, "seed": config.seed, "epochs": config.epochs,
-        "learningRate": config.learning_rate, "weightDecay": config.weight_decay,
-        "temperature": config.temperature, "embeddingDim": config.embedding_dim,
-        "channels": list(config.channels), "checkpointMetric": config.checkpoint_metric,
-        "device": config.device, "workers": config.workers,
-        "reproducibilityTolerance": config.reproducibility_tolerance,
-    }
+    from .config import config_to_document
+    return config_to_document(config)
 
 
 def _prediction_json(row: Prediction) -> dict[str, object]:
@@ -257,7 +273,10 @@ def run_training(
         # Load both permitted partitions before optimization so boundary errors fail early.
         first_train_episodes = load_training_episodes(
             raw_root, labels_root, splits_root, stats,
-            duplicate_reviews=duplicate_reviews, seed=config.seed
+            duplicate_reviews=duplicate_reviews, seed=config.seed,
+            augmentation_profile=config.augmentation_profile,
+            epoch=1,
+            global_seed=config.seed,
         )
         dev_episodes = load_dev_episodes(
             raw_root, labels_root, splits_root, stats, duplicate_reviews=duplicate_reviews
@@ -273,9 +292,16 @@ def run_training(
         for epoch in range(1, config.epochs + 1):
             train_episodes = first_train_episodes if epoch == 1 else load_training_episodes(
                 raw_root, labels_root, splits_root, stats,
-                duplicate_reviews=duplicate_reviews, seed=config.seed + epoch - 1
+                duplicate_reviews=duplicate_reviews, seed=config.seed + epoch - 1,
+                augmentation_profile=config.augmentation_profile,
+                epoch=epoch,
+                global_seed=config.seed,
             )
-            train_loss = train_epoch(model, train_episodes, optimizer, temperature=config.temperature, device=device)
+            train_loss = train_epoch(
+                model, train_episodes, optimizer,
+                temperature=config.temperature, device=device,
+                config=config, epoch=epoch,
+            )
             predictions, dev_loss, shapes = predict_episodes(
                 model, dev_episodes, temperature=config.temperature, device=device
             )

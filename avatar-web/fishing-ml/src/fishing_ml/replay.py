@@ -37,7 +37,7 @@ from .schema import (
 
 from PIL import Image
 
-_REPLAY_SCHEMA_VERSION = 1
+_REPLAY_SCHEMA_VERSION = 2
 
 # A single 75x75 RGBA PNG is 22,500 raw bytes; the contract permits a 4x headroom
 # per file before the capture is rejected, and a hard aggregate decoded budget
@@ -121,9 +121,16 @@ class ReplayReport:
     latency_p50_ms: float | None
     latency_p95_ms: float | None
     latency_p99_ms: float | None
+    latency_max_ms: float | None
     rq_breakdown: Mapping[str, RQBreakdown]
     model_ids: tuple[str, ...]
     model_checksums: tuple[str, ...]
+    labeled_correct_prediction_count: int
+    labeled_wrong_prediction_count: int
+    labeled_top1_accuracy: float | None
+    labeled_batch_exact_count: int
+    labeled_batch_exact_match: float | None
+    labeled_accepted_rate: float | None
 
     def to_dict(self) -> dict[str, object]:
         """Return the canonical aggregate document (never request-level data)."""
@@ -149,12 +156,19 @@ class ReplayReport:
             "unknownReturnedPredictionCount": self.unknown_returned_prediction_count,
             "correctAcceptedCount": self.correct_accepted_count,
             "wrongAcceptedCount": self.wrong_accepted_count,
+            "labeledCorrectPredictionCount": self.labeled_correct_prediction_count,
+            "labeledWrongPredictionCount": self.labeled_wrong_prediction_count,
+            "labeledTop1Accuracy": self.labeled_top1_accuracy,
+            "labeledBatchExactCount": self.labeled_batch_exact_count,
+            "labeledBatchExactMatch": self.labeled_batch_exact_match,
+            "labeledAcceptedRate": self.labeled_accepted_rate,
             "errorCounts": dict(sorted(self.error_counts.items())),
             "clientLatencyMs": {
                 "sampleCount": self.latency_sample_count,
                 "p50": self.latency_p50_ms,
                 "p95": self.latency_p95_ms,
                 "p99": self.latency_p99_ms,
+                "max": self.latency_max_ms,
                 "rule": "nearest-rank",
             },
             "rqBreakdown": {
@@ -215,6 +229,9 @@ class _Accumulator:
     request_latencies_ms: list[float] = field(default_factory=list)
     rq: dict[str, _RQAccumulator] = field(default_factory=dict)
     model_ids: set[str] = field(default_factory=set)
+    labeled_correct_prediction_count: int = 0
+    labeled_wrong_prediction_count: int = 0
+    labeled_batch_exact_count: int = 0
 
 
 def _rq_key(references: int, queries: int) -> str:
@@ -530,13 +547,21 @@ def _record_predictions(
     accumulator.labeled_batch_count += 1
     accumulator.labeled_query_count += len(manifest.images_new)
     accumulator.labeled_returned_prediction_count += len(returned)
+    batch_exact = True
     for query_index, prediction in returned.items():
-        if not prediction.accepted:
-            continue
-        if prediction.reference_index == ground_truth[query_index]:
-            accumulator.correct_accepted_count += 1
+        is_correct = prediction.reference_index == ground_truth[query_index]
+        if prediction.accepted:
+            if is_correct:
+                accumulator.correct_accepted_count += 1
+            else:
+                accumulator.wrong_accepted_count += 1
+        if is_correct:
+            accumulator.labeled_correct_prediction_count += 1
         else:
-            accumulator.wrong_accepted_count += 1
+            accumulator.labeled_wrong_prediction_count += 1
+        batch_exact = batch_exact and is_correct
+    if batch_exact:
+        accumulator.labeled_batch_exact_count += 1
 
 
 def _freeze_report(
@@ -557,6 +582,19 @@ def _freeze_report(
         for key, value in sorted(accumulator.rq.items())
     }
     errored = accumulator.batch_count - accumulator.successful_batch_count
+    labeled_top1_accuracy = _safe_rate(
+        accumulator.labeled_correct_prediction_count,
+        accumulator.labeled_returned_prediction_count,
+    )
+    labeled_accepted_rate = _safe_rate(
+        accumulator.correct_accepted_count + accumulator.wrong_accepted_count,
+        accumulator.labeled_returned_prediction_count,
+    )
+    labeled_batch_exact_match = _safe_rate(
+        accumulator.labeled_batch_exact_count,
+        accumulator.labeled_batch_count,
+    )
+
     return ReplayReport(
         schema_version=_REPLAY_SCHEMA_VERSION,
         batch_count=accumulator.batch_count,
@@ -598,9 +636,18 @@ def _freeze_report(
         latency_p50_ms=_nearest_rank(accumulator.request_latencies_ms, 50),
         latency_p95_ms=_nearest_rank(accumulator.request_latencies_ms, 95),
         latency_p99_ms=_nearest_rank(accumulator.request_latencies_ms, 99),
+        latency_max_ms=(
+            max(accumulator.request_latencies_ms) if accumulator.request_latencies_ms else None
+        ),
         rq_breakdown=rq,
         model_ids=tuple(sorted(accumulator.model_ids)),
         model_checksums=model_checksums,
+        labeled_correct_prediction_count=accumulator.labeled_correct_prediction_count,
+        labeled_wrong_prediction_count=accumulator.labeled_wrong_prediction_count,
+        labeled_top1_accuracy=labeled_top1_accuracy,
+        labeled_batch_exact_count=accumulator.labeled_batch_exact_count,
+        labeled_batch_exact_match=labeled_batch_exact_match,
+        labeled_accepted_rate=labeled_accepted_rate,
     )
 
 

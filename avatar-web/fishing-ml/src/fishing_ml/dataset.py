@@ -10,6 +10,7 @@ from PIL import Image, ImageEnhance
 
 from .schema import load_label, load_manifest
 from .split import validate_splits
+from .phase2_training import stable_seed_context
 
 @dataclass(frozen=True, slots=True)
 class NormalizationStats:
@@ -92,20 +93,78 @@ def _augment(x: torch.Tensor, rng: random.Random) -> torch.Tensor:
     grid=torch.nn.functional.affine_grid(theta, (1,*x.shape), align_corners=False)
     return torch.nn.functional.grid_sample(x.unsqueeze(0),grid,mode="bilinear",padding_mode="border",align_corners=False)[0].clamp(-5,5)
 
-def _load(raw_root: Path, labels_root: Path, splits_root: Path, split: str, stats: NormalizationStats | None, *, duplicate_reviews: Path | None = None, train=False, seed=20260827, limit=None):
+def _augment_v2(tensor: torch.Tensor, profile: str, context: bytes) -> torch.Tensor:
+    """Schema-v2 deterministic augmentation on a raw [0,1] RGB tensor (3, H, W)."""
+    from .phase2_training import apply_augmentation_profile
+
+    return apply_augmentation_profile(profile, tensor, context)
+
+def _load(
+    raw_root, labels_root, splits_root, split, stats,
+    *, duplicate_reviews=None, train=False, seed=20260827, limit=None,
+    augmentation_profile="legacy_combined", epoch=0, global_seed=None,
+):
     if split == "final": raise ValueError("final split is locked; use fishing_ml.evaluate final loader")
     _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews)
-    ids=_split_ids(splits_root,split)[:limit]; rng=random.Random(seed); out=[]
+    ids = _split_ids(splits_root, split)[:limit]
+    rng = random.Random(seed)
+    out = []
     for bid in ids:
-        r,q,t=_entries(raw_root,labels_root,bid,stats)
-        if train:
-            order=list(range(len(r))); rng.shuffle(order); remap={old:new for new,old in enumerate(order)}
-            r=r[order]; t=torch.tensor([remap[int(v)] for v in t]); r=torch.stack([_augment(v,rng) for v in r]); q=torch.stack([_augment(v,rng) for v in q])
-        out.append(FishingEpisode(bid,r,q,t))
+        if train and augmentation_profile == "legacy_combined":
+            # v1 legacy: EXACT existing behavior — shuffle, then the shared rng
+            # drives _augment on already-normalized tensors (clamp [-5, 5]).
+            r, q, t = _entries(raw_root, labels_root, bid, stats)
+            order = list(range(len(r))); rng.shuffle(order)
+            remap = {old: new for new, old in enumerate(order)}
+            r = r[order]; t = torch.tensor([remap[int(v)] for v in t])
+            r = torch.stack([_augment(v, rng) for v in r])
+            q = torch.stack([_augment(v, rng) for v in q])
+        elif train:
+            # v2: augmentation on RAW [0,1] BEFORE normalization. The image index
+            # in the stable context is the image's position in its role list as
+            # loaded (references in ascending img_index order, queries in manifest
+            # order) — i.e. BEFORE the shuffle — so augmentation is a pure
+            # function of (global_seed, epoch, batch_id, role, image index) and
+            # does not depend on where the shuffle happens to place the image
+            # (spec §3.3: results must not depend on traversal order, worker
+            # scheduling, or RNG calls for other images).
+            r, q, t = _entries(raw_root, labels_root, bid, None)
+            base_seed = global_seed if global_seed is not None else seed
+            r = torch.stack([
+                _augment_v2(v, augmentation_profile,
+                            stable_seed_context(base_seed, epoch, bid, "reference", i))
+                for i, v in enumerate(r)
+            ])
+            q = torch.stack([
+                _augment_v2(v, augmentation_profile,
+                            stable_seed_context(base_seed, epoch, bid, "query", i))
+                for i, v in enumerate(q)
+            ])
+            # The reference-order shuffle still runs afterwards (spec §3.3).
+            order = list(range(len(r))); rng.shuffle(order)
+            remap = {old: new for new, old in enumerate(order)}
+            r = r[order]; t = torch.tensor([remap[int(v)] for v in t])
+            mean, std = _validate_normalization_stats(stats)
+            r = (r - mean) / std
+            q = (q - mean) / std
+        else:
+            # Dev/final: NEVER augmented, regardless of profile (spec §3.3).
+            r, q, t = _entries(raw_root, labels_root, bid, stats)
+        out.append(FishingEpisode(bid, r, q, t))
     return out
 
-def load_training_episodes(raw_root, labels_root, splits_root, stats, *, duplicate_reviews=None, seed=20260827, limit=None): return _load(Path(raw_root),Path(labels_root),Path(splits_root),"train",stats,duplicate_reviews=duplicate_reviews,train=True,seed=seed,limit=limit)
-def load_dev_episodes(raw_root, labels_root, splits_root, stats, *, duplicate_reviews=None, limit=None): return _load(Path(raw_root),Path(labels_root),Path(splits_root),"dev",stats,duplicate_reviews=duplicate_reviews,limit=limit)
+def load_training_episodes(
+    raw_root, labels_root, splits_root, stats, *,
+    duplicate_reviews=None, seed=20260827, limit=None,
+    augmentation_profile="legacy_combined", epoch=0, global_seed=None,
+): return _load(Path(raw_root), Path(labels_root), Path(splits_root), "train", stats,
+                 duplicate_reviews=duplicate_reviews, train=True, seed=seed, limit=limit,
+                 augmentation_profile=augmentation_profile, epoch=epoch, global_seed=global_seed)
+
+def load_dev_episodes(raw_root, labels_root, splits_root, stats, *, duplicate_reviews=None, limit=None):
+    # Dev loader keeps its exact current signature: no augmentation, ever.
+    return _load(Path(raw_root), Path(labels_root), Path(splits_root), "dev", stats,
+                 duplicate_reviews=duplicate_reviews, limit=limit)
 def _load_final_episodes(raw_root, labels_root, splits_root, stats, *, limit=None):
     _validate_split_inputs(raw_root, labels_root, splits_root)
     ids = [x.strip() for x in (Path(splits_root) / "final.txt").read_text().splitlines() if x.strip()][:limit]

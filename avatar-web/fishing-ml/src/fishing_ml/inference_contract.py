@@ -21,7 +21,7 @@ import io
 import json
 import math
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -46,6 +46,12 @@ _MAX_IMAGES = 64
 # 22500 bytes; PNG is compressed so actual file bytes are smaller. (64+64)*7500
 # = 960000 gives generous slack while still bounding runaway payloads.
 _MAX_BODY_BYTES = (64 + 64) * 7500
+
+# Canonical raw JSON budget for a request at decoded/count limits.  The exact
+# maximum over all contract-valid requests: 1,280,340 base64 chars (127 images
+# d≡1 mod 3 + 1 image d≡2 mod 3 summing to 960,000 decoded bytes) plus per-entry
+# overhead (1,718 per list) plus the 48-char envelope = 1,283,950 bytes.
+MAX_CANONICAL_REQUEST_BYTES = 1_283_950
 
 # Exact top-level request keys (camelCase — unknown keys rejected).
 _REQUEST_KEYS = frozenset({"schemaVersion", "references", "queries"})
@@ -112,6 +118,42 @@ class InferenceResponse:
     model_id: str
     predictions: tuple[InferencePrediction, ...]
     latency_ms: int
+
+def _request_document(request: InferenceRequest) -> dict[str, object]:
+    return {
+        "schemaVersion": request.schema_version,
+        "references": [
+            {"index": image.index, "pngBase64": image.png_base64}
+            for image in request.references
+        ],
+        "queries": [
+            {"index": image.index, "pngBase64": image.png_base64}
+            for image in request.queries
+        ],
+    }
+
+
+def canonical_request_byte_length(
+    references: Sequence[InferenceImage],
+    queries: Sequence[InferenceImage],
+) -> int:
+    """Exact UTF-8 byte length of the canonical compact JSON request.
+
+    Pure function of the image payloads — no I/O, no parsing, no decoding.
+    """
+    request = InferenceRequest(
+        schema_version=SCHEMA_VERSION,
+        references=tuple(references),
+        queries=tuple(queries),
+    )
+    return len(
+        json.dumps(
+            _request_document(request),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
 
 
 def _is_int(value: object) -> bool:
@@ -404,12 +446,14 @@ def main(argv: list[str] | None = None) -> int:
 
 
 __all__ = [
+    "MAX_CANONICAL_REQUEST_BYTES",
     "SCHEMA_VERSION",
     "ContractError",
     "InferenceImage",
     "InferenceRequest",
     "InferencePrediction",
     "InferenceResponse",
+    "canonical_request_byte_length",
     "parse_request",
     "serialize_response",
     "validate_response",
