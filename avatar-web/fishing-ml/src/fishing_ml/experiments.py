@@ -43,6 +43,7 @@ from typing import Any, Mapping
 import yaml
 
 from .dataset_version import DatasetVersion
+from .phase2_gate import load_gate_policy
 from .schema import atomic_write_json, read_json
 
 # Lazy-friendly imports: these modules import torch at module load, so we import
@@ -562,7 +563,7 @@ def confirm_final_once(
     """
     from . import artifacts, evaluate
 
-    gate = load_gate(gate_path)
+    policy = load_gate_policy(gate_path)
     frozen_dir = artifacts.verify_freeze(Path(result.run_dir) / "frozen")
     final = evaluate.evaluate_final_once(
         Path(result.run_dir),
@@ -575,49 +576,32 @@ def confirm_final_once(
     wrong_accepted = int(metrics.get("wrongCount", 0))
 
     # Primary gate: zero wrong accepted.
-    if gate["gate"]["requireZeroWrongAccepted"] and wrong_accepted != 0:
+    if policy.require_zero_wrong_accepted and wrong_accepted != 0:
         raise RuntimeError(
             f"Phase 2 final FAILED primary gate: accepted_wrong_count={wrong_accepted} (must be 0)"
         )
 
     # Secondary coverage/accuracy gates (design §3.2 / §5, gate 2A-2).
-    coverage = gate["coverage"]
     accepted_rate = 1.0 - float(metrics.get("abstentionRate", 0.0))
     top1 = float(metrics.get("top1Accuracy", 0.0))
     batch_exact = float(metrics.get("batchExactMatch", 0.0))
     failures: list[str] = []
-    if accepted_rate < float(coverage["minAcceptedRate"]):
+    if accepted_rate < policy.min_accepted_rate:
         failures.append(
-            f"acceptedRate {accepted_rate:.4f} < minAcceptedRate {coverage['minAcceptedRate']}"
+            f"acceptedRate {accepted_rate:.4f} < minAcceptedRate {policy.min_accepted_rate}"
         )
-    if batch_exact < float(coverage["minBatchExactMatch"]):
+    if batch_exact < policy.min_batch_exact_match:
         failures.append(
-            f"batchExactMatch {batch_exact:.4f} < minBatchExactMatch {coverage['minBatchExactMatch']}"
+            f"batchExactMatch {batch_exact:.4f} < minBatchExactMatch {policy.min_batch_exact_match}"
         )
-    if top1 < float(coverage["minTop1Accuracy"]):
+    if top1 < policy.min_top1_accuracy:
         failures.append(
-            f"top1Accuracy {top1:.4f} < minTop1Accuracy {coverage['minTop1Accuracy']}"
+            f"top1Accuracy {top1:.4f} < minTop1Accuracy {policy.min_top1_accuracy}"
         )
     if failures:
         raise RuntimeError("Phase 2 final FAILED coverage gates: " + "; ".join(failures))
 
     return final
-
-
-# --------------------------------------------------------------------------- #
-# Gate / policy loading                                                        #
-# --------------------------------------------------------------------------- #
-
-
-def load_gate(path: Path) -> dict[str, Any]:
-    """Load the explicit quality-gate document (read, never inferred from data)."""
-    document = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(document, dict):
-        raise ValueError("gate config must be a YAML mapping")
-    for key in ("coverage", "latency", "gate"):
-        if key not in document:
-            raise ValueError(f"gate config missing section: {key!r}")
-    return document
 
 
 # --------------------------------------------------------------------------- #
