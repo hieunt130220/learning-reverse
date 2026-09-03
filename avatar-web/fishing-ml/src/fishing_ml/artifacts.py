@@ -83,7 +83,15 @@ def _manifest(document: object) -> FreezeManifest:
     if not isinstance(document, dict) or set(document) != {"schemaVersion", "runId", "gitRevision", "files"}:
         raise ValueError("freeze-manifest.json fields mismatch")
     files = document["files"]
-    if document["schemaVersion"] != 1 or not isinstance(document["runId"], str) or not document["runId"] or not isinstance(document["gitRevision"], str) or not _GIT_HEX.fullmatch(document["gitRevision"]) or not isinstance(files, dict):
+    if (
+        isinstance(document["schemaVersion"], bool)
+        or document["schemaVersion"] != 1
+        or not isinstance(document["runId"], str)
+        or not document["runId"]
+        or not isinstance(document["gitRevision"], str)
+        or not _GIT_HEX.fullmatch(document["gitRevision"])
+        or not isinstance(files, dict)
+    ):
         raise ValueError("invalid freeze manifest")
     expected = set(_FROZEN_INPUTS) | set(_GENERATED)
     if set(files) != expected or any(not isinstance(value, str) or not _HEX64.fullmatch(value) for value in files.values()):

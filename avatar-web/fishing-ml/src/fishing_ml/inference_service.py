@@ -73,7 +73,7 @@ _INFER_PATH = "/infer"
 
 # Only an actual body-size violation maps to HTTP 413. Image count and all other
 # contract violations are malformed/invalid requests and map to HTTP 400.
-_SIZE_CODES = frozenset({"body_too_large", "too_many_images"})
+_SIZE_CODES = frozenset({"body_too_large"})
 
 # A process-wide cap prevents timed-out inference workers from accumulating.
 # The slot is released only after the worker actually exits.
@@ -189,9 +189,11 @@ class InferenceServerConfig:
         if (
             isinstance(self.max_body_bytes, bool)
             or not isinstance(self.max_body_bytes, int)
-            or self.max_body_bytes <= 0
+            or not 1 <= self.max_body_bytes <= _MAX_BODY_OVERRIDE_CAP
         ):
-            raise ValueError("max_body_bytes must be a positive integer")
+            raise ValueError(
+                f"max_body_bytes must be an integer from 1 through {_MAX_BODY_OVERRIDE_CAP}"
+            )
         if (
             isinstance(self.timeout_ms, bool)
             or not isinstance(self.timeout_ms, int)
@@ -584,7 +586,11 @@ def _read_body(
         if not parts or any(not part for part in parts):
             raise ContractError("bad_request", "invalid Content-Length")
         for part in parts:
-            if not part or any(char not in "0123456789" for char in part):
+            if (
+                not part
+                or len(part) > 20
+                or any(char not in "0123456789" for char in part)
+            ):
                 raise ContractError("bad_request", "invalid Content-Length")
             try:
                 declared = int(part, 10)

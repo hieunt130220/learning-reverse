@@ -1,10 +1,10 @@
 # fishing-ml
 
-Offline dataset, labeling, training, calibration, freezing, and evaluation pipeline for
-**Avatar fishing image matching** (Giai đoạn A).
+Offline dataset, labeling, training, calibration, freezing, evaluation, and local
+inference/replay tooling for **Avatar fishing image matching**.
 
-No live inference and no service layer are included here — those belong to Giai đoạn B.
-No command submits TX43.
+The Phase 2 service is local and read-only: it loads one verified frozen candidate and
+never controls the game. No command submits TX43 or calls `finishFishing()`.
 
 ## Console commands
 
@@ -57,12 +57,90 @@ never escape `data/phase2/` or point at a Phase A mutable root.
 | `fishing-phase2-dataset-version` | `fishing_ml.dataset_version` |
 | `fishing-phase2-inference-contract` | `fishing_ml.inference_contract` |
 | `fishing-phase2-inference-service` | `fishing_ml.inference_service` |
+| `fishing-phase2-experiment` | `fishing_ml.experiments` |
+| `fishing-phase2-replay` | `fishing_ml.replay` |
+| `fishing-phase2-gate` | `fishing_ml.phase2_gate` |
 
 ```bash
 # Verify an inference request/response document (exit 1 on rejected).
 python -m fishing_ml.inference_contract check-request path/to/request.json
 python -m fishing_ml.inference_contract check-response path/to/response.json
 ```
+
+### Phase 2 experiment state machine
+
+New candidates use strict training-config schema v2. In addition to every schema-v1
+field, v2 requires:
+
+- `augmentationProfile`: `none`, `photometric`, or `photometric_plus_geom`;
+- `hardNegativeRatio`: `0.0` or `0.25`;
+- `hardNegativeMargin`: a finite positive number.
+
+The finite matrix and immutable selection policy live in
+`config/phase2/candidates.yaml`. `compare` always uses that configured policy; there
+is no CLI override that can weaken the zero-wrong-accepted requirement. Freeze and
+final confirmation re-resolve the selection against the current dataset version,
+train/dev split checksum, effective config, Git revision, candidate manifest, and
+run artifacts.
+
+```bash
+# 1. Enumerate the finite matrix without training or reading final.txt.
+fishing-phase2-experiment list \
+  --candidates config/phase2/candidates.yaml \
+  --splits-root path/to/data/phase2/splits \
+  --dataset-version path/to/data/phase2/dataset-version.json
+
+# 2. Train and calibrate exactly one enumerated candidate on train/dev.
+fishing-phase2-experiment run \
+  --candidates config/phase2/candidates.yaml \
+  --splits-root path/to/data/phase2/splits \
+  --dataset-version path/to/data/phase2/dataset-version.json \
+  --raw-root path/to/data/phase2/raw --labels-root path/to/data/phase2/labels \
+  --duplicate-reviews config/duplicate-reviews.json \
+  --artifacts-root path/to/artifacts --run-id p2-...
+
+# 3. Compare the complete manifest set and publish immutable selection evidence.
+fishing-phase2-experiment compare \
+  --candidates config/phase2/candidates.yaml \
+  --splits-root path/to/data/phase2/splits \
+  --dataset-version path/to/data/phase2/dataset-version.json \
+  --artifacts-root path/to/artifacts \
+  --selection-path path/to/artifacts/phase2-selection.json
+
+# 4. Freeze only the verified selected candidate.
+fishing-phase2-experiment freeze \
+  --selection path/to/artifacts/phase2-selection.json \
+  --candidates config/phase2/candidates.yaml \
+  --dataset-version path/to/data/phase2/dataset-version.json \
+  --artifacts-root path/to/artifacts \
+  --raw-root path/to/data/phase2/raw --labels-root path/to/data/phase2/labels \
+  --splits-root path/to/data/phase2/splits \
+  --duplicate-reviews config/duplicate-reviews.json
+
+# 5. One-shot final evaluation. Placeholder gate policy returns blocked before
+# final.txt, final lock, or final predictions are touched.
+fishing-phase2-experiment confirm-final \
+  --selection path/to/artifacts/phase2-selection.json \
+  --candidates config/phase2/candidates.yaml \
+  --dataset-version path/to/data/phase2/dataset-version.json \
+  --artifacts-root path/to/artifacts --gate-config config/phase2/gate.yaml \
+  --confirm-final-once p2-... \
+  --raw-root path/to/data/phase2/raw --labels-root path/to/data/phase2/labels \
+  --splits-root path/to/data/phase2/splits \
+  --duplicate-reviews config/duplicate-reviews.json
+
+# 6. Adjudicate existing replay evidence; this never starts the service.
+fishing-phase2-experiment adjudicate-replay \
+  --gate-config config/phase2/gate.yaml \
+  --replay-report path/to/replay-report.json \
+  --frozen-dir path/to/run/frozen --stdout
+```
+
+Exit codes are `0` for a successful non-adjudication stage or gate pass, `2` for
+invalid input/provenance/infrastructure/publication conflict, `3` for a valid
+mandatory gate failure, and `4` for a valid blocked state. A proven failure takes
+precedence over blockers. Placeholder policy values are not approval and keep real
+final/replay gates blocked.
 
 ### Inference service (frozen candidate)
 
@@ -102,7 +180,7 @@ is not dependent on the caller's current working directory.
 fishing-phase2-inference-service \
   --frozen-dir path/to/run/frozen \
   --host 127.0.0.1 --port 8080 \
-  --max-body-bytes 960000 --timeout-ms 5000
+  --max-body-bytes 1283950 --timeout-ms 5000
 
 # Infer (contract request → contract response, schemaVersion 1):
 curl -s -X POST http://127.0.0.1:8080/infer \
@@ -147,8 +225,9 @@ counts/rates (outcome rates cover successful response query outcomes, so pre-req
 or failed-request queries are not silently treated as abstentions); correct/wrong
 accepted counts only where complete reviewer ground truth
 exists; stable error counts; `R=<references>,Q=<queries>` breakdowns; observed model
-IDs and optional caller-supplied frozen checksums; and client-observed p50/p95/p99
-latencies. Percentiles use nearest rank over every terminal HTTP client call (success
+IDs and optional caller-supplied frozen checksums; and client-observed p50/p95/p99/max
+latencies plus labeled raw top-1 and batch-exact metrics. Percentiles use nearest rank
+over every terminal HTTP client call (success
 or failure), never the service-reported `latencyMs`. No accuracy claim is valid when
 labels are absent, and stub-server replay is operational/fault evidence only—not real
 checkpoint or matcher-accuracy evidence.

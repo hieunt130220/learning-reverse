@@ -91,7 +91,16 @@ function isExactObject(value: unknown, keys: ReadonlySet<string>): value is Reco
 }
 
 function isInteger(value: unknown): value is number {
-  return Number.isInteger(value);
+  return Number.isSafeInteger(value);
+}
+
+function isCanonicalRequestBody(body: string): boolean {
+  return Buffer.byteLength(body, 'utf8') <= MAX_CANONICAL_REQUEST_BYTES;
+}
+
+function serializeRequest(request: InferenceRequestDocument): string | undefined {
+  const body = JSON.stringify(request);
+  return isCanonicalRequestBody(body) ? body : undefined;
 }
 
 function validatePng(png: unknown): asserts png is Buffer {
@@ -171,9 +180,13 @@ function parseContentLength(response: Response): number | undefined {
   return parsed;
 }
 
-async function cancelBody(response: Response): Promise<void> {
+async function cancelBody(response: Response, reader?: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
   try {
-    await response.body?.cancel();
+    if (reader !== undefined) {
+      await reader.cancel();
+    } else {
+      await response.body?.cancel();
+    }
   } catch {
     // The peer may already have closed the stream. Never surface body-adjacent errors.
   }
@@ -202,9 +215,8 @@ async function readBoundedResponse(response: Response): Promise<Uint8Array> {
       if (done) break;
       total += value.byteLength;
       if (total > MAX_RESPONSE_BYTES) {
-        // Best-effort release the transport. Swallow any cancel rejection so the
-        // stable response_too_large code cannot be masked as connection_failed.
-        await cancelBody(response);
+        // Cancel the locked reader rather than the body stream itself.
+        await cancelBody(response, reader);
         throw new ResponseValidationError('response_too_large');
       }
       chunks.push(value);
@@ -357,6 +369,17 @@ export class InferenceClient {
       return { status: 'disabled' };
     }
 
+    let request: InferenceRequestDocument;
+    try {
+      request = buildRequest(payload);
+    } catch (error) {
+      return invalid(error instanceof LocalValidationError ? error.code : 'invalid_payload');
+    }
+    const body = serializeRequest(request);
+    if (body === undefined) {
+      return invalid('request_too_large');
+    }
+
     const now = Date.now();
     const probe = this.#openUntil > 0 && now >= this.#openUntil;
     if (this.#openUntil > now || (probe && this.#probeInFlight)) {
@@ -366,13 +389,6 @@ export class InferenceClient {
       return unavailable('backlog_full');
     }
 
-    let request: InferenceRequestDocument;
-    try {
-      request = buildRequest(payload);
-    } catch (error) {
-      return invalid(error instanceof LocalValidationError ? error.code : 'invalid_payload');
-    }
-
     if (probe) this.#probeInFlight = true;
     this.#inFlight += 1;
     // Capture the breaker generation BEFORE any await. Only an outcome whose
@@ -380,7 +396,7 @@ export class InferenceClient {
     // request completing after a newer transition must not corrupt the breaker.
     const gen = this.#generation;
     try {
-      const result = await this.#matchOnce(request);
+      const result = await this.#matchOnce(request, body);
       // Only an outcome whose generation still matches may mutate breaker state.
       if (gen === this.#generation) {
         if (result.status === 'ok') {
@@ -426,7 +442,10 @@ export class InferenceClient {
     this.#consecutiveFailures = 0;
   }
 
-  async #matchOnce(request: InferenceRequestDocument): Promise<ShadowMatchResult> {
+  async #matchOnce(
+    request: InferenceRequestDocument,
+    body: string,
+  ): Promise<ShadowMatchResult> {
     const startedAt = performance.now();
     // Strict, monotonic end-to-end deadline independent of the abort timer. The
     // abort timer alone can be defeated by microtask-heavy stream processing that
@@ -437,11 +456,6 @@ export class InferenceClient {
     timer.unref?.();
 
     try {
-      const body = JSON.stringify(request);
-      if (Buffer.byteLength(body, 'utf8') > MAX_CANONICAL_REQUEST_BYTES) {
-        // Release nothing — no body was sent; the error is local and stable.
-        return { status: 'invalid', errorCode: 'request_too_large' };
-      }
       const response = await fetch(this.#config.endpoint, {
         method: 'POST',
         headers: {
@@ -452,7 +466,7 @@ export class InferenceClient {
         redirect: 'error',
         signal: controller.signal,
       });
-      if (!response.ok) {
+      if (response.status !== 200) {
         await cancelBody(response);
         return unavailable('http_status');
       }

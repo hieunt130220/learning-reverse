@@ -20,6 +20,7 @@ from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from .inference_client import InferenceClient, InferenceClientError
 from .inference_contract import InferenceImage, InferenceRequest, InferenceResponse
@@ -64,6 +65,7 @@ _MISSING_IMAGES_NEW = "missing_images_new"
 _INVALID_LABEL = "invalid_label"
 _UNSAFE_BATCH_DIR = "unsafe_batch_dir"
 _UNRESOLVED_LABEL = "unresolved_label"
+_INVALID_RESPONSE = "invalid_response"
 
 
 @dataclass(frozen=True, slots=True)
@@ -526,8 +528,52 @@ def _record_predictions(
     response: InferenceResponse,
     ground_truth: dict[int, int] | None,
 ) -> None:
-    returned = {prediction.query_index: prediction for prediction in response.predictions}
-    omitted = len(manifest.images_new) - len(returned)
+    """Record one validated response without allowing malformed rows to escape.
+
+    The HTTP client normally validates these invariants. Replay also validates
+    them here because tests, alternate clients, and future callers can provide
+    an ``InferenceResponse``-shaped object without going through that client.
+    Validation happens before any accumulator mutation so a malformed batch can
+    be isolated by the caller without leaving partial counts behind.
+    """
+    expected_queries = set(range(len(manifest.images_new)))
+    returned: dict[int, Any] = {}
+    for prediction in response.predictions:
+        query_index = prediction.query_index
+        reference_index = prediction.reference_index
+        if (
+            isinstance(query_index, bool)
+            or not isinstance(query_index, int)
+            or query_index < 0
+            or query_index not in expected_queries
+        ):
+            raise ValidationError("response query index is out of range")
+        if query_index in returned:
+            raise ValidationError("response contains duplicate query index")
+        if (
+            isinstance(reference_index, bool)
+            or not isinstance(reference_index, int)
+            or reference_index < 0
+            or reference_index >= len(manifest.images)
+        ):
+            raise ValidationError("response reference index is out of range")
+        if not isinstance(prediction.accepted, bool):
+            raise ValidationError("response accepted flag is invalid")
+        returned[query_index] = prediction
+
+    if ground_truth is not None:
+        if set(ground_truth) != expected_queries:
+            raise ValidationError("ground truth does not cover every query")
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            or value >= len(manifest.images)
+            for value in ground_truth.values()
+        ):
+            raise ValidationError("ground truth reference index is out of range")
+
+    omitted = len(expected_queries - set(returned))
     accepted = sum(1 for prediction in returned.values() if prediction.accepted)
     abstained = len(returned) - accepted
 
@@ -547,7 +593,7 @@ def _record_predictions(
     accumulator.labeled_batch_count += 1
     accumulator.labeled_query_count += len(manifest.images_new)
     accumulator.labeled_returned_prediction_count += len(returned)
-    batch_exact = True
+    batch_exact = set(returned) == expected_queries
     for query_index, prediction in returned.items():
         is_correct = prediction.reference_index == ground_truth[query_index]
         if prediction.accepted:
@@ -848,16 +894,26 @@ def replay_batches(
 
                 elapsed_ms = (time.perf_counter_ns() - started_ns) / 1_000_000.0
                 accumulator.request_latencies_ms.append(elapsed_ms)
+                try:
+                    _record_predictions(
+                        accumulator,
+                        bucket,
+                        manifest,
+                        response,
+                        ground_truth,
+                    )
+                except (ValidationError, AttributeError, TypeError, ValueError):
+                    _record_error(accumulator, key, _INVALID_RESPONSE)
+                    if ground_truth is None:
+                        accumulator.unknown_batch_count += 1
+                        accumulator.unknown_query_count += queries
+                    else:
+                        accumulator.labeled_batch_count += 1
+                        accumulator.labeled_query_count += queries
+                    continue
                 accumulator.successful_batch_count += 1
                 bucket.successful_batches += 1
                 accumulator.model_ids.add(response.model_id)
-                _record_predictions(
-                    accumulator,
-                    bucket,
-                    manifest,
-                    response,
-                    ground_truth,
-                )
             finally:
                 os.close(batch_descriptor)
     finally:

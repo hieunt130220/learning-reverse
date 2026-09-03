@@ -165,10 +165,28 @@ def load_dev_episodes(raw_root, labels_root, splits_root, stats, *, duplicate_re
     # Dev loader keeps its exact current signature: no augmentation, ever.
     return _load(Path(raw_root), Path(labels_root), Path(splits_root), "dev", stats,
                  duplicate_reviews=duplicate_reviews, limit=limit)
-def _load_final_episodes(raw_root, labels_root, splits_root, stats, *, limit=None):
-    _validate_split_inputs(raw_root, labels_root, splits_root)
-    ids = [x.strip() for x in (Path(splits_root) / "final.txt").read_text().splitlines() if x.strip()][:limit]
-    return [FishingEpisode(bid, *_entries(Path(raw_root), Path(labels_root), bid, stats)) for bid in ids]
+def _load_final_episodes(
+    raw_root,
+    labels_root,
+    splits_root,
+    stats,
+    *,
+    duplicate_reviews=None,
+    limit=None,
+):
+    _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews)
+    ids = [
+        x.strip()
+        for x in (Path(splits_root) / "final.txt").read_text().splitlines()
+        if x.strip()
+    ][:limit]
+    return [
+        FishingEpisode(
+            bid,
+            *_entries(Path(raw_root), Path(labels_root), bid, stats),
+        )
+        for bid in ids
+    ]
 
 def main(argv=None):
     p=argparse.ArgumentParser(); p.add_argument("--raw-root",type=Path,required=True); p.add_argument("--labels-root",type=Path,required=True); p.add_argument("--splits-root",type=Path,required=True); p.add_argument("--duplicate-reviews",type=Path,required=True); p.add_argument("--split",choices=["train","dev","final"],required=True); p.add_argument("--limit",type=int,default=5); a=p.parse_args(argv)

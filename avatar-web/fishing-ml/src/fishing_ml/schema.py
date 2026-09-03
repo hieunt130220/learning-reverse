@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
@@ -449,13 +450,14 @@ def atomic_write_json(path: Path, value: Mapping[str, object]) -> None:
             pass
 
 
-def publish_no_replace(path: Path, value: dict[str, object]) -> None:
-    """Publish JSON atomically with no-replace semantics.
+def publish_no_replace(path: Path, value: Mapping[str, object]) -> None:
+    """Publish JSON atomically without ever replacing an existing target.
 
-    If the path already exists with byte-equivalent content, succeeds idempotently
-    (spec §5.3: "indempotent nếu nội dung giống byte nhau"). If it exists with
-    different content, raises FileExistsError and leaves the existing file intact.
-    Reused for terminal artifacts: phase2-selection.json, final gate report.
+    The temporary file is fsynced in the destination directory, then installed
+    with an exclusive hard-link operation.  Unlike ``os.replace``, ``os.link``
+    fails atomically when another publisher already installed the target.  A
+    byte-equivalent regular file is idempotent; all other existing targets,
+    including dangling symlinks, are conflicts.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -464,21 +466,74 @@ def publish_no_replace(path: Path, value: dict[str, object]) -> None:
         + "\n"
     )
     target_bytes = text.encode("utf-8")
-    if path.exists():
-        if path.read_bytes() == target_bytes:
-            return
-        raise FileExistsError(f"refusing to overwrite existing artifact: {path}")
-    tmp = path.parent / f".{path.name}.tmp.{os.getpid()}.{os.urandom(6).hex()}"
+    temporary = path.parent / (
+        f".{path.name}.tmp.{os.getpid()}.{os.urandom(6).hex()}"
+    )
+    descriptor = os.open(
+        temporary,
+        os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+        0o600,
+    )
     try:
-        with open(tmp, "wb") as handle:
-            handle.write(target_bytes)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp, path)
+        view = memoryview(target_bytes)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise OSError("short write while publishing artifact")
+            view = view[written:]
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+    try:
+        try:
+            # A hard link is an atomic exclusive install on the same filesystem.
+            os.link(temporary, path, follow_symlinks=False)
+        except FileExistsError:
+            # Only after the exclusive install loses the race may equivalent
+            # bytes be accepted. lstat/open(O_NOFOLLOW) keep symlinks and other
+            # non-regular targets from being treated as reusable artifacts.
+            try:
+                existing_descriptor = os.open(
+                    path,
+                    os.O_RDONLY
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_NONBLOCK", 0),
+                )
+            except OSError as error:
+                raise FileExistsError(
+                    f"refusing to overwrite existing artifact: {path}"
+                ) from error
+            try:
+                metadata = os.fstat(existing_descriptor)
+                if not stat.S_ISREG(metadata.st_mode):
+                    raise FileExistsError(
+                        f"refusing to overwrite non-regular artifact: {path}"
+                    )
+                chunks: list[bytes] = []
+                while True:
+                    chunk = os.read(existing_descriptor, 65536)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                existing_bytes = b"".join(chunks)
+            finally:
+                os.close(existing_descriptor)
+            if existing_bytes == target_bytes:
+                return
+            raise FileExistsError(
+                f"refusing to overwrite existing artifact: {path}"
+            )
+        directory_descriptor = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
     finally:
         try:
-            if tmp.exists():
-                os.remove(tmp)
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
         except OSError:
             pass
 

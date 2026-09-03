@@ -16,7 +16,7 @@ from .calibrate import Thresholds, apply_thresholds
 from .dataset import NormalizationStats, _load_final_episodes, load_dev_episodes
 from .metrics import summarize_predictions
 from .model import FishingEncoder
-from .schema import atomic_write_json, read_json
+from .schema import atomic_write_json, publish_no_replace, read_json
 from .train import _device, _prediction_json, predict_episodes
 
 
@@ -115,7 +115,24 @@ def _create_final_lock(path: Path) -> None:
         os.close(descriptor)
 
 
-def evaluate_final_once(run_dir: Path, raw_root: Path, labels_root: Path, splits_root: Path, confirm_final_once: str) -> dict:
+def evaluate_final_once(
+    run_dir: Path,
+    raw_root: Path,
+    labels_root: Path,
+    splits_root: Path,
+    confirm_final_once: str,
+    *,
+    phase2_confirmed: bool = False,
+    duplicate_reviews: Path | None = None,
+) -> dict:
+    """Evaluate the final split once after the caller has supplied an exact run id.
+
+    Schema-v1 candidates retain the historical direct-evaluator behavior. Schema-v2
+    candidates are refused unless the Phase 2 experiment command has completed its
+    gate preflight and explicitly opts into this internal evaluation boundary.
+    The opt-in is keyword-only so the ordinary ``fishing-evaluate final`` CLI cannot
+    accidentally enable it.
+    """
     run_dir = Path(run_dir)
     if confirm_final_once != run_dir.name:
         raise PermissionError("exact --confirm-final-once run-id is required")
@@ -127,15 +144,40 @@ def evaluate_final_once(run_dir: Path, raw_root: Path, labels_root: Path, splits
     freeze = verify_freeze(frozen_dir)
     if freeze.git_revision != _git():
         raise RuntimeError("frozen Git revision does not match current revision")
-    verify_current_dataset(frozen_dir, raw_root, labels_root, splits_root)
+    # Load and classify the frozen model config before any dataset validation:
+    # verify_current_dataset validates all split files, including final.txt.
+    # A direct evaluator call must therefore reject schema-v2 before it can
+    # touch the final split at all.
     config_doc, stats, thresholds, model, device = _inputs(frozen_dir)
+    is_schema_v2 = isinstance(config_doc, dict) and config_doc.get("schemaVersion") == 2
+    if is_schema_v2 and not phase2_confirmed:
+        raise RuntimeError(
+            "Phase 2 frozen candidates (schema-v2 model config) require "
+            "fishing-phase2-experiment confirm-final; direct fishing-evaluate "
+            "final is disabled for v2"
+        )
+    if phase2_confirmed and not is_schema_v2:
+        raise PermissionError("Phase 2 confirmation requires a schema-v2 model config")
+    verify_current_dataset(
+        frozen_dir,
+        raw_root,
+        labels_root,
+        splits_root,
+        duplicate_reviews=duplicate_reviews,
+    )
     published = False
     _create_final_lock(lock)
     try:
-        episodes = _load_final_episodes(raw_root, labels_root, splits_root, stats)
+        episodes = _load_final_episodes(
+            raw_root,
+            labels_root,
+            splits_root,
+            stats,
+            duplicate_reviews=duplicate_reviews,
+        )
         predictions, metrics, loss, baseline = _evaluate(episodes, model, device, float(config_doc["temperature"]), thresholds)
         result = {"schemaVersion": 1, "split": "final", "loss": loss, "metrics": metrics.to_json(), "baselines": baseline, "predictions": [_prediction_json(row) for row in predictions], "passed": metrics.top1_accuracy >= .99 and metrics.wrong_count == 0}
-        atomic_write_json(output, result)
+        publish_no_replace(output, result)
         published = True
         return result
     finally:

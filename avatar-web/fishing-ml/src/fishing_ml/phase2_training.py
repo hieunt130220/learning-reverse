@@ -118,10 +118,10 @@ def compute_hard_negative_loss(
         margin: positive margin for the hinge loss
         global_seed, epoch, batch_id: for deterministic selection
     """
-    if ratio <= 0.0 or reference_embeddings.shape[0] < 2:
+    if ratio <= 0.0 or reference_embeddings.shape[0] < 2 or targets.numel() == 0:
         # Zero auxiliary loss with the same device/dtype (spec §3.4: an episode
-        # with a single reference has no wrong reference to mine).
-        return torch.tensor(0.0, device=query_embeddings.device, dtype=query_embeddings.dtype)
+        # with a single reference or no eligible query has nothing to mine).
+        return query_embeddings.sum() * 0.0
 
     # Cosine similarity matrix (embeddings are already L2-normalized by
     # FishingEncoder.forward; torch.mm of normalized vectors is cosine).

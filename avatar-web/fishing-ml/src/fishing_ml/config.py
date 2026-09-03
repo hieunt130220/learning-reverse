@@ -43,6 +43,11 @@ _V2_EXTRA_KEYS = frozenset({"augmentationProfile", "hardNegativeRatio", "hardNeg
 _SUPPORTED_CHECKPOINT_METRICS = frozenset({"dev_top1_accuracy"})
 _SUPPORTED_DEVICES = frozenset({"auto", "cpu", "cuda", "mps"})
 
+# Keep all schema integers bounded so a hostile YAML/JSON integer cannot reach
+# float conversion, tensor shapes, or unbounded error formatting.
+_MAX_PROTOCOL_INTEGER = 2**53 - 1
+_MAX_CONFIG_INTEGER = 2**53 - 1
+
 
 @dataclass(frozen=True, slots=True)
 class TrainingConfig:
@@ -186,15 +191,39 @@ def _parse_config_document(raw: Mapping[str, Any]) -> TrainingConfig:
 
 def _integer(values: Mapping[str, Any], key: str, *, minimum: int) -> int:
     value = values[key]
-    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ValueError(f"{key} must be an integer >= {minimum}")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < minimum
+        or value > _MAX_CONFIG_INTEGER
+    ):
+        raise ValueError(f"{key} must be an integer from {minimum} through {_MAX_CONFIG_INTEGER}")
     return value
 
 
 def _positive_integer(value: Any, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(f"{name} must be a positive integer")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value <= 0
+        or value > _MAX_CONFIG_INTEGER
+    ):
+        raise ValueError(f"{name} must be a positive integer <= {_MAX_CONFIG_INTEGER}")
     return value
+
+
+def _finite_float(value: object, key: str) -> float:
+    try:
+        number = float(value)
+    except (OverflowError, ValueError, TypeError):
+        raise ValueError(f"{key} must be a finite number") from None
+    if not math.isfinite(number):
+        raise ValueError(f"{key} must be a finite number")
+    return number
+
+
+def _format_bound(value: float | None) -> str:
+    return repr(value)
 
 
 def _finite_number(
@@ -208,15 +237,13 @@ def _finite_number(
     value = values[key]
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{key} must be a finite number")
-    number = float(value)
-    if not math.isfinite(number):
-        raise ValueError(f"{key} must be a finite number")
+    number = _finite_float(value, key)
     if minimum_exclusive is not None and number <= minimum_exclusive:
-        raise ValueError(f"{key} must be > {minimum_exclusive}")
+        raise ValueError(f"{key} must be > {_format_bound(minimum_exclusive)}")
     if minimum_inclusive is not None and number < minimum_inclusive:
-        raise ValueError(f"{key} must be >= {minimum_inclusive}")
+        raise ValueError(f"{key} must be >= {_format_bound(minimum_inclusive)}")
     if maximum_inclusive is not None and number > maximum_inclusive:
-        raise ValueError(f"{key} must be <= {maximum_inclusive}")
+        raise ValueError(f"{key} must be <= {_format_bound(maximum_inclusive)}")
     return number
 
 

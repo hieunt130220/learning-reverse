@@ -84,7 +84,7 @@
 - Produces: `TrainingConfig` with three new fields, `config_to_document(config) -> dict`, `load_training_config_from_document(doc) -> TrainingConfig`.
 - Consumes: existing YAML files (schema v1 unchanged).
 
-- [ ] **Step 1: Add v2 constants and extend TrainingConfig**
+- [x] **Step 1: Add v2 constants and extend TrainingConfig**
 
 In `config.py`, add after the existing imports:
 
@@ -110,7 +110,7 @@ hard_negative_margin: float = _LEGACY_HARD_NEGATIVE_MARGIN
 
 Note: the current `TrainingConfig` is a flat dataclass — there is no `hidden_dim` field or nested `model` dict. The YAML has `model.hiddenDim` but `load_training_config` does not currently extract it. Do not introduce a nested `model` key in `config_to_document`.
 
-- [ ] **Step 2: Share one v1/v2 parser between Path and document loading**
+- [x] **Step 2: Share one v1/v2 parser between Path and document loading**
 
 Replace `load_training_config` (config.py:49-105) and add `load_training_config_from_document` plus a shared `_parse_config_document`. The current code (lines 62–70) compares `set(raw)` against `_REQUIRED_KEYS` exactly and rejects `schema_version != 1` at line 73 — both change to a schema-version-aware superset check, and the same body serves YAML files and in-memory model-config documents:
 
@@ -216,7 +216,7 @@ def _parse_config_document(raw: Mapping[str, Any]) -> TrainingConfig:
 
 This keeps v1 behavior byte-identical for Phase A configs (`train-baseline.yaml`, frozen model-config.json): v1 key set and error messages unchanged, `TrainingConfig` gains the three defaulted fields.
 
-- [ ] **Step 3: Add canonical serializer config_to_document**
+- [x] **Step 3: Add canonical serializer config_to_document**
 
 Add a new public function after `load_training_config`:
 
@@ -253,7 +253,7 @@ def config_to_document(config: TrainingConfig) -> dict[str, object]:
 
 This replaces the existing `_config_json` in `train.py` (lines 211–219) which produces the same flat camelCase dict.
 
-- [ ] **Step 4: Replace duplicate config parser in evaluate.py**
+- [x] **Step 4: Replace duplicate config parser in evaluate.py**
 
 The old `load_training_config_from_document` (evaluate.py:53-58) hardcodes an exact v1 key set and constructs `TrainingConfig` positionally without the new fields — a phase-2 candidate's `model-config.json` (schema v2, containing `augmentationProfile`/`hardNegativeRatio`/`hardNegativeMargin`) would raise "model config fields mismatch". Replace the entire function (remove the old body and its local `from .config import TrainingConfig` import, which becomes unused) with a thin delegate to the canonical parser:
 
@@ -264,7 +264,7 @@ def load_training_config_from_document(doc: dict):
     return _canonical(doc)
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `cd avatar-web/fishing-ml && python3.11 -m py_compile src/fishing_ml/config.py && python3.11 -m py_compile src/fishing_ml/evaluate.py && python3.11 -c "
 from pathlib import Path
@@ -295,7 +295,7 @@ print('evaluate delegate OK')
 "`
 Expected: `v1 OK legacy_combined 0.0 0.1`, `v2 OK`, `evaluate delegate OK` — the v1 YAML loads with legacy defaults; the v2 document round-trips; `legacy_combined` is rejected in v2; the evaluator delegate parses v2.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/src/fishing_ml/config.py avatar-web/fishing-ml/src/fishing_ml/evaluate.py
@@ -315,7 +315,7 @@ git commit -m "feat(config): add training config schema v2 with augmentation/har
 - Produces: `stable_seed_context(...)`, `derive_rng(...)`, `apply_augmentation_profile(...)`, `compute_hard_negative_loss(...)`.
 - Consumes: `TrainingConfig.augmentation_profile`, `TrainingConfig.hard_negative_ratio`, `TrainingConfig.hard_negative_margin`.
 
-- [ ] **Step 1: Create phase2_training.py with stable seed derivation**
+- [x] **Step 1: Create phase2_training.py with stable seed derivation**
 
 ```python
 """Deterministic augmentation profiles and hard-negative auxiliary loss for Phase 2."""
@@ -475,7 +475,7 @@ def compute_hard_negative_loss(
     return aux.mean()
 ```
 
-- [ ] **Step 2: Update dataset.py augmentation dispatch**
+- [x] **Step 2: Update dataset.py augmentation dispatch**
 
 The current `_augment` (dataset.py:88-93) runs the combined photometric+geometric transform **after** normalization (it is called on `_entries(..., stats)` output) and clamps to `[-5, 5]`. Spec §3.2/§3.3: `legacy_combined` MUST keep exactly this v1 behavior (post-normalization, clamp −5,5 — it is an internal compatibility value), while schema-v2 profiles run on the raw `[0,1]` RGB tensor **before** normalization with clamp `[0,1]`, train split only, each image's transform using its own RNG derived from `SHA-256(global_seed|epoch|batch_id|role|index)`.
 
@@ -572,7 +572,7 @@ def load_dev_episodes(raw_root, labels_root, splits_root, stats, *, duplicate_re
                  duplicate_reviews=duplicate_reviews, limit=limit)
 ```
 
-- [ ] **Step 3: Thread config/epoch into train.py**
+- [x] **Step 3: Thread config/epoch into train.py**
 
 `FishingEncoder` has no `.encode` submodule — `forward(images)` IS the encoder and already returns L2-normalized embeddings. `train_epoch` (train.py:63-97) already computes `reference_embeddings`/`query_embeddings` with gradients; the auxiliary loss must reuse them (no `torch.no_grad()`, no re-normalization). Update the `train_epoch` signature and add the auxiliary loss between loss computation and `loss.backward()`:
 
@@ -681,12 +681,12 @@ The epoch-1 hoisted load and the loop's first iteration now produce identical ep
 
 **Config hash note:** the effective config overlay now contains `augmentationProfile`/`hardNegativeRatio`/`hardNegativeMargin` (Task 7), so the YAML written by `_yaml_config_path` is schema v2 and `load_training_config` accepts it after Task 1. Schema-v1 configs (Phase A runs) keep `_config_json` output identical to today, because `config_to_document` writes v2 fields only when `schema_version >= 2`.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `cd avatar-web/fishing-ml && python3.11 -m py_compile src/fishing_ml/phase2_training.py && python3.11 -m py_compile src/fishing_ml/dataset.py && python3.11 -m py_compile src/fishing_ml/train.py`
 Expected: All compile cleanly. v1 training behavior preserved when ratio=0.0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/src/fishing_ml/phase2_training.py avatar-web/fishing-ml/src/fishing_ml/dataset.py avatar-web/fishing-ml/src/fishing_ml/train.py
@@ -704,7 +704,7 @@ git commit -m "feat(training): add deterministic augmentation profiles and hard-
 - Extends: `ReplayReport` with `latency_max_ms`, labeled raw correctness, batch exact aggregates.
 - Bumps: replay aggregate schema from v1 to v2.
 
-- [ ] **Step 1: Extend ReplayReport dataclass**
+- [x] **Step 1: Extend ReplayReport dataclass**
 
 Add to `ReplayReport` (currently lines 95–126) after `latency_p99_ms`:
 
@@ -720,7 +720,7 @@ labeled_accepted_rate: float | None
 
 Update `_REPLAY_SCHEMA_VERSION` from `1` to `2`.
 
-- [ ] **Step 2: Add latency_max_ms field to ReplayReport and to_dict**
+- [x] **Step 2: Add latency_max_ms field to ReplayReport and to_dict**
 
 The `ReplayReport.to_dict` currently emits `clientLatencyMs` with `sampleCount`, `p50`, `p95`, `p99`, `rule` (lines 153–159). Add `max` after `p99`:
 
@@ -735,7 +735,7 @@ The `ReplayReport.to_dict` currently emits `clientLatencyMs` with `sampleCount`,
 },
 ```
 
-- [ ] **Step 3: Add labeled raw correctness tracking to accumulator**
+- [x] **Step 3: Add labeled raw correctness tracking to accumulator**
 
 Extend `_Accumulator` (lines 197–218) with:
 
@@ -767,7 +767,7 @@ The current `_record_predictions` (replay.py:505-539) already increments `labele
 
 (Do NOT re-add the `labeled_batch_count`/`labeled_query_count`/`labeled_returned_prediction_count` increments — lines 530-532 already do those. This uses `response.predictions` which always carries `reference_index` for every returned query — accepting/abstention only affects the `accepted` flag, not the top-1 `reference_index`. Omitted queries (missing from `returned`) make `batch_exact` False but contribute no raw correctness count, so the top-1 denominator stays `labeled_returned_prediction_count`.)
 
-- [ ] **Step 4: Compute derived rates in _freeze_report**
+- [x] **Step 4: Compute derived rates in _freeze_report**
 
 In `_freeze_report` (lines 542–604), after building the `ReplayReport`, pass the derived values into the constructor. Replace the `latency_p99_ms=` line and add the new aggregates:
 
@@ -847,7 +847,7 @@ In `_freeze_report` (lines 542–604), after building the `ReplayReport`, pass t
     )
 ```
 
-- [ ] **Step 5: Update ReplayReport.to_dict serialization**
+- [x] **Step 5: Update ReplayReport.to_dict serialization**
 
 Add to the serialized dict (lines 131–168), after `wrongAcceptedCount`:
 
@@ -860,12 +860,12 @@ Add to the serialized dict (lines 131–168), after `wrongAcceptedCount`:
 "labeledAcceptedRate": self.labeled_accepted_rate,
 ```
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run: `cd avatar-web/fishing-ml && python3.11 -m py_compile src/fishing_ml/replay.py`
 Expected: Compiles cleanly. Old schema v1 consumers can parse v2 with new fields ignored or rejected.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/src/fishing_ml/replay.py
@@ -887,7 +887,7 @@ git commit -m "feat(replay): add max latency, labeled correctness, and batch exa
 - Consumes: `load_training_config_from_document` (Task 1) for the frozen model-config strict parse.
 - Unchanged: `FreezeManifest`/`_manifest` stay schema v1; `freeze_run` no-replace boundary stays.
 
-- [ ] **Step 1: Add publish_no_replace to schema.py**
+- [x] **Step 1: Add publish_no_replace to schema.py**
 
 Add after `atomic_write_json` (schema.py:424-448), reusing its exact JSON text shape (`sort_keys=True, separators=(",", ":")`, trailing newline, `ensure_ascii=False`):
 
@@ -926,7 +926,7 @@ def publish_no_replace(path: Path, value: dict[str, object]) -> None:
             pass
 ```
 
-- [ ] **Step 2: Record schema-v2 config fields in freeze_run (preserve no-replace boundary)**
+- [x] **Step 2: Record schema-v2 config fields in freeze_run (preserve no-replace boundary)**
 
 Spec §4.1 "artifacts.py — Preserve freeze/verify no-replace boundary; ghi/verify schema-v2 model config fields". The freeze **manifest itself stays schema v1 and unchanged** (spec does not define a v2 freeze manifest; `FreezeManifest`, `_manifest`, and the `{schemaVersion, runId, gitRevision, files}` key set stay exactly as they are — v1 frozen artifacts remain loadable). The schema-v2 requirement applies to the **model-config.json` inside the frozen dir**, which `freeze_run` copies from the run dir at artifacts.py:127-131 (`_FROZEN_INPUTS["model-config.json"]`).
 
@@ -951,7 +951,7 @@ So the only change in Step 2 is: in `freeze_run`'s copy loop, validate the model
 
 `freeze_run`'s existing no-replace boundary at artifacts.py:116-117 (`if os.path.lexists(frozen_dir): raise FileExistsError`) is unchanged — Task 9's CLI (not this module) implements the "existing verified byte-equivalent frozen output accepted" narrow case, per spec §3.6 `freeze`.
 
-- [ ] **Step 3: Fix verify_current_dataset**
+- [x] **Step 3: Fix verify_current_dataset**
 
 In `verify_current_dataset` (artifacts.py:144-164), the current signature is `(frozen_dir, raw_root, labels_root, splits_root)` — it does NOT accept a `duplicate_reviews` path, and its inline default is broken: `Path(__file__).resolve().parents[3] / "config"` resolves to `avatar-web/config/`, but the committed review file lives at `avatar-web/fishing-ml/config/duplicate-reviews.json` (i.e. `parents[2]`). Verified: `_load_reviews` (split.py) returns a `DUPLICATE_REVIEW_SCHEMA` issue when the file is missing, and `validate_splits` extends `issues` with `review_issues` unconditionally — so today's default makes `verify_current_dataset` FAIL for any caller, not silently bypass. Add the parameter, fix the default to the actual location, and let the phase-2 CLI pass the path explicitly:
 
@@ -983,7 +983,7 @@ def verify_current_dataset(
 
 (Only the `validate_splits` call at line 146 changes — its one-line form becomes the above branch. All of lines 147-164 are untouched. For Phase A callers this is a bug FIX: the default now points to the file that actually exists and is committed; were it left at parents[3], `evaluate_run`/`evaluate_final_once` would always raise "split validation failed: DUPLICATE_REVIEW_SCHEMA". Task 9's `_cmd_freeze` and `_cmd_confirm_final` pass `--duplicate-reviews` explicitly, so they use the operator-supplied path regardless.)
 
-- [ ] **Step 4: Keep freeze_run no-replace (no change) — verify boundary stays**
+- [x] **Step 4: Keep freeze_run no-replace (no change) — verify boundary stays**
 
 `freeze_run` (artifacts.py:113-141) already fails closed with `FileExistsError` when the frozen dir exists, and Task 9's `_cmd_freeze` handles the spec §3.6 "existing verified byte-equivalent frozen output accepted" case by first `verify_freeze`-ing an existing frozen dir and only calling `freeze_run` when that fails. **No code change in this task for `freeze_run` beyond Step 2's model-config validation** — the no-replace boundary must remain exactly where it is. This step is a verification step only:
 
@@ -995,7 +995,7 @@ assert 'lexists' in inspect.getsource(artifacts.freeze_run), 'no-replace boundar
 print('freeze_run no-replace boundary intact')
 "`
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `cd avatar-web/fishing-ml && python3.11 -m py_compile src/fishing_ml/schema.py && python3.11 -m py_compile src/fishing_ml/artifacts.py && python3.11 -c "
 import json
@@ -1015,7 +1015,7 @@ print('publish_no_replace OK')
 "`
 Expected: `publish_no_replace OK` — new artifact, same-bytes idempotent, different bytes raises FileExistsError and leaves the existing file untouched. (Step 4's `freeze_run` block already demonstrates the boundary check.)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/src/fishing_ml/schema.py avatar-web/fishing-ml/src/fishing_ml/artifacts.py
@@ -1037,7 +1037,7 @@ git commit -m "feat(artifacts): no-replace publisher, frozen v1/v2 config strict
 
 **Why these numbers** — the canonical wire document is the exact JSON shape from `_request_document` + the standard serializer (`sort_keys=True, separators=(",", ":")`, UTF-8). A contract-valid request can carry 128 images summing to exactly 960,000 decoded PNG bytes. Base64 chars per image = `4 * ceil(d/3)`. Over all distributions with `Σd = 960_000`, `Σ ceil(d/3)` is maximized at **320,085** — 127 images with `d ≡ 1 (mod 3)` (e.g. `d = 7558`, 10,080 b64 chars) plus 1 image with `d ≡ 2 (mod 3)` (e.g. `d = 134`, 180 b64 chars); any other residue split yields ≤ this. Total b64 chars = `4 * 320_085 = 1_280_340`. Entry overhead (indices 0–63): `{"index":0,"pngBase64":""}` = 26 chars × 10, `{"index":63,...}` = 27 chars × 54, per list = 1,718; envelope `{"schemaVersion":1,"references":[],"queries":[]}` = 48. Therefore the exact maximum canonical byte length = `1_280_340 + 2×1718 + 48 = 1_283_950` (verified by encoding the actual maximal document with `json.dumps`). This is the bound the spec requires: "đủ cho canonical serialization của mọi request đạt decoded budget/count limits."
 
-- [ ] **Step 1: Add canonical constant and size calculator to inference_contract.py**
+- [x] **Step 1: Add canonical constant and size calculator to inference_contract.py**
 
 In `inference_contract.py`, after the existing constants (lines 39–48):
 
@@ -1091,7 +1091,7 @@ def canonical_request_byte_length(
 
 `Sequence` is already importable from `collections.abc` in this module. The contract already imports `json` (line 22).
 
-- [ ] **Step 2: Update inference_client.py constants and preflight**
+- [x] **Step 2: Update inference_client.py constants and preflight**
 
 The client's outbound budget and its base64 preflight must match the contract's true ceilings. Replace `_MAX_REQUEST_BYTES` (line 33) with the contract constant:
 
@@ -1114,7 +1114,7 @@ Remove `_MAX_JSON_DOC_BYTES` (line 44), `_read_bounded` (lines 120–141), `_par
 
 Remove `_MAX_JSON_DOC_BYTES` and `_read_bounded` and `_parse_response` (dead helpers) after verifying no active callers with text search.
 
-- [ ] **Step 3: Update inference_service.py default and cap**
+- [x] **Step 3: Update inference_service.py default and cap**
 
 The `--max-body-bytes` argument **already exists** at lines 829–834 with `default=960000` — this is exactly the bug: the service's wire-body guard equals the decoded budget, so a contract-valid canonical request at the decoded limit (~1,283,950 wire bytes) is rejected before parsing. Change only the default and add the override cap:
 
@@ -1151,7 +1151,7 @@ if args.max_body_bytes < 1 or args.max_body_bytes > _MAX_BODY_OVERRIDE_CAP:
 
 **Verify the contract boundary holds:** with a FIFO body reader, a canonical request at 1,283,950 bytes must pass `len(raw) <= config.max_body_bytes` (line 601 checks `declared > max_body_bytes`) — the default change from 960,000 to 1,283,950 is what makes boundary requests succeed.
 
-- [ ] **Step 4: Update TypeScript client**
+- [x] **Step 4: Update TypeScript client**
 
 In `inferenceClient.ts`, add after `MAX_PNG_BYTES` (around line 46):
 
@@ -1182,7 +1182,7 @@ const response = await fetch(this.#config.endpoint, {
 
 Note: `inferenceClient.ts` already bounds aggregate **decoded PNG** bytes via `MAX_PNG_BYTES` in `buildRequest` (line 149) — the new check is the **canonical raw JSON** bound, which is strictly larger (1,283,950 > 960,000) and therefore accepts all decoded-valid requests while bounding the wire bytes.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `cd avatar-web/fishing-ml && python3.11 -m py_compile src/fishing_ml/inference_contract.py && python3.11 -m py_compile src/fishing_ml/inference_client.py && python3.11 -m py_compile src/fishing_ml/inference_service.py`
 Run: `cd avatar-web/server && npx tsc -p tsconfig.json --noEmit`
@@ -1206,7 +1206,7 @@ Expected: prints `boundary canonical bytes: 1283950 OK` (assert proves a contrac
 
 Also verify the preflight boundary logic by `py_compile` only (no test file — CLAUDE.md forbids tests unless requested).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/src/fishing_ml/inference_contract.py avatar-web/fishing-ml/src/fishing_ml/inference_client.py avatar-web/fishing-ml/src/fishing_ml/inference_service.py avatar-web/server/src/fishing/inferenceClient.ts
@@ -1226,7 +1226,7 @@ git commit -m "fix(contract): unify decoded/canonical request budgets across Pyt
 - Produces: `GatePolicy`, `GateReport`, `load_gate_policy(...)`, `adjudicate_final(...)`, `adjudicate_replay(...)`, `publish_gate_report(...)`, `exit_code_for_status(...)`.
 - Consumes: `FreezeManifest` from artifacts, `ReplayReport` from replay.
 
-- [ ] **Step 1: Add errorBudget to gate.yaml**
+- [x] **Step 1: Add errorBudget to gate.yaml**
 
 Append to `config/phase2/gate.yaml`:
 
@@ -1239,7 +1239,7 @@ errorBudget:
 
 All values remain placeholders under the existing `meta.preAgreedPlaceholders: true`.
 
-- [ ] **Step 2: Create phase2_gate.py with GatePolicy and parsers**
+- [x] **Step 2: Create phase2_gate.py with GatePolicy and parsers**
 
 ```python
 """Phase 2 gate adjudication — pass/fail/blocked for final and replay."""
@@ -1703,7 +1703,7 @@ def main(argv: list[str] | None = None) -> int:
     return exit_code_for_status(report.status)
 ```
 
-- [ ] **Step 3: Replace experiments.load_gate**
+- [x] **Step 3: Replace experiments.load_gate**
 
 In `experiments.py`, the ONLY call site of `load_gate` is `confirm_final_once` at line 565 (`gate = load_gate(gate_path)`). Delete the `load_gate` function (lines 612–620) and update the call site to the strict policy loader:
 
@@ -1716,12 +1716,12 @@ policy = load_gate_policy(gate_path)
 
 Note: Task 10 replaces the body of `confirm_final_once` entirely; this interim change keeps the file importable after Task 6. Delete the imports of `yaml` from `experiments.py` if they become unused (check `grep -n "yaml\." src/fishing_ml/experiments.py` first).
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `cd avatar-web/fishing-ml && python3.11 -m py_compile src/fishing_ml/phase2_gate.py && python3.11 -m py_compile src/fishing_ml/experiments.py`
 Expected: Both compile. `load_gate_policy` replaces the old shallow loader.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/config/phase2/gate.yaml avatar-web/fishing-ml/src/fishing_ml/phase2_gate.py avatar-web/fishing-ml/src/fishing_ml/experiments.py
@@ -1740,7 +1740,7 @@ git commit -m "feat(gate): add strict gate policy parser, approval validation, a
 - Transforms: axis tokens → exact schema-v2 config values in `effective_config`.
 - Validates: 24 specs produce 24 unique effective configs/checksums/run IDs.
 
-- [ ] **Step 1: Update candidates.yaml base config to schema v2**
+- [x] **Step 1: Update candidates.yaml base config to schema v2**
 
 The current file (lines 14–31) has `schemaVersion: 1` at the top level and a schema-v1 `baseConfig`. In the new schema v2:
 
@@ -1769,7 +1769,7 @@ baseConfig:
 
 The `augmentationProfile` and `hardNegativeRatio` fields are NOT in the base — they come from axis tokens. Update the comment on line 33 to note that augmentation/hard-negative tokens now map to REAL config fields, not just provenance.
 
-- [ ] **Step 2: Update axis token mapping in experiments.py**
+- [x] **Step 2: Update axis token mapping in experiments.py**
 
 Replace the `AUGMENTATION` and `HARD_NEGATIVE` mapping dicts (lines 78–89). Currently they map token → string identity (`{"none": "none"}`). Change them to map token → real schema-v2 config overlay:
 
@@ -1786,7 +1786,7 @@ HARD_NEGATIVE: Mapping[str, Mapping[str, Any]] = {
 }
 ```
 
-- [ ] **Step 3: Extend _ALLOWED_OVERRIDE_KEYS for schema v2**
+- [x] **Step 3: Extend _ALLOWED_OVERRIDE_KEYS for schema v2**
 
 At line 55, `_ALLOWED_OVERRIDE_KEYS` is the strict schema-v1 set. Add the three v2 keys:
 
@@ -1810,7 +1810,7 @@ _ALLOWED_OVERRIDE_KEYS = frozenset({
 })
 ```
 
-- [ ] **Step 4: Rework enumerate_specs overlay building**
+- [x] **Step 4: Rework enumerate_specs overlay building**
 
 In `enumerate_specs` (lines 274–309), the overlay is built as `base_config | EMBEDDING[emb] | {"temperature": temp}`. Change it to include the real axis values so each candidate's effective config differs:
 
@@ -1865,7 +1865,7 @@ specs.append(ExperimentSpec(
 ))
 ```
 
-- [ ] **Step 5: Verify 24 unique identities**
+- [x] **Step 5: Verify 24 unique identities**
 
 Run the enumeration check:
 
@@ -1890,7 +1890,7 @@ print('OK: 24 unique effective configs, checksums, and run IDs')
 
 Expected: `OK: 24 unique effective configs, checksums, and run IDs`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/config/phase2/candidates.yaml avatar-web/fishing-ml/src/fishing_ml/experiments.py
@@ -1908,7 +1908,7 @@ git commit -m "feat(candidates): schema v2 effective config with 24 unique check
 - Changes: `run_experiment` uses calibrated `thresholds.json.metrics` for acceptance.
 - Produces: strict candidate manifest with `rawDevMetrics` and `calibratedMetrics`.
 
-- [ ] **Step 1: Add strict metric parsers (snake_case raw → camelCase calibrated)**
+- [x] **Step 1: Add strict metric parsers (snake_case raw → camelCase calibrated)**
 
 **The actual on-disk shape (verified):** `dev-metrics.json` is written by `run_training` (train.py:308) as `{"schemaVersion": 1, **best_metrics}` where `best_metrics` comes from `MetricSummary.to_json()` = `asdict(self)` (metrics.py:40-41) — **snake_case** keys: `query_count`, `batch_count`, `wrong_count`, `top1_accuracy`, `batch_exact_match`, `abstention_rate`, plus the score/margin/grouped/histogram fields. The current `run_experiment` reads `.get("wrongCount", 0)` / `.get("top1Accuracy", 0.0)` — those camelCase keys **never exist**, so every candidate silently gets `wrongCount=0` and `top1Accuracy=0.0` (defect: spec §3.13 no-silent-defaults). `thresholds.json.metrics` IS camelCase (`acceptedCount`, `acceptedAccuracy`, `abstentionRate`, `wrongAcceptedCount`) — that's `calibrate_run`'s output (calibrate.py:126-132).
 
@@ -1997,7 +1997,7 @@ def _rate(doc: dict, key: str) -> float:
     return value
 ```
 
-- [ ] **Step 2: Update run_experiment to use calibrated metrics**
+- [x] **Step 2: Update run_experiment to use calibrated metrics**
 
 In `run_experiment` (experiments.py:391-472), after calibration, replace the raw reads (lines 445-451 — which read nonexistent camelCase keys from the snake_case dev-metrics.json, silently defaulting to 0) with the strict parsers, and compute the result from the CALIBRATED wrong-accepted count:
 
@@ -2166,12 +2166,12 @@ and in `_parse_calibrated_metrics`, after parsing `abstention_rate`:
 
 **Task 9 coupling (this direction):** Task 9's `_cmd_run` already parses the dataset version (`load_dataset_version`) — it MUST pass `dataset_version=version, dataset_version_sha256=sha256_file(dataset_version_path)` into `run_experiment`, or the manifest writer now raises. Task 9's `_result_from_manifest` must read the §5.2 shape (rebuilt in Task 9 Step 4 from the matching `doc["spec"]`/`doc["rawDevMetrics"]`/`doc["calibratedMetrics"]`).
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `cd avatar-web/fishing-ml && python3.11 -m py_compile src/fishing_ml/experiments.py`
 Expected: Compiles. Manifest fields match spec §5.2.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/src/fishing_ml/experiments.py
@@ -2193,7 +2193,7 @@ git commit -m "feat(experiments): calibrated selection with strict raw/calibrate
 
 **Precondition on existing code:** `run_experiment(spec, *, raw_root, labels_root, splits_root, duplicate_reviews, artifacts_root, require_zero_wrong_accepted=True) -> ExperimentResult` already exists (experiments.py:391) and is parameter-keyword-only. `freeze_selected` (experiments.py:525) and `confirm_final_once` (experiments.py:547, returns `dict`, raises `RuntimeError` on gate failure) also exist. The current `main` (experiments.py:628-657) supports only `list` and builds a synthetic `DatasetVersion(1, "dry-run", ...)` — this task replaces it entirely.
 
-- [ ] **Step 1: Add module constants and imports**
+- [x] **Step 1: Add module constants and imports**
 
 After the existing imports in `experiments.py` (line 46), add:
 
@@ -2210,7 +2210,7 @@ EXIT_BLOCKED = 4
 
 `read_json` is already imported (line 46: `from .schema import atomic_write_json, read_json`); extend that schema import to also bring in `sha256_file` (it is exported — schema.py:35). No new top-level imports beyond that — `load_dataset_version`, `publish_no_replace`, and the `phase2_gate` module are imported inside the handlers (matching the module's lazy-import style; `phase2_gate` is pure-Python so it could be top-level, but keep it lazy for consistency).
 
-- [ ] **Step 2: Rewrite CLI main with all six subcommands**
+- [x] **Step 2: Rewrite CLI main with all six subcommands**
 
 Replace the current `main` (lines 628–657) with a full argparse-based CLI. One parser block per subcommand, no duplicates, `--artifacts-root` defined exactly where a handler needs it:
 
@@ -2289,7 +2289,7 @@ def main(argv: list[str] | None = None) -> int:
     return handlers[args.command](args)
 ```
 
-- [ ] **Step 3: Implement `_cmd_list` and `_cmd_run`**
+- [x] **Step 3: Implement `_cmd_list` and `_cmd_run`**
 
 Add all `_cmd_*` handlers before `main` (after `load_gate`, around line 620). Each returns an `int` exit code. Errors print sanitized messages to stderr (never PNG/base64/raw data) and return `EXIT_INVALID`.
 
@@ -2414,7 +2414,7 @@ def _cmd_run_reuse(manifest_path: Path, spec: ExperimentSpec, args: argparse.Nam
 
 Note: `doc["runDir"]` is a manifest-controlled string from the sealed manifest (already written via `atomic_write_json`); the absolute-path check above prevents a tampered manifest from pointing the operator at arbitrary directories. First-striking provenance checks (run ID, split/config checksums) always take precedence so a tampered manifest cannot be "reused".
 
-- [ ] **Step 4: Implement `_cmd_compare` and `_result_from_manifest`**
+- [x] **Step 4: Implement `_cmd_compare` and `_result_from_manifest`**
 
 ```python
 def _cmd_compare(args: argparse.Namespace) -> int:
@@ -2591,7 +2591,7 @@ def write_selection(
     )
 ```
 
-- [ ] **Step 5: Implement `_cmd_freeze` and `_cmd_confirm_final`**
+- [x] **Step 5: Implement `_cmd_freeze` and `_cmd_confirm_final`**
 
 ```python
 def _cmd_freeze(args: argparse.Namespace) -> int:
@@ -2690,7 +2690,7 @@ def _cmd_confirm_final(args: argparse.Namespace) -> int:
 
 **Forward note (Task 10):** Task 10 rewrites `confirm_final_once` to return `(final, gate_report)` and raise `GateBlockedError` on placeholder policy before any final read. Task 10 Step 3 replaces this handler's post-policy-preflight tail (the `result = ...`/`try: final = confirm_final_once(...)` block) with the tuple-destructuring version; until then this task's single-return call is correct and self-contained.
 
-- [ ] **Step 6: Implement `_cmd_adjudicate_replay`**
+- [x] **Step 6: Implement `_cmd_adjudicate_replay`**
 
 ```python
 def _cmd_adjudicate_replay(args: argparse.Namespace) -> int:
@@ -2719,14 +2719,14 @@ def _cmd_adjudicate_replay(args: argparse.Namespace) -> int:
 
 Note the verified Task 6 signature: `adjudicate_replay(policy, replay_report: Mapping, freeze_manifest: Mapping, *, policy_sha256: str, evidence_sha256: str) -> GateReport`. The handler reads both JSON documents itself (it never passes paths to the adjudicator) and publishes via `publish_gate_report` (immutable no-replace) when `--output` is given.
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 Run: `cd avatar-web/fishing-ml && python3.11 -m py_compile src/fishing_ml/experiments.py`
 Expected: Compiles. All six subcommands registered, handlers defined, no undefined names (``EXIT_*``, `_result_from_manifest`, `write_selection`, `publish_no_replace`, `load_gate_policy`).
 Run: `cd avatar-web/fishing-ml && python3.11 -m fishing_ml.experiments list --help`
 Expected: argparse help for `list` exits 0.
 
-- [ ] **Step 8: Register entry points in pyproject.toml**
+- [x] **Step 8: Register entry points in pyproject.toml**
 
 Append to the existing `[project.scripts]` section (pyproject.toml:20-31, after `fishing-phase2-inference-service`):
 
@@ -2736,7 +2736,7 @@ fishing-phase2-replay = "fishing_ml.replay:main"
 fishing-phase2-gate = "fishing_ml.phase2_gate:main"
 ```
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/src/fishing_ml/experiments.py avatar-web/fishing-ml/pyproject.toml
@@ -2757,7 +2757,7 @@ git commit -m "feat(cli): full experiment state machine with list/run/compare/fr
 - Changes: `confirm_final_once` returns `(final, gate_report)` and blocks on placeholder policy BEFORE opening `final.txt`.
 - Closes: direct `fishing-evaluate final` bypass for Phase 2 schema-v2 frozen candidates.
 
-- [ ] **Step 1: Guard the schema-v2 path in evaluate_final_once**
+- [x] **Step 1: Guard the schema-v2 path in evaluate_final_once**
 
 In `evaluate.py`, `evaluate_final_once` (lines 120–148) currently hardcodes `"passed": metrics.top1_accuracy >= .99 and metrics.wrong_count == 0` (line 139). The `.99` hardcode bypasses the phase2 gate policy. Phase 2 candidates are schema-v2 **model configs**; their freeze-manifest `schemaVersion` is still v1 (Task 4 kept it), so the discriminator is the **model-config document's** `schemaVersion`, already loaded into `config_doc` by `_inputs` (evaluate.py:133). Guard:
 
@@ -2775,7 +2775,7 @@ In `evaluate.py`, `evaluate_final_once` (lines 120–148) currently hardcodes `"
 
 > **Existing defect (spec §3.13 — no silent defaults):** `evaluate_final_once` stores `"metrics": metrics.to_json()` (line 139), and `MetricSummary.to_json()` is `asdict(self)` → **snake_case** keys (`wrong_count`, `abstention_rate`, `top1_accuracy`, `batch_exact_match`). But `confirm_final_once` (experiments.py lines 574–600) reads `metrics.get("wrongCount", 0)` / `metrics.get("abstentionRate", 0.0)` / `metrics.get("top1Accuracy", 0.0)` — **camelCase keys that never exist in the final document**, so they silently default to `0` / `0.0`. `wrong_accepted` always reads 0 and `top1` always reads 0.0 (which makes the coverage gate spuriously fail on `minTop1Accuracy`). Step 2 fixes the reads; the gate parser in Task 6 must parse the actual snake_case document. Note the v1 direct path's `"passed"` hardcode stays (Phase A semantics unchanged) — only the v2 candidate is refused here.
 
-- [ ] **Step 2: Rewrite confirm_final_once preflight order**
+- [x] **Step 2: Rewrite confirm_final_once preflight order**
 
 The current `confirm_final_once` (experiments.py:547-604) reads gate FIRST, then calls `evaluate_final_once`, then applies a partial gate with camelCase `.get(..., 0)` reads that **never match** the actual snake_case `MetricSummary.to_json()` document — a silent-default defect (spec §3.13). Rewrite to follow the spec's preflight order so `blocked` is decided BEFORE any final read/lock, and all metrics parse from the snake_case document strictly:
 
@@ -2874,7 +2874,7 @@ def confirm_final_once(
 
 (`_sha256_file` is imported from `phase2_gate` — Task 6 already defines it; do NOT redeclare it in experiments.py. `GateReport` is quoted in the return annotation only because experiments.py's top level stays lazy about the phase2_gate import; when `from __future__ import annotations` is active (it is, experiments.py:27) the annotation can be `GateReport` unquoted with only a local import — keep the local import inside the function and the unquoted name in the signature.)
 
-- [ ] **Step 3: Update the `_cmd_confirm_final` CLI handler**
+- [x] **Step 3: Update the `_cmd_confirm_final` CLI handler**
 
 Task 9's `_cmd_confirm_final` calls the OLD single-return `confirm_final_once` and catches `RuntimeError → EXIT_GATE_FAIL`. With Step 2 the function returns `(final, gate_report)` and gate truth lives in `gate_report.status`, so replace the body of `_cmd_confirm_final` (the part after the policy preflight in Task 9 Step 5) with:
 
@@ -2911,7 +2911,7 @@ Task 9's `_cmd_confirm_final` calls the OLD single-return `confirm_final_once` a
 
 This keeps exit-code mapping in ONE place (`phase2_gate.exit_code_for_status`) — the handler never invents its own code mapping. Because the handler's policy preflight (`policy.pre_agreed_placeholders → EXIT_BLOCKED`) now mirrors the same decision `load_gate_policy` made inside `confirm_final_once`, no final read or lock can happen under a placeholder policy from either path.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `cd avatar-web/fishing-ml && python3.11 -m py_compile src/fishing_ml/evaluate.py && python3.11 -m py_compile src/fishing_ml/experiments.py && python3.11 -m py_compile src/fishing_ml/config.py`
 Expected: All compile. Direct final bypass closed for schema v2; schema v1 direct final still works.
@@ -2938,7 +2938,7 @@ git commit -m "feat(final): separate evidence from policy, block Phase 2 direct 
 - Uses `unittest`; synthetic fixtures only; small CPU tensors; NO real checkpoints/captures.
 - Production code is complete (Tasks 1-10) before this task — tests are written after code, per CLAUDE.md (no TDD).
 
-- [ ] **Step 1: Create test_phase2_training.py**
+- [x] **Step 1: Create test_phase2_training.py**
 
 ```python
 import unittest
@@ -3135,7 +3135,7 @@ class TestHardNegative(unittest.TestCase):
 
 **Spec §6.1 coverage:** items 1, 4, 5 and the strict-parse half of items 1/2. Note: `compute_hard_negative_loss` is tested with un-normalized random tensors — the function only computes `torch.mm(query, reference.t())` cosine similarities and a hinge, so no model or normalization is required; determinism of selection is asserted by repeat-call equality.
 
-- [ ] **Step 2: Create test_phase2_experiments.py**
+- [x] **Step 2: Create test_phase2_experiments.py**
 
 ```python
 import hashlib
@@ -3349,7 +3349,7 @@ class TestCalibratedMetricsSelection(unittest.TestCase):
 
 **Spec §6.1 coverage:** items 3 (24 unique), 8 (selection uses calibrated metrics + tie-breakers), 9 (compare fail-closed).
 
-- [ ] **Step 3: Create test_phase2_gate.py**
+- [x] **Step 3: Create test_phase2_gate.py**
 
 ```python
 import unittest
@@ -3562,7 +3562,7 @@ class TestSha256File(unittest.TestCase):
 
 **Spec §6.1 coverage:** items 9 (compare rejects incomplete/duplicate), 11 (placeholder blocks), 13 (replay statuses), 14 (latency ceiling). Gate exit codes mapped.
 
-- [ ] **Step 4: Create test_inference_size_contract.py**
+- [x] **Step 4: Create test_inference_size_contract.py**
 
 The 64-image constant is internal (`_MAX_IMAGES`), so the tests use the public `InferenceImage` + `canonical_request_byte_length` (Task 5) and the exported `MAX_CANONICAL_REQUEST_BYTES`, asserting the exact boundary numerically:
 
@@ -3621,7 +3621,7 @@ class TestDecodedBudgetWiring(unittest.TestCase):
 
 **Spec §6.1 coverage:** item 15 (decoded/canonical exact boundaries, overflow one byte) and item 16 (client uses the contract constant — no payload in errors, verified in the TS tests).
 
-- [ ] **Step 5: Run all Python tests**
+- [x] **Step 5: Run all Python tests**
 
 ```bash
 cd avatar-web/fishing-ml && python3.11 -m unittest discover -s tests -p 'test_*.py' -v
@@ -3648,7 +3648,7 @@ git commit -m "test: add Phase 2 training, experiments, gate, and size contract 
 - Uses `node:test` + `assert` (or the repo's existing test runner — check the sibling `inferenceClient` tests; `npx tsc --noEmit` must pass).
 - No real network: inject `globalThis.fetch` stub.
 
-- [ ] **Step 1: Create inferenceClient.test.ts**
+- [x] **Step 1: Create inferenceClient.test.ts**
 
 ```typescript
 import test from 'node:test';
@@ -3843,7 +3843,7 @@ test('request document contains only schema/images — no account/fish fields', 
 
 **Spec §6.2 coverage:** disabled/zero-fetch, canonical serialized size-guard, decoded overflow, timeout bounded result, model identity pinning, breaker generation, request-document-only-schema/images, no payload in errors.
 
-- [ ] **Step 2: Run TypeScript verification**
+- [x] **Step 2: Run TypeScript verification**
 
 ```bash
 cd avatar-web/server && npm test && npm run typecheck && npm run build
@@ -3867,7 +3867,7 @@ git commit -m "test: add TypeScript inference client contract and boundary tests
 - Modify: `docs/superpowers/plans/2026-08-28-fishing-phase-2-results.md`
 - Create: `docs/superpowers/plans/2026-09-02-fishing-phase-2-code-completion-results.md`
 
-- [ ] **Step 1: Update README.md**
+- [x] **Step 1: Update README.md**
 
 - Remove contradiction about no service layer.
 - Document config v2 fields and augmentation/hard-negative profiles.
@@ -3882,7 +3882,7 @@ git commit -m "test: add TypeScript inference client contract and boundary tests
   liveShadowStatus: not-run
   ```
 
-- [ ] **Step 2: Add correction section to 2026-08-28-fishing-phase-2-results.md**
+- [x] **Step 2: Add correction section to 2026-08-28-fishing-phase-2-results.md**
 
 Add a clearly dated section:
 
@@ -3894,7 +3894,7 @@ not real-checkpoint replay. Real inference replay against a frozen checkpoint wa
 performed. See `2026-09-02-fishing-phase-2-code-completion-results.md` for code verification.
 ```
 
-- [ ] **Step 3: Create code-completion results template**
+- [x] **Step 3: Create code-completion results template**
 
 Create `docs/superpowers/plans/2026-09-02-fishing-phase-2-code-completion-results.md` with the verification matrix from spec §6. Start from this template (fill the Command/Result columns during verification):
 
@@ -3948,7 +3948,7 @@ Create `docs/superpowers/plans/2026-09-02-fishing-phase-2-code-completion-result
 
 Then fill in Command/Result during verification (after Task 12).
 
-- [ ] **Step 4: Final source scan**
+- [x] **Step 4: Final source scan**
 
 ```bash
 # No TX43 or finishFishing in production Phase 2 files

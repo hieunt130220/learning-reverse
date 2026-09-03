@@ -41,6 +41,7 @@ SCHEMA_VERSION = 1
 # Per-list image count cap. References and queries are each bounded to 64; the
 # index-contiguity rule means indices are 0..63, so 64 is the natural ceiling.
 _MAX_IMAGES = 64
+_MAX_PROTOCOL_INTEGER = 2**53 - 1
 
 # Total decoded-PNG-byte budget across references + queries. 75x75 RGBA raw is
 # 22500 bytes; PNG is compressed so actual file bytes are smaller. (64+64)*7500
@@ -157,15 +158,24 @@ def canonical_request_byte_length(
 
 
 def _is_int(value: object) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and 0 <= value <= _MAX_PROTOCOL_INTEGER
+    )
 
 
 def _is_finite_number(value: object) -> bool:
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(value)
-    )
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, ValueError):
+        return False
+
+
+def _is_bounded_non_negative_int(value: object, *, maximum: int) -> bool:
+    return _is_int(value) and value <= maximum
 
 
 def _decode_and_validate_png(b64: object, body_seen: list[int]) -> None:

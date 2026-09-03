@@ -9,6 +9,12 @@
 > service this worktree does not have, the gate is marked **BLOCKED / PENDING
 > REAL RUN** — never "passed" by fabrication.
 
+## Correction / Current Status (2026-09-02)
+
+The green 2B-2 row in the original results table reflected code-completion verification,
+not real-checkpoint replay. Real inference replay against a frozen checkpoint was not
+performed. See `2026-09-02-fishing-phase-2-code-completion-results.md` for code verification.
+
 ## Gate summary
 
 | Gate | Mandatory condition (spec §5) | Result |
