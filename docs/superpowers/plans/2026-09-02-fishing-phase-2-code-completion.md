@@ -2916,7 +2916,7 @@ This keeps exit-code mapping in ONE place (`phase2_gate.exit_code_for_status`) â
 Run: `cd avatar-web/fishing-ml && python3.11 -m py_compile src/fishing_ml/evaluate.py && python3.11 -m py_compile src/fishing_ml/experiments.py && python3.11 -m py_compile src/fishing_ml/config.py`
 Expected: All compile. Direct final bypass closed for schema v2; schema v1 direct final still works.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/src/fishing_ml/evaluate.py avatar-web/fishing-ml/src/fishing_ml/experiments.py avatar-web/fishing-ml/src/fishing_ml/config.py
@@ -3629,7 +3629,7 @@ cd avatar-web/fishing-ml && python3.11 -m unittest discover -s tests -p 'test_*.
 
 Expected: All pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/tests/
@@ -3851,7 +3851,7 @@ cd avatar-web/server && npm test && npm run typecheck && npm run build
 
 Expected: All pass. (Run `npm run typecheck` first if the existing server test runner differs; the repo uses `node:test` per CLAUDE.md.)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add avatar-web/server/src/fishing/inferenceClient.test.ts
@@ -3961,7 +3961,7 @@ grep -rn 'pngBase64\|base64\|idUser\|idFish\|cookie' avatar-web/fishing-ml/src/f
 git status --short
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add avatar-web/fishing-ml/README.md docs/superpowers/plans/

@@ -75,7 +75,7 @@ successfully after all documentation and tests are finalized:
 | Privacy and generated-artifact scans | PASS — no sensitive wire payloads or generated data/checkpoints/reports added |
 | Final `git diff --check` | PASS |
 | Combined GitNexus `detect_changes(scope="all")` review | REVIEWED — CRITICAL aggregate, 191 changed symbols / 55 flows; relevant affected flows are `run_experiment`, `confirm_final_once`, replay gate, and TypeScript `#matchOnce`; broad unrelated flow count includes same-name `main`/`isInteger` graph collisions |
-| Follow-up commit | pending |
+| Follow-up commit | PASS — `0966d9c9 feat(fishing): complete phase 2 code verification` |
 
 ## Gate interpretation
 
