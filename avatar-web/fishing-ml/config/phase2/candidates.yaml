@@ -26,7 +26,7 @@ baseConfig:
   embeddingDim: 96
   channels: [32, 64, 96, 128]
   checkpointMetric: dev_top1_accuracy
-  device: auto
+  device: cpu
   workers: 0
   reproducibilityTolerance: 0.002
   hardNegativeMargin: 0.10
