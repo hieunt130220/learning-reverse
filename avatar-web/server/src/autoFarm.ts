@@ -1369,11 +1369,10 @@ export class AutoFarm extends EventEmitter {
     } catch (err) {
       if (err instanceof AutoFarmStoppedError) return;
       this.lastError = (err as Error).message;
-      // Rớt kết nối giữa chu kỳ: dừng ngay thay vì để cờ `running` treo tới
-      // lần quét sau.
+      // Rớt kết nối giữa chu kỳ: ghi rõ vào lastError nhưng KHÔNG tắt auto —
+      // phần đuôi vòng hẹn vòng kế, vòng sau tự kiểm tra lại kết nối.
       if (this.client.status !== 'online') {
-        this.lastError = `mất kết nối giữa chu kỳ (${this.lastError}) — đã dừng tự động`;
-        this.aborted = true;
+        this.lastError = `mất kết nối giữa chu kỳ (${this.lastError}) — chờ vòng kế tiếp`;
       }
     }
 
