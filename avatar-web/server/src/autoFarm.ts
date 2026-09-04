@@ -452,14 +452,14 @@ export class AutoFarm extends EventEmitter {
       this.emit('log', line);
     };
 
-    // Mất kết nối giữa chừng thì dừng hẳn thay vì quay vòng ném lỗi:
-    // mọi lệnh sau đó đều fail, và tự đăng nhập lại là việc của người dùng
-    // (server game đá phiên cũ khi đăng nhập chỗ khác).
+    // Mất kết nối đầu vòng thì bỏ qua vòng này nhưng KHÔNG tắt auto: vòng kế
+    // sau intervalMs tự kiểm tra lại. Đăng nhập lại là việc của tầng phiên
+    // (AvatarSession.scheduleRetry) hoặc của người dùng khi chạy standalone —
+    // mọi lệnh gửi khi offline đều fail, nên chỉ cần chờ.
     if (this.client.status !== 'online') {
-      this.lastError = 'mất kết nối — đã dừng tự động';
-      this.aborted = true;
-      this.lastRun = Date.now();
-      this.emit('state', this.state());
+      this.lastError = 'mất kết nối — bỏ qua vòng này, chờ vòng kế tiếp';
+      note(`[mất kết nối] ${this.lastError}`);
+      this.finishCycle(generation, cfg, actions);
       return;
     }
 
@@ -1369,14 +1369,23 @@ export class AutoFarm extends EventEmitter {
     } catch (err) {
       if (err instanceof AutoFarmStoppedError) return;
       this.lastError = (err as Error).message;
-      // Rớt kết nối giữa chu kỳ: dừng ngay thay vì để cờ `running` treo tới
-      // lần quét sau.
+      // Rớt kết nối giữa chu kỳ: ghi rõ vào lastError nhưng KHÔNG tắt auto —
+      // phần đuôi vòng hẹn vòng kế, vòng sau tự kiểm tra lại kết nối.
       if (this.client.status !== 'online') {
-        this.lastError = `mất kết nối giữa chu kỳ (${this.lastError}) — đã dừng tự động`;
-        this.aborted = true;
+        this.lastError = `mất kết nối giữa chu kỳ (${this.lastError}) — chờ vòng kế tiếp`;
       }
     }
 
+    this.finishCycle(generation, cfg, actions);
+  }
+
+  /**
+   * Phần đuôi của mọi vòng: đếm vòng, ghi mốc thời gian, phát `state` +
+   * `cycle-complete`, và hẹn vòng kế sau `intervalMs` khi tự điều phối
+   * (`continuous`). Đường mất kết nối đầu vòng cũng đi qua đây để auto vẫn
+   * `running` và vẫn có vòng kế.
+   */
+  private finishCycle(generation: number, cfg: AutoFarmConfig, actions: string[]): void {
     this.cycle += 1;
     this.lastRun = Date.now();
     this.lastActions = actions;
