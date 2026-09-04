@@ -1377,6 +1377,16 @@ export class AutoFarm extends EventEmitter {
       }
     }
 
+    this.finishCycle(generation, cfg, actions);
+  }
+
+  /**
+   * Phần đuôi của mọi vòng: đếm vòng, ghi mốc thời gian, phát `state` +
+   * `cycle-complete`, và hẹn vòng kế sau `intervalMs` khi tự điều phối
+   * (`continuous`). Đường mất kết nối đầu vòng cũng đi qua đây để auto vẫn
+   * `running` và vẫn có vòng kế.
+   */
+  private finishCycle(generation: number, cfg: AutoFarmConfig, actions: string[]): void {
     this.cycle += 1;
     this.lastRun = Date.now();
     this.lastActions = actions;
