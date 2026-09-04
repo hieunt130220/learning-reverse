@@ -452,14 +452,14 @@ export class AutoFarm extends EventEmitter {
       this.emit('log', line);
     };
 
-    // Mất kết nối giữa chừng thì dừng hẳn thay vì quay vòng ném lỗi:
-    // mọi lệnh sau đó đều fail, và tự đăng nhập lại là việc của người dùng
-    // (server game đá phiên cũ khi đăng nhập chỗ khác).
+    // Mất kết nối đầu vòng thì bỏ qua vòng này nhưng KHÔNG tắt auto: vòng kế
+    // sau intervalMs tự kiểm tra lại. Đăng nhập lại là việc của tầng phiên
+    // (AvatarSession.scheduleRetry) hoặc của người dùng khi chạy standalone —
+    // mọi lệnh gửi khi offline đều fail, nên chỉ cần chờ.
     if (this.client.status !== 'online') {
-      this.lastError = 'mất kết nối — đã dừng tự động';
-      this.aborted = true;
-      this.lastRun = Date.now();
-      this.emit('state', this.state());
+      this.lastError = 'mất kết nối — bỏ qua vòng này, chờ vòng kế tiếp';
+      note(`[mất kết nối] ${this.lastError}`);
+      this.finishCycle(generation, cfg, actions);
       return;
     }
 
