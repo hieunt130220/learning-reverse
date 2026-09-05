@@ -33,6 +33,7 @@ from base64 import b64decode
 from collections.abc import Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
+from .provenance import revision_matches_recorded
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
@@ -267,7 +268,7 @@ def load_frozen_matcher(frozen_dir: Path) -> FrozenMatcher:
         # inventory. Also reject a valid-but-different revision here: the
         # service must not run a candidate produced from another checkout.
         revision = manifest_doc.get("gitRevision")
-        if not isinstance(revision, str) or revision != _current_git_revision():
+        if not revision_matches_recorded(_current_git_revision(), revision):
             raise RuntimeError("frozen Git revision does not match current revision")
 
     config_model_id = config_doc.get("runId") if isinstance(config_doc, Mapping) else None

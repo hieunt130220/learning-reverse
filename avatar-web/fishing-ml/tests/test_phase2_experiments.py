@@ -149,5 +149,227 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(selection.read_bytes(), original)
 
 
+
+class RelocatedProvenanceTests(unittest.TestCase):
+    """Synthetic train/dev fixtures; no restored artifacts or final data."""
+    CURRENT = "aebbbe5a01affddebf7e0c7e8244e6a1e1fd3288"
+    RECORDED = "8ca1f93990dcd06a0b7d6ee6251100e67a155365"
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.splits = self.root / "splits"
+        self.splits.mkdir()
+        (self.splits / "train.txt").write_text("train-a\n", encoding="utf-8")
+        (self.splits / "dev.txt").write_text("dev-a\n", encoding="utf-8")
+        self.dataset = self.root / "dataset-version.json"
+        atomic_write_json(self.dataset, dataset_version_to_json(version()))
+        self.spec = enumerate_specs(CANDIDATES, self.splits, version())[0]
+        self.artifacts = self.root / "artifacts"
+        self.run = self.artifacts / self.spec.run_id
+        (self.run / "checkpoints").mkdir(parents=True)
+        self.manifest = self.artifacts / "phase2-experiments" / f"{self.spec.run_id}.json"
+        self.manifest.parent.mkdir()
+        self.selection = self.artifacts / "phase2-selection.json"
+        self._configure()
+
+    def _configure(self, *, relocated=False, recorded=None):
+        from dataclasses import replace
+        recorded = recorded or self.CURRENT
+        archived = Path("/synthetic-absent-transfer/artifacts") / self.spec.run_id if relocated else self.run
+        candidate = replace(result_for(self.spec), run_dir=str(archived),
+                            thresholds_path=str(archived / "thresholds.json"), git_revision=recorded)
+        self.document = manifest_for(candidate, self.dataset)
+        self.document["provenance"]["gitRevision"] = recorded
+        atomic_write_json(self.manifest, self.document)
+        checkpoint = self.run / "checkpoints" / "best-dev.pt"
+        checkpoint.write_bytes(b"synthetic checkpoint, never loaded")
+        for name in ("normalization.json", "dev-predictions.json", "training-history.json"):
+            atomic_write_json(self.run / name, {})
+        atomic_write_json(self.run / "model-config.json", self.spec.config_overlay)
+        atomic_write_json(self.run / "dev-metrics.json", candidate.dev_metrics)
+        atomic_write_json(self.run / "thresholds.json", {
+            "thresholds": dict(candidate.thresholds), "metrics": self.document["calibratedMetrics"]})
+        atomic_write_json(self.run / "environment.json", {
+            "gitRevision": recorded, "checkpointSha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest()})
+        if self.selection.exists():
+            self.selection.unlink()
+        write_selection(self.selection, candidate, self.manifest, self.dataset, version(),
+                        git_revision=recorded, selection_gate=load_selection_gate(CANDIDATES))
+
+    def _resolve(self):
+        from fishing_ml.experiments import _resolve_selected_result
+        return _resolve_selected_result(self.selection, self.artifacts, self.dataset,
+                                        self.splits, CANDIDATES)[1]
+
+    def _candidate(self):
+        from fishing_ml.experiments import _validate_current_candidate
+        return _validate_current_candidate(self.manifest, self.spec, version=version(),
+            dataset_version_path=self.dataset, splits_root=self.splits, artifacts_root=self.artifacts)
+
+    def _assert_both_reject(self, *, current=None):
+        with patch("fishing_ml.experiments._git_revision", return_value=current or self.CURRENT):
+            for check in (self._resolve, self._candidate):
+                with self.subTest(check=check.__name__), self.assertRaises(ValueError):
+                    check()
+
+    def test_same_root_and_trusted_relocation_preserve_evidence(self):
+        for relocated, recorded in ((False, self.CURRENT), (True, self.RECORDED)):
+            with self.subTest(relocated=relocated):
+                self._configure(relocated=relocated, recorded=recorded)
+                original = (self.manifest.read_bytes(), self.selection.read_bytes())
+                with patch("fishing_ml.experiments._git_revision", return_value=self.CURRENT):
+                    for check in (self._resolve, self._candidate):
+                        result = check()
+                        self.assertEqual(Path(result.run_dir), self.run)
+                        self.assertEqual(Path(result.thresholds_path), self.run / "thresholds.json")
+                        self.assertEqual(result.git_revision, recorded)
+                self.assertEqual((self.manifest.read_bytes(), self.selection.read_bytes()), original)
+
+    def test_malformed_archived_paths_are_rejected(self):
+        for run, thresholds in (
+            ("/archive/artifacts/wrong-run", "/archive/artifacts/wrong-run/thresholds.json"),
+            (f"/archive/models/{self.spec.run_id}", f"/archive/models/{self.spec.run_id}/thresholds.json"),
+            (f"artifacts/{self.spec.run_id}", f"artifacts/{self.spec.run_id}/thresholds.json"),
+            (str(self.run), str(self.run / "other.json")),
+            (f"/archive/../artifacts/{self.spec.run_id}", f"/archive/../artifacts/{self.spec.run_id}/thresholds.json"),
+        ):
+            with self.subTest(run=run, thresholds=thresholds):
+                self._configure()
+                self.document.update(runDir=run, thresholdsPath=thresholds)
+                atomic_write_json(self.manifest, self.document)
+                self._assert_both_reject()
+
+    def test_revision_compatibility_is_exact_and_directional(self):
+        for current, recorded in ((self.CURRENT, "b" * 40), (self.RECORDED, self.CURRENT),
+                                  ("c" * 40, self.RECORDED)):
+            with self.subTest(current=current, recorded=recorded):
+                self._configure(relocated=True, recorded=recorded)
+                self._assert_both_reject(current=current)
+
+    def test_selection_cannot_mix_current_and_recorded_revisions(self):
+        self._configure(relocated=True, recorded=self.RECORDED)
+        selection = json.loads(self.selection.read_bytes())
+        selection["provenance"]["gitRevision"] = self.CURRENT
+        atomic_write_json(self.selection, selection)
+        with patch("fishing_ml.experiments._git_revision", return_value=self.CURRENT):
+            self._candidate()
+            with self.assertRaises(ValueError):
+                self._resolve()
+
+    def test_symlink_operational_directories_and_leaves_are_rejected(self):
+        for target in (self.run, self.run / "checkpoints", self.manifest.parent,
+                       self.run / "thresholds.json", self.run / "checkpoints" / "best-dev.pt", self.manifest):
+            with self.subTest(target=target):
+                moved = self.root / "symlink-target"
+                target.rename(moved)
+                target.symlink_to(moved, target_is_directory=moved.is_dir())
+                try:
+                    self._assert_both_reject()
+                finally:
+                    target.unlink()
+                    moved.rename(target)
+
+    def test_checkpoint_and_dataset_checksums_are_enforced(self):
+        for target in (self.run / "checkpoints" / "best-dev.pt", self.dataset):
+            with self.subTest(target=target):
+                original = target.read_bytes()
+                target.write_bytes(original + b"\n")
+                try:
+                    self._assert_both_reject()
+                finally:
+                    target.write_bytes(original)
+
+    def test_selection_manifest_checksum_is_enforced(self):
+        self.manifest.write_bytes(self.manifest.read_bytes() + b"\n")
+        with patch("fishing_ml.experiments._git_revision", return_value=self.CURRENT):
+            self._candidate()
+            with self.assertRaises(ValueError):
+                self._resolve()
+
+    def test_noncanonical_manifest_location_is_rejected(self):
+        alternate = self.root / "alternate.json"
+        alternate.write_bytes(self.manifest.read_bytes())
+        self.manifest = alternate
+        with patch("fishing_ml.experiments._git_revision", return_value=self.CURRENT):
+            with self.assertRaises(ValueError):
+                self._candidate()
+
+    def test_symlink_artifacts_root_and_parent_are_rejected(self):
+        original = self.artifacts
+        for target in (self.artifacts, self.root):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as alias_directory:
+                alias = Path(alias_directory).resolve() / "alias"
+                alias.symlink_to(target, target_is_directory=True)
+                self.artifacts = alias if target == original else alias / "artifacts"
+                try:
+                    self._assert_both_reject()
+                finally:
+                    self.artifacts = original
+
+    def test_frozen_identity_retains_exact_candidate_revision_and_checksum(self):
+        from dataclasses import replace
+        from fishing_ml.experiments import _validate_frozen_identity
+
+        frozen = self.run / "frozen"
+        frozen.mkdir()
+        for name in ("model-config.json", "normalization.json", "thresholds.json",
+                     "environment.json", "dev-metrics.json"):
+            (frozen / name).write_bytes((self.run / name).read_bytes())
+        (frozen / "best-dev.pt").write_bytes((self.run / "checkpoints" / "best-dev.pt").read_bytes())
+        atomic_write_json(frozen / "dataset-snapshot.json", {"schemaVersion": 1, "batches": []})
+        atomic_write_json(frozen / "split-checksums.json", {"schemaVersion": 1, "files": {}})
+        inventory = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in frozen.iterdir()}
+        frozen_manifest = frozen / "freeze-manifest.json"
+        for recorded, candidate_revision, accepted in (
+            (self.CURRENT, self.CURRENT, True),
+            (self.RECORDED, self.RECORDED, True),
+            ("b" * 40, "b" * 40, False),
+            (self.CURRENT, self.RECORDED, False),
+            (self.RECORDED, self.CURRENT, False),
+        ):
+            with self.subTest(recorded=recorded, candidate=candidate_revision):
+                atomic_write_json(frozen_manifest, {
+                    "schemaVersion": 1, "runId": self.spec.run_id,
+                    "gitRevision": recorded, "files": inventory})
+                original = frozen_manifest.read_bytes()
+                result = replace(result_for(self.spec), git_revision=candidate_revision)
+                with patch("fishing_ml.experiments._git_revision", return_value=self.CURRENT):
+                    if accepted:
+                        _validate_frozen_identity(frozen, result)
+                    else:
+                        with self.assertRaises(ValueError):
+                            _validate_frozen_identity(frozen, result)
+                self.assertEqual(frozen_manifest.read_bytes(), original)
+        atomic_write_json(frozen_manifest, {
+            "schemaVersion": 1, "runId": self.spec.run_id,
+            "gitRevision": self.CURRENT, "files": inventory})
+        (frozen / "best-dev.pt").write_bytes(b"modified checkpoint")
+        with patch("fishing_ml.experiments._git_revision", return_value=self.CURRENT):
+            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                _validate_frozen_identity(frozen, replace(result_for(self.spec), git_revision=self.CURRENT))
+
+    def test_publication_preserves_recorded_revision_and_is_idempotent(self):
+        self._configure(relocated=True, recorded=self.RECORDED)
+        with patch("fishing_ml.experiments._git_revision", return_value=self.CURRENT):
+            candidate = self._candidate()
+        target = self.artifacts / "new-selection.json"
+        for _ in range(2):
+            write_selection(target, candidate, self.manifest, self.dataset, version(),
+                            git_revision=self.CURRENT, selection_gate=load_selection_gate(CANDIDATES))
+        self.assertEqual(target.read_bytes(), self.selection.read_bytes())
+        before = target.read_bytes()
+        with self.assertRaises(FileExistsError):
+            write_selection(target, candidate, self.manifest, self.dataset, version(),
+                            git_revision="b" * 40, selection_gate=load_selection_gate(CANDIDATES))
+        self.assertEqual(target.read_bytes(), before)
+        absent = self.artifacts / "invalid-selection.json"
+        with self.assertRaises(ValueError):
+            write_selection(absent, candidate, self.manifest, self.dataset, version(),
+                            git_revision="b" * 40, selection_gate=load_selection_gate(CANDIDATES))
+        self.assertFalse(absent.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

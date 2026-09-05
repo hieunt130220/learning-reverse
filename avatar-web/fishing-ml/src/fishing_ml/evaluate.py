@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -16,6 +17,7 @@ from .calibrate import Thresholds, apply_thresholds
 from .dataset import NormalizationStats, _load_final_episodes, load_dev_episodes
 from .metrics import summarize_predictions
 from .model import FishingEncoder
+from .provenance import revision_matches_recorded
 from .schema import atomic_write_json, publish_no_replace, read_json
 from .train import _device, _prediction_json, predict_episodes
 
@@ -95,7 +97,7 @@ def evaluate_run(run_dir: Path, raw_root: Path, labels_root: Path, splits_root: 
     frozen_dir = run_dir / "frozen"
     verify_current_dataset(frozen_dir, raw_root, labels_root, splits_root)
     config_doc, stats, thresholds, model, device = _inputs(frozen_dir)
-    if freeze_revision(frozen_dir) != _git():
+    if not revision_matches_recorded(_git(), freeze_revision(frozen_dir)):
         raise RuntimeError("frozen Git revision does not match current revision")
     episodes = load_dev_episodes(raw_root, labels_root, splits_root, stats)
     predictions, metrics, loss, baseline = _evaluate(episodes, model, device, float(config_doc["temperature"]), thresholds)
@@ -106,13 +108,24 @@ def evaluate_run(run_dir: Path, raw_root: Path, labels_root: Path, splits_root: 
     return result
 
 
-def _create_final_lock(path: Path) -> None:
+def _create_final_lock(path: Path, run_id: str) -> None:
     descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     try:
-        os.write(descriptor, f"pid={os.getpid()}\n".encode())
+        payload = (
+            f"run_id={run_id}\n"
+            f"pid={os.getpid()}\n"
+            f"started_at={datetime.now(timezone.utc).isoformat()}\n"
+        ).encode()
+        while payload:
+            payload = payload[os.write(descriptor, payload):]
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+    parent_descriptor = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(parent_descriptor)
+    finally:
+        os.close(parent_descriptor)
 
 
 def evaluate_final_once(
@@ -142,7 +155,7 @@ def evaluate_final_once(
         raise FileExistsError("final evaluation report or unresolved lock already exists")
     frozen_dir = run_dir / "frozen"
     freeze = verify_freeze(frozen_dir)
-    if freeze.git_revision != _git():
+    if not revision_matches_recorded(_git(), freeze.git_revision):
         raise RuntimeError("frozen Git revision does not match current revision")
     # Load and classify the frozen model config before any dataset validation:
     # verify_current_dataset validates all split files, including final.txt.
@@ -158,6 +171,7 @@ def evaluate_final_once(
         )
     if phase2_confirmed and not is_schema_v2:
         raise PermissionError("Phase 2 confirmation requires a schema-v2 model config")
+    _create_final_lock(lock, run_dir.name)
     verify_current_dataset(
         frozen_dir,
         raw_root,
@@ -165,27 +179,17 @@ def evaluate_final_once(
         splits_root,
         duplicate_reviews=duplicate_reviews,
     )
-    published = False
-    _create_final_lock(lock)
-    try:
-        episodes = _load_final_episodes(
-            raw_root,
-            labels_root,
-            splits_root,
-            stats,
-            duplicate_reviews=duplicate_reviews,
-        )
-        predictions, metrics, loss, baseline = _evaluate(episodes, model, device, float(config_doc["temperature"]), thresholds)
-        result = {"schemaVersion": 1, "split": "final", "loss": loss, "metrics": metrics.to_json(), "baselines": baseline, "predictions": [_prediction_json(row) for row in predictions], "passed": metrics.top1_accuracy >= .99 and metrics.wrong_count == 0}
-        publish_no_replace(output, result)
-        published = True
-        return result
-    finally:
-        # A published report is the only terminal evidence. On any failure (including
-        # transient infra errors) the lock is removed so a corrected rerun is possible;
-        # the pre-existing report lock remains the authoritative one-shot guard.
-        if not published:
-            lock.unlink(missing_ok=True)
+    episodes = _load_final_episodes(
+        raw_root,
+        labels_root,
+        splits_root,
+        stats,
+        duplicate_reviews=duplicate_reviews,
+    )
+    predictions, metrics, loss, baseline = _evaluate(episodes, model, device, float(config_doc["temperature"]), thresholds)
+    result = {"schemaVersion": 1, "split": "final", "loss": loss, "metrics": metrics.to_json(), "baselines": baseline, "predictions": [_prediction_json(row) for row in predictions], "passed": metrics.top1_accuracy >= .99 and metrics.wrong_count == 0}
+    publish_no_replace(output, result)
+    return result
 
 
 def main(argv=None) -> int:

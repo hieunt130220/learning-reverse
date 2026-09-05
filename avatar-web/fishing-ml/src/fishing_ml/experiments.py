@@ -37,7 +37,7 @@ import math
 import re
 import subprocess
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -45,6 +45,7 @@ import yaml
 
 import os
 from .dataset_version import DatasetVersion
+from .provenance import revision_matches_recorded
 from .schema import publish_no_replace, read_json, sha256_file
 
 # CLI exit codes (spec §3.9): 0 = stage completed / adjudication pass;
@@ -512,6 +513,58 @@ def _result_from_manifest(doc: dict[str, Any], manifest_path: str = "") -> Exper
     )
 
 
+def _validate_relocated_run_paths(
+    result: ExperimentResult,
+    *,
+    artifacts_root: Path,
+    run_id: str,
+) -> tuple[Path, Path]:
+    """Validate archived and operational paths share the exact artifacts/run suffix."""
+    _manifest_safe_component(run_id, "relocated run ID")
+    archived_run = Path(result.run_dir)
+    archived_thresholds = Path(result.thresholds_path)
+    if (
+        not archived_run.is_absolute()
+        or not archived_thresholds.is_absolute()
+        or ".." in archived_run.parts
+        or ".." in archived_thresholds.parts
+        or archived_run.name != run_id
+        or archived_run.parent.name != "artifacts"
+        or archived_thresholds != archived_run / "thresholds.json"
+    ):
+        raise ValueError("candidate manifest has invalid archived run paths")
+
+    root = Path(artifacts_root)
+    if not root.is_absolute() or ".." in root.parts:
+        raise ValueError("artifacts root must be an absolute path without traversal")
+    run_dir = root / run_id
+    thresholds = run_dir / "thresholds.json"
+    manifest = root / "phase2-experiments" / f"{run_id}.json"
+    # Require callers to supply a physical absolute root, including OS aliases.
+    # A regular leaf beneath a symlink is not a trusted operational path.
+    if any(parent.is_symlink() for parent in (root, *root.parents)) or not root.is_dir():
+        raise ValueError("artifacts root must be a regular directory")
+    resolved_root = root.resolve()
+    for path in (run_dir, thresholds, manifest):
+        relative = path.relative_to(root)
+        current = root
+        for component in relative.parts:
+            current = current / component
+            if current.is_symlink():
+                raise ValueError("candidate operational paths must not contain symlinks")
+        if path.resolve() != resolved_root / relative:
+            raise ValueError("candidate operational path escapes artifacts root")
+    if not run_dir.is_dir() or not thresholds.is_file() or not manifest.is_file():
+        raise ValueError("candidate operational run, thresholds or manifest is missing")
+    actual_manifest = Path(result.manifest_path)
+    if actual_manifest.is_symlink() or actual_manifest.resolve() != manifest.resolve():
+        raise ValueError("candidate manifest is not at its canonical current location")
+    checkpoints = run_dir / "checkpoints"
+    if checkpoints.is_symlink():
+        raise ValueError("candidate checkpoints directory must not be a symlink")
+    return run_dir.resolve(), thresholds.resolve()
+
+
 def _validate_selection_document(
     document: object,
     *,
@@ -587,7 +640,8 @@ def _validate_selection_document(
         if (
             provenance["splitSha256"] != selected.split_checksum
             or provenance["configSha256"] != selected.config_checksum
-            or provenance["gitRevision"] != git_revision
+            or provenance["gitRevision"] != selected.git_revision
+            or not revision_matches_recorded(git_revision, provenance["gitRevision"])
         ):
             raise ValueError("selection candidate provenance mismatch")
     return document
@@ -648,6 +702,10 @@ def _resolve_selected_result(
         splits_root=splits_root,
         artifacts_root=artifacts_root,
     )
+    run_dir, thresholds = _validate_relocated_run_paths(
+        result, artifacts_root=artifacts_root, run_id=spec.run_id
+    )
+    result = replace(result, run_dir=str(run_dir), thresholds_path=str(thresholds))
     _validate_selection_for_spec(
         selection,
         selected=result,
@@ -692,16 +750,10 @@ def _validate_manifest_current_provenance(
         raise ValueError("candidate manifest split checksum does not match current train/dev splits")
     if provenance.get("configSha256") != spec.config_checksum:
         raise ValueError("candidate manifest config checksum does not match enumerated spec")
-    if provenance.get("gitRevision") != _git_revision():
+    if not revision_matches_recorded(_git_revision(), provenance.get("gitRevision")):
         raise ValueError("candidate manifest Git revision does not match current revision")
 
-    expected_run_dir = (Path(artifacts_root) / spec.run_id).resolve()
-    actual_run_dir = Path(result.run_dir).resolve()
-    if actual_run_dir != expected_run_dir:
-        raise ValueError("candidate manifest run directory does not match the enumerated run")
-    expected_thresholds = (expected_run_dir / "thresholds.json").resolve()
-    if Path(result.thresholds_path).resolve() != expected_thresholds:
-        raise ValueError("candidate manifest thresholds path does not match the run directory")
+    _validate_relocated_run_paths(result, artifacts_root=artifacts_root, run_id=spec.run_id)
 
 
 def _current_candidate_result(
@@ -729,7 +781,10 @@ def _current_candidate_result(
         splits_root=splits_root,
         artifacts_root=artifacts_root,
     )
-    return result
+    run_dir, thresholds = _validate_relocated_run_paths(
+        result, artifacts_root=artifacts_root, run_id=spec.run_id
+    )
+    return replace(result, run_dir=str(run_dir), thresholds_path=str(thresholds))
 
 
 def _validate_selection_current(
@@ -1497,6 +1552,10 @@ def write_selection(
         raise ValueError("selection gate must require zero wrong accepted")
     if selected_manifest_path.is_symlink() or not selected_manifest_path.is_file():
         raise ValueError("selected candidate manifest must be a regular file")
+    if not revision_matches_recorded(git_revision, selected.git_revision):
+        if os.path.lexists(path):
+            raise FileExistsError("existing selection conflicts with requested Git revision")
+        raise ValueError("selection Git revision is incompatible with selected candidate")
     document = {
         "schemaVersion": 1,
         "stage": "phase2-selection",
@@ -1509,7 +1568,7 @@ def write_selection(
             "datasetVersionSha256": hashlib.sha256(dataset_version_path.read_bytes()).hexdigest(),
             "splitSha256": selected.split_checksum,
             "configSha256": selected.config_checksum,
-            "gitRevision": git_revision,
+            "gitRevision": selected.git_revision,
         },
         "policy": {
             "requireZeroWrongAccepted": selection_gate.require_zero_wrong_accepted,
@@ -1538,7 +1597,7 @@ def _validate_frozen_identity(frozen_dir: Path, result: ExperimentResult) -> Non
         raise ValueError("frozen manifest run ID does not match selected candidate")
     if manifest.git_revision != result.git_revision:
         raise ValueError("frozen manifest Git revision does not match candidate")
-    if manifest.git_revision != _git_revision():
+    if not revision_matches_recorded(_git_revision(), manifest.git_revision):
         raise ValueError("frozen manifest Git revision does not match current revision")
 
 
