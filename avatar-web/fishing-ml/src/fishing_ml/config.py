@@ -11,10 +11,22 @@ import yaml
 
 _SCHEMA_VERSION = 1
 _V2_SCHEMA_VERSION = 2
+_V3_SCHEMA_VERSION = 3
 
 # Schema v2 allowed values
 ALLOWED_AUGMENTATION_PROFILES = frozenset({"none", "photometric", "photometric_plus_geom"})
 ALLOWED_HARD_NEGATIVE_RATIOS = frozenset({0.0, 0.25})
+
+# Schema v3 coverage-recovery values
+ALLOWED_CYCLE_AUGMENTATION_PROFILES = frozenset(
+    {
+        "photometric_mild",
+        "photometric_plus_geom_mild",
+        "photometric_plus_geom_standard",
+        "photometric_plus_geom_strong",
+    }
+)
+ALLOWED_CYCLE_HARD_NEGATIVE_RATIOS = frozenset({0.0, 0.25, 0.50})
 
 # Schema v1 compatibility defaults (not valid in v2 YAML)
 _LEGACY_AUGMENTATION_PROFILE = "legacy_combined"
@@ -69,7 +81,7 @@ class TrainingConfig:
 
 
 def load_training_config(path: Path) -> TrainingConfig:
-    """Load a schema-v1 or schema-v2 YAML config, rejecting coercion and unknown fields."""
+    """Load a schema-v1/v2/v3 YAML config, rejecting coercion and unknown fields."""
     config_path = Path(path)
     try:
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
@@ -83,7 +95,7 @@ def load_training_config(path: Path) -> TrainingConfig:
 
 
 def load_training_config_from_document(document: Mapping[str, Any]) -> TrainingConfig:
-    """Parse an in-memory training-config document (model-config.json, v1 or v2)."""
+    """Parse an in-memory training-config document (model-config.json, v1/v2/v3)."""
     return _parse_config_document(document)
 
 
@@ -91,7 +103,7 @@ def config_to_document(config: TrainingConfig) -> dict[str, object]:
     """Canonical serialization for model-config.json and effective config hashing.
 
     Always writes all fields including v2 augmentation/hard-negative fields.
-    Schema v1 configs get legacy defaults; schema v2 configs get explicit values.
+    Schema v1 configs get legacy defaults; schema v2/v3 configs get explicit values.
 
     The output is a FLAT mapping matching the YAML camelCase field names,
     suitable for deterministic hashing with sort_keys=True.
@@ -120,10 +132,12 @@ def config_to_document(config: TrainingConfig) -> dict[str, object]:
 def _parse_config_document(raw: Mapping[str, Any]) -> TrainingConfig:
     """Shared canonical parser: exact key set per schemaVersion, strict field types."""
     schema_version = _integer(raw, "schemaVersion", minimum=1)
-    if schema_version not in (_SCHEMA_VERSION, _V2_SCHEMA_VERSION):
+    if schema_version not in (_SCHEMA_VERSION, _V2_SCHEMA_VERSION, _V3_SCHEMA_VERSION):
         raise ValueError(f"unsupported training config schemaVersion {schema_version}")
-    v2 = schema_version == _V2_SCHEMA_VERSION
-    allowed_keys = _V1_REQUIRED_KEYS | (_V2_EXTRA_KEYS if v2 else frozenset())
+    has_explicit_training_controls = schema_version in (_V2_SCHEMA_VERSION, _V3_SCHEMA_VERSION)
+    allowed_keys = _V1_REQUIRED_KEYS | (
+        _V2_EXTRA_KEYS if has_explicit_training_controls else frozenset()
+    )
     keys = set(raw)
     missing = sorted(allowed_keys - keys)
     unknown = sorted(keys - allowed_keys)
@@ -146,24 +160,38 @@ def _parse_config_document(raw: Mapping[str, Any]) -> TrainingConfig:
     device = _string(raw, "device")
     if device not in _SUPPORTED_DEVICES:
         raise ValueError(f"unsupported device {device!r}")
+    workers = _integer(raw, "workers", minimum=0)
 
     augmentation_profile = _LEGACY_AUGMENTATION_PROFILE
     hard_negative_ratio = _LEGACY_HARD_NEGATIVE_RATIO
     hard_negative_margin = _LEGACY_HARD_NEGATIVE_MARGIN
-    if v2:
-        # Spec §3.2/§3.5: schema-v2 configs MUST carry all three fields (missing
+    if has_explicit_training_controls:
+        # Schema-v2/v3 configs MUST carry all three fields (missing
         # keys already rejected above via the allowed_keys superset check).
         augmentation_profile = _string(raw, "augmentationProfile")
-        if augmentation_profile not in ALLOWED_AUGMENTATION_PROFILES:
-            raise ValueError(f"augmentationProfile must be one of {sorted(ALLOWED_AUGMENTATION_PROFILES)}")
-        if augmentation_profile == _LEGACY_AUGMENTATION_PROFILE:
-            raise ValueError("legacy_combined is not valid in schema v2")
+        allowed_profiles = (
+            ALLOWED_AUGMENTATION_PROFILES
+            if schema_version == _V2_SCHEMA_VERSION
+            else ALLOWED_CYCLE_AUGMENTATION_PROFILES
+        )
+        if augmentation_profile not in allowed_profiles:
+            raise ValueError(f"augmentationProfile must be one of {sorted(allowed_profiles)}")
         hard_negative_ratio = _finite_number(raw, "hardNegativeRatio")
-        if hard_negative_ratio not in ALLOWED_HARD_NEGATIVE_RATIOS:
-            raise ValueError(f"hardNegativeRatio must be one of {sorted(ALLOWED_HARD_NEGATIVE_RATIOS)}")
+        allowed_ratios = (
+            ALLOWED_HARD_NEGATIVE_RATIOS
+            if schema_version == _V2_SCHEMA_VERSION
+            else ALLOWED_CYCLE_HARD_NEGATIVE_RATIOS
+        )
+        if hard_negative_ratio not in allowed_ratios:
+            raise ValueError(f"hardNegativeRatio must be one of {sorted(allowed_ratios)}")
         hard_negative_margin = _finite_number(raw, "hardNegativeMargin")
         if hard_negative_margin <= 0:
             raise ValueError("hardNegativeMargin must be positive")
+    if schema_version == _V3_SCHEMA_VERSION:
+        if device != "cpu":
+            raise ValueError("schema v3 requires device='cpu'")
+        if workers != 0:
+            raise ValueError("schema v3 requires workers=0")
 
     return TrainingConfig(
         schema_version=schema_version,
@@ -176,7 +204,7 @@ def _parse_config_document(raw: Mapping[str, Any]) -> TrainingConfig:
         channels=channels,  # type: ignore[arg-type]
         checkpoint_metric=checkpoint_metric,
         device=device,
-        workers=_integer(raw, "workers", minimum=0),
+        workers=workers,
         reproducibility_tolerance=_finite_number(
             raw,
             "reproducibilityTolerance",

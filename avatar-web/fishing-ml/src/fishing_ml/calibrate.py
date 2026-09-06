@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
+from typing import AbstractSet, Sequence
 
 from .metrics import Prediction, summarize_predictions
 from .schema import atomic_write_json, read_json, sha256_file
@@ -114,6 +115,73 @@ def calibrate_thresholds(
     if best is None:
         raise ValueError("no calibration candidate satisfies the acceptance objective")
     return best[1]
+
+
+def calibrate_partition_robust_zero_wrong(
+    predictions: Sequence[Prediction],
+    inherited_dev_ids: AbstractSet[str],
+    acquired_dev_ids: AbstractSet[str],
+) -> CalibrationResult:
+    rows = tuple(predictions)
+    summarize_predictions(rows)
+    inherited = frozenset(inherited_dev_ids)
+    acquired = frozenset(acquired_dev_ids)
+    if len(inherited) != 30:
+        raise ValueError("partition-robust calibration requires exactly 30 inherited-dev batches")
+    if len(acquired) != 15:
+        raise ValueError("partition-robust calibration requires exactly 15 acquired-dev batches")
+    if any(not isinstance(batch_id, str) or not batch_id for batch_id in inherited | acquired):
+        raise ValueError("partition batch ids must be non-empty strings")
+    overlap = inherited.intersection(acquired)
+    if overlap:
+        raise ValueError("inherited-dev and acquired-dev partitions overlap")
+
+    expected_batches = inherited | acquired
+    observed_batches = {row.batch_id for row in rows}
+    if observed_batches != expected_batches:
+        missing = sorted(expected_batches - observed_batches)
+        unexpected = sorted(observed_batches - expected_batches)
+        details: list[str] = []
+        if missing:
+            details.append(f"missing batches: {', '.join(missing)}")
+        if unexpected:
+            details.append(f"unexpected batches: {', '.join(unexpected)}")
+        raise ValueError("partition prediction coverage mismatch (" + "; ".join(details) + ")")
+
+    inherited_rows = tuple(row for row in rows if row.batch_id in inherited)
+    acquired_rows = tuple(row for row in rows if row.batch_id in acquired)
+    inherited_result = calibrate_thresholds(
+        inherited_rows,
+        require_zero_wrong_accepted=True,
+        allow_full_abstention=False,
+    )
+    acquired_result = calibrate_thresholds(
+        acquired_rows,
+        require_zero_wrong_accepted=True,
+        allow_full_abstention=False,
+    )
+    thresholds = Thresholds(
+        min_similarity=max(
+            inherited_result.thresholds.min_similarity,
+            acquired_result.thresholds.min_similarity,
+        ),
+        min_margin=max(
+            inherited_result.thresholds.min_margin,
+            acquired_result.thresholds.min_margin,
+        ),
+    )
+    summary = summarize_predictions(apply_thresholds(rows, thresholds))
+    if summary.accepted_wrong_count:
+        raise ValueError("partition-robust combined thresholds accepted a wrong prediction")
+    if summary.accepted_count == 0:
+        raise ValueError("partition-robust combined thresholds fully abstain")
+    return CalibrationResult(
+        thresholds=thresholds,
+        accepted_count=summary.accepted_count,
+        accepted_accuracy=summary.accepted_accuracy,
+        abstention_rate=summary.abstention_rate,
+        accepted_wrong_count=summary.accepted_wrong_count,
+    )
 
 
 def calibrate_run(run_dir: Path, require_zero_wrong_accepted: bool = True) -> Path:

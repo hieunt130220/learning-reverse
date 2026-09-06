@@ -55,6 +55,10 @@ BLOCK_MISSING_MODEL_IDENTITY = "missing_model_identity"
 BLOCK_MISSING_MODEL_CHECKSUM = "missing_model_checksum"
 BLOCK_NO_BATCHES = "no_batches"
 BLOCK_INCOMPLETE_QUALITY_EVIDENCE = "incomplete_quality_evidence"
+BLOCK_REPLAY_MEMBERSHIP_INCOMPLETE = "replay_membership_incomplete"
+BLOCK_REPLAY_OPERATIONAL_ERROR = "replay_operational_error"
+BLOCK_MODEL_IDENTITY_MISMATCH = "model_identity_mismatch"
+BLOCK_MODEL_CHECKSUM_MISMATCH = "model_checksum_mismatch"
 
 _MAX_REPLAY_RQ_BUCKETS = 4096
 _MAX_REPLAY_ERROR_KEYS = 4096
@@ -145,6 +149,9 @@ class GatePolicy:
     max_omitted_rate: float
     require_single_model_identity: bool
     require_zero_wrong_accepted: bool
+    cycle_id: str | None = None
+    experiment_id: str | None = None
+    dataset_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,9 +172,12 @@ class GateReport:
     checks: tuple[GateCheck, ...]
     failures: tuple[str, ...]
     blockers: tuple[str, ...]
+    cycle_id: str | None = None
+    experiment_id: str | None = None
+    dataset_id: str | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        document: dict[str, object] = {
             "schemaVersion": self.schema_version,
             "gate": self.gate,
             "status": self.status,
@@ -180,6 +190,16 @@ class GateReport:
             "failures": list(self.failures),
             "blockers": list(self.blockers),
         }
+        cycle_values = (self.cycle_id, self.experiment_id, self.dataset_id)
+        if any(value is not None for value in cycle_values):
+            if not all(isinstance(value, str) and value for value in cycle_values):
+                raise ValueError("cycle gate report identity is incomplete")
+            document["cycle"] = {
+                "cycleId": self.cycle_id,
+                "experimentId": self.experiment_id,
+                "datasetId": self.dataset_id,
+            }
+        return document
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -255,16 +275,48 @@ def _sha256(value: object, name: str) -> str:
 def load_gate_policy(path: Path) -> GatePolicy:
     """Load gate.yaml with exact nested keys and strict scalar types."""
     try:
-        document = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+        raw_document = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as error:
         raise ValueError(f"cannot read gate config: {error}") from error
+    if not isinstance(raw_document, Mapping):
+        raise ValueError("gate config must be a mapping")
+    schema_version = raw_document.get("schemaVersion")
+    if isinstance(schema_version, bool) or schema_version not in {1, 2}:
+        raise ValueError("gate.yaml schemaVersion must be 1 or 2")
+    top_level_keys = {
+        "schemaVersion",
+        "meta",
+        "coverage",
+        "latency",
+        "errorBudget",
+        "gate",
+    }
+    if schema_version == 2:
+        top_level_keys.add("cycle")
     document = _exact_keys(
-        document,
-        {"schemaVersion", "meta", "coverage", "latency", "errorBudget", "gate"},
+        raw_document,
+        top_level_keys,
         "gate config",
     )
-    if isinstance(document["schemaVersion"], bool) or document["schemaVersion"] != 1:
-        raise ValueError("gate.yaml schemaVersion must be 1")
+    cycle_id = experiment_id = dataset_id = None
+    if schema_version == 2:
+        from .phase2_cycle import CYCLE_ID, DATASET_ID, EXPERIMENT_ID
+
+        cycle = _exact_keys(
+            document["cycle"],
+            {"cycleId", "experimentId", "datasetId"},
+            "gate config cycle",
+        )
+        expected_cycle = {
+            "cycleId": CYCLE_ID,
+            "experimentId": EXPERIMENT_ID,
+            "datasetId": DATASET_ID,
+        }
+        if dict(cycle) != expected_cycle:
+            raise ValueError("gate config cycle identity mismatch")
+        cycle_id = CYCLE_ID
+        experiment_id = EXPERIMENT_ID
+        dataset_id = DATASET_ID
     meta_raw = document["meta"]
     if not isinstance(meta_raw, Mapping):
         raise ValueError("gate config meta must be a mapping")
@@ -292,6 +344,18 @@ def load_gate_policy(path: Path) -> GatePolicy:
             raise ValueError("meta.approvedAt must be UTC ISO-8601") from error
         if timestamp.tzinfo is None or timestamp.utcoffset() != timedelta(0):
             raise ValueError("meta.approvedAt must be UTC ISO-8601")
+    if schema_version == 2:
+        if placeholders:
+            raise ValueError("cycle gate policy must be approved")
+        if meta["revisitAt"] != "never-from-final":
+            raise ValueError("cycle gate meta.revisitAt must equal never-from-final")
+        if approved_by != "hieunt":
+            raise ValueError("cycle gate meta.approvedBy mismatch")
+        if approval_evidence != (
+            "2026-09-05 approved Fishing Phase 2 Coverage Recovery Cycle design "
+            "and implementation plan"
+        ):
+            raise ValueError("cycle gate approval evidence mismatch")
     section_keys = {
         "coverage": {"minAcceptedRate", "minBatchExactMatch", "minTop1Accuracy"},
         "latency": {"budgetMs", "p95Ms", "maxMs"},
@@ -303,23 +367,64 @@ def load_gate_policy(path: Path) -> GatePolicy:
     max_ms = _positive_ms(sections["latency"]["maxMs"], "maxMs")
     if p95 > max_ms:
         raise ValueError("p95Ms must be less than or equal to maxMs")
+    min_accepted_rate = _rate_value(
+        sections["coverage"]["minAcceptedRate"], "minAcceptedRate"
+    )
+    min_batch_exact_match = _rate_value(
+        sections["coverage"]["minBatchExactMatch"], "minBatchExactMatch"
+    )
+    min_top1_accuracy = _rate_value(
+        sections["coverage"]["minTop1Accuracy"], "minTop1Accuracy"
+    )
+    budget_ms = _positive_ms(sections["latency"]["budgetMs"], "budgetMs")
+    max_errored_batch_rate = _rate_value(
+        sections["errorBudget"]["maxErroredBatchRate"],
+        "maxErroredBatchRate",
+    )
+    max_omitted_rate = _rate_value(
+        sections["errorBudget"]["maxOmittedRate"], "maxOmittedRate"
+    )
+    require_single_model_identity = _strict_bool(
+        sections["errorBudget"]["requireSingleModelIdentity"],
+        "requireSingleModelIdentity",
+    )
+    require_zero_wrong_accepted = _strict_bool(
+        sections["gate"]["requireZeroWrongAccepted"],
+        "requireZeroWrongAccepted",
+    )
+    if schema_version == 2 and (
+        min_accepted_rate != 0.60
+        or min_batch_exact_match != 0.90
+        or min_top1_accuracy != 0.98
+        or budget_ms != 50.0
+        or p95 != 100.0
+        or max_ms != 250.0
+        or max_errored_batch_rate != 0.01
+        or max_omitted_rate != 0.0
+        or not require_single_model_identity
+        or not require_zero_wrong_accepted
+    ):
+        raise ValueError("cycle gate thresholds or safety policy mismatch")
     return GatePolicy(
-        schema_version=1,
+        schema_version=schema_version,
         pre_agreed_placeholders=placeholders,
         approved_at=approved_at,
         approved_by=approved_by,
         approval_evidence=approval_evidence,
         not_tuned_on_phase_a_final=not_tuned,
-        min_accepted_rate=_rate_value(sections["coverage"]["minAcceptedRate"], "minAcceptedRate"),
-        min_batch_exact_match=_rate_value(sections["coverage"]["minBatchExactMatch"], "minBatchExactMatch"),
-        min_top1_accuracy=_rate_value(sections["coverage"]["minTop1Accuracy"], "minTop1Accuracy"),
-        budget_ms=_positive_ms(sections["latency"]["budgetMs"], "budgetMs"),
+        min_accepted_rate=min_accepted_rate,
+        min_batch_exact_match=min_batch_exact_match,
+        min_top1_accuracy=min_top1_accuracy,
+        budget_ms=budget_ms,
         p95_ms=p95,
         max_ms=max_ms,
-        max_errored_batch_rate=_rate_value(sections["errorBudget"]["maxErroredBatchRate"], "maxErroredBatchRate"),
-        max_omitted_rate=_rate_value(sections["errorBudget"]["maxOmittedRate"], "maxOmittedRate"),
-        require_single_model_identity=_strict_bool(sections["errorBudget"]["requireSingleModelIdentity"], "requireSingleModelIdentity"),
-        require_zero_wrong_accepted=_strict_bool(sections["gate"]["requireZeroWrongAccepted"], "requireZeroWrongAccepted"),
+        max_errored_batch_rate=max_errored_batch_rate,
+        max_omitted_rate=max_omitted_rate,
+        require_single_model_identity=require_single_model_identity,
+        require_zero_wrong_accepted=require_zero_wrong_accepted,
+        cycle_id=cycle_id,
+        experiment_id=experiment_id,
+        dataset_id=dataset_id,
     )
 
 def _rate_value(value: object, name: str) -> float:
@@ -402,7 +507,19 @@ def adjudicate_final(policy: GatePolicy, evidence: Mapping[str, object], *, poli
         failed = metrics[key] < threshold
         if failed: failures.append(code)
         checks.append(GateCheck(name, "fail" if failed else "pass", metrics[key], f">= {threshold}"))
-    return GateReport(1, "final", _reduce_status(failures, blockers), policy_sha256, evidence_sha256, tuple(checks), tuple(failures), tuple(blockers))
+    return GateReport(
+        policy.schema_version,
+        "final",
+        _reduce_status(failures, blockers),
+        policy_sha256,
+        evidence_sha256,
+        tuple(checks),
+        tuple(failures),
+        tuple(blockers),
+        policy.cycle_id,
+        policy.experiment_id,
+        policy.dataset_id,
+    )
 
 def _normalize_replay_evidence(report: Mapping[str, object]) -> dict[str, object]:
     """Strictly normalize a schema-v2 aggregate replay report.
@@ -583,12 +700,61 @@ def _normalize_replay_evidence(report: Mapping[str, object]) -> dict[str, object
     }
 
 
-def _freeze_identity(document: Mapping[str, object]) -> tuple[str, str]:
-    doc = _exact_keys(document, {"schemaVersion", "runId", "gitRevision", "files"}, "freeze manifest")
+def _freeze_identity(
+    document: Mapping[str, object],
+) -> tuple[str, str, tuple[str, str, str] | None]:
+    if not isinstance(document, Mapping):
+        raise ValueError("freeze manifest must be a mapping")
+    schema_version = document.get("schemaVersion")
+    if isinstance(schema_version, bool) or schema_version not in {1, 2}:
+        raise ValueError("freeze manifest schemaVersion is invalid")
+    if schema_version == 1:
+        doc = _exact_keys(
+            document,
+            {"schemaVersion", "runId", "gitRevision", "files"},
+            "freeze manifest",
+        )
+        cycle_identity = None
+    else:
+        doc = _exact_keys(
+            document,
+            {
+                "schemaVersion",
+                "cycleId",
+                "experimentId",
+                "datasetId",
+                "runId",
+                "candidateId",
+                "gitRevision",
+                "experimentManifestSha256",
+                "selectionSha256",
+                "candidateSha256",
+                "calibrationSha256",
+                "datasetVersionSha256",
+                "files",
+            },
+            "cycle freeze manifest",
+        )
+        from .phase2_cycle import CYCLE_ID, DATASET_ID, EXPERIMENT_ID
+
+        cycle_identity = (
+            _bounded_text(doc["cycleId"], "freeze cycleId"),
+            _bounded_text(doc["experimentId"], "freeze experimentId"),
+            _bounded_text(doc["datasetId"], "freeze datasetId"),
+        )
+        if cycle_identity != (CYCLE_ID, EXPERIMENT_ID, DATASET_ID):
+            raise ValueError("cycle freeze manifest identity mismatch")
+        _bounded_text(doc["candidateId"], "freeze candidateId")
+        for field in (
+            "experimentManifestSha256",
+            "selectionSha256",
+            "candidateSha256",
+            "calibrationSha256",
+            "datasetVersionSha256",
+        ):
+            _sha256(doc[field], f"freeze {field}")
     if (
-        isinstance(doc["schemaVersion"], bool)
-        or doc["schemaVersion"] != 1
-        or not isinstance(doc["gitRevision"], str)
+        not isinstance(doc["gitRevision"], str)
         or _GIT_HEX.fullmatch(doc["gitRevision"]) is None
     ):
         raise ValueError("freeze manifest identity is invalid")
@@ -598,15 +764,48 @@ def _freeze_identity(document: Mapping[str, object]) -> tuple[str, str]:
     if not isinstance(files, Mapping) or set(files) != expected:
         raise ValueError("freeze manifest files inventory mismatch")
     for name, value in files.items(): _sha256(value, f"freeze file {name}")
-    return run_id, files["best-dev.pt"]
+    return run_id, files["best-dev.pt"], cycle_identity
 
-def adjudicate_replay(policy: GatePolicy, replay_report: Mapping[str, object], freeze_manifest: Mapping[str, object], *, policy_sha256: str, evidence_sha256: str) -> GateReport:
+def adjudicate_replay(
+    policy: GatePolicy,
+    replay_report: Mapping[str, object],
+    freeze_manifest: Mapping[str, object],
+    *,
+    policy_sha256: str,
+    evidence_sha256: str,
+    operational_blocked: bool = False,
+) -> GateReport:
     _sha256(policy_sha256, "policy_sha256"); _sha256(evidence_sha256, "evidence_sha256")
+    if not isinstance(operational_blocked, bool):
+        raise ValueError("operational_blocked must be boolean")
     evidence = _normalize_replay_evidence(replay_report)
-    frozen_run_id, frozen_checksum = _freeze_identity(freeze_manifest)
+    frozen_run_id, frozen_checksum, frozen_cycle = _freeze_identity(freeze_manifest)
+    cycle_mode = policy.schema_version == 2
+    if cycle_mode and frozen_cycle != (
+        policy.cycle_id,
+        policy.experiment_id,
+        policy.dataset_id,
+    ):
+        raise ValueError("cycle gate policy and freeze identity mismatch")
+    if not cycle_mode and frozen_cycle is not None:
+        raise ValueError("schema-v1 gate policy cannot adjudicate a cycle freeze")
     failures: list[str] = []
     blockers = [BLOCK_POLICY_NOT_APPROVED] if policy.pre_agreed_placeholders else []
     checks: list[GateCheck] = []
+
+    if operational_blocked:
+        if not cycle_mode:
+            raise ValueError("operational_blocked is only valid for cycle replay")
+        blockers.append(BLOCK_REPLAY_OPERATIONAL_ERROR)
+
+    if cycle_mode and (
+        evidence["batchCount"] != 260
+        or evidence["labeledBatchCount"] != 260
+        or evidence["unknownBatchCount"] != 0
+    ):
+        blockers.append(BLOCK_REPLAY_MEMBERSHIP_INCOMPLETE)
+    if cycle_mode and evidence["errorCounts"]:
+        blockers.append(BLOCK_REPLAY_OPERATIONAL_ERROR)
 
     incomplete_ground_truth = bool(
         evidence["unknownBatchCount"] or evidence["unknownQueryCount"]
@@ -657,16 +856,24 @@ def adjudicate_replay(policy: GatePolicy, replay_report: Mapping[str, object], f
         errored_rate = evidence["erroredBatchCount"] / evidence["batchCount"]
         failed = errored_rate > policy.max_errored_batch_rate
         if failed:
-            failures.append(FAIL_ERRORED_BATCH_RATE_EXCEEDED)
+            if cycle_mode:
+                _append_unique(blockers, BLOCK_REPLAY_OPERATIONAL_ERROR)
+            else:
+                failures.append(FAIL_ERRORED_BATCH_RATE_EXCEEDED)
         checks.append(GateCheck(
-            "erroredBatchRate", "fail" if failed else "pass", errored_rate,
+            "erroredBatchRate",
+            "blocked" if failed and cycle_mode else ("fail" if failed else "pass"),
+            errored_rate,
             f"<= {policy.max_errored_batch_rate}",
         ))
     omitted_rate = evidence["omittedRate"]
     if omitted_rate is None:
         blockers.append(BLOCK_INCOMPLETE_QUALITY_EVIDENCE)
     elif omitted_rate > policy.max_omitted_rate:
-        failures.append(FAIL_OMITTED_RATE_EXCEEDED)
+        if cycle_mode:
+            _append_unique(blockers, BLOCK_REPLAY_OPERATIONAL_ERROR)
+        else:
+            failures.append(FAIL_OMITTED_RATE_EXCEEDED)
     if evidence["latencyP95"] is None or evidence["latencyMax"] is None:
         _append_unique(blockers, BLOCK_INCOMPLETE_LATENCY_SAMPLES)
     else:
@@ -677,18 +884,39 @@ def adjudicate_replay(policy: GatePolicy, replay_report: Mapping[str, object], f
     if not evidence["modelIds"]:
         blockers.append(BLOCK_MISSING_MODEL_IDENTITY)
     elif len(set(evidence["modelIds"])) != 1:
-        failures.append(FAIL_MULTIPLE_MODEL_IDENTITIES)
+        if cycle_mode:
+            blockers.append(BLOCK_MODEL_IDENTITY_MISMATCH)
+        else:
+            failures.append(FAIL_MULTIPLE_MODEL_IDENTITIES)
     elif evidence["modelIds"][0] != frozen_run_id:
-        failures.append(FAIL_MODEL_IDENTITY_CHANGED)
+        if cycle_mode:
+            blockers.append(BLOCK_MODEL_IDENTITY_MISMATCH)
+        else:
+            failures.append(FAIL_MODEL_IDENTITY_CHANGED)
     if not evidence["checksums"]:
         blockers.append(BLOCK_MISSING_MODEL_CHECKSUM)
     elif len(set(evidence["checksums"])) != 1:
-        failures.append(FAIL_MULTIPLE_MODEL_CHECKSUMS)
+        if cycle_mode:
+            blockers.append(BLOCK_MODEL_CHECKSUM_MISMATCH)
+        else:
+            failures.append(FAIL_MULTIPLE_MODEL_CHECKSUMS)
     elif evidence["checksums"][0] != frozen_checksum:
-        failures.append(FAIL_MODEL_IDENTITY_CHANGED)
+        if cycle_mode:
+            blockers.append(BLOCK_MODEL_CHECKSUM_MISMATCH)
+        else:
+            failures.append(FAIL_MODEL_IDENTITY_CHANGED)
     return GateReport(
-        1, "replay", _reduce_status(failures, blockers), policy_sha256,
-        evidence_sha256, tuple(checks), tuple(failures), tuple(blockers),
+        policy.schema_version,
+        "replay",
+        _reduce_status(failures, blockers),
+        policy_sha256,
+        evidence_sha256,
+        tuple(checks),
+        tuple(failures),
+        tuple(blockers),
+        policy.cycle_id,
+        policy.experiment_id,
+        policy.dataset_id,
     )
 
 def publish_gate_report(path: Path, report: GateReport) -> Path:

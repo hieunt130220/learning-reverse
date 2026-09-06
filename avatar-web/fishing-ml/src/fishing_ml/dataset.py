@@ -10,6 +10,7 @@ from PIL import Image, ImageEnhance
 
 from .schema import load_label, load_manifest
 from .split import validate_splits
+from .phase2_cycle import WorkingMembership
 from .phase2_training import stable_seed_context
 
 @dataclass(frozen=True, slots=True)
@@ -70,9 +71,39 @@ def _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews
     if not result.valid:
         raise ValueError("invalid dataset splits: " + "; ".join(f"{x.code}: {x.detail}" for x in result.issues))
 
-def compute_train_normalization(raw_root: Path, labels_root: Path, splits_root: Path, *, duplicate_reviews: Path | None = None) -> NormalizationStats:
-    _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews)
-    ids = _split_ids(splits_root, "train")
+def _membership_ids(membership: WorkingMembership, split: str) -> list[str]:
+    if split not in {"train", "dev"}:
+        raise ValueError(f"unsupported working split: {split}")
+    ids = membership.train_ids if split == "train" else membership.dev_ids
+    if tuple(sorted(ids)) != ids or len(set(ids)) != len(ids):
+        raise ValueError(f"membership {split} ids must be sorted and unique")
+    for batch_id in ids:
+        if (
+            not isinstance(batch_id, str)
+            or not batch_id
+            or batch_id.strip() != batch_id
+            or batch_id in {".", ".."}
+            or "/" in batch_id
+            or "\\" in batch_id
+            or any(character.isspace() for character in batch_id)
+        ):
+            raise ValueError(f"membership {split} contains unsafe batch id")
+    return list(ids)
+
+
+def compute_train_normalization(
+    raw_root: Path,
+    labels_root: Path,
+    splits_root: Path,
+    *,
+    duplicate_reviews: Path | None = None,
+    membership: WorkingMembership | None = None,
+) -> NormalizationStats:
+    if membership is None:
+        _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews)
+        ids = _split_ids(splits_root, "train")
+    else:
+        ids = _membership_ids(membership, "train")
     values=[]
     for b in ids:
         r,q,_ = _entries(raw_root, labels_root, b, None); values += [r,q]
@@ -103,10 +134,14 @@ def _load(
     raw_root, labels_root, splits_root, split, stats,
     *, duplicate_reviews=None, train=False, seed=20260827, limit=None,
     augmentation_profile="legacy_combined", epoch=0, global_seed=None,
+    membership: WorkingMembership | None = None,
 ):
     if split == "final": raise ValueError("final split is locked; use fishing_ml.evaluate final loader")
-    _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews)
-    ids = _split_ids(splits_root, split)[:limit]
+    if membership is None:
+        _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews)
+        ids = _split_ids(splits_root, split)[:limit]
+    else:
+        ids = _membership_ids(membership, split)[:limit]
     rng = random.Random(seed)
     out = []
     for bid in ids:
@@ -157,14 +192,19 @@ def load_training_episodes(
     raw_root, labels_root, splits_root, stats, *,
     duplicate_reviews=None, seed=20260827, limit=None,
     augmentation_profile="legacy_combined", epoch=0, global_seed=None,
+    membership: WorkingMembership | None = None,
 ): return _load(Path(raw_root), Path(labels_root), Path(splits_root), "train", stats,
                  duplicate_reviews=duplicate_reviews, train=True, seed=seed, limit=limit,
-                 augmentation_profile=augmentation_profile, epoch=epoch, global_seed=global_seed)
+                 augmentation_profile=augmentation_profile, epoch=epoch, global_seed=global_seed,
+                 membership=membership)
 
-def load_dev_episodes(raw_root, labels_root, splits_root, stats, *, duplicate_reviews=None, limit=None):
-    # Dev loader keeps its exact current signature: no augmentation, ever.
+def load_dev_episodes(
+    raw_root, labels_root, splits_root, stats, *,
+    duplicate_reviews=None, limit=None, membership: WorkingMembership | None = None,
+):
+    # Dev loader remains unaugmented; cycle callers may supply explicit membership.
     return _load(Path(raw_root), Path(labels_root), Path(splits_root), "dev", stats,
-                 duplicate_reviews=duplicate_reviews, limit=limit)
+                 duplicate_reviews=duplicate_reviews, limit=limit, membership=membership)
 def _load_final_episodes(
     raw_root,
     labels_root,

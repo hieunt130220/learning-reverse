@@ -66,6 +66,8 @@ _INVALID_LABEL = "invalid_label"
 _UNSAFE_BATCH_DIR = "unsafe_batch_dir"
 _UNRESOLVED_LABEL = "unresolved_label"
 _INVALID_RESPONSE = "invalid_response"
+_MISSING_BATCH_DIR = "missing_batch_dir"
+_MAX_COMPONENT_BYTES = 255
 
 
 @dataclass(frozen=True, slots=True)
@@ -719,12 +721,46 @@ def _validated_checksums(model_checksums: tuple[str, ...] | None) -> tuple[str, 
     return tuple(sorted(set(model_checksums)))
 
 
+def _validated_batch_ids(batch_ids: tuple[str, ...] | None) -> tuple[str, ...] | None:
+    if batch_ids is None:
+        return None
+    if not isinstance(batch_ids, tuple) or len(batch_ids) != 260:
+        raise ValueError("batch_ids must contain exactly 260 sorted unique safe ids")
+    for value in batch_ids:
+        if not _is_safe_component(value) or any(
+            ord(character) < 0x20 or ord(character) == 0x7F
+            for character in value
+        ):
+            raise ValueError("batch_ids must contain exactly 260 sorted unique safe ids")
+        try:
+            encoded_value = value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError(
+                "batch_ids must contain exactly 260 sorted unique safe ids"
+            ) from None
+        if len(encoded_value) > _MAX_COMPONENT_BYTES:
+            raise ValueError("batch_ids must contain exactly 260 sorted unique safe ids")
+    if tuple(sorted(batch_ids)) != batch_ids or len(set(batch_ids)) != 260:
+        raise ValueError("batch_ids must contain exactly 260 sorted unique safe ids")
+    return batch_ids
+
+
+def _record_missing_explicit_batch(accumulator: _Accumulator) -> None:
+    accumulator.batch_count += 1
+    key = _rq_key(0, 0)
+    bucket = _rq_bucket(accumulator, key)
+    bucket.batches += 1
+    _record_error(accumulator, key, _MISSING_BATCH_DIR)
+    accumulator.unknown_batch_count += 1
+
+
 def replay_batches(
     batches_root: Path,
     client: InferenceClient,
     labels_root: Path | None = None,
     *,
     model_checksums: tuple[str, ...] | None = None,
+    batch_ids: tuple[str, ...] | None = None,
 ) -> ReplayReport:
     """Replay sorted schema-v1 batch directories and isolate every batch failure.
 
@@ -735,6 +771,7 @@ def replay_batches(
     batches_root = Path(batches_root)
     labels_root = None if labels_root is None else Path(labels_root)
     checksums = _validated_checksums(model_checksums)
+    explicit_batch_ids = _validated_batch_ids(batch_ids)
     if not hasattr(client, "match") or not callable(client.match):
         raise TypeError("client must provide match(request)")
     accumulator = _Accumulator()
@@ -753,7 +790,11 @@ def replay_batches(
         # Names come from the already-open root descriptor. Symlinked directories are
         # deliberately included so opening each batch no-follow can record a stable
         # per-batch containment failure instead of silently skipping them.
-        batch_names = sorted(os.listdir(batches_descriptor))
+        batch_names = (
+            sorted(os.listdir(batches_descriptor))
+            if explicit_batch_ids is None
+            else explicit_batch_ids
+        )
         for batch_name in batch_names:
             try:
                 entry_metadata = os.stat(
@@ -762,10 +803,14 @@ def replay_batches(
                     follow_symlinks=False,
                 )
             except OSError:
+                if explicit_batch_ids is not None:
+                    _record_missing_explicit_batch(accumulator)
                 continue
             is_directory = stat.S_ISDIR(entry_metadata.st_mode)
             is_symlink = stat.S_ISLNK(entry_metadata.st_mode)
             if not (is_directory or is_symlink):
+                if explicit_batch_ids is not None:
+                    _record_missing_explicit_batch(accumulator)
                 continue
 
             if not _is_safe_component(batch_name):
