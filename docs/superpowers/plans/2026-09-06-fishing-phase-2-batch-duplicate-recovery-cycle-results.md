@@ -113,6 +113,18 @@
 - The successor raw root remained empty and the capture inventory remained absent after process exit.
 - No retry was attempted. The successor cycle is terminal `NO_DATASET` because only a single successful 90-batch capture could publish an inventory.
 - Manual labeling, duplicate screening, acquisition/allocation, training, candidate comparison, freeze, final evaluation, replay, and local shadow did not run.
+- Task 9 terminal documentation was committed as Git revision `7beaf58` with message `docs: record successor capture terminal state`.
+
+## Task 17: Terminal Results and Handover
+
+- Exactly one successor terminal state was selected: `NO_DATASET`.
+- The terminal date is `2026-09-06`.
+- The terminal cause is the one permitted capture process exiting `1` with `fatal-evidence-failure` after two inbound command-43 observations during direct join.
+- No acquisition fishing command was sent, no batch was saved, no inventory was published, and the successor raw root remained empty.
+- The precommitted no-retry rule prevents another acquisition attempt under this cycle identity.
+- Tasks 10–16 remain unchecked because labeling and every downstream stage require a successful sealed 90-record inventory.
+- The sanitized handover preserves policy/quarantine commitments, data-lineage roles, aggregate terminal evidence, skipped stages, and the unresolved future-cycle design question without exposing private operational identifiers.
+- The required privacy scan matched only four explicit guard/redaction statements already present in the ledger; `git diff --check -- docs/superpowers` exited `0`.
 
 ## Sanitization
 

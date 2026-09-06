@@ -1807,19 +1807,19 @@ Replay/local-shadow artifacts remain untracked. Stage only sanitized terminal re
 - Consumes: every approved command, verification record, hash, aggregate, and the single truthful terminal state.
 - Produces: sanitized ledger/handover and accurate Plan checkboxes.
 
-- [ ] **Step 1: Record exactly one successor terminal state**
+- [x] **Step 1: Record exactly one successor terminal state**
 
 Choose exactly one: `NO_DATASET`, `NO_CANDIDATE`, `FINAL_FAIL`, `FINAL_BLOCKED`, `REPLAY_FAIL`, `REPLAY_BLOCKED`, `LOCAL_SHADOW_FAIL`, `LOCAL_SHADOW_BLOCKED`, or `READY_FOR_SEPARATE_LIVE_SHADOW_REVIEW`. Explain why later stages did not run.
 
-- [ ] **Step 2: Sanitize results and handover**
+- [x] **Step 2: Sanitize results and handover**
 
 Include dates, approval evidence, exit codes, aggregate counts/metrics, IDs, digests, gate states, and unresolved risks. Exclude credentials, `.env`, account/user IDs, packet bytes, image/base64 content, private batch IDs, label mappings, final membership, predictions, and per-example error identities.
 
-- [ ] **Step 3: Mark only actually completed checkboxes**
+- [x] **Step 3: Mark only actually completed checkboxes**
 
 Change `- [ ]` to `- [x]` only after the exact step completed. Leave every conditional/skipped/unapproved step unchecked and explain it in the terminal ledger.
 
-- [ ] **Step 4: Run privacy and document checks**
+- [x] **Step 4: Run privacy and document checks**
 
 ```bash
 cd /Users/hieunt/learning-reverse
@@ -1831,7 +1831,7 @@ git diff --check -- docs/superpowers
 
 Expected: only explicit redaction-policy text matches; no private operational evidence is present; diff check exits `0`.
 
-- [ ] **Step 5: Commit gate**
+- [x] **Step 5: Commit gate**
 
 Display the exact plan/results/handover diff and wait for explicit approval before staging those documents.
 
