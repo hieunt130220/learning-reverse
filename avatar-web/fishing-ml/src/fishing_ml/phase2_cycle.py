@@ -12,13 +12,21 @@ import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from fractions import Fraction
 from pathlib import Path
 from typing import Iterable, Literal, Mapping, Sequence
 
-from PIL import Image
-
-from .duplicate_detector import DETECTOR_DESCRIPTOR, detector_descriptor_sha256
+from .duplicate_detector import (
+    DETECTOR_DESCRIPTOR,
+    BatchEvidence,
+    build_duplicate_groups,
+    compare_batches,
+    detector_descriptor_sha256,
+    detector_implementation_sha256,
+    load_batch_evidence,
+)
 from .schema import (
+    BatchManifest,
     ManifestError,
     load_label,
     load_manifest,
@@ -28,11 +36,12 @@ from .schema import (
     validate_batch,
 )
 
-CYCLE_ID = "p2cr-20260905-01"
+LEGACY_CYCLE_ID = "p2cr-20260905-01"
+CYCLE_ID = "p2cr2-20260906-01"
 EXPERIMENT_ID = CYCLE_ID
-DATASET_ID = "phase2-coverage-recovery-20260905-01"
+DATASET_ID = "phase2-coverage-recovery-v2-20260906-01"
 PARENT_DATASET_ID = "phase2-20260904-01"
-ALLOCATION_SEED = "20260905"
+ALLOCATION_SEED = "20260906"
 TARGET_ELIGIBLE_BATCH_COUNT = 90
 TRAIN_ACQUIRED_COUNT = 45
 DEV_ACQUIRED_COUNT = 15
@@ -40,6 +49,9 @@ FINAL_ACQUIRED_COUNT = 30
 PARENT_TRAIN_COUNT = 140
 PARENT_DEV_COUNT = 30
 PARENT_FINAL_COUNT = 30
+DIAGNOSTIC_INVENTORY_SHA256 = (
+    "c133238289a9d36dddc0861d4ac2c0347814b9d231fcb2c75560d33645647c53"
+)
 
 _SAFE_ID = re.compile(r"^[^/\\\s]+$")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -47,13 +59,22 @@ _POLICY_KEYS = frozenset(
     {
         "schemaVersion",
         "cycleId",
+        "datasetId",
         "parentDatasetId",
         "targetEligibleBatchCount",
         "selectionRule",
         "captureMode",
+        "captureFishingCommands",
+        "forbiddenFishingCommands",
         "requiresCompleteReviewerLabel",
         "forbidsPriorFinalDirectedSampling",
-        "oldDatasetExclusion",
+        "singleImageOverlapRejectsBatch",
+        "diagnosticCycleId",
+        "diagnosticInventorySha256",
+        "diagnosticBatchCommitment",
+        "detector",
+        "detectorSha256",
+        "detectorImplementationSha256",
         "activatedAt",
         "approvedBy",
         "approvalEvidence",
@@ -66,22 +87,50 @@ _QUARANTINE_KEYS = frozenset(
         "parentDatasetId",
         "parentDatasetVersionSha256",
         "parentFinalSplitSha256",
-        "reason",
-        "batchIds",
+        "parentFinalBatchIds",
+        "diagnosticCycleId",
+        "diagnosticInventorySha256",
+        "diagnosticBatchCount",
+        "diagnosticBatchCommitment",
+        "diagnosticBatchIds",
+        "reasons",
     }
 )
-_CAPTURE_INVENTORY_KEYS = frozenset(
+_LEGACY_CAPTURE_INVENTORY_KEYS = frozenset(
     {"schemaVersion", "cycleId", "startedAt", "stoppedAt", "records"}
+)
+_CAPTURE_INVENTORY_KEYS = frozenset(
+    {
+        "schemaVersion",
+        "cycleId",
+        "captureMode",
+        "startedAt",
+        "stoppedAt",
+        "requested",
+        "summary",
+        "records",
+    }
 )
 _CAPTURE_RECORD_KEYS = frozenset(
     {"batchId", "capturedAt", "manifestSha256"}
 )
+_CAPTURE_REQUEST_KEYS = frozenset({"map", "area", "target", "delayMs"})
+_CAPTURE_SUMMARY_KEYS = frozenset(
+    {"reason", "savedBatchCount", "skippedBatchCount", "errorCount", "tx43Count"}
+)
 _RULING_KEYS = frozenset(
-    {"schemaVersion", "cycleId", "detectorSha256", "groups"}
+    {
+        "schemaVersion",
+        "cycleId",
+        "detectorSha256",
+        "detectorImplementationSha256",
+        "approvedBy",
+        "approvedAt",
+        "approvalEvidence",
+        "groups",
+    }
 )
-_RULING_ENTRY_KEYS = frozenset(
-    {"groupId", "decision", "approvedBy", "approvedAt", "evidence"}
-)
+_RULING_ENTRY_KEYS = frozenset({"groupId", "decision"})
 _ACQUISITION_KEYS = frozenset(
     {
         "schemaVersion",
@@ -123,6 +172,8 @@ _ALLOCATION_KEYS = frozenset(
         "sourceCommitment",
     }
 )
+_PREFINAL_KEYS = frozenset({"schemaVersion", "cycleId", "datasetId", "sealedFinal"})
+_SEALED_FINAL_KEYS = frozenset({"path", "count", "sizeBytes", "sha256"})
 
 class StageBlockedError(RuntimeError):
     """Raised when an approval, adjudication, or prerequisite is missing."""
@@ -130,6 +181,11 @@ class StageBlockedError(RuntimeError):
 
 class StageInvalidError(ValueError):
     """Raised when an immutable cycle contract is violated."""
+
+
+class _CycleArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise StageInvalidError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,14 +202,24 @@ class SplitCommitment:
 
 @dataclass(frozen=True, slots=True)
 class AcquisitionPolicy:
-    schema_version: Literal[1]
+    schema_version: Literal[2]
     cycle_id: str
+    dataset_id: str
     parent_dataset_id: str
     target_eligible_batch_count: int
     selection_rule: str
     capture_mode: str
+    capture_fishing_commands: tuple[int, ...]
+    forbidden_fishing_commands: tuple[int, ...]
     requires_complete_reviewer_label: bool
     forbids_prior_final_directed_sampling: bool
+    single_image_overlap_rejects_batch: bool
+    diagnostic_cycle_id: str
+    diagnostic_inventory_sha256: str
+    diagnostic_batch_commitment: str
+    detector_descriptor: Mapping[str, object]
+    detector_sha256: str
+    detector_implementation_sha256: str
     activated_at: str
     approved_by: str
     approval_evidence: str
@@ -161,12 +227,22 @@ class AcquisitionPolicy:
 
 @dataclass(frozen=True, slots=True)
 class QuarantineLedger:
-    schema_version: Literal[1]
+    schema_version: Literal[2]
     cycle_id: str
     parent_dataset_id: str
     parent_dataset_version_sha256: str
     parent_final_split_sha256: str
-    batch_ids: tuple[str, ...]
+    parent_final_batch_ids: tuple[str, ...]
+    diagnostic_cycle_id: str
+    diagnostic_inventory_sha256: str
+    diagnostic_batch_count: int
+    diagnostic_batch_commitment: str
+    diagnostic_batch_ids: tuple[str, ...]
+    reasons: tuple[str, ...]
+
+    @property
+    def batch_ids(self) -> tuple[str, ...]:
+        return tuple(sorted((*self.parent_final_batch_ids, *self.diagnostic_batch_ids)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,7 +253,7 @@ class CaptureRecord:
 
 
 @dataclass(frozen=True, slots=True)
-class CaptureInventory:
+class LegacyCaptureInventory:
     schema_version: Literal[1]
     cycle_id: str
     started_at: str
@@ -186,12 +262,50 @@ class CaptureInventory:
 
 
 @dataclass(frozen=True, slots=True)
+class CaptureRequest:
+    map: int
+    area: int
+    target: int
+    delay_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureSummary:
+    reason: str
+    saved_batch_count: int
+    skipped_batch_count: int
+    error_count: int
+    tx43_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureInventory:
+    schema_version: Literal[2]
+    cycle_id: str
+    capture_mode: str
+    started_at: str
+    stopped_at: str
+    requested: CaptureRequest
+    summary: CaptureSummary
+    records: tuple[CaptureRecord, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class DuplicateRuling:
     group_id: str
-    decision: Literal["reject-acquired", "allow-same-role"]
+    decision: Literal["reject-acquired", "allow-batch-group"]
+
+
+@dataclass(frozen=True, slots=True)
+class DuplicateRulingDocument:
+    schema_version: Literal[2]
+    cycle_id: str
+    detector_sha256: str
+    detector_implementation_sha256: str
     approved_by: str
     approved_at: str
-    evidence: str
+    approval_evidence: str
+    groups: tuple[DuplicateRuling, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,19 +321,20 @@ class AcquisitionBatch:
 
 @dataclass(frozen=True, slots=True)
 class AcquisitionManifest:
-    schema_version: Literal[1]
+    schema_version: Literal[2]
     cycle_id: str
     parent_dataset_id: str
     acquisition_policy_sha256: str
     quarantine_sha256: str
     detector_sha256: str
+    detector_implementation_sha256: str
     rejected_by_reason: Mapping[str, int]
     batches: tuple[AcquisitionBatch, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class AllocationManifest:
-    schema_version: Literal[1]
+    schema_version: Literal[2]
     cycle_id: str
     dataset_id: str
     parent_dataset_id: str
@@ -227,6 +342,7 @@ class AllocationManifest:
     acquisition_sha256: str
     quarantine_sha256: str
     detector_sha256: str
+    detector_implementation_sha256: str
     acquired_train_ids: tuple[str, ...]
     acquired_dev_ids: tuple[str, ...]
     final_commitment: SplitCommitment
@@ -247,6 +363,7 @@ class WorkingMembership:
 
 @dataclass(frozen=True, slots=True)
 class PrefinalIntegrity:
+    schema_version: Literal[2]
     final_count: int
     final_size_bytes: int
     final_sha256: str
@@ -281,14 +398,6 @@ class _UnionFind:
         self.parent[right_root] = left_root
         if self.rank[left_root] == self.rank[right_root]:
             self.rank[left_root] += 1
-
-
-@dataclass(frozen=True, slots=True)
-class _ImageEvidence:
-    batch_id: str
-    owner: Literal["parent", "acquired"]
-    sha256: str
-    dhash: int
 
 
 def _canonical_json_bytes(value: object) -> bytes:
@@ -332,6 +441,12 @@ def _strict_bool(value: object, name: str) -> bool:
     if not isinstance(value, bool):
         raise StageInvalidError(f"{name} must be a boolean")
     return value
+
+
+def _strict_int_tuple(value: object, name: str) -> tuple[int, ...]:
+    if not isinstance(value, list):
+        raise StageInvalidError(f"{name} must be a list")
+    return tuple(_strict_int(item, f"{name} entry") for item in value)
 
 
 def _text(value: object, name: str) -> str:
@@ -464,17 +579,22 @@ def _policy_to_json(policy: AcquisitionPolicy) -> dict[str, object]:
     return {
         "schemaVersion": policy.schema_version,
         "cycleId": policy.cycle_id,
+        "datasetId": policy.dataset_id,
         "parentDatasetId": policy.parent_dataset_id,
         "targetEligibleBatchCount": policy.target_eligible_batch_count,
         "selectionRule": policy.selection_rule,
         "captureMode": policy.capture_mode,
+        "captureFishingCommands": list(policy.capture_fishing_commands),
+        "forbiddenFishingCommands": list(policy.forbidden_fishing_commands),
         "requiresCompleteReviewerLabel": policy.requires_complete_reviewer_label,
         "forbidsPriorFinalDirectedSampling": policy.forbids_prior_final_directed_sampling,
-        "oldDatasetExclusion": {
-            "batchId": True,
-            "imageSha256": True,
-            "nearDuplicate": True,
-        },
+        "singleImageOverlapRejectsBatch": policy.single_image_overlap_rejects_batch,
+        "diagnosticCycleId": policy.diagnostic_cycle_id,
+        "diagnosticInventorySha256": policy.diagnostic_inventory_sha256,
+        "diagnosticBatchCommitment": policy.diagnostic_batch_commitment,
+        "detector": policy.detector_descriptor,
+        "detectorSha256": policy.detector_sha256,
+        "detectorImplementationSha256": policy.detector_implementation_sha256,
         "activatedAt": policy.activated_at,
         "approvedBy": policy.approved_by,
         "approvalEvidence": policy.approval_evidence,
@@ -483,25 +603,25 @@ def _policy_to_json(policy: AcquisitionPolicy) -> dict[str, object]:
 
 def parse_acquisition_policy(value: object) -> AcquisitionPolicy:
     document = _exact_mapping(value, _POLICY_KEYS, "acquisition policy")
-    exclusion = _exact_mapping(
-        document["oldDatasetExclusion"],
-        frozenset({"batchId", "imageSha256", "nearDuplicate"}),
-        "oldDatasetExclusion",
-    )
-    if any(
-        _strict_bool(exclusion[name], f"oldDatasetExclusion.{name}") is not True
-        for name in ("batchId", "imageSha256", "nearDuplicate")
-    ):
-        raise StageInvalidError("all oldDatasetExclusion values must be true")
+    detector_descriptor = document["detector"]
+    if detector_descriptor != DETECTOR_DESCRIPTOR:
+        raise StageInvalidError("acquisition policy detector descriptor mismatch")
     policy = AcquisitionPolicy(
-        schema_version=_strict_int(document["schemaVersion"], "schemaVersion", minimum=1),
+        schema_version=_strict_int(document["schemaVersion"], "schemaVersion", minimum=2),
         cycle_id=_safe_id(document["cycleId"], "cycleId"),
+        dataset_id=_safe_id(document["datasetId"], "datasetId"),
         parent_dataset_id=_safe_id(document["parentDatasetId"], "parentDatasetId"),
         target_eligible_batch_count=_strict_int(
             document["targetEligibleBatchCount"], "targetEligibleBatchCount", minimum=1
         ),
         selection_rule=_text(document["selectionRule"], "selectionRule"),
         capture_mode=_text(document["captureMode"], "captureMode"),
+        capture_fishing_commands=_strict_int_tuple(
+            document["captureFishingCommands"], "captureFishingCommands"
+        ),
+        forbidden_fishing_commands=_strict_int_tuple(
+            document["forbiddenFishingCommands"], "forbiddenFishingCommands"
+        ),
         requires_complete_reviewer_label=_strict_bool(
             document["requiresCompleteReviewerLabel"], "requiresCompleteReviewerLabel"
         ),
@@ -509,56 +629,133 @@ def parse_acquisition_policy(value: object) -> AcquisitionPolicy:
             document["forbidsPriorFinalDirectedSampling"],
             "forbidsPriorFinalDirectedSampling",
         ),
+        single_image_overlap_rejects_batch=_strict_bool(
+            document["singleImageOverlapRejectsBatch"],
+            "singleImageOverlapRejectsBatch",
+        ),
+        diagnostic_cycle_id=_safe_id(
+            document["diagnosticCycleId"], "diagnosticCycleId"
+        ),
+        diagnostic_inventory_sha256=_sha256(
+            document["diagnosticInventorySha256"], "diagnosticInventorySha256"
+        ),
+        diagnostic_batch_commitment=_sha256(
+            document["diagnosticBatchCommitment"], "diagnosticBatchCommitment"
+        ),
+        detector_descriptor=DETECTOR_DESCRIPTOR,
+        detector_sha256=_sha256(document["detectorSha256"], "detectorSha256"),
+        detector_implementation_sha256=_sha256(
+            document["detectorImplementationSha256"],
+            "detectorImplementationSha256",
+        ),
         activated_at=_utc(document["activatedAt"], "activatedAt"),
         approved_by=_text(document["approvedBy"], "approvedBy"),
         approval_evidence=_text(document["approvalEvidence"], "approvalEvidence"),
     )
     if policy != AcquisitionPolicy(
-        schema_version=1,
+        schema_version=2,
         cycle_id=CYCLE_ID,
+        dataset_id=DATASET_ID,
         parent_dataset_id=PARENT_DATASET_ID,
         target_eligible_batch_count=TARGET_ELIGIBLE_BATCH_COUNT,
         selection_rule="first-90-chronological-eligible-after-activation",
-        capture_mode="rx79-read-only",
+        capture_mode="active-rx79-crawl-no-answer",
+        capture_fishing_commands=(41, 44, 45),
+        forbidden_fishing_commands=(43,),
         requires_complete_reviewer_label=True,
         forbids_prior_final_directed_sampling=True,
+        single_image_overlap_rejects_batch=False,
+        diagnostic_cycle_id=LEGACY_CYCLE_ID,
+        diagnostic_inventory_sha256=DIAGNOSTIC_INVENTORY_SHA256,
+        diagnostic_batch_commitment=policy.diagnostic_batch_commitment,
+        detector_descriptor=DETECTOR_DESCRIPTOR,
+        detector_sha256=detector_identity(),
+        detector_implementation_sha256=detector_implementation_sha256(),
         activated_at=policy.activated_at,
         approved_by="hieunt",
-        approval_evidence="2026-09-05 approved Fishing Phase 2 Coverage Recovery Cycle design",
+        approval_evidence=(
+            "2026-09-06 approved Fishing Phase 2 Batch-Duplicate Recovery Cycle design"
+        ),
     ):
         raise StageInvalidError("acquisition policy does not match the approved contract")
     return policy
 
 
-def publish_acquisition_policy(path: Path, now: datetime | None = None) -> AcquisitionPolicy:
+def publish_acquisition_policy(
+    diagnostic_inventory_path: Path,
+    output_path: Path,
+    now: datetime | None = None,
+) -> AcquisitionPolicy:
+    _, diagnostic_commitment = _load_committed_legacy_inventory(
+        diagnostic_inventory_path
+    )
     activated = now or datetime.now(timezone.utc)
     if activated.tzinfo is None or activated.utcoffset() != timedelta(0):
         raise StageInvalidError("policy activation time must be UTC")
     policy = AcquisitionPolicy(
-        schema_version=1,
+        schema_version=2,
         cycle_id=CYCLE_ID,
+        dataset_id=DATASET_ID,
         parent_dataset_id=PARENT_DATASET_ID,
         target_eligible_batch_count=TARGET_ELIGIBLE_BATCH_COUNT,
         selection_rule="first-90-chronological-eligible-after-activation",
-        capture_mode="rx79-read-only",
+        capture_mode="active-rx79-crawl-no-answer",
+        capture_fishing_commands=(41, 44, 45),
+        forbidden_fishing_commands=(43,),
         requires_complete_reviewer_label=True,
         forbids_prior_final_directed_sampling=True,
+        single_image_overlap_rejects_batch=False,
+        diagnostic_cycle_id=LEGACY_CYCLE_ID,
+        diagnostic_inventory_sha256=DIAGNOSTIC_INVENTORY_SHA256,
+        diagnostic_batch_commitment=diagnostic_commitment.sha256,
+        detector_descriptor=DETECTOR_DESCRIPTOR,
+        detector_sha256=detector_identity(),
+        detector_implementation_sha256=detector_implementation_sha256(),
         activated_at=activated.isoformat().replace("+00:00", "Z"),
         approved_by="hieunt",
-        approval_evidence="2026-09-05 approved Fishing Phase 2 Coverage Recovery Cycle design",
+        approval_evidence=(
+            "2026-09-06 approved Fishing Phase 2 Batch-Duplicate Recovery Cycle design"
+        ),
     )
-    publish_no_replace(Path(path), _policy_to_json(policy))
+    publish_no_replace(Path(output_path), _policy_to_json(policy))
     return policy
+
+
+def _quarantine_to_json(ledger: QuarantineLedger) -> dict[str, object]:
+    return {
+        "schemaVersion": ledger.schema_version,
+        "cycleId": ledger.cycle_id,
+        "parentDatasetId": ledger.parent_dataset_id,
+        "parentDatasetVersionSha256": ledger.parent_dataset_version_sha256,
+        "parentFinalSplitSha256": ledger.parent_final_split_sha256,
+        "parentFinalBatchIds": list(ledger.parent_final_batch_ids),
+        "diagnosticCycleId": ledger.diagnostic_cycle_id,
+        "diagnosticInventorySha256": ledger.diagnostic_inventory_sha256,
+        "diagnosticBatchCount": ledger.diagnostic_batch_count,
+        "diagnosticBatchCommitment": ledger.diagnostic_batch_commitment,
+        "diagnosticBatchIds": list(ledger.diagnostic_batch_ids),
+        "reasons": list(ledger.reasons),
+    }
 
 
 def parse_quarantine(value: object) -> QuarantineLedger:
     document = _exact_mapping(value, _QUARANTINE_KEYS, "quarantine")
-    batch_ids_raw = document["batchIds"]
-    if not isinstance(batch_ids_raw, list):
-        raise StageInvalidError("quarantine.batchIds must be a list")
-    batch_ids = _sorted_unique_ids(batch_ids_raw, "quarantine.batchIds")
+    parent_final_values = document["parentFinalBatchIds"]
+    diagnostic_values = document["diagnosticBatchIds"]
+    reasons_values = document["reasons"]
+    if not isinstance(parent_final_values, list):
+        raise StageInvalidError("parentFinalBatchIds must be a list")
+    if not isinstance(diagnostic_values, list):
+        raise StageInvalidError("diagnosticBatchIds must be a list")
+    if not isinstance(reasons_values, list):
+        raise StageInvalidError("reasons must be a list")
+    parent_final_ids = _sorted_unique_ids(
+        parent_final_values, "parentFinalBatchIds"
+    )
+    diagnostic_ids = _sorted_unique_ids(diagnostic_values, "diagnosticBatchIds")
+    reasons = tuple(_text(reason, "reasons entry") for reason in reasons_values)
     ledger = QuarantineLedger(
-        schema_version=_strict_int(document["schemaVersion"], "schemaVersion", minimum=1),
+        schema_version=_strict_int(document["schemaVersion"], "schemaVersion", minimum=2),
         cycle_id=_safe_id(document["cycleId"], "cycleId"),
         parent_dataset_id=_safe_id(document["parentDatasetId"], "parentDatasetId"),
         parent_dataset_version_sha256=_sha256(
@@ -567,34 +764,53 @@ def parse_quarantine(value: object) -> QuarantineLedger:
         parent_final_split_sha256=_sha256(
             document["parentFinalSplitSha256"], "parentFinalSplitSha256"
         ),
-        batch_ids=batch_ids,
+        parent_final_batch_ids=parent_final_ids,
+        diagnostic_cycle_id=_safe_id(
+            document["diagnosticCycleId"], "diagnosticCycleId"
+        ),
+        diagnostic_inventory_sha256=_sha256(
+            document["diagnosticInventorySha256"], "diagnosticInventorySha256"
+        ),
+        diagnostic_batch_count=_strict_int(
+            document["diagnosticBatchCount"], "diagnosticBatchCount", minimum=1
+        ),
+        diagnostic_batch_commitment=_sha256(
+            document["diagnosticBatchCommitment"], "diagnosticBatchCommitment"
+        ),
+        diagnostic_batch_ids=diagnostic_ids,
+        reasons=reasons,
     )
     if (
-        ledger.schema_version != 1
+        ledger.schema_version != 2
         or ledger.cycle_id != CYCLE_ID
         or ledger.parent_dataset_id != PARENT_DATASET_ID
-        or document["reason"] != "previous-final-exposed"
-        or len(ledger.batch_ids) != PARENT_FINAL_COUNT
+        or len(ledger.parent_final_batch_ids) != PARENT_FINAL_COUNT
+        or ledger.diagnostic_cycle_id != LEGACY_CYCLE_ID
+        or ledger.diagnostic_inventory_sha256 != DIAGNOSTIC_INVENTORY_SHA256
+        or ledger.diagnostic_batch_count != TARGET_ELIGIBLE_BATCH_COUNT
+        or len(ledger.diagnostic_batch_ids) != TARGET_ELIGIBLE_BATCH_COUNT
+        or ledger.reasons
+        != ("post-policy-diagnostic", "previous-final-exposed")
     ):
         raise StageInvalidError("quarantine does not match the approved contract")
+    if set(ledger.parent_final_batch_ids).intersection(ledger.diagnostic_batch_ids):
+        raise StageInvalidError("parent-final and diagnostic quarantines overlap")
+    diagnostic_commitment = commit_ids(ledger.diagnostic_batch_ids)
+    if (
+        diagnostic_commitment.count != ledger.diagnostic_batch_count
+        or diagnostic_commitment.sha256 != ledger.diagnostic_batch_commitment
+    ):
+        raise StageInvalidError("diagnostic quarantine commitment mismatch")
     return ledger
 
 
 def publish_quarantine(
     parent_version_path: Path,
     parent_final_path: Path,
+    diagnostic_inventory_path: Path,
     output_path: Path,
 ) -> QuarantineLedger:
-    parent_document = _exact_mapping(
-        read_json(parent_version_path),
-        frozenset(
-            {"schemaVersion", "datasetId", "parentDatasetId", "createdAt", "sourceBatches"}
-        ),
-        "parent dataset version",
-    )
-    if parent_document["schemaVersion"] != 1 or parent_document["datasetId"] != PARENT_DATASET_ID:
-        raise StageInvalidError("unexpected parent dataset identity")
-    batch_ids = tuple(
+    parent_final_ids = tuple(
         sorted(
             _read_ids(
                 parent_final_path,
@@ -603,45 +819,55 @@ def publish_quarantine(
             )
         )
     )
-    source_batches = parent_document["sourceBatches"]
-    if not isinstance(source_batches, list):
-        raise StageInvalidError("parent sourceBatches must be a list")
-    parent_ids = set(_safe_unique_ids(source_batches, "parent sourceBatches"))
-    if not set(batch_ids).issubset(parent_ids):
+    parent_ids = set(_load_parent_batch_ids(parent_version_path))
+    if not set(parent_final_ids).issubset(parent_ids):
         raise StageInvalidError("parent final contains ids outside sourceBatches")
+    legacy_inventory, diagnostic_commitment = _load_committed_legacy_inventory(
+        diagnostic_inventory_path
+    )
+    diagnostic_ids = tuple(
+        sorted(record.batch_id for record in legacy_inventory.records)
+    )
+    if parent_ids.intersection(diagnostic_ids):
+        raise StageInvalidError("parent and diagnostic batch ids overlap")
     document: dict[str, object] = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "cycleId": CYCLE_ID,
         "parentDatasetId": PARENT_DATASET_ID,
         "parentDatasetVersionSha256": sha256_file(parent_version_path),
         "parentFinalSplitSha256": sha256_file(parent_final_path),
-        "reason": "previous-final-exposed",
-        "batchIds": list(batch_ids),
+        "parentFinalBatchIds": list(parent_final_ids),
+        "diagnosticCycleId": LEGACY_CYCLE_ID,
+        "diagnosticInventorySha256": DIAGNOSTIC_INVENTORY_SHA256,
+        "diagnosticBatchCount": diagnostic_commitment.count,
+        "diagnosticBatchCommitment": diagnostic_commitment.sha256,
+        "diagnosticBatchIds": list(diagnostic_ids),
+        "reasons": ["post-policy-diagnostic", "previous-final-exposed"],
     }
     ledger = parse_quarantine(document)
     publish_no_replace(Path(output_path), document)
     return ledger
 
 
-def parse_capture_inventory(value: object) -> CaptureInventory:
-    document = _exact_mapping(value, _CAPTURE_INVENTORY_KEYS, "capture inventory")
-    records_raw = document["records"]
+def _parse_capture_records(value: object, name: str) -> tuple[CaptureRecord, ...]:
+    records_raw = value
     if not isinstance(records_raw, list):
-        raise StageInvalidError("capture inventory records must be a list")
+        raise StageInvalidError(f"{name} records must be a list")
     records: list[CaptureRecord] = []
     seen: set[str] = set()
     for index, raw in enumerate(records_raw):
-        record = _exact_mapping(raw, _CAPTURE_RECORD_KEYS, f"capture record {index}")
-        batch_id = _safe_id(record["batchId"], f"capture record {index}.batchId")
+        record_name = f"{name} record {index}"
+        record = _exact_mapping(raw, _CAPTURE_RECORD_KEYS, record_name)
+        batch_id = _safe_id(record["batchId"], f"{record_name}.batchId")
         if batch_id in seen:
-            raise StageInvalidError(f"duplicate capture batch id: {batch_id}")
+            raise StageInvalidError("capture inventory contains a duplicate batch id")
         seen.add(batch_id)
         records.append(
             CaptureRecord(
                 batch_id=batch_id,
-                captured_at=_utc(record["capturedAt"], f"capture record {index}.capturedAt"),
+                captured_at=_utc(record["capturedAt"], f"{record_name}.capturedAt"),
                 manifest_sha256=_sha256(
-                    record["manifestSha256"], f"capture record {index}.manifestSha256"
+                    record["manifestSha256"], f"{record_name}.manifestSha256"
                 ),
             )
         )
@@ -653,136 +879,755 @@ def parse_capture_inventory(value: object) -> CaptureInventory:
         ),
     ):
         raise StageInvalidError("capture records must be chronological then byte-ascending")
-    inventory = CaptureInventory(
+    return tuple(records)
+
+
+def parse_legacy_capture_inventory(value: object) -> LegacyCaptureInventory:
+    document = _exact_mapping(
+        value, _LEGACY_CAPTURE_INVENTORY_KEYS, "legacy capture inventory"
+    )
+    records = _parse_capture_records(
+        document["records"], "legacy capture inventory"
+    )
+    inventory = LegacyCaptureInventory(
         schema_version=_strict_int(document["schemaVersion"], "schemaVersion", minimum=1),
         cycle_id=_safe_id(document["cycleId"], "cycleId"),
         started_at=_utc(document["startedAt"], "startedAt"),
         stopped_at=_utc(document["stoppedAt"], "stoppedAt"),
-        records=tuple(records),
+        records=records,
     )
-    if inventory.schema_version != 1 or inventory.cycle_id != CYCLE_ID:
-        raise StageInvalidError("capture inventory identity mismatch")
+    if (
+        inventory.schema_version != 1
+        or inventory.cycle_id != LEGACY_CYCLE_ID
+        or len(inventory.records) != TARGET_ELIGIBLE_BATCH_COUNT
+    ):
+        raise StageInvalidError("legacy capture inventory identity mismatch")
     if _utc_instant(inventory.stopped_at, "stoppedAt") < _utc_instant(
         inventory.started_at, "startedAt"
     ):
-        raise StageInvalidError("capture inventory stop precedes start")
+        raise StageInvalidError("legacy capture inventory stop precedes start")
     return inventory
 
 
-def parse_duplicate_rulings(value: object) -> Mapping[str, DuplicateRuling]:
+def _load_committed_legacy_inventory(
+    path: Path,
+    expected_commitment: str | None = None,
+) -> tuple[LegacyCaptureInventory, SourceCommitment]:
+    raw = Path(path).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != DIAGNOSTIC_INVENTORY_SHA256:
+        raise StageInvalidError("diagnostic inventory byte commitment mismatch")
+    try:
+        value = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise StageInvalidError("diagnostic inventory is not valid JSON") from error
+    inventory = parse_legacy_capture_inventory(value)
+    commitment = commit_ids(record.batch_id for record in inventory.records)
+    if commitment.count != TARGET_ELIGIBLE_BATCH_COUNT:
+        raise StageInvalidError("diagnostic inventory record count mismatch")
+    if expected_commitment is not None and commitment.sha256 != expected_commitment:
+        raise StageInvalidError("diagnostic inventory record commitment mismatch")
+    return inventory, commitment
+
+
+def _capture_inventory_to_json(inventory: CaptureInventory) -> dict[str, object]:
+    return {
+        "schemaVersion": inventory.schema_version,
+        "cycleId": inventory.cycle_id,
+        "captureMode": inventory.capture_mode,
+        "startedAt": inventory.started_at,
+        "stoppedAt": inventory.stopped_at,
+        "requested": {
+            "map": inventory.requested.map,
+            "area": inventory.requested.area,
+            "target": inventory.requested.target,
+            "delayMs": inventory.requested.delay_ms,
+        },
+        "summary": {
+            "reason": inventory.summary.reason,
+            "savedBatchCount": inventory.summary.saved_batch_count,
+            "skippedBatchCount": inventory.summary.skipped_batch_count,
+            "errorCount": inventory.summary.error_count,
+            "tx43Count": inventory.summary.tx43_count,
+        },
+        "records": [
+            {
+                "batchId": record.batch_id,
+                "capturedAt": record.captured_at,
+                "manifestSha256": record.manifest_sha256,
+            }
+            for record in inventory.records
+        ],
+    }
+
+
+def parse_capture_inventory(
+    value: object,
+    policy: AcquisitionPolicy,
+) -> CaptureInventory:
+    parse_acquisition_policy(_policy_to_json(policy))
+    document = _exact_mapping(value, _CAPTURE_INVENTORY_KEYS, "capture inventory")
+    request = _exact_mapping(
+        document["requested"], _CAPTURE_REQUEST_KEYS, "capture inventory requested"
+    )
+    summary = _exact_mapping(
+        document["summary"], _CAPTURE_SUMMARY_KEYS, "capture inventory summary"
+    )
+    records = _parse_capture_records(document["records"], "capture inventory")
+    inventory = CaptureInventory(
+        schema_version=_strict_int(document["schemaVersion"], "schemaVersion", minimum=2),
+        cycle_id=_safe_id(document["cycleId"], "cycleId"),
+        capture_mode=_text(document["captureMode"], "captureMode"),
+        started_at=_utc(document["startedAt"], "startedAt"),
+        stopped_at=_utc(document["stoppedAt"], "stoppedAt"),
+        requested=CaptureRequest(
+            map=_strict_int(request["map"], "requested.map"),
+            area=_strict_int(request["area"], "requested.area"),
+            target=_strict_int(request["target"], "requested.target", minimum=1),
+            delay_ms=_strict_int(request["delayMs"], "requested.delayMs", minimum=1),
+        ),
+        summary=CaptureSummary(
+            reason=_text(summary["reason"], "summary.reason"),
+            saved_batch_count=_strict_int(
+                summary["savedBatchCount"], "summary.savedBatchCount"
+            ),
+            skipped_batch_count=_strict_int(
+                summary["skippedBatchCount"], "summary.skippedBatchCount"
+            ),
+            error_count=_strict_int(summary["errorCount"], "summary.errorCount"),
+            tx43_count=_strict_int(summary["tx43Count"], "summary.tx43Count"),
+        ),
+        records=records,
+    )
+    if (
+        inventory.schema_version != 2
+        or inventory.cycle_id != CYCLE_ID
+        or inventory.capture_mode != "active-rx79-crawl-no-answer"
+        or inventory.requested.map != 14
+        or inventory.requested.area != 1
+        or inventory.requested.target != TARGET_ELIGIBLE_BATCH_COUNT
+        or inventory.requested.delay_ms < 2000
+        or inventory.summary.reason != "target-reached"
+        or inventory.summary.saved_batch_count != TARGET_ELIGIBLE_BATCH_COUNT
+        or inventory.summary.tx43_count != 0
+        or len(inventory.records) != TARGET_ELIGIBLE_BATCH_COUNT
+        or inventory.summary.saved_batch_count != len(inventory.records)
+    ):
+        raise StageInvalidError("capture inventory does not match the approved contract")
+    activated_at = _utc_instant(policy.activated_at, "policy.activatedAt")
+    started_at = _utc_instant(inventory.started_at, "startedAt")
+    stopped_at = _utc_instant(inventory.stopped_at, "stoppedAt")
+    if started_at < activated_at or stopped_at < activated_at:
+        raise StageInvalidError("capture inventory predates policy activation")
+    if stopped_at < started_at:
+        raise StageInvalidError("capture inventory stop precedes start")
+    for record in inventory.records:
+        captured_at = _utc_instant(record.captured_at, "capture record capturedAt")
+        if captured_at < activated_at or captured_at < started_at or captured_at > stopped_at:
+            raise StageInvalidError("capture record timestamp is outside the approved window")
+    return inventory
+
+
+def _ruling_document_to_json(
+    document: DuplicateRulingDocument,
+) -> dict[str, object]:
+    return {
+        "schemaVersion": document.schema_version,
+        "cycleId": document.cycle_id,
+        "detectorSha256": document.detector_sha256,
+        "detectorImplementationSha256": document.detector_implementation_sha256,
+        "approvedBy": document.approved_by,
+        "approvedAt": document.approved_at,
+        "approvalEvidence": document.approval_evidence,
+        "groups": [
+            {"groupId": ruling.group_id, "decision": ruling.decision}
+            for ruling in document.groups
+        ],
+    }
+
+
+def parse_duplicate_rulings(value: object) -> DuplicateRulingDocument:
     document = _exact_mapping(value, _RULING_KEYS, "duplicate rulings")
     if (
-        _strict_int(document["schemaVersion"], "schemaVersion", minimum=1) != 1
+        _strict_int(document["schemaVersion"], "schemaVersion", minimum=2) != 2
         or document["cycleId"] != CYCLE_ID
     ):
         raise StageInvalidError("duplicate ruling identity mismatch")
     if document["detectorSha256"] != detector_identity():
         raise StageInvalidError("duplicate ruling detector identity mismatch")
+    implementation_sha256 = detector_implementation_sha256()
+    if document["detectorImplementationSha256"] != implementation_sha256:
+        raise StageInvalidError("duplicate ruling implementation identity mismatch")
+    approved_by = _text(document["approvedBy"], "approvedBy")
+    if approved_by != "hieunt":
+        raise StageInvalidError("duplicate ruling approvedBy must be hieunt")
+    approved_at = _utc(document["approvedAt"], "approvedAt")
+    approval_evidence = _text(document["approvalEvidence"], "approvalEvidence")
     raw_groups = document["groups"]
     if not isinstance(raw_groups, list):
         raise StageInvalidError("duplicate ruling groups must be a list")
-    result: dict[str, DuplicateRuling] = {}
+    groups: list[DuplicateRuling] = []
+    seen: set[str] = set()
     for index, raw in enumerate(raw_groups):
         group = _exact_mapping(raw, _RULING_ENTRY_KEYS, f"duplicate ruling {index}")
         group_id = _sha256(group["groupId"], f"duplicate ruling {index}.groupId")
         decision = group["decision"]
-        if decision not in {"reject-acquired", "allow-same-role"}:
+        if decision not in {"reject-acquired", "allow-batch-group"}:
             raise StageInvalidError("duplicate ruling decision is not approved")
-        if group_id in result:
+        if group_id in seen:
             raise StageInvalidError(f"duplicate ruling repeated for {group_id}")
-        approved_by = _text(
-            group["approvedBy"], f"duplicate ruling {index}.approvedBy"
+        seen.add(group_id)
+        groups.append(DuplicateRuling(group_id=group_id, decision=decision))
+    if groups != sorted(groups, key=lambda ruling: ruling.group_id):
+        raise StageInvalidError("duplicate ruling groups must be byte-ascending")
+    return DuplicateRulingDocument(
+        schema_version=2,
+        cycle_id=CYCLE_ID,
+        detector_sha256=detector_identity(),
+        detector_implementation_sha256=implementation_sha256,
+        approved_by=approved_by,
+        approved_at=approved_at,
+        approval_evidence=approval_evidence,
+        groups=tuple(groups),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _AcquisitionScreen:
+    policy: AcquisitionPolicy
+    quarantine: QuarantineLedger
+    inventory: CaptureInventory
+    valid_records: tuple[CaptureRecord, ...]
+    evidence_by_batch_id: Mapping[str, BatchEvidence]
+    group_id_by_batch_id: Mapping[str, str]
+    acquired_only_multi_groups: Mapping[str, tuple[str, ...]]
+    auto_rejected_by_reason: Mapping[str, int]
+    auto_rejected_batch_ids: frozenset[str]
+    manual_rejected_batch_ids: frozenset[str]
+
+
+def _require_canonical_document(path: Path, document: object, name: str) -> None:
+    metadata = os.lstat(path)
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+        raise StageInvalidError(f"{name} must be a single-link regular file")
+    if stat.S_IMODE(metadata.st_mode) != 0o600:
+        raise StageInvalidError(f"{name} mode must be 0600")
+    if Path(path).read_bytes() != _canonical_json_bytes(document):
+        raise StageInvalidError(f"{name} bytes are not canonical")
+
+
+def _load_parent_batch_ids(parent_version_path: Path) -> tuple[str, ...]:
+    parent_version = _exact_mapping(
+        read_json(parent_version_path),
+        frozenset(
+            {"schemaVersion", "datasetId", "parentDatasetId", "createdAt", "sourceBatches"}
+        ),
+        "parent dataset version",
+    )
+    if (
+        _strict_int(parent_version["schemaVersion"], "parent schemaVersion", minimum=1)
+        != 1
+        or parent_version["datasetId"] != PARENT_DATASET_ID
+    ):
+        raise StageInvalidError("parent dataset identity mismatch")
+    source_values = parent_version["sourceBatches"]
+    if not isinstance(source_values, list):
+        raise StageInvalidError("parent sourceBatches must be a list")
+    parent_batch_ids = _sorted_unique_ids(source_values, "parent sourceBatches")
+    if len(parent_batch_ids) not in (200, 206):
+        raise StageInvalidError(
+            f"parent dataset must contain 200 or 206 batches, got {len(parent_batch_ids)}"
         )
-        if approved_by != "hieunt":
-            raise StageInvalidError("duplicate ruling approvedBy must be hieunt")
-        result[group_id] = DuplicateRuling(
-            group_id=group_id,
-            decision=decision,
-            approved_by=approved_by,
-            approved_at=_utc(group["approvedAt"], f"duplicate ruling {index}.approvedAt"),
-            evidence=_text(group["evidence"], f"duplicate ruling {index}.evidence"),
-        )
-    return result
+    return parent_batch_ids
 
 
-def _image_dhash(path: Path) -> int:
-    with Image.open(path) as image:
-        rgb = image.convert("RGB")
-        if rgb.size != (75, 75):
-            raise StageInvalidError(f"{path}: expected 75x75 image")
-        grayscale = rgb.convert("L").resize((9, 8), Image.Resampling.BILINEAR)
-        pixels = tuple(grayscale.getdata())
-    value = 0
-    for row in range(8):
-        offset = row * 9
-        for column in range(8):
-            value = (value << 1) | int(
-                pixels[offset + column] > pixels[offset + column + 1]
-            )
-    return value
-
-
-def _load_image_evidence(
-    owner: Literal["parent", "acquired"],
+def _load_evidence_corpus(
+    owner: Literal["parent", "diagnostic"],
     batch_ids: Sequence[str],
     raw_root: Path,
-) -> tuple[_ImageEvidence, ...]:
-    evidence: list[_ImageEvidence] = []
+    name: str,
+) -> tuple[BatchEvidence, ...]:
+    evidence: list[BatchEvidence] = []
     for batch_id in batch_ids:
-        batch_dir = Path(raw_root) / batch_id
-        manifest = load_manifest(batch_dir / "manifest.json")
-        if manifest.batch_id != batch_id:
-            raise StageInvalidError(f"manifest batch id mismatch: {batch_id}")
-        validate_batch(batch_dir, manifest)
-        for image in (*manifest.images, *manifest.images_new):
-            evidence.append(
-                _ImageEvidence(
-                    batch_id=batch_id,
-                    owner=owner,
-                    sha256=image.sha256,
-                    dhash=_image_dhash(batch_dir / image.path),
-                )
-            )
+        try:
+            evidence.append(load_batch_evidence(owner, batch_id, raw_root))
+        except (OSError, ManifestError, ValueError) as error:
+            raise StageInvalidError(f"{name} evidence validation failed") from error
     return tuple(evidence)
 
 
-def _duplicate_groups(
-    parent_images: Sequence[_ImageEvidence],
-    acquired_images: Sequence[_ImageEvidence],
-) -> tuple[
-    Mapping[int, str],
-    Mapping[str, set[str]],
-    Mapping[str, set[str]],
-    Mapping[str, int],
-]:
-    images = tuple(parent_images) + tuple(acquired_images)
-    union = _UnionFind.create(len(images))
-    first_by_sha: dict[str, int] = {}
-    for index, image in enumerate(images):
-        previous = first_by_sha.setdefault(image.sha256, index)
-        if previous != index:
-            union.union(previous, index)
-    for left in range(len(images)):
-        for right in range(left + 1, len(images)):
-            if (images[left].dhash ^ images[right].dhash).bit_count() <= 4:
-                union.union(left, right)
-    members: dict[int, list[int]] = defaultdict(list)
-    for index in range(len(images)):
-        members[union.find(index)].append(index)
-    group_by_index: dict[int, str] = {}
-    parent_batches: dict[str, set[str]] = defaultdict(set)
-    acquired_batches: dict[str, set[str]] = defaultdict(set)
-    acquired_image_counts: Counter[str] = Counter()
-    for member_indices in members.values():
-        sha_values = sorted({images[index].sha256 for index in member_indices})
-        group_id = hashlib.sha256(("\n".join(sha_values) + "\n").encode()).hexdigest()
-        for index in member_indices:
-            group_by_index[index] = group_id
-            target = parent_batches if images[index].owner == "parent" else acquired_batches
-            target[group_id].add(images[index].batch_id)
-            if images[index].owner == "acquired":
-                acquired_image_counts[group_id] += 1
-    return group_by_index, parent_batches, acquired_batches, acquired_image_counts
+def _is_complete_label(
+    manifest: BatchManifest,
+    label_path: Path,
+    batch_id: str,
+) -> bool:
+    try:
+        label = load_label(label_path)
+    except (OSError, ValueError):
+        return False
+    query_indices = {entry.index for entry in manifest.images_new}
+    reference_indices = {entry.index for entry in manifest.images}
+    labeled_queries = [match.new_index for match in label.matches]
+    return (
+        label.batch_id == manifest.batch_id == batch_id
+        and label.status == "complete"
+        and len(labeled_queries) == len(query_indices)
+        and set(labeled_queries) == query_indices
+        and all(match.img_index in reference_indices for match in label.matches)
+    )
+
+
+def _load_screen_rulings(
+    rulings_path: Path | None,
+    required_groups: Mapping[str, tuple[str, ...]],
+    policy: AcquisitionPolicy,
+    *,
+    require_rulings: bool,
+) -> Mapping[str, DuplicateRuling]:
+    required_ids = set(required_groups)
+    if rulings_path is None:
+        if require_rulings and required_ids:
+            raise StageBlockedError(
+                f"manual duplicate adjudication missing for {len(required_ids)} groups"
+            )
+        return {}
+    document = parse_duplicate_rulings(read_json(rulings_path))
+    _require_canonical_document(
+        rulings_path,
+        _ruling_document_to_json(document),
+        "duplicate rulings",
+    )
+    if _utc_instant(document.approved_at, "rulings.approvedAt") < _utc_instant(
+        policy.activated_at, "policy.activatedAt"
+    ):
+        raise StageInvalidError("duplicate rulings predate policy activation")
+    rulings = {ruling.group_id: ruling for ruling in document.groups}
+    extra_count = len(set(rulings) - required_ids)
+    if extra_count:
+        raise StageInvalidError(
+            f"duplicate rulings contain {extra_count} stale or forbidden groups"
+        )
+    missing_count = len(required_ids - set(rulings))
+    if missing_count:
+        raise StageBlockedError(
+            f"manual duplicate adjudication missing for {missing_count} groups"
+        )
+    return rulings
+
+
+def _screen_acquisition_inputs(
+    *,
+    inventory_path: Path,
+    policy_path: Path,
+    quarantine_path: Path,
+    parent_version_path: Path,
+    parent_raw_root: Path,
+    diagnostic_raw_root: Path,
+    acquired_raw_root: Path,
+    acquired_labels_root: Path,
+    rulings_path: Path | None,
+    require_rulings: bool,
+) -> _AcquisitionScreen:
+    policy = parse_acquisition_policy(read_json(policy_path))
+    _require_canonical_document(
+        policy_path, _policy_to_json(policy), "acquisition policy"
+    )
+    quarantine = parse_quarantine(read_json(quarantine_path))
+    _require_canonical_document(
+        quarantine_path, _quarantine_to_json(quarantine), "quarantine"
+    )
+    inventory = parse_capture_inventory(read_json(inventory_path), policy)
+    _require_canonical_document(
+        inventory_path, _capture_inventory_to_json(inventory), "capture inventory"
+    )
+    if quarantine.parent_dataset_version_sha256 != sha256_file(parent_version_path):
+        raise StageInvalidError("quarantine parent dataset digest mismatch")
+    if (
+        policy.diagnostic_inventory_sha256
+        != quarantine.diagnostic_inventory_sha256
+        or policy.diagnostic_batch_commitment
+        != quarantine.diagnostic_batch_commitment
+    ):
+        raise StageInvalidError("policy/quarantine diagnostic commitment mismatch")
+    parent_batch_ids = _load_parent_batch_ids(parent_version_path)
+    parent_set = set(parent_batch_ids)
+    diagnostic_set = set(quarantine.diagnostic_batch_ids)
+    if not set(quarantine.parent_final_batch_ids).issubset(parent_set):
+        raise StageInvalidError("parent-final quarantine is outside parent dataset")
+    if parent_set.intersection(diagnostic_set):
+        raise StageInvalidError("parent and diagnostic identities overlap")
+
+    auto_rejected_by_reason: Counter[str] = Counter()
+    auto_rejected_by_reason["parent-duplicate-batch-group"] = 0
+    auto_rejected_by_reason["diagnostic-duplicate-batch-group"] = 0
+    invalid_batch_ids: set[str] = set()
+    incomplete_label_count = 0
+    valid_records: list[CaptureRecord] = []
+    acquired_evidence: list[BatchEvidence] = []
+    evidence_by_batch_id: dict[str, BatchEvidence] = {}
+    for record in inventory.records:
+        if record.batch_id in parent_set:
+            auto_rejected_by_reason["parent-batch-id"] += 1
+            invalid_batch_ids.add(record.batch_id)
+            continue
+        if record.batch_id in diagnostic_set:
+            auto_rejected_by_reason["diagnostic-batch-id"] += 1
+            invalid_batch_ids.add(record.batch_id)
+            continue
+        batch_root = Path(acquired_raw_root) / record.batch_id
+        manifest_path = batch_root / "manifest.json"
+        label_path = Path(acquired_labels_root) / f"{record.batch_id}.json"
+        if not manifest_path.is_file():
+            auto_rejected_by_reason["missing-manifest"] += 1
+            invalid_batch_ids.add(record.batch_id)
+            continue
+        if sha256_file(manifest_path) != record.manifest_sha256:
+            auto_rejected_by_reason["manifest-digest-mismatch"] += 1
+            invalid_batch_ids.add(record.batch_id)
+            continue
+        try:
+            manifest = load_manifest(manifest_path)
+            validate_batch(batch_root, manifest)
+        except (OSError, ManifestError, ValueError):
+            auto_rejected_by_reason["invalid-batch"] += 1
+            invalid_batch_ids.add(record.batch_id)
+            continue
+        if (
+            manifest.batch_id != record.batch_id
+            or manifest.captured_at != record.captured_at
+            or manifest.map != inventory.requested.map
+            or manifest.area != inventory.requested.area
+        ):
+            auto_rejected_by_reason["capture-manifest-mismatch"] += 1
+            invalid_batch_ids.add(record.batch_id)
+            continue
+        if not _is_complete_label(manifest, label_path, record.batch_id):
+            incomplete_label_count += 1
+            continue
+        try:
+            evidence = load_batch_evidence(
+                "acquired", record.batch_id, acquired_raw_root
+            )
+        except (OSError, ManifestError, ValueError):
+            auto_rejected_by_reason["invalid-batch"] += 1
+            invalid_batch_ids.add(record.batch_id)
+            continue
+        valid_records.append(record)
+        acquired_evidence.append(evidence)
+        evidence_by_batch_id[record.batch_id] = evidence
+    if incomplete_label_count:
+        raise StageBlockedError(
+            f"reviewer labels are incomplete for {incomplete_label_count} captured batches"
+        )
+
+    parent_evidence = _load_evidence_corpus(
+        "parent", parent_batch_ids, parent_raw_root, "parent"
+    )
+    diagnostic_evidence = _load_evidence_corpus(
+        "diagnostic",
+        quarantine.diagnostic_batch_ids,
+        diagnostic_raw_root,
+        "diagnostic",
+    )
+    groups = build_duplicate_groups(
+        (*parent_evidence, *diagnostic_evidence, *acquired_evidence)
+    )
+    group_id_by_batch_id: dict[str, str] = {}
+    acquired_only_multi_groups: dict[str, tuple[str, ...]] = {}
+    group_rejected_batch_ids: set[str] = set()
+    for group in groups:
+        parent_members = tuple(
+            member for member in group.members if member.owner == "parent"
+        )
+        diagnostic_members = tuple(
+            member for member in group.members if member.owner == "diagnostic"
+        )
+        acquired_members = tuple(
+            member for member in group.members if member.owner == "acquired"
+        )
+        if not acquired_members:
+            continue
+        acquired_member_ids = tuple(
+            sorted(member.batch_id for member in acquired_members)
+        )
+        for batch_id in acquired_member_ids:
+            if batch_id in group_id_by_batch_id:
+                raise StageInvalidError("acquired batch belongs to multiple duplicate groups")
+            group_id_by_batch_id[batch_id] = group.group_id
+        touches_excluded_corpus = False
+        if parent_members:
+            auto_rejected_by_reason["parent-duplicate-batch-group"] += len(
+                acquired_member_ids
+            )
+            touches_excluded_corpus = True
+        if diagnostic_members:
+            auto_rejected_by_reason["diagnostic-duplicate-batch-group"] += len(
+                acquired_member_ids
+            )
+            touches_excluded_corpus = True
+        if touches_excluded_corpus:
+            group_rejected_batch_ids.update(acquired_member_ids)
+        elif len(acquired_member_ids) > 1:
+            acquired_only_multi_groups[group.group_id] = acquired_member_ids
+    if set(evidence_by_batch_id) != set(group_id_by_batch_id):
+        raise StageInvalidError("acquired duplicate-group coverage mismatch")
+
+    rulings = _load_screen_rulings(
+        rulings_path,
+        acquired_only_multi_groups,
+        policy,
+        require_rulings=require_rulings,
+    )
+    manual_rejected_batch_ids = {
+        batch_id
+        for group_id, member_ids in acquired_only_multi_groups.items()
+        if group_id in rulings and rulings[group_id].decision == "reject-acquired"
+        for batch_id in member_ids
+    }
+    return _AcquisitionScreen(
+        policy=policy,
+        quarantine=quarantine,
+        inventory=inventory,
+        valid_records=tuple(valid_records),
+        evidence_by_batch_id=evidence_by_batch_id,
+        group_id_by_batch_id=group_id_by_batch_id,
+        acquired_only_multi_groups=dict(sorted(acquired_only_multi_groups.items())),
+        auto_rejected_by_reason=dict(sorted(auto_rejected_by_reason.items())),
+        auto_rejected_batch_ids=frozenset(
+            invalid_batch_ids | group_rejected_batch_ids
+        ),
+        manual_rejected_batch_ids=frozenset(manual_rejected_batch_ids),
+    )
+
+
+def _ratio_is_greater(
+    numerator: int,
+    denominator: int,
+    best_numerator: int,
+    best_denominator: int,
+) -> bool:
+    return numerator * best_denominator > best_numerator * denominator
+
+
+def _percentage_text(numerator: int, denominator: int) -> str:
+    percentage = Fraction(numerator, denominator) * 100
+    if percentage.denominator == 1:
+        return f"{percentage.numerator}%"
+    return f"{float(percentage):.6g}%"
+
+
+def diagnostic_summary(
+    *,
+    parent_version_path: Path,
+    parent_raw_root: Path,
+    diagnostic_inventory_path: Path,
+    diagnostic_raw_root: Path,
+) -> dict[str, object]:
+    parent_batch_ids = _load_parent_batch_ids(parent_version_path)
+    legacy_inventory, _ = _load_committed_legacy_inventory(
+        diagnostic_inventory_path
+    )
+    parent_evidence = _load_evidence_corpus(
+        "parent", parent_batch_ids, parent_raw_root, "parent"
+    )
+    diagnostic_evidence = _load_evidence_corpus(
+        "diagnostic",
+        tuple(record.batch_id for record in legacy_inventory.records),
+        diagnostic_raw_root,
+        "diagnostic",
+    )
+    parent_batch_edge_count = 0
+    maximum_reference_match_count = 0
+    best_reference = (0, 1)
+    best_query = (0, 1)
+    best_combined = (0, 1)
+    for diagnostic_batch in diagnostic_evidence:
+        for parent_batch in parent_evidence:
+            comparison = compare_batches(diagnostic_batch, parent_batch)
+            parent_batch_edge_count += int(comparison.is_duplicate)
+            maximum_reference_match_count = max(
+                maximum_reference_match_count,
+                comparison.reference_matches,
+            )
+            reference_denominator = max(
+                len(diagnostic_batch.references), len(parent_batch.references)
+            )
+            query_denominator = max(
+                len(diagnostic_batch.queries), len(parent_batch.queries)
+            )
+            combined_numerator = (
+                comparison.reference_matches + comparison.query_matches
+            )
+            combined_denominator = reference_denominator + query_denominator
+            if _ratio_is_greater(
+                comparison.reference_matches,
+                reference_denominator,
+                *best_reference,
+            ):
+                best_reference = (
+                    comparison.reference_matches,
+                    reference_denominator,
+                )
+            if _ratio_is_greater(
+                comparison.query_matches,
+                query_denominator,
+                *best_query,
+            ):
+                best_query = (comparison.query_matches, query_denominator)
+            if _ratio_is_greater(
+                combined_numerator,
+                combined_denominator,
+                *best_combined,
+            ):
+                best_combined = (combined_numerator, combined_denominator)
+    diagnostic_multi_batch_group_count = sum(
+        len(group.members) > 1
+        for group in build_duplicate_groups(diagnostic_evidence)
+    )
+    return {
+        "parentBatchEdgeCount": parent_batch_edge_count,
+        "diagnosticMultiBatchGroupCount": diagnostic_multi_batch_group_count,
+        "maximumReferenceMatchCount": maximum_reference_match_count,
+        "maximumReferenceMatchRatio": f"{best_reference[0]}/{best_reference[1]}",
+        "maximumQueryMatchRatio": _percentage_text(*best_query),
+        "maximumCombinedMatchRatio": _percentage_text(*best_combined),
+    }
+
+
+def screen_acquisition(
+    *,
+    inventory_path: Path,
+    policy_path: Path,
+    quarantine_path: Path,
+    parent_version_path: Path,
+    parent_raw_root: Path,
+    diagnostic_raw_root: Path,
+    acquired_raw_root: Path,
+    acquired_labels_root: Path,
+    rulings_path: Path | None = None,
+) -> dict[str, object]:
+    screen = _screen_acquisition_inputs(
+        inventory_path=inventory_path,
+        policy_path=policy_path,
+        quarantine_path=quarantine_path,
+        parent_version_path=parent_version_path,
+        parent_raw_root=parent_raw_root,
+        diagnostic_raw_root=diagnostic_raw_root,
+        acquired_raw_root=acquired_raw_root,
+        acquired_labels_root=acquired_labels_root,
+        rulings_path=rulings_path,
+        require_rulings=rulings_path is not None,
+    )
+    if screen.manual_rejected_batch_ids:
+        raise StageBlockedError(
+            "NO_DATASET: approved duplicate rejection reduces eligible count"
+        )
+    return {
+        "cycleId": CYCLE_ID,
+        "detectorSha256": screen.policy.detector_sha256,
+        "detectorImplementationSha256": (
+            screen.policy.detector_implementation_sha256
+        ),
+        "totalAcquiredCount": len(screen.inventory.records),
+        "autoRejectedByReason": dict(screen.auto_rejected_by_reason),
+        "acquiredOnlyMultiBatchGroups": [
+            {"groupId": group_id, "memberCount": len(member_ids)}
+            for group_id, member_ids in screen.acquired_only_multi_groups.items()
+        ],
+    }
+
+
+def _parse_ruling_decisions(
+    values: Sequence[str],
+) -> Mapping[str, Literal["reject-acquired", "allow-batch-group"]]:
+    decisions: dict[str, Literal["reject-acquired", "allow-batch-group"]] = {}
+    for value in values:
+        if not isinstance(value, str) or value.strip() != value or value.count("=") != 1:
+            raise StageInvalidError(
+                "decision must be literal groupId=reject-acquired or groupId=allow-batch-group"
+            )
+        group_id, decision = value.split("=", 1)
+        normalized_group_id = _sha256(group_id, "decision groupId")
+        if decision not in {"reject-acquired", "allow-batch-group"}:
+            raise StageInvalidError("decision value is not approved")
+        if normalized_group_id in decisions:
+            raise StageInvalidError("decision groupId is repeated")
+        decisions[normalized_group_id] = decision
+    return decisions
+
+
+def publish_rulings(
+    *,
+    inventory_path: Path,
+    policy_path: Path,
+    quarantine_path: Path,
+    parent_version_path: Path,
+    parent_raw_root: Path,
+    diagnostic_raw_root: Path,
+    acquired_raw_root: Path,
+    acquired_labels_root: Path,
+    decisions: Sequence[str],
+    approval_evidence: str,
+    output_path: Path,
+    now: datetime | None = None,
+) -> DuplicateRulingDocument:
+    screen = _screen_acquisition_inputs(
+        inventory_path=inventory_path,
+        policy_path=policy_path,
+        quarantine_path=quarantine_path,
+        parent_version_path=parent_version_path,
+        parent_raw_root=parent_raw_root,
+        diagnostic_raw_root=diagnostic_raw_root,
+        acquired_raw_root=acquired_raw_root,
+        acquired_labels_root=acquired_labels_root,
+        rulings_path=None,
+        require_rulings=False,
+    )
+    if sum(screen.auto_rejected_by_reason.values()):
+        raise StageBlockedError(
+            "NO_DATASET: automatic exclusions reduce eligible count"
+        )
+    parsed_decisions = _parse_ruling_decisions(decisions)
+    required_ids = set(screen.acquired_only_multi_groups)
+    extra_count = len(set(parsed_decisions) - required_ids)
+    if extra_count:
+        raise StageInvalidError(
+            f"ruling decisions contain {extra_count} stale or forbidden groups"
+        )
+    missing_count = len(required_ids - set(parsed_decisions))
+    if missing_count:
+        raise StageBlockedError(
+            f"ruling decisions missing for {missing_count} acquired-only groups"
+        )
+    approved_at = now or datetime.now(timezone.utc)
+    if approved_at.tzinfo is None or approved_at.utcoffset() != timedelta(0):
+        raise StageInvalidError("ruling approval time must be UTC")
+    if approved_at.astimezone(timezone.utc) < _utc_instant(
+        screen.policy.activated_at, "policy.activatedAt"
+    ):
+        raise StageInvalidError("ruling approval predates policy activation")
+    document = DuplicateRulingDocument(
+        schema_version=2,
+        cycle_id=CYCLE_ID,
+        detector_sha256=screen.policy.detector_sha256,
+        detector_implementation_sha256=(
+            screen.policy.detector_implementation_sha256
+        ),
+        approved_by="hieunt",
+        approved_at=approved_at.astimezone(timezone.utc).isoformat().replace(
+            "+00:00", "Z"
+        ),
+        approval_evidence=_text(approval_evidence, "approvalEvidence"),
+        groups=tuple(
+            DuplicateRuling(group_id=group_id, decision=parsed_decisions[group_id])
+            for group_id in sorted(parsed_decisions)
+        ),
+    )
+    parsed_document = parse_duplicate_rulings(_ruling_document_to_json(document))
+    publish_no_replace(output_path, _ruling_document_to_json(parsed_document))
+    return parsed_document
+
+
+publish_duplicate_rulings = publish_rulings
 
 
 def _acquisition_batch_to_json(batch: AcquisitionBatch) -> dict[str, object]:
@@ -800,15 +1645,22 @@ def _acquisition_batch_to_json(batch: AcquisitionBatch) -> dict[str, object]:
 def parse_acquisition_manifest(value: object) -> AcquisitionManifest:
     document = _exact_mapping(value, _ACQUISITION_KEYS, "acquisition manifest")
     if (
-        _strict_int(document["schemaVersion"], "schemaVersion", minimum=1) != 1
+        _strict_int(document["schemaVersion"], "schemaVersion", minimum=2) != 2
         or document["cycleId"] != CYCLE_ID
         or document["parentDatasetId"] != PARENT_DATASET_ID
     ):
         raise StageInvalidError("acquisition identity mismatch")
     detector = _exact_mapping(
-        document["detector"], frozenset({"descriptor", "sha256"}), "detector"
+        document["detector"],
+        frozenset({"descriptor", "sha256", "implementationSha256"}),
+        "detector",
     )
-    if detector["descriptor"] != DETECTOR_DESCRIPTOR or detector["sha256"] != detector_identity():
+    implementation_sha256 = detector_implementation_sha256()
+    if (
+        detector["descriptor"] != DETECTOR_DESCRIPTOR
+        or detector["sha256"] != detector_identity()
+        or detector["implementationSha256"] != implementation_sha256
+    ):
         raise StageInvalidError("acquisition detector identity mismatch")
     rejected_raw = document["rejectedByReason"]
     if not isinstance(rejected_raw, Mapping):
@@ -828,16 +1680,18 @@ def parse_acquisition_manifest(value: object) -> AcquisitionManifest:
         item = _exact_mapping(raw, _ACQUISITION_BATCH_KEYS, f"acquisition batch {index}")
         batch_id = _safe_id(item["batchId"], f"acquisition batch {index}.batchId")
         if batch_id in seen:
-            raise StageInvalidError(f"duplicate acquired batch id: {batch_id}")
+            raise StageInvalidError("acquisition contains a duplicate batch id")
         seen.add(batch_id)
         image_values = item["imageSha256"]
         group_values = item["duplicateGroupIds"]
         if not isinstance(image_values, list) or not isinstance(group_values, list):
             raise StageInvalidError("acquisition image/group fields must be lists")
-        image_sha = tuple(sorted(_sha256(value, "imageSha256") for value in image_values))
-        group_ids = tuple(sorted(_sha256(value, "duplicateGroupIds") for value in group_values))
-        if len(image_sha) != len(set(image_sha)) or len(group_ids) != len(set(group_ids)):
-            raise StageInvalidError("acquisition image/group fields contain duplicates")
+        image_sha = tuple(_sha256(value, "imageSha256") for value in image_values)
+        group_ids = tuple(_sha256(value, "duplicateGroupIds") for value in group_values)
+        if image_sha != tuple(sorted(image_sha)) or len(image_sha) < 7:
+            raise StageInvalidError("acquisition image hashes must be sorted and complete")
+        if len(group_ids) != 1:
+            raise StageInvalidError("each acquisition batch must have one duplicate group")
         if item["acquisitionPolicySha256"] != policy_sha:
             raise StageInvalidError("acquisition batch policy digest mismatch")
         batches.append(
@@ -865,15 +1719,19 @@ def parse_acquisition_manifest(value: object) -> AcquisitionManifest:
         ),
     ):
         raise StageInvalidError("acquisition batches must remain chronological")
-    if document["eligibleBatchCount"] != len(batches) or len(batches) != TARGET_ELIGIBLE_BATCH_COUNT:
+    eligible_batch_count = _strict_int(
+        document["eligibleBatchCount"], "eligibleBatchCount", minimum=1
+    )
+    if eligible_batch_count != len(batches) or len(batches) != TARGET_ELIGIBLE_BATCH_COUNT:
         raise StageInvalidError("acquisition must contain exactly 90 eligible batches")
     return AcquisitionManifest(
-        schema_version=1,
+        schema_version=2,
         cycle_id=CYCLE_ID,
         parent_dataset_id=PARENT_DATASET_ID,
         acquisition_policy_sha256=policy_sha,
         quarantine_sha256=_sha256(document["quarantineSha256"], "quarantineSha256"),
         detector_sha256=detector_identity(),
+        detector_implementation_sha256=implementation_sha256,
         rejected_by_reason=dict(sorted(rejected.items())),
         batches=tuple(batches),
     )
@@ -886,169 +1744,57 @@ def publish_acquisition(
     quarantine_path: Path,
     parent_version_path: Path,
     parent_raw_root: Path,
+    diagnostic_raw_root: Path,
     acquired_raw_root: Path,
     acquired_labels_root: Path,
     rulings_path: Path | None,
     output_path: Path,
 ) -> AcquisitionManifest:
-    inventory = parse_capture_inventory(read_json(inventory_path))
-    policy = parse_acquisition_policy(read_json(policy_path))
-    quarantine = parse_quarantine(read_json(quarantine_path))
-    if _utc_instant(inventory.started_at, "inventory.startedAt") < _utc_instant(
-        policy.activated_at, "policy.activatedAt"
-    ):
-        raise StageInvalidError("capture started before acquisition policy activation")
-    if sha256_file(policy_path) != _document_sha256(_policy_to_json(policy)):
-        raise StageInvalidError("acquisition policy bytes are not canonical")
-    if quarantine.parent_dataset_version_sha256 != sha256_file(parent_version_path):
-        raise StageInvalidError("quarantine parent dataset digest mismatch")
-    parent_version = _exact_mapping(
-        read_json(parent_version_path),
-        frozenset(
-            {"schemaVersion", "datasetId", "parentDatasetId", "createdAt", "sourceBatches"}
-        ),
-        "parent dataset version",
+    screen = _screen_acquisition_inputs(
+        inventory_path=inventory_path,
+        policy_path=policy_path,
+        quarantine_path=quarantine_path,
+        parent_version_path=parent_version_path,
+        parent_raw_root=parent_raw_root,
+        diagnostic_raw_root=diagnostic_raw_root,
+        acquired_raw_root=acquired_raw_root,
+        acquired_labels_root=acquired_labels_root,
+        rulings_path=rulings_path,
+        require_rulings=True,
     )
-    if parent_version["schemaVersion"] != 1 or parent_version["datasetId"] != PARENT_DATASET_ID:
-        raise StageInvalidError("parent dataset identity mismatch")
-    parent_values = parent_version["sourceBatches"]
-    if not isinstance(parent_values, list):
-        raise StageInvalidError("parent sourceBatches must be a list")
-    parent_ids = _safe_unique_ids(parent_values, "parent sourceBatches")
-    if len(parent_ids) not in (200, 206):
-        raise StageInvalidError(f"parent dataset must contain 200 or 206 batches, got {len(parent_ids)}")
-    rulings = (
-        parse_duplicate_rulings(read_json(rulings_path))
-        if rulings_path is not None
-        else {}
-    )
-
-    parent_set = set(parent_ids)
-
-    incomplete_batches: list[str] = []
-    invalid_reasons: Counter[str] = Counter()
-    valid_records: list[CaptureRecord] = []
-    for record in inventory.records:
-        if record.batch_id in parent_set:
-            invalid_reasons["parent-batch-id"] += 1
-            continue
-        batch_dir = Path(acquired_raw_root) / record.batch_id
-        manifest_path = batch_dir / "manifest.json"
-        label_path = Path(acquired_labels_root) / f"{record.batch_id}.json"
-        if not manifest_path.is_file():
-            invalid_reasons["missing-manifest"] += 1
-            continue
-        if sha256_file(manifest_path) != record.manifest_sha256:
-            invalid_reasons["manifest-digest-mismatch"] += 1
-            continue
-        try:
-            manifest = load_manifest(manifest_path)
-            validate_batch(batch_dir, manifest)
-        except (OSError, ManifestError, ValueError):
-            invalid_reasons["invalid-batch"] += 1
-            continue
-        if manifest.batch_id != record.batch_id or manifest.captured_at != record.captured_at:
-            invalid_reasons["capture-manifest-mismatch"] += 1
-            continue
-        if not label_path.is_file():
-            incomplete_batches.append(record.batch_id)
-            continue
-        try:
-            label = load_label(label_path)
-        except (OSError, ValueError):
-            incomplete_batches.append(record.batch_id)
-            continue
-        expected_new_indices = set(range(len(manifest.images_new)))
-        actual_new_indices = {match.new_index for match in label.matches}
-        label_complete = (
-            label.batch_id == manifest.batch_id == record.batch_id
-            and label.status == "complete"
-            and actual_new_indices == expected_new_indices
-            and all(match.img_index < len(manifest.images) for match in label.matches)
+    rejected_by_reason = Counter(screen.auto_rejected_by_reason)
+    if screen.manual_rejected_batch_ids:
+        rejected_by_reason["manual-duplicate-rejection"] += len(
+            screen.manual_rejected_batch_ids
         )
-        if not label_complete:
-            incomplete_batches.append(record.batch_id)
-            continue
-        valid_records.append(record)
-    if incomplete_batches:
-        raise StageBlockedError(
-            f"reviewer labels are incomplete for {len(incomplete_batches)} captured batches"
-        )
-
-    parent_images = _load_image_evidence("parent", parent_ids, parent_raw_root)
-    acquired_ids = tuple(record.batch_id for record in valid_records)
-    acquired_images = _load_image_evidence("acquired", acquired_ids, acquired_raw_root)
-    (
-        group_by_index,
-        parent_batches_by_group,
-        acquired_batches_by_group,
-        acquired_image_counts_by_group,
-    ) = _duplicate_groups(parent_images, acquired_images)
-    offset = len(parent_images)
-    group_ids_by_batch: dict[str, set[str]] = defaultdict(set)
-    image_sha_by_batch: dict[str, set[str]] = defaultdict(set)
-    for relative_index, image in enumerate(acquired_images):
-        group_id = group_by_index[offset + relative_index]
-        group_ids_by_batch[image.batch_id].add(group_id)
-        image_sha_by_batch[image.batch_id].add(image.sha256)
-
-    for group_id in sorted(rulings):
-        if group_id not in acquired_batches_by_group:
-            raise StageInvalidError(f"duplicate ruling references unknown group {group_id}")
-        if parent_batches_by_group.get(group_id):
-            raise StageInvalidError(
-                f"duplicate ruling cannot override parent/quarantine group {group_id}"
-            )
-        if acquired_image_counts_by_group[group_id] <= 1:
-            raise StageInvalidError(f"duplicate ruling references stale singleton group {group_id}")
-
-    required_ruling_groups = {
-        group_id
-        for group_id, image_count in acquired_image_counts_by_group.items()
-        if image_count > 1 and not parent_batches_by_group.get(group_id)
-    }
-    blocked_groups = sorted(required_ruling_groups - set(rulings))
-    if blocked_groups:
-        raise StageBlockedError(
-            f"manual duplicate adjudication missing for {len(blocked_groups)} groups"
-        )
-
-    parent_duplicate_batches = {
-        batch_id
-        for group_id, batch_ids in acquired_batches_by_group.items()
-        if parent_batches_by_group.get(group_id)
-        for batch_id in batch_ids
-    }
-    manual_rejected_batches = {
-        batch_id
-        for group_id in required_ruling_groups
-        if rulings[group_id].decision == "reject-acquired"
-        for batch_id in acquired_batches_by_group[group_id]
-    }
-    rejected_batches = parent_duplicate_batches | manual_rejected_batches
-    for batch_id in sorted(rejected_batches):
-        reason = (
-            "parent-duplicate-group"
-            if batch_id in parent_duplicate_batches
-            else "manual-duplicate-rejection"
-        )
-        invalid_reasons[reason] += 1
-
-    policy_sha = sha256_file(policy_path)
+    policy_sha256 = sha256_file(policy_path)
     selected: list[AcquisitionBatch] = []
-    for record in valid_records:
-        if record.batch_id in rejected_batches:
+    for record in screen.valid_records:
+        if (
+            record.batch_id in screen.auto_rejected_batch_ids
+            or record.batch_id in screen.manual_rejected_batch_ids
+        ):
             continue
-        label_path = Path(acquired_labels_root) / f"{record.batch_id}.json"
+        evidence = screen.evidence_by_batch_id[record.batch_id]
+        image_sha256 = tuple(
+            sorted(
+                image.sha256
+                for image in (*evidence.references, *evidence.queries)
+            )
+        )
         selected.append(
             AcquisitionBatch(
                 batch_id=record.batch_id,
                 capture_timestamp=record.captured_at,
                 manifest_sha256=record.manifest_sha256,
-                label_sha256=sha256_file(label_path),
-                image_sha256=tuple(sorted(image_sha_by_batch[record.batch_id])),
-                duplicate_group_ids=tuple(sorted(group_ids_by_batch[record.batch_id])),
-                acquisition_policy_sha256=policy_sha,
+                label_sha256=sha256_file(
+                    Path(acquired_labels_root) / f"{record.batch_id}.json"
+                ),
+                image_sha256=image_sha256,
+                duplicate_group_ids=(
+                    screen.group_id_by_batch_id[record.batch_id],
+                ),
+                acquisition_policy_sha256=policy_sha256,
             )
         )
         if len(selected) == TARGET_ELIGIBLE_BATCH_COUNT:
@@ -1058,24 +1804,34 @@ def publish_acquisition(
             f"NO_DATASET: expected 90 eligible batches, got {len(selected)}"
         )
     document: dict[str, object] = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "cycleId": CYCLE_ID,
         "parentDatasetId": PARENT_DATASET_ID,
-        "acquisitionPolicySha256": policy_sha,
+        "acquisitionPolicySha256": policy_sha256,
         "quarantineSha256": sha256_file(quarantine_path),
-        "detector": {"descriptor": DETECTOR_DESCRIPTOR, "sha256": detector_identity()},
+        "detector": {
+            "descriptor": DETECTOR_DESCRIPTOR,
+            "sha256": screen.policy.detector_sha256,
+            "implementationSha256": (
+                screen.policy.detector_implementation_sha256
+            ),
+        },
         "eligibleBatchCount": len(selected),
-        "rejectedByReason": dict(sorted(invalid_reasons.items())),
+        "rejectedByReason": dict(sorted(rejected_by_reason.items())),
         "batches": [_acquisition_batch_to_json(batch) for batch in selected],
     }
     manifest = parse_acquisition_manifest(document)
-    if set(quarantine.batch_ids).intersection(batch.batch_id for batch in manifest.batches):
+    if set(screen.quarantine.batch_ids).intersection(
+        batch.batch_id for batch in manifest.batches
+    ):
         raise StageInvalidError("quarantined batch entered acquisition")
     publish_no_replace(Path(output_path), document)
     return manifest
 
 
-def _allocation_units(batches: Sequence[AcquisitionBatch]) -> tuple[tuple[str, tuple[str, ...]], ...]:
+def _allocation_units(
+    batches: Sequence[AcquisitionBatch],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
     batch_union = _UnionFind.create(len(batches))
     first_by_group: dict[str, int] = {}
     for index, batch in enumerate(batches):
@@ -1158,7 +1914,7 @@ def _solve_allocation(
 def parse_allocation_manifest(value: object) -> AllocationManifest:
     document = _exact_mapping(value, _ALLOCATION_KEYS, "allocation")
     if (
-        _strict_int(document["schemaVersion"], "schemaVersion", minimum=1) != 1
+        _strict_int(document["schemaVersion"], "schemaVersion", minimum=2) != 2
         or document["cycleId"] != CYCLE_ID
         or document["datasetId"] != DATASET_ID
         or document["parentDatasetId"] != PARENT_DATASET_ID
@@ -1166,11 +1922,15 @@ def parse_allocation_manifest(value: object) -> AllocationManifest:
     ):
         raise StageInvalidError("allocation identity mismatch")
     detector = _exact_mapping(
-        document["detector"], frozenset({"descriptor", "sha256"}), "detector"
+        document["detector"],
+        frozenset({"descriptor", "sha256", "implementationSha256"}),
+        "detector",
     )
+    implementation_sha256 = detector_implementation_sha256()
     if (
         detector["descriptor"] != DETECTOR_DESCRIPTOR
         or detector["sha256"] != detector_identity()
+        or detector["implementationSha256"] != implementation_sha256
     ):
         raise StageInvalidError("allocation detector identity mismatch")
     acquired = _exact_mapping(document["acquired"], frozenset({"train", "dev"}), "acquired")
@@ -1241,7 +2001,7 @@ def parse_allocation_manifest(value: object) -> AllocationManifest:
     ):
         raise StageInvalidError("allocation commitment counts mismatch")
     return AllocationManifest(
-        schema_version=1,
+        schema_version=2,
         cycle_id=CYCLE_ID,
         dataset_id=DATASET_ID,
         parent_dataset_id=PARENT_DATASET_ID,
@@ -1249,6 +2009,7 @@ def parse_allocation_manifest(value: object) -> AllocationManifest:
         acquisition_sha256=_sha256(document["acquisitionSha256"], "acquisitionSha256"),
         quarantine_sha256=_sha256(document["quarantineSha256"], "quarantineSha256"),
         detector_sha256=detector_identity(),
+        detector_implementation_sha256=implementation_sha256,
         acquired_train_ids=acquired_train,
         acquired_dev_ids=acquired_dev,
         final_commitment=final_commitment,
@@ -1333,13 +2094,29 @@ def publish_allocation(
     cycle_root: Path,
     check_only: bool = False,
 ) -> AllocationManifest:
-    acquisition = parse_acquisition_manifest(read_json(acquisition_path))
+    acquisition_document = read_json(acquisition_path)
+    acquisition = parse_acquisition_manifest(acquisition_document)
+    _require_canonical_document(
+        acquisition_path, acquisition_document, "acquisition manifest"
+    )
     quarantine = parse_quarantine(read_json(quarantine_path))
+    _require_canonical_document(
+        quarantine_path, _quarantine_to_json(quarantine), "quarantine"
+    )
     policy = parse_acquisition_policy(read_json(policy_path))
+    _require_canonical_document(
+        policy_path, _policy_to_json(policy), "acquisition policy"
+    )
     if acquisition.acquisition_policy_sha256 != sha256_file(policy_path):
         raise StageInvalidError("acquisition policy digest mismatch")
     if acquisition.quarantine_sha256 != sha256_file(quarantine_path):
         raise StageInvalidError("acquisition quarantine digest mismatch")
+    if (
+        acquisition.detector_sha256 != policy.detector_sha256
+        or acquisition.detector_implementation_sha256
+        != policy.detector_implementation_sha256
+    ):
+        raise StageInvalidError("acquisition detector lineage mismatch")
     if quarantine.parent_dataset_version_sha256 != sha256_file(parent_version_path):
         raise StageInvalidError("parent dataset digest mismatch")
     parent_train = _read_ids(
@@ -1351,7 +2128,7 @@ def publish_allocation(
     if set(parent_train).intersection(parent_dev):
         raise StageInvalidError("parent train/dev overlap")
     if set(quarantine.batch_ids).intersection((*parent_train, *parent_dev)):
-        raise StageInvalidError("parent final quarantine overlaps reusable train/dev")
+        raise StageInvalidError("quarantine overlaps reusable parent train/dev")
     acquired_ids = {batch.batch_id for batch in acquisition.batches}
     if acquired_ids.intersection((*parent_train, *parent_dev, *quarantine.batch_ids)):
         raise StageInvalidError("acquired ids overlap parent or quarantine")
@@ -1375,7 +2152,7 @@ def publish_allocation(
     final_commitment = SplitCommitment(30, hashlib.sha256(final_bytes).hexdigest())
     source_commitment = commit_ids((*train_ids, *dev_ids, *final_ids))
     allocation_document: dict[str, object] = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "cycleId": CYCLE_ID,
         "datasetId": DATASET_ID,
         "parentDatasetId": PARENT_DATASET_ID,
@@ -1385,6 +2162,7 @@ def publish_allocation(
         "detector": {
             "descriptor": DETECTOR_DESCRIPTOR,
             "sha256": acquisition.detector_sha256,
+            "implementationSha256": acquisition.detector_implementation_sha256,
         },
         "acquired": {"train": list(acquired_train), "dev": list(acquired_dev)},
         "final": {
@@ -1439,7 +2217,7 @@ def publish_allocation(
     publish_no_replace(allocation_path, allocation_document)
     publish_no_replace(dataset_path, dataset_document)
     integrity = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "cycleId": CYCLE_ID,
         "datasetId": DATASET_ID,
         "sealedFinal": {
@@ -1465,23 +2243,69 @@ def _safe_cycle_file(cycle_root: Path, relative_path: str) -> Path:
     return path
 
 
+def parse_prefinal_integrity(value: object) -> PrefinalIntegrity:
+    document = _exact_mapping(value, _PREFINAL_KEYS, "prefinal integrity")
+    schema_version = _strict_int(
+        document["schemaVersion"], "prefinal schemaVersion", minimum=2
+    )
+    if (
+        schema_version != 2
+        or document["cycleId"] != CYCLE_ID
+        or document["datasetId"] != DATASET_ID
+    ):
+        raise StageInvalidError("prefinal integrity identity mismatch")
+    sealed_final = _exact_mapping(
+        document["sealedFinal"], _SEALED_FINAL_KEYS, "prefinal sealedFinal"
+    )
+    if sealed_final["path"] != "splits/sealed-final.txt":
+        raise StageInvalidError("prefinal sealed-final path mismatch")
+    integrity = PrefinalIntegrity(
+        schema_version=2,
+        final_count=_strict_int(
+            sealed_final["count"], "prefinal sealedFinal.count", minimum=1
+        ),
+        final_size_bytes=_strict_int(
+            sealed_final["sizeBytes"], "prefinal sealedFinal.sizeBytes", minimum=1
+        ),
+        final_sha256=_sha256(
+            sealed_final["sha256"], "prefinal sealedFinal.sha256"
+        ),
+    )
+    if integrity.final_count != FINAL_ACQUIRED_COUNT:
+        raise StageInvalidError("prefinal sealed-final count mismatch")
+    return integrity
+
+
 def verify_prefinal_integrity(cycle_root: Path) -> PrefinalIntegrity:
+    integrity_path = _safe_cycle_file(
+        cycle_root, "evidence/prefinal-integrity.json"
+    )
+    integrity_document = read_json(integrity_path)
+    integrity = parse_prefinal_integrity(integrity_document)
+    _require_canonical_document(
+        integrity_path, integrity_document, "prefinal integrity"
+    )
     allocation_path = _safe_cycle_file(cycle_root, "allocation.json")
-    allocation = parse_allocation_manifest(read_json(allocation_path))
+    allocation_document = read_json(allocation_path)
+    allocation = parse_allocation_manifest(allocation_document)
+    _require_canonical_document(
+        allocation_path, allocation_document, "allocation"
+    )
+    if (
+        allocation.final_commitment.count != integrity.final_count
+        or allocation.final_size_bytes != integrity.final_size_bytes
+        or allocation.final_commitment.sha256 != integrity.final_sha256
+    ):
+        raise StageInvalidError("prefinal/allocation commitment mismatch")
     final_path = _safe_cycle_file(cycle_root, "splits/sealed-final.txt")
     metadata = final_path.stat()
     digest = sha256_file(final_path)
     if (
-        allocation.final_commitment.count != FINAL_ACQUIRED_COUNT
-        or metadata.st_size != allocation.final_size_bytes
-        or digest != allocation.final_commitment.sha256
+        metadata.st_size != integrity.final_size_bytes
+        or digest != integrity.final_sha256
     ):
         raise StageInvalidError("sealed final opaque commitment mismatch")
-    return PrefinalIntegrity(
-        final_count=allocation.final_commitment.count,
-        final_size_bytes=metadata.st_size,
-        final_sha256=digest,
-    )
+    return integrity
 
 
 def load_working_membership(cycle_root: Path) -> WorkingMembership:
@@ -1532,10 +2356,12 @@ def verify_cycle_dataset(
     mode: Literal["working", "prefinal", "final"],
     lock_path: Path | None = None,
 ) -> dict[str, object]:
+    if mode not in {"working", "prefinal", "final"}:
+        raise StageInvalidError("verify mode must be working, prefinal, or final")
     if mode == "prefinal":
         integrity = verify_prefinal_integrity(cycle_root)
         return {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "mode": mode,
             "cycleId": CYCLE_ID,
             "datasetId": DATASET_ID,
@@ -1545,7 +2371,7 @@ def verify_cycle_dataset(
         }
     working = load_working_membership(cycle_root)
     result: dict[str, object] = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "mode": mode,
         "cycleId": CYCLE_ID,
         "datasetId": DATASET_ID,
@@ -1563,25 +2389,47 @@ def verify_cycle_dataset(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = _CycleArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
     policy = sub.add_parser("publish-policy")
+    policy.add_argument("--diagnostic-inventory", type=Path, required=True)
     policy.add_argument("--output", type=Path, required=True)
 
     quarantine = sub.add_parser("publish-quarantine")
     quarantine.add_argument("--parent-version", type=Path, required=True)
     quarantine.add_argument("--parent-final", type=Path, required=True)
+    quarantine.add_argument("--diagnostic-inventory", type=Path, required=True)
     quarantine.add_argument("--output", type=Path, required=True)
 
+    diagnostic = sub.add_parser("diagnostic-summary")
+    diagnostic.add_argument("--parent-version", type=Path, required=True)
+    diagnostic.add_argument("--parent-raw-root", type=Path, required=True)
+    diagnostic.add_argument("--diagnostic-inventory", type=Path, required=True)
+    diagnostic.add_argument("--diagnostic-raw-root", type=Path, required=True)
+
+    def add_screen_arguments(command: argparse.ArgumentParser) -> None:
+        command.add_argument("--inventory", type=Path, required=True)
+        command.add_argument("--policy", type=Path, required=True)
+        command.add_argument("--quarantine", type=Path, required=True)
+        command.add_argument("--parent-version", type=Path, required=True)
+        command.add_argument("--parent-raw-root", type=Path, required=True)
+        command.add_argument("--diagnostic-raw-root", type=Path, required=True)
+        command.add_argument("--acquired-raw-root", type=Path, required=True)
+        command.add_argument("--acquired-labels-root", type=Path, required=True)
+
+    screen = sub.add_parser("screen-acquisition")
+    add_screen_arguments(screen)
+    screen.add_argument("--rulings", type=Path)
+
+    rulings = sub.add_parser("publish-rulings")
+    add_screen_arguments(rulings)
+    rulings.add_argument("--approval-evidence", required=True)
+    rulings.add_argument("--decision", action="append", required=True)
+    rulings.add_argument("--output", type=Path, required=True)
+
     acquisition = sub.add_parser("publish-acquisition")
-    acquisition.add_argument("--inventory", type=Path, required=True)
-    acquisition.add_argument("--policy", type=Path, required=True)
-    acquisition.add_argument("--quarantine", type=Path, required=True)
-    acquisition.add_argument("--parent-version", type=Path, required=True)
-    acquisition.add_argument("--parent-raw-root", type=Path, required=True)
-    acquisition.add_argument("--acquired-raw-root", type=Path, required=True)
-    acquisition.add_argument("--acquired-labels-root", type=Path, required=True)
+    add_screen_arguments(acquisition)
     acquisition.add_argument("--rulings", type=Path)
     acquisition.add_argument("--output", type=Path, required=True)
 
@@ -1603,19 +2451,73 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = _build_parser()
-    args = parser.parse_args(argv)
     try:
+        parser = _build_parser()
+        args = parser.parse_args(argv)
         if args.command == "publish-policy":
-            result: object = _policy_to_json(publish_acquisition_policy(args.output))
+            result: object = _policy_to_json(
+                publish_acquisition_policy(
+                    args.diagnostic_inventory,
+                    args.output,
+                )
+            )
         elif args.command == "publish-quarantine":
             ledger = publish_quarantine(
-                args.parent_version, args.parent_final, args.output
+                args.parent_version,
+                args.parent_final,
+                args.diagnostic_inventory,
+                args.output,
             )
             result = {
                 "schemaVersion": ledger.schema_version,
                 "cycleId": ledger.cycle_id,
-                "batchCount": len(ledger.batch_ids),
+                "parentFinalBatchCount": len(ledger.parent_final_batch_ids),
+                "diagnosticBatchCount": len(ledger.diagnostic_batch_ids),
+                "diagnosticBatchCommitment": ledger.diagnostic_batch_commitment,
+                "output": str(args.output),
+                "sha256": sha256_file(args.output),
+            }
+        elif args.command == "diagnostic-summary":
+            result = diagnostic_summary(
+                parent_version_path=args.parent_version,
+                parent_raw_root=args.parent_raw_root,
+                diagnostic_inventory_path=args.diagnostic_inventory,
+                diagnostic_raw_root=args.diagnostic_raw_root,
+            )
+        elif args.command == "screen-acquisition":
+            result = screen_acquisition(
+                inventory_path=args.inventory,
+                policy_path=args.policy,
+                quarantine_path=args.quarantine,
+                parent_version_path=args.parent_version,
+                parent_raw_root=args.parent_raw_root,
+                diagnostic_raw_root=args.diagnostic_raw_root,
+                acquired_raw_root=args.acquired_raw_root,
+                acquired_labels_root=args.acquired_labels_root,
+                rulings_path=args.rulings,
+            )
+        elif args.command == "publish-rulings":
+            ruling_document = publish_rulings(
+                inventory_path=args.inventory,
+                policy_path=args.policy,
+                quarantine_path=args.quarantine,
+                parent_version_path=args.parent_version,
+                parent_raw_root=args.parent_raw_root,
+                diagnostic_raw_root=args.diagnostic_raw_root,
+                acquired_raw_root=args.acquired_raw_root,
+                acquired_labels_root=args.acquired_labels_root,
+                decisions=args.decision,
+                approval_evidence=args.approval_evidence,
+                output_path=args.output,
+            )
+            result = {
+                "schemaVersion": ruling_document.schema_version,
+                "cycleId": ruling_document.cycle_id,
+                "detectorSha256": ruling_document.detector_sha256,
+                "detectorImplementationSha256": (
+                    ruling_document.detector_implementation_sha256
+                ),
+                "groupCount": len(ruling_document.groups),
                 "output": str(args.output),
                 "sha256": sha256_file(args.output),
             }
@@ -1626,6 +2528,7 @@ def main(argv: list[str] | None = None) -> int:
                 quarantine_path=args.quarantine,
                 parent_version_path=args.parent_version,
                 parent_raw_root=args.parent_raw_root,
+                diagnostic_raw_root=args.diagnostic_raw_root,
                 acquired_raw_root=args.acquired_raw_root,
                 acquired_labels_root=args.acquired_labels_root,
                 rulings_path=args.rulings,
@@ -1660,21 +2563,34 @@ def main(argv: list[str] | None = None) -> int:
                 "sourceCommitmentCount": allocation.source_commitment.count,
                 "checkOnly": args.check,
             }
-        else:
+        elif args.command == "verify":
             result = verify_cycle_dataset(args.cycle_root, args.mode, args.lock)
-    except (OSError, ManifestError, StageBlockedError, StageInvalidError, ValueError) as error:
-        print(json.dumps({"status": "BLOCKED", "error": str(error)}, sort_keys=True), file=sys.stderr)
-        return 4 if isinstance(error, StageBlockedError) else 2
+        else:
+            raise StageInvalidError("unsupported command")
+    except StageBlockedError as error:
+        print(
+            json.dumps({"status": "BLOCKED", "error": str(error)}, sort_keys=True),
+            file=sys.stderr,
+        )
+        return 4
+    except (OSError, ManifestError, StageInvalidError, ValueError) as error:
+        print(
+            json.dumps({"status": "INVALID", "error": str(error)}, sort_keys=True),
+            file=sys.stderr,
+        )
+        return 2
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))
     return 0
 
 
 __all__ = [
+    "LEGACY_CYCLE_ID",
     "CYCLE_ID",
     "EXPERIMENT_ID",
     "DATASET_ID",
     "PARENT_DATASET_ID",
     "ALLOCATION_SEED",
+    "DIAGNOSTIC_INVENTORY_SHA256",
     "DETECTOR_DESCRIPTOR",
     "StageBlockedError",
     "StageInvalidError",
@@ -1683,8 +2599,12 @@ __all__ = [
     "AcquisitionPolicy",
     "QuarantineLedger",
     "CaptureRecord",
+    "LegacyCaptureInventory",
+    "CaptureRequest",
+    "CaptureSummary",
     "CaptureInventory",
     "DuplicateRuling",
+    "DuplicateRulingDocument",
     "AcquisitionBatch",
     "AcquisitionManifest",
     "AllocationManifest",
@@ -1696,12 +2616,18 @@ __all__ = [
     "publish_acquisition_policy",
     "parse_quarantine",
     "publish_quarantine",
+    "parse_legacy_capture_inventory",
     "parse_capture_inventory",
     "parse_duplicate_rulings",
+    "diagnostic_summary",
+    "screen_acquisition",
+    "publish_rulings",
+    "publish_duplicate_rulings",
     "parse_acquisition_manifest",
     "publish_acquisition",
     "parse_allocation_manifest",
     "publish_allocation",
+    "parse_prefinal_integrity",
     "verify_prefinal_integrity",
     "load_working_membership",
     "load_final_membership_after_lock",
