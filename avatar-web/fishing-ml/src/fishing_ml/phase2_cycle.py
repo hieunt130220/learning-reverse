@@ -17,6 +17,7 @@ from typing import Iterable, Literal, Mapping, Sequence
 
 from PIL import Image
 
+from .duplicate_detector import DETECTOR_DESCRIPTOR, detector_descriptor_sha256
 from .schema import (
     ManifestError,
     load_label,
@@ -122,19 +123,6 @@ _ALLOCATION_KEYS = frozenset(
         "sourceCommitment",
     }
 )
-
-DETECTOR_DESCRIPTOR = {
-    "algorithm": "difference-hash",
-    "algorithmVersion": 1,
-    "decode": "Pillow RGB",
-    "inputSize": [75, 75],
-    "grayscale": "Pillow L",
-    "resize": [9, 8],
-    "hashBits": 64,
-    "hammingThreshold": 4,
-    "grouping": "transitive-closure",
-}
-
 
 class StageBlockedError(RuntimeError):
     """Raised when an approval, adjudication, or prerequisite is missing."""
@@ -315,7 +303,7 @@ def _document_sha256(value: object) -> str:
 
 
 def detector_identity() -> str:
-    return _document_sha256(DETECTOR_DESCRIPTOR)
+    return detector_descriptor_sha256()
 
 
 def _exact_mapping(value: object, keys: frozenset[str], name: str) -> Mapping[str, object]:
