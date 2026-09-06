@@ -1845,7 +1845,7 @@ Display the exact plan/results/handover diff and wait for explicit approval befo
 - Consumes: completed implementation and truthful terminal documentation.
 - Produces: final test/build/hash/privacy/GitNexus evidence and an optional explicitly approved commit.
 
-- [ ] **Step 1: Run the exact final verification suite**
+- [x] **Step 1: Run the exact final verification suite**
 
 Run:
 
@@ -1938,7 +1938,7 @@ shasum -a 256 \
 
 Expected: existing suites/build pass; detector smoke passes; diagnostic aggregates remain the approved values; successor verification passes for every reached stage; historical and old-cycle hashes equal the Global Constraints values; forbidden capture calls are absent.
 
-- [ ] **Step 2: Run final Git and GitNexus checks**
+- [x] **Step 2: Run final Git and GitNexus checks**
 
 ```bash
 cd /Users/hieunt/learning-reverse
@@ -1950,7 +1950,7 @@ git diff --stat
 
 Expected: GitNexus is neither partial nor truncated; every changed symbol/process is recorded; no unrelated file is fixed; generated/private paths remain unstaged.
 
-- [ ] **Step 3: Display the exact proposed tracked commit set**
+- [x] **Step 3: Display the exact proposed tracked commit set**
 
 The maximum allowed tracked set is:
 
@@ -1977,7 +1977,7 @@ avatar-web/server/src/tools/fishing-local-shadow-cycle.ts
 
 Existing old-cycle production files already modified in the workspace are not implicitly authorized by this list; include them only if the user approves the combined old-cycle implementation commit after reviewing the exact diff.
 
-- [ ] **Step 4: Commit only after explicit final approval**
+- [x] **Step 4: Commit only after explicit final approval**
 
 After the user approves the exact staged set, run literal `git add` paths from that approved set, then:
 

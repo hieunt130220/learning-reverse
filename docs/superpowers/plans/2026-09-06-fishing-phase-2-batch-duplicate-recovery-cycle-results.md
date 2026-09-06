@@ -125,6 +125,21 @@
 - Tasks 10–16 remain unchecked because labeling and every downstream stage require a successful sealed 90-record inventory.
 - The sanitized handover preserves policy/quarantine commitments, data-lineage roles, aggregate terminal evidence, skipped stages, and the unresolved future-cycle design question without exposing private operational identifiers.
 - The required privacy scan matched only four explicit guard/redaction statements already present in the ledger; `git diff --check -- docs/superpowers` exited `0`.
+- Task 17 was committed as Git revision `3903f5e` with message `docs: publish successor no-dataset handover`.
+
+## Task 18: Final Verification
+
+- Fresh Python source/test compilation exited `0`; the full existing suite passed `37/37`; `pip check` reported `No broken requirements found.`
+- The final role-aware detector smoke printed `duplicate-detector-final-smoke: PASS`.
+- Diagnostic screening remained unchanged at zero parent batch edges, zero diagnostic multi-batch groups, maximum reference overlap `4/6`, maximum query overlap `50%`, and maximum combined overlap `50%`.
+- Successor working/prefinal verification was correctly skipped because allocation is absent; successor final verification was correctly skipped because the durable final lock is absent. Both are consequences of terminal `NO_DATASET`, not missing required evidence for a reached stage.
+- Fresh server verification passed `270/270`; typecheck and build exited `0`; the unchanged `FakeClient` listener warning remained non-blocking.
+- The forbidden capture scan found only the three comments documenting the `TX43` prohibition.
+- All 16 immutable historical and old-cycle SHA-256 values matched the plan constraints.
+- Final `git diff --check` exited `0`; only the plan, results ledger, and successor handover were modified for the final checkpoint.
+- The final privacy scan again matched only four explicit guard/redaction statements and exposed no private operational evidence.
+- GitNexus `1.6.11` analyzed three changed documentation files and three symbols, found zero affected processes, classified risk `LOW`, and returned without partial or truncated diagnostics.
+- The exact final tracked commit set is the successor plan, successor results ledger, and successor handover. Generated policy/quarantine data remains ignored and unstaged; no raw, label, model, prediction, or historical artifact is included.
 
 ## Sanitization
 

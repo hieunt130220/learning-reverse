@@ -60,6 +60,14 @@ downstreamArtifactCount = 0
 - Any further acquisition requires a separately designed and approved cycle with a new identity, new pre-capture policy, and new no-replace evidence namespace.
 - Whether inbound command `43` should remain fatal or only outbound `TX43` should be prohibited is a future design decision; this completed cycle must not be reopened or weakened retroactively.
 
+## Final Verification
+
+- Python compilation, all 37 existing Python tests, and dependency validation passed.
+- The final detector smoke and diagnostic summary reproduced the approved behavior and aggregates.
+- All 270 server tests, TypeScript typecheck, and the production build passed; the pre-existing listener warning remained non-blocking.
+- All 16 immutable historical and old-cycle hashes matched.
+- Working/prefinal and final successor verifiers were not applicable because allocation and durable final-lock artifacts do not exist after terminal `NO_DATASET`.
+
 ## Sanitization
 
 This handover excludes secrets, private operational identifiers, raw protocol bytes, image content, manual labels, model outputs, per-example error identities, and sealed split contents.
