@@ -88,6 +88,19 @@
 - `git diff --check` passed and generated corpus data remained unstaged. GitNexus `1.6.11` analyzed the documentation checkpoint as 15 changed symbols in one file, zero affected processes, and `LOW` risk; the command exited `0` without partial or truncated diagnostics.
 - Non-blocking existing warning: the server suite emitted `MaxListenersExceededWarning` for 11 listeners on `FakeClient`; no unrelated change was made.
 
+## Task 8: Successor Policy Activation
+
+- Preconditions proved the successor policy, quarantine, and raw evidence were absent before activation.
+- The approved no-replace commands published policy first and quarantine second under `data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01`.
+- Activation UTC: `2026-09-06T11:43:14.185906Z`.
+- Policy SHA-256: `cfd0f5f092761b9c995d7cf27e6a1fb6fd5deb0fda63c9395f9b0ae34bbe1b68`.
+- Quarantine SHA-256: `4f21682196111252fe46124c1bf28ad2fb232c7b62541956242083bedcaef3c0`.
+- Detector descriptor SHA-256: `505326b55ab919f4b31f80e3ab805217a8ae5d8334a6e8af98e2fa226601e1d0`.
+- Detector implementation SHA-256: `d8ebdcb338c17d61a9dde93064fcd3a54945069507a524ce6b02742ed5c97f0c`.
+- Parent-final count remained `30`; diagnostic count remained `90`; diagnostic batch commitment is `5d6f810d1f9c9746a591a1448cc71ddf3fe9261fc2f68b43ae43a88101acec3e`.
+- Both publications parsed as strict schema v2, matched cycle `p2cr2-20260906-01` and dataset `phase2-coverage-recovery-v2-20260906-01`, and retained mode `0600`.
+- Generated policy and quarantine remain ignored operational data and were not staged.
+
 ## Sanitization
 
 This ledger excludes secrets, private account or batch identities, raw protocol bytes, image content, manual labels, per-example model output, and sealed split contents.

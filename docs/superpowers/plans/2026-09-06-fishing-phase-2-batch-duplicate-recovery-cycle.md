@@ -915,7 +915,7 @@ Expected after an approved successful commit: tracked status is empty and `git l
 - Consumes: verified production code, old diagnostic inventory, immutable parent dataset/final split.
 - Produces: pre-capture policy activation and exact parent/diagnostic exclusion commitments.
 
-- [ ] **Step 1: Prove the successor raw root and publications are absent**
+- [x] **Step 1: Prove the successor raw root and publications are absent**
 
 Run:
 
@@ -929,7 +929,7 @@ test ! -d avatar-web/fishing-ml/data/phase2/cycles/phase2-coverage-recovery-v2-2
 
 Expected: no successor policy/quarantine/raw evidence exists before activation.
 
-- [ ] **Step 2: Display the exact policy/quarantine commands and stop for approval**
+- [x] **Step 2: Display the exact policy/quarantine commands and stop for approval**
 
 Commands:
 
@@ -947,11 +947,11 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
 
 Do not execute until the user explicitly approves policy publication.
 
-- [ ] **Step 3: Publish each file exactly once**
+- [x] **Step 3: Publish each file exactly once**
 
 Execute the approved commands in policy-then-quarantine order. Any non-zero exit blocks capture; do not delete or overwrite a successfully published file.
 
-- [ ] **Step 4: Verify canonical identities, modes, and commitments**
+- [x] **Step 4: Verify canonical identities, modes, and commitments**
 
 Run:
 
@@ -1018,11 +1018,11 @@ PY
 
 Expected: both files mode `600`; policy and quarantine parse successfully as schema v2; exact approval evidence, identities, detector bytes, counts, and newline-terminated diagnostic commitment reconcile without requiring acquisition/allocation or printing either private ID list.
 
-- [ ] **Step 5: Record only sanitized activation evidence**
+- [x] **Step 5: Record only sanitized activation evidence**
 
 Record activation UTC, policy/quarantine SHA-256, descriptor SHA-256, implementation SHA-256, parent-final count `30`, diagnostic count `90`, and diagnostic commitment. Do not record either private ID list.
 
-- [ ] **Step 6: Commit gate**
+- [x] **Step 6: Commit gate**
 
 Generated policy/quarantine remain untracked. Only the sanitized results ledger may be staged after the user approves its exact diff.
 
