@@ -1,4 +1,7 @@
-import { get as httpGet } from 'node:http';
+import { createHash } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import { connect as netConnect } from 'node:net';
+import path from 'node:path';
 
 import { getAccountById, readGamePass } from '../accounts/repo.js';
 import { loadConfig } from '../config.js';
@@ -13,22 +16,41 @@ import {
   decodeCanCau,
   saveCanCauBatch,
   type CanCauPayload,
+  type SavedCanCauBatch,
 } from '../game/fishingDecode.js';
-import { maybeShadowMatch } from '../fishing/shadowMatcher.js';
 import type { Message } from '../proto/message.js';
 import { MyReader } from '../proto/reader.js';
 import type { SessionCloseInfo, SessionCloseKind } from '../proto/session.js';
 import { NATIVE_PARK_JOIN_POSITIONS } from '../game/parkService.js';
 
-interface ProbeArgs {
+const SUCCESSOR_CYCLE_ID = 'p2cr2-20260906-01' as const;
+const SUCCESSOR_CAPTURE_MODE = 'active-rx79-crawl-no-answer' as const;
+const SUCCESSOR_TARGET = 90;
+const SUCCESSOR_MAP = 14;
+const SUCCESSOR_AREA = 1;
+const MIN_SUCCESSOR_DELAY_MS = 2_000;
+const AVATAR_WEB_PORT = 8_787;
+
+interface SharedProbeArgs {
   accountId: number;
   map: number;
   area: number;
   outputDir: string;
-  crawl: boolean;
   target: number;
   delayMs: number;
 }
+
+interface SingleProbeArgs extends SharedProbeArgs {
+  crawl: false;
+}
+
+interface CrawlProbeArgs extends SharedProbeArgs {
+  crawl: true;
+  cycleId: typeof SUCCESSOR_CYCLE_ID;
+  inventoryOutput: string;
+}
+
+type ProbeArgs = SingleProbeArgs | CrawlProbeArgs;
 
 type ProbePhase = 'login' | 'park-context' | 'board-list' | 'direct-join' | 'fishing-test' | 'fishing-crawl';
 
@@ -48,6 +70,31 @@ interface ProbeEventMetadata {
   hadError?: boolean;
 }
 
+interface CrawlCounters {
+  savedBatchCount: number;
+  skippedBatchCount: number;
+  errorCount: number;
+  tx41Count: number;
+  tx44Count: number;
+  tx45Count: number;
+  tx43Count: number;
+  fatalEvidenceFailure: boolean;
+}
+
+interface CaptureInventoryRecord {
+  batchId: string;
+  capturedAt: string;
+  manifestSha256: string;
+}
+
+type CrawlReason =
+  | 'target-reached'
+  | 'shutdown'
+  | 'repeated-start-rejection'
+  | 'too-many-errors'
+  | 'fatal-evidence-failure'
+  | 'aborted';
+
 function parseInteger(key: string, raw: string): number {
   if (!/^-?\d+$/.test(raw)) {
     throw new Error(`${key} must be an integer`);
@@ -62,15 +109,15 @@ function parseInteger(key: string, raw: string): number {
 /** Boolean flags that take no value. */
 const BOOLEAN_FLAGS = new Set(['--crawl']);
 /** Keys that take a string value (not parsed as integer). */
-const STRING_KEYS = new Set(['--output-dir']);
+const STRING_KEYS = new Set(['--output-dir', '--cycle-id', '--inventory-output']);
 /** Keys that take an integer value. */
 const INT_KEYS = new Set(['--account-id', '--map', '--area', '--target', '--delay-ms']);
 const ALL_KEYS = new Set([...BOOLEAN_FLAGS, ...STRING_KEYS, ...INT_KEYS]);
 
 function parseArgs(argv: string[]): ProbeArgs {
   const intValues = new Map<string, number>();
+  const stringValues = new Map<string, string>();
   const boolFlags = new Set<string>();
-  let outputDir: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i]!;
@@ -79,6 +126,7 @@ function parseArgs(argv: string[]): ProbeArgs {
     }
 
     if (BOOLEAN_FLAGS.has(key)) {
+      if (boolFlags.has(key)) throw new Error(`CLI key repeated: ${key}`);
       boolFlags.add(key);
       continue;
     }
@@ -91,10 +139,8 @@ function parseArgs(argv: string[]): ProbeArgs {
     i++; // advance past value
 
     if (STRING_KEYS.has(key)) {
-      if (key === '--output-dir') {
-        if (outputDir !== undefined) throw new Error(`CLI key repeated: ${key}`);
-        outputDir = raw;
-      }
+      if (stringValues.has(key)) throw new Error(`CLI key repeated: ${key}`);
+      stringValues.set(key, raw);
       continue;
     }
 
@@ -106,7 +152,9 @@ function parseArgs(argv: string[]): ProbeArgs {
   for (const key of ['--account-id', '--map', '--area'] as const) {
     if (!intValues.has(key)) throw new Error(`Missing required key: ${key}`);
   }
+  const outputDir = stringValues.get('--output-dir');
   if (outputDir === undefined) throw new Error('Missing required key: --output-dir');
+  if (outputDir.length === 0) throw new Error('--output-dir must not be empty');
 
   const accountId = intValues.get('--account-id')!;
   const map = intValues.get('--map')!;
@@ -127,7 +175,50 @@ function parseArgs(argv: string[]): ProbeArgs {
   if (target < 1) throw new Error('--target must be >= 1');
   if (delayMs < 1_000) throw new Error('--delay-ms must be >= 1000');
 
-  return { accountId, map, area, outputDir, crawl, target, delayMs };
+  if (!crawl) {
+    for (const key of ['--target', '--delay-ms', '--cycle-id', '--inventory-output']) {
+      if (intValues.has(key) || stringValues.has(key)) {
+        throw new Error(`${key} is only allowed with --crawl`);
+      }
+    }
+    return { accountId, map, area, outputDir, crawl: false, target, delayMs };
+  }
+
+  const cycleId = stringValues.get('--cycle-id');
+  if (cycleId === undefined) throw new Error('Missing required key: --cycle-id');
+  if (cycleId !== SUCCESSOR_CYCLE_ID) {
+    throw new Error(`--cycle-id must be ${SUCCESSOR_CYCLE_ID}`);
+  }
+  const inventoryOutput = stringValues.get('--inventory-output');
+  if (inventoryOutput === undefined) {
+    throw new Error('Missing required key: --inventory-output');
+  }
+  if (!path.isAbsolute(inventoryOutput)) {
+    throw new Error('--inventory-output must be an absolute path');
+  }
+  if (target !== SUCCESSOR_TARGET) {
+    throw new Error(`--target must be exactly ${SUCCESSOR_TARGET} for ${SUCCESSOR_CYCLE_ID}`);
+  }
+  if (map !== SUCCESSOR_MAP || area !== SUCCESSOR_AREA) {
+    throw new Error(
+      `--map/--area must be exactly ${SUCCESSOR_MAP}/${SUCCESSOR_AREA} for ${SUCCESSOR_CYCLE_ID}`,
+    );
+  }
+  if (delayMs < MIN_SUCCESSOR_DELAY_MS) {
+    throw new Error(`--delay-ms must be >= ${MIN_SUCCESSOR_DELAY_MS} for ${SUCCESSOR_CYCLE_ID}`);
+  }
+
+  return {
+    accountId,
+    map,
+    area,
+    outputDir,
+    crawl: true,
+    target,
+    delayMs,
+    cycleId,
+    inventoryOutput,
+  };
 }
 
 function assertAvatarWebStopped(port: number): Promise<void> {
@@ -137,29 +228,23 @@ function assertAvatarWebStopped(port: number): Promise<void> {
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    const socket = netConnect({ host: '127.0.0.1', port });
     const finish = (error?: Error): void => {
       if (settled) return;
       settled = true;
+      socket.destroy();
       if (error) reject(error);
       else resolve();
     };
 
-    const request = httpGet({
-      host: '127.0.0.1',
-      port,
-      path: '/api/auth/me',
-      timeout: 750,
-    }, (response) => {
-      response.resume();
+    socket.setTimeout(750);
+    socket.once('connect', () => {
       finish(new Error('hãy dừng Avatar Web server trước khi probe'));
-      request.destroy();
     });
-
-    request.once('timeout', () => {
-      finish();
-      request.destroy();
+    socket.once('timeout', () => {
+      finish(new Error(`không thể xác nhận cổng localhost:${port} đã đóng`));
     });
-    request.once('error', (error: NodeJS.ErrnoException) => {
+    socket.once('error', (error: NodeJS.ErrnoException) => {
       if (settled) return;
       if (error.code === 'ECONNREFUSED') {
         finish();
@@ -170,6 +255,38 @@ function assertAvatarWebStopped(port: number): Promise<void> {
       ));
     });
   });
+}
+
+async function assertPathAbsent(filePath: string, label: string): Promise<void> {
+  try {
+    await fs.lstat(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  throw new Error(`${label} đã tồn tại; từ chối ghi đè`);
+}
+
+async function prepareCrawlOutput(args: CrawlProbeArgs): Promise<void> {
+  await assertPathAbsent(args.inventoryOutput, 'capture inventory');
+
+  try {
+    const stat = await fs.lstat(args.outputDir);
+    if (!stat.isDirectory()) {
+      throw new Error('--output-dir đã tồn tại nhưng không phải thư mục');
+    }
+    const entries = await fs.readdir(args.outputDir);
+    if (entries.length > 0) {
+      throw new Error('--output-dir phải vắng mặt hoặc rỗng trước successor crawl');
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    await fs.mkdir(args.outputDir, { recursive: true, mode: 0o700 });
+    const entries = await fs.readdir(args.outputDir);
+    if (entries.length > 0) {
+      throw new Error('--output-dir bị thay đổi trong lúc chuẩn bị successor crawl');
+    }
+  }
 }
 
 async function loginWithTimeout(
@@ -347,7 +464,6 @@ function printRedactedEvidence(
 ): void {
   console.log(JSON.stringify({
     timestamp: new Date().toISOString(),
-    accountId: args.accountId,
     requested: { map: args.map, area: args.area },
     traffic: metadata,
     events,
@@ -355,12 +471,18 @@ function printRedactedEvidence(
   }, null, 2));
 }
 
-function redactedFailure(error: unknown): { section: string; offset: number; message: string } {
+function redactedFailure(
+  error: unknown,
+  accountId?: number,
+): { section: string; offset: number; message: string } {
   if (error instanceof Error) {
+    const message = accountId === undefined
+      ? error.message
+      : error.message.split(String(accountId)).join('[redacted-account]');
     return {
       section: 'runtime',
       offset: -1,
-      message: error.message,
+      message,
     };
   }
   return {
@@ -381,13 +503,28 @@ async function runProbe(
   } catch {
     throw new Error('cấu hình probe không hợp lệ hoặc thiếu');
   }
-  await assertAvatarWebStopped(config.port);
+  if (args.crawl) {
+    if (config.port !== AVATAR_WEB_PORT) {
+      throw new Error(`successor crawl yêu cầu Avatar Web local port ${AVATAR_WEB_PORT}`);
+    }
+    await assertAvatarWebStopped(AVATAR_WEB_PORT);
+    await prepareCrawlOutput(args);
+  } else {
+    await assertAvatarWebStopped(config.port);
+  }
 
   const db = openDb(config.dbPath);
   const client = new GameClient();
   const abort = new AbortController();
+  const crawlCounters = args.crawl ? createCrawlCounters() : undefined;
   let phase: ProbePhase = 'login';
-  const onTraffic = (entry: TrafficEntry): void => captureRelevantTraffic(metadata, phase, entry);
+  const onTraffic = (entry: TrafficEntry): void => {
+    captureRelevantTraffic(metadata, phase, entry);
+    if (crawlCounters && entry.cmd === 43) {
+      crawlCounters.tx43Count += 1;
+      crawlCounters.fatalEvidenceFailure = true;
+    }
+  };
   const onDialog = (): void => {
     events.push({ phase, event: 'dialog' });
   };
@@ -407,7 +544,7 @@ async function runProbe(
   client.session.on('closed', onClosed);
   try {
     const row = getAccountById(db, args.accountId);
-    if (!row) throw new Error(`không có account #${args.accountId}`);
+    if (!row) throw new Error('không có account đã chọn');
 
     await loginWithTimeout(client, {
       host: row.host,
@@ -499,7 +636,7 @@ async function runProbe(
     if (args.crawl) {
       // ─── Crawl mode: loop through fishing protocol to capture many batches ───
       phase = 'fishing-crawl';
-      await runCrawl(client, args, abort.signal);
+      await runCrawl(client, args, abort.signal, crawlCounters!);
     } else {
       // ─── Probe mode (original): capture exactly one batch then exit ───
       phase = 'fishing-test';
@@ -514,7 +651,6 @@ async function runProbe(
         if (msg.command !== 79) return;
         try {
           const payload = decodeCanCau(msg.getData());
-          maybeShadowMatch(payload); // fire-and-forget, read-only, no gameplay effect
           canCauSeen.push(payload.idFish);
           void (async (): Promise<void> => {
             try {
@@ -529,7 +665,7 @@ async function runProbe(
                 timestamp: new Date().toISOString(),
                 phase: 'fishing-test',
                 decode: 'save-batch-error',
-                ...redactedFailure(error),
+                ...redactedFailure(error, args.accountId),
               }, null, 2));
             }
           })();
@@ -538,7 +674,7 @@ async function runProbe(
             timestamp: new Date().toISOString(),
             phase: 'fishing-test',
             decode: 'error',
-            ...redactedFailure(error),
+            ...redactedFailure(error, args.accountId),
           }, null, 2));
         }
       };
@@ -611,6 +747,251 @@ async function runProbe(
 /** Graceful shutdown flag; set by SIGINT/SIGTERM. */
 let shuttingDown = false;
 
+function createCrawlCounters(): CrawlCounters {
+  return {
+    savedBatchCount: 0,
+    skippedBatchCount: 0,
+    errorCount: 0,
+    tx41Count: 0,
+    tx44Count: 0,
+    tx45Count: 0,
+    tx43Count: 0,
+    fatalEvidenceFailure: false,
+  };
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function sendCrawlCommand(
+  client: GameClient,
+  command: 41 | 44 | 45,
+  counters: CrawlCounters,
+): void {
+  switch (command) {
+    case 41:
+      client.sendRaw(command, []);
+      counters.tx41Count += 1;
+      return;
+    case 44:
+      client.sendRaw(command, []);
+      counters.tx44Count += 1;
+      return;
+    case 45:
+      client.sendRaw(command, []);
+      counters.tx45Count += 1;
+      return;
+    default:
+      throw new Error(`crawl fishing command không được phép: ${String(command)}`);
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isCanonicalUtc(value: string): boolean {
+  const instant = new Date(value);
+  return !Number.isNaN(instant.getTime()) && instant.toISOString() === value;
+}
+
+function sha256Bytes(body: Buffer): string {
+  return createHash('sha256').update(body).digest('hex');
+}
+
+async function readManifestRecord(
+  batchId: string,
+  directory: string,
+  manifestPath: string,
+): Promise<CaptureInventoryRecord> {
+  if (batchId === '.' || batchId === '..' || /[/\\\s]/.test(batchId)) {
+    throw new Error(`batchId không an toàn: ${batchId}`);
+  }
+  const directoryStat = await fs.lstat(directory);
+  if (!directoryStat.isDirectory()) {
+    throw new Error(`batch final không phải thư mục: ${batchId}`);
+  }
+  if (path.resolve(manifestPath) !== path.resolve(directory, 'manifest.json')) {
+    throw new Error(`manifest path không thuộc batch final: ${batchId}`);
+  }
+  const manifestStat = await fs.lstat(manifestPath);
+  if (!manifestStat.isFile()) {
+    throw new Error(`manifest không phải regular file: ${batchId}`);
+  }
+
+  const manifestBytes = await fs.readFile(manifestPath);
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(manifestBytes.toString('utf8'));
+  } catch {
+    throw new Error(`manifest JSON không hợp lệ: ${batchId}`);
+  }
+  if (!isRecord(manifest) || manifest.batchId !== batchId) {
+    throw new Error(`manifest batchId không khớp: ${batchId}`);
+  }
+  if (typeof manifest.capturedAt !== 'string' || !isCanonicalUtc(manifest.capturedAt)) {
+    throw new Error(`manifest capturedAt không hợp lệ: ${batchId}`);
+  }
+
+  return {
+    batchId,
+    capturedAt: manifest.capturedAt,
+    manifestSha256: sha256Bytes(manifestBytes),
+  };
+}
+
+async function recordSavedBatch(
+  batch: SavedCanCauBatch,
+  outputDir: string,
+): Promise<CaptureInventoryRecord> {
+  const expectedDirectory = path.join(outputDir, batch.batchId);
+  if (path.resolve(batch.directory) !== path.resolve(expectedDirectory)) {
+    throw new Error(`batch final nằm ngoài output root: ${batch.batchId}`);
+  }
+  return readManifestRecord(batch.batchId, batch.directory, batch.manifestPath);
+}
+
+async function snapshotOutputEntries(outputDir: string): Promise<Set<string>> {
+  return new Set(await fs.readdir(outputDir));
+}
+
+async function cleanupFailedSaveArtifacts(
+  outputDir: string,
+  entriesBeforeSave: ReadonlySet<string>,
+): Promise<void> {
+  const entriesAfterSave = await fs.readdir(outputDir);
+  for (const entry of entriesAfterSave) {
+    if (entriesBeforeSave.has(entry)) continue;
+    if (!/^crawl_\d+_[0-9a-f]{6}(?:\.tmp)?$/.test(entry)) {
+      throw new Error(`save lỗi để lại entry không xác định: ${entry}`);
+    }
+    await fs.rm(path.join(outputDir, entry), { recursive: true, force: true });
+  }
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => sortJsonValue(item));
+  if (!isRecord(value)) return value;
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    sorted[key] = sortJsonValue(value[key]);
+  }
+  return sorted;
+}
+
+function canonicalJson(value: unknown): string {
+  return `${JSON.stringify(sortJsonValue(value))}\n`;
+}
+
+async function syncDirectory(directory: string): Promise<void> {
+  const handle = await fs.open(directory, 'r');
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function assertCaptureOutputMatchesRecords(
+  outputDir: string,
+  records: readonly CaptureInventoryRecord[],
+  target: number,
+): Promise<void> {
+  if (records.length !== target) {
+    throw new Error(`capture record count không khớp target: ${records.length}/${target}`);
+  }
+  const recordIds = new Set(records.map((record) => record.batchId));
+  if (recordIds.size !== target) {
+    throw new Error('capture inventory có batchId trùng');
+  }
+
+  const entries = await fs.readdir(outputDir, { withFileTypes: true });
+  if (entries.length !== target) {
+    throw new Error(`raw root phải có đúng ${target} batch directory`);
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !recordIds.has(entry.name)) {
+      throw new Error(`raw root chứa entry không hợp lệ: ${entry.name}`);
+    }
+  }
+
+  for (const record of records) {
+    if (!/^[0-9a-f]{64}$/.test(record.manifestSha256)) {
+      throw new Error(`manifestSha256 không hợp lệ: ${record.batchId}`);
+    }
+    const directory = path.join(outputDir, record.batchId);
+    const current = await readManifestRecord(
+      record.batchId,
+      directory,
+      path.join(directory, 'manifest.json'),
+    );
+    if (
+      current.capturedAt !== record.capturedAt
+      || current.manifestSha256 !== record.manifestSha256
+    ) {
+      throw new Error(`manifest thay đổi trước khi seal: ${record.batchId}`);
+    }
+  }
+}
+
+async function publishCaptureInventory(
+  inventoryPath: string,
+  document: unknown,
+  counters: CrawlCounters,
+  signal: AbortSignal,
+): Promise<void> {
+  const directory = path.dirname(inventoryPath);
+  const body = canonicalJson(document);
+  const assertPublishable = (): void => {
+    if (
+      shuttingDown
+      || signal.aborted
+      || counters.fatalEvidenceFailure
+      || counters.tx43Count > 0
+    ) {
+      throw new Error('capture inventory không còn đủ điều kiện publication');
+    }
+  };
+
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  let created = false;
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+  try {
+    assertPublishable();
+    handle = await fs.open(inventoryPath, 'wx', 0o600);
+    created = true;
+    assertPublishable();
+    await handle.writeFile(body, 'utf8');
+    assertPublishable();
+    await handle.sync();
+    assertPublishable();
+    await handle.close();
+    handle = undefined;
+    await fs.chmod(inventoryPath, 0o600);
+    assertPublishable();
+    await syncDirectory(directory);
+    assertPublishable();
+  } catch (error) {
+    if (handle) {
+      try {
+        await handle.close();
+      } catch {
+        // Preserve the original publication failure.
+      }
+    }
+    if (created) {
+      try {
+        await fs.unlink(inventoryPath);
+        await syncDirectory(directory);
+      } catch {
+        // Preserve the original publication failure.
+      }
+    }
+    throw error;
+  }
+}
+
 /**
  * Wait for RX45 START_CAU_CA response: { iss: boolean; error?: string }.
  * Returns null on timeout.
@@ -657,14 +1038,14 @@ function waitForRx45(
 
 /**
  * Wait for RX79 CAN_CAU and decode the payload.
- * Returns null on timeout or if imagesNew is missing/empty.
+ * Returns null on timeout. Malformed payloads reject the waiter.
  */
 function waitForRx79(
   client: GameClient,
   signal: AbortSignal,
   timeoutMs: number,
 ): Promise<CanCauPayload | null> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let settled = false;
     let timer: NodeJS.Timeout | undefined;
     const cleanup = (): void => {
@@ -672,26 +1053,35 @@ function waitForRx79(
       signal.removeEventListener('abort', onAbort);
       if (timer) clearTimeout(timer);
     };
-    const finish = (value: CanCauPayload | null): void => {
+    const finishResolve = (value: CanCauPayload | null): void => {
       if (settled) return;
       settled = true;
       cleanup();
       resolve(value);
     };
+    const finishReject = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
     const onMessage = (msg: Message): void => {
       if (msg.command !== 79) return;
       try {
         const payload = decodeCanCau(msg.getData());
-        finish(payload);
-      } catch {
-        finish(null);
+        if (!payload.imagesNew || payload.imagesNew.length === 0) {
+          throw new Error('RX79 thiếu imagesNew');
+        }
+        finishResolve(payload);
+      } catch (error) {
+        finishReject(new Error(`RX79 malformed: ${asError(error).message}`));
       }
     };
-    const onAbort = (): void => finish(null);
+    const onAbort = (): void => finishResolve(null);
 
     client.session.on('message', onMessage);
     signal.addEventListener('abort', onAbort, { once: true });
-    timer = setTimeout(() => finish(null), timeoutMs);
+    timer = setTimeout(() => finishResolve(null), timeoutMs);
     if (signal.aborted) onAbort();
   });
 }
@@ -725,23 +1115,33 @@ function crawlLog(round: number, target: number, msg: string): void {
  */
 async function runCrawl(
   client: GameClient,
-  args: ProbeArgs,
+  args: CrawlProbeArgs,
   signal: AbortSignal,
+  counters: CrawlCounters,
 ): Promise<void> {
-  const { target, delayMs, outputDir, map, area } = args;
+  const {
+    target,
+    delayMs,
+    outputDir,
+    map,
+    area,
+    cycleId,
+    inventoryOutput,
+  } = args;
   const startTime = Date.now();
-
-  let saved = 0;
-  let skipped = 0;
-  let errors = 0;
+  const startedAt = new Date();
+  const records: CaptureInventoryRecord[] = [];
   let consecutiveErrors = 0;
   const MAX_CONSECUTIVE_ERRORS = 50;
   const MAX_START_REJECTS = 10;
   let startRejects = 0;
+  let terminalReason: CrawlReason | undefined;
+  let terminalError: Error | undefined;
 
   console.log(JSON.stringify({
     timestamp: new Date().toISOString(),
     event: 'crawl-start',
+    cycleId,
     target,
     delayMs,
     outputDir,
@@ -750,25 +1150,50 @@ async function runCrawl(
   }, null, 2));
 
   while (
-    saved < target
+    counters.savedBatchCount < target
     && consecutiveErrors < MAX_CONSECUTIVE_ERRORS
+    && !counters.fatalEvidenceFailure
     && !shuttingDown
     && !signal.aborted
   ) {
     const roundStart = Date.now();
 
     // ── Step 1: TX45 (doStartFishing) → wait RX45 ──
-    client.sendRaw(45, []);
-    const startResult = await waitForRx45(client, signal, 8_000);
+    const rx45 = waitForRx45(client, signal, 8_000);
+    try {
+      sendCrawlCommand(client, 45, counters);
+    } catch (error) {
+      counters.errorCount += 1;
+      counters.fatalEvidenceFailure = true;
+      terminalReason = 'fatal-evidence-failure';
+      terminalError = asError(error);
+      break;
+    }
+    const startResult = await rx45;
+
+    if (counters.fatalEvidenceFailure) {
+      if (startResult?.iss) {
+        try {
+          sendCrawlCommand(client, 44, counters);
+        } catch (error) {
+          counters.errorCount += 1;
+          terminalError ??= asError(error);
+        }
+      }
+      terminalReason = 'fatal-evidence-failure';
+      terminalError ??= new Error('đã quan sát command 43 trong capture traffic');
+      break;
+    }
 
     if (!startResult || !startResult.iss) {
       const reason = startResult?.error ?? 'timeout chờ RX45';
-      crawlLog(saved, target, `start rejected: ${reason}`);
-      errors++;
-      consecutiveErrors++;
-      startRejects++;
+      crawlLog(counters.savedBatchCount, target, `start rejected: ${reason}`);
+      counters.errorCount += 1;
+      consecutiveErrors += 1;
+      startRejects += 1;
       if (startRejects >= MAX_START_REJECTS) {
-        console.error(`Đã bị reject start ${startRejects} lần liên tiếp — abort.`);
+        terminalReason = 'repeated-start-rejection';
+        terminalError = new Error(`đã bị reject start ${startRejects} lần liên tiếp`);
         break;
       }
       await delayCancellable(5_000, signal);
@@ -777,78 +1202,212 @@ async function runCrawl(
     startRejects = 0;
 
     // ── Step 2: TX41 (doQuanCau) — quăng cần ──
-    client.sendRaw(41, []);
+    const rx79 = waitForRx79(client, signal, 10_000);
+    try {
+      sendCrawlCommand(client, 41, counters);
+    } catch (error) {
+      counters.errorCount += 1;
+      counters.fatalEvidenceFailure = true;
+      terminalReason = 'fatal-evidence-failure';
+      terminalError = asError(error);
+      break;
+    }
 
     // ── Step 3: Wait for RX79 CAN_CAU ──
-    const payload = await waitForRx79(client, signal, 10_000);
+    let payload: CanCauPayload | null;
+    try {
+      payload = await rx79;
+    } catch (error) {
+      counters.errorCount += 1;
+      counters.fatalEvidenceFailure = true;
+      terminalReason = 'fatal-evidence-failure';
+      terminalError = asError(error);
+      try {
+        sendCrawlCommand(client, 44, counters);
+      } catch (resetError) {
+        counters.errorCount += 1;
+        terminalError = new Error(
+          `${terminalError.message}; TX44 reset failed: ${asError(resetError).message}`,
+        );
+      }
+      break;
+    }
 
-    if (!payload || !payload.imagesNew || payload.imagesNew.length === 0) {
-      crawlLog(saved, target, 'skip: RX79 timeout hoặc thiếu imagesNew');
-      // TX44 để reset server state dù không có batch.
-      client.sendRaw(44, []);
-      skipped++;
-      errors++;
-      consecutiveErrors++;
+    if (counters.fatalEvidenceFailure) {
+      try {
+        sendCrawlCommand(client, 44, counters);
+      } catch (error) {
+        counters.errorCount += 1;
+        terminalError = asError(error);
+      }
+      terminalReason = 'fatal-evidence-failure';
+      terminalError ??= new Error('đã quan sát command 43 trong capture traffic');
+      break;
+    }
+
+    if (!payload) {
+      crawlLog(counters.savedBatchCount, target, 'skip: RX79 timeout');
+      counters.skippedBatchCount += 1;
+      counters.errorCount += 1;
+      consecutiveErrors += 1;
+      try {
+        sendCrawlCommand(client, 44, counters);
+      } catch (error) {
+        counters.errorCount += 1;
+        counters.fatalEvidenceFailure = true;
+        terminalReason = 'fatal-evidence-failure';
+        terminalError = asError(error);
+        break;
+      }
       await delayCancellable(delayMs, signal);
       continue;
     }
 
-    maybeShadowMatch(payload); // fire-and-forget, read-only, no gameplay effect
-
     // ── Step 4: Save batch (immutable, atomic) ──
+    const entriesBeforeSave = await snapshotOutputEntries(outputDir);
+    let batch: SavedCanCauBatch;
     try {
-      const batch = await saveCanCauBatch(payload, {
+      batch = await saveCanCauBatch(payload, {
         outputDir,
         tag: 'crawl',
         map,
         area,
       });
-      saved++;
+    } catch (error) {
+      counters.errorCount += 1;
+      counters.fatalEvidenceFailure = true;
+      terminalReason = 'fatal-evidence-failure';
+      terminalError = asError(error);
+      try {
+        await cleanupFailedSaveArtifacts(outputDir, entriesBeforeSave);
+      } catch (cleanupError) {
+        terminalError = new Error(
+          `${terminalError.message}; partial-save cleanup failed: ${asError(cleanupError).message}`,
+        );
+      }
+      try {
+        sendCrawlCommand(client, 44, counters);
+      } catch (resetError) {
+        counters.errorCount += 1;
+        terminalError = new Error(
+          `${terminalError.message}; TX44 reset failed: ${asError(resetError).message}`,
+        );
+      }
+      break;
+    }
+
+    try {
+      const record = await recordSavedBatch(batch, outputDir);
+      records.push(record);
+      counters.savedBatchCount += 1;
       consecutiveErrors = 0;
       const elapsed = ((Date.now() - roundStart) / 1000).toFixed(1);
       crawlLog(
-        saved, target,
+        counters.savedBatchCount,
+        target,
         `${batch.batchId} img=${batch.imageCount} new=${batch.imageNewCount} (${elapsed}s)`,
       );
     } catch (error) {
-      errors++;
-      consecutiveErrors++;
-      crawlLog(
-        saved, target,
-        `save error: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      counters.errorCount += 1;
+      counters.fatalEvidenceFailure = true;
+      terminalReason = 'fatal-evidence-failure';
+      terminalError = asError(error);
     }
 
     // ── Step 5: TX44 (doCauCaXong) — đóng màn câu cá ──
     // Bắt buộc gửi để server reset state cho vòng sau.
-    client.sendRaw(44, []);
+    try {
+      sendCrawlCommand(client, 44, counters);
+    } catch (error) {
+      counters.errorCount += 1;
+      counters.fatalEvidenceFailure = true;
+      terminalReason = 'fatal-evidence-failure';
+      terminalError ??= asError(error);
+    }
+
+    if (counters.fatalEvidenceFailure) break;
 
     // ── Step 6: Delay before next round ──
     await delayCancellable(delayMs, signal);
   }
 
-  // ── Summary ──
+  let reason: CrawlReason = terminalReason
+    ?? (shuttingDown
+      ? 'shutdown'
+      : counters.fatalEvidenceFailure
+        ? 'fatal-evidence-failure'
+        : counters.savedBatchCount >= target
+          ? 'target-reached'
+          : consecutiveErrors >= MAX_CONSECUTIVE_ERRORS
+            ? 'too-many-errors'
+            : 'aborted');
+  const sortedRecords = [...records].sort((left, right) => (
+    left.capturedAt.localeCompare(right.capturedAt)
+    || left.batchId.localeCompare(right.batchId)
+  ));
+
+  if (reason === 'target-reached') {
+    try {
+      if (counters.tx43Count !== 0 || counters.fatalEvidenceFailure) {
+        throw new Error('capture traffic không đủ điều kiện seal');
+      }
+      await assertCaptureOutputMatchesRecords(outputDir, sortedRecords, target);
+    } catch (error) {
+      counters.errorCount += 1;
+      counters.fatalEvidenceFailure = true;
+      reason = 'fatal-evidence-failure';
+      terminalError = asError(error);
+    }
+  }
+
+  const stoppedAt = new Date();
+  if (reason === 'target-reached') {
+    const inventoryDocument = {
+      schemaVersion: 2,
+      cycleId,
+      captureMode: SUCCESSOR_CAPTURE_MODE,
+      startedAt: startedAt.toISOString(),
+      stoppedAt: stoppedAt.toISOString(),
+      requested: { map, area, target, delayMs },
+      summary: {
+        reason,
+        savedBatchCount: counters.savedBatchCount,
+        skippedBatchCount: counters.skippedBatchCount,
+        errorCount: counters.errorCount,
+        tx43Count: counters.tx43Count,
+      },
+      records: sortedRecords,
+    };
+    try {
+      await publishCaptureInventory(inventoryOutput, inventoryDocument, counters, signal);
+    } catch (error) {
+      counters.errorCount += 1;
+      counters.fatalEvidenceFailure = true;
+      reason = 'fatal-evidence-failure';
+      terminalError = asError(error);
+    }
+  }
+
   const totalElapsedMs = Date.now() - startTime;
   const summary = {
     timestamp: new Date().toISOString(),
     event: 'crawl-done',
-    reason: shuttingDown
-      ? 'shutdown'
-      : saved >= target
-        ? 'target-reached'
-        : consecutiveErrors >= MAX_CONSECUTIVE_ERRORS
-          ? 'too-many-errors'
-          : 'aborted',
-    totalSaved: saved,
-    totalSkipped: skipped,
-    totalErrors: errors,
+    reason,
+    ...counters,
     totalElapsedMs,
-    avgBatchMs: saved > 0 ? Math.round(totalElapsedMs / saved) : 0,
+    avgBatchMs: counters.savedBatchCount > 0
+      ? Math.round(totalElapsedMs / counters.savedBatchCount)
+      : 0,
     map,
     area,
     outputDir,
+    inventoryOutput: reason === 'target-reached' ? inventoryOutput : null,
   };
   console.log(JSON.stringify(summary, null, 2));
+
+  if (reason !== 'target-reached') {
+    throw terminalError ?? new Error(`crawl kết thúc mà không seal inventory: ${reason}`);
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -868,13 +1427,12 @@ try {
   console.error(JSON.stringify({
     timestamp: new Date().toISOString(),
     ...(args ? {
-      accountId: args.accountId,
       requested: { map: args.map, area: args.area },
     } : {}),
     traffic: metadata,
     events,
     decode: 'error',
-    ...redactedFailure(error),
+    ...redactedFailure(error, args?.accountId),
   }, null, 2));
   process.exitCode = 1;
 }
