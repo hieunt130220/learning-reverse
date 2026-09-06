@@ -353,6 +353,41 @@ class AllocationManifest:
 
 
 @dataclass(frozen=True, slots=True)
+class CycleDataRoots:
+    parent_raw_root: Path
+    parent_labels_root: Path
+    acquired_raw_root: Path
+    acquired_labels_root: Path
+
+    def roots_for(self, batch_id: str) -> tuple[Path, Path]:
+        safe_batch_id = _safe_id(batch_id, "batchId")
+        matches: list[tuple[Path, Path]] = []
+        for raw_root, labels_root, source_name in (
+            (self.parent_raw_root, self.parent_labels_root, "parent"),
+            (self.acquired_raw_root, self.acquired_labels_root, "acquired"),
+        ):
+            batch_root = raw_root / safe_batch_id
+            if os.path.lexists(batch_root):
+                if batch_root.is_symlink() or not batch_root.is_dir():
+                    raise StageInvalidError(
+                        f"{source_name} batch root must be a real directory: {safe_batch_id}"
+                    )
+            manifest_path = batch_root / "manifest.json"
+            if not os.path.lexists(manifest_path):
+                continue
+            if manifest_path.is_symlink() or not manifest_path.is_file():
+                raise StageInvalidError(
+                    f"{source_name} manifest must be a real file: {safe_batch_id}"
+                )
+            matches.append((raw_root, labels_root))
+        if not matches:
+            raise StageInvalidError(f"batch source is missing: {safe_batch_id}")
+        if len(matches) != 1:
+            raise StageInvalidError(f"batch source collides across roots: {safe_batch_id}")
+        return matches[0]
+
+
+@dataclass(frozen=True, slots=True)
 class WorkingMembership:
     dataset_id: str
     train_ids: tuple[str, ...]
@@ -460,6 +495,35 @@ def _safe_id(value: object, name: str) -> str:
     if result in {".", ".."} or not _SAFE_ID.fullmatch(result):
         raise StageInvalidError(f"{name} is not a safe id")
     return result
+
+
+def _real_directory(path: Path, name: str) -> Path:
+    candidate = Path(path)
+    if not candidate.is_dir() or candidate.is_symlink():
+        raise StageInvalidError(f"{name} must be an existing real directory")
+    return candidate.resolve(strict=True)
+
+
+def resolve_cycle_data_roots(cycle_root: Path) -> CycleDataRoots:
+    root = _real_directory(Path(cycle_root), "cycle root")
+    if (
+        root.name != DATASET_ID
+        or root.parent.name != "cycles"
+        or root.parent.parent.name != "phase2"
+        or root.parent.parent.parent.name != "data"
+    ):
+        raise StageInvalidError("cycle root does not use the approved data/phase2 layout")
+    phase2_root = root.parent.parent
+    return CycleDataRoots(
+        parent_raw_root=_real_directory(phase2_root / "raw", "parent raw root"),
+        parent_labels_root=_real_directory(
+            phase2_root / "labels", "parent labels root"
+        ),
+        acquired_raw_root=_real_directory(root / "raw", "acquired raw root"),
+        acquired_labels_root=_real_directory(
+            root / "labels", "acquired labels root"
+        ),
+    )
 
 
 def _sha256(value: object, name: str) -> str:
@@ -2608,9 +2672,11 @@ __all__ = [
     "AcquisitionBatch",
     "AcquisitionManifest",
     "AllocationManifest",
+    "CycleDataRoots",
     "WorkingMembership",
     "PrefinalIntegrity",
     "commit_ids",
+    "resolve_cycle_data_roots",
     "detector_identity",
     "parse_acquisition_policy",
     "publish_acquisition_policy",

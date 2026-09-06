@@ -85,8 +85,13 @@ const QUARANTINE_KEYS = new Set([
   'parentDatasetId',
   'parentDatasetVersionSha256',
   'parentFinalSplitSha256',
-  'reason',
-  'batchIds',
+  'parentFinalBatchIds',
+  'diagnosticCycleId',
+  'diagnosticInventorySha256',
+  'diagnosticBatchCount',
+  'diagnosticBatchCommitment',
+  'diagnosticBatchIds',
+  'reasons',
 ]);
 const ARGUMENT_KEYS = new Set([
   '--replay-gate',
@@ -192,7 +197,7 @@ function validateReplayGate(document: unknown): void {
     || document.status !== 'pass'
     || cycle.cycleId !== LOCAL_SHADOW_CYCLE_ID
     || cycle.experimentId !== LOCAL_SHADOW_CYCLE_ID
-    || cycle.datasetId !== 'phase2-coverage-recovery-20260905-01'
+    || cycle.datasetId !== 'phase2-coverage-recovery-v2-20260906-01'
     || !HEX64.test(String(document.policySha256))
     || !HEX64.test(String(document.evidenceSha256))
     || !Array.isArray(document.checks)
@@ -217,22 +222,54 @@ function validateQuarantine(document: unknown): Set<string> {
     throw new Error('quarantine fields mismatch');
   }
   if (
-    document.schemaVersion !== 1
+    document.schemaVersion !== 2
     || document.cycleId !== LOCAL_SHADOW_CYCLE_ID
     || document.parentDatasetId !== 'phase2-20260904-01'
-    || document.reason !== 'previous-final-exposed'
     || !HEX64.test(String(document.parentDatasetVersionSha256))
     || !HEX64.test(String(document.parentFinalSplitSha256))
-    || !Array.isArray(document.batchIds)
-    || document.batchIds.length !== 30
+    || document.diagnosticCycleId !== 'p2cr-20260905-01'
+    || !HEX64.test(String(document.diagnosticInventorySha256))
+    || document.diagnosticBatchCount !== 90
+    || !HEX64.test(String(document.diagnosticBatchCommitment))
+    || !Array.isArray(document.parentFinalBatchIds)
+    || document.parentFinalBatchIds.length !== 30
+    || !Array.isArray(document.diagnosticBatchIds)
+    || document.diagnosticBatchIds.length !== 90
+    || !Array.isArray(document.reasons)
+    || document.reasons.length !== 2
+    || document.reasons[0] !== 'post-policy-diagnostic'
+    || document.reasons[1] !== 'previous-final-exposed'
   ) {
     throw new Error('quarantine does not match the cycle contract');
   }
-  const batchIds = document.batchIds.map((value, index) => safeId(value, `batchIds[${index}]`));
-  if (new Set(batchIds).size !== batchIds.length || [...batchIds].sort().some((value, index) => value !== batchIds[index])) {
+  const parentFinalBatchIds = document.parentFinalBatchIds.map(
+    (value, index) => safeId(value, `parentFinalBatchIds[${index}]`),
+  );
+  const diagnosticBatchIds = document.diagnosticBatchIds.map(
+    (value, index) => safeId(value, `diagnosticBatchIds[${index}]`),
+  );
+  if (
+    new Set(parentFinalBatchIds).size !== parentFinalBatchIds.length
+    || [...parentFinalBatchIds].sort().some(
+      (value, index) => value !== parentFinalBatchIds[index],
+    )
+    || new Set(diagnosticBatchIds).size !== diagnosticBatchIds.length
+    || [...diagnosticBatchIds].sort().some(
+      (value, index) => value !== diagnosticBatchIds[index],
+    )
+  ) {
     throw new Error('quarantine batch IDs must be sorted and unique');
   }
-  return new Set(batchIds);
+  if (parentFinalBatchIds.some((batchId) => diagnosticBatchIds.includes(batchId))) {
+    throw new Error('quarantine batch ID sets must not overlap');
+  }
+  const diagnosticCommitment = sha256(
+    Buffer.from(`${diagnosticBatchIds.join('\n')}\n`, 'utf8'),
+  );
+  if (diagnosticCommitment !== document.diagnosticBatchCommitment) {
+    throw new Error('diagnostic quarantine commitment mismatch');
+  }
+  return new Set([...parentFinalBatchIds, ...diagnosticBatchIds]);
 }
 
 function parseImageEntries(value: unknown, directory: 'img' | 'new'): readonly ImageEntry[] {

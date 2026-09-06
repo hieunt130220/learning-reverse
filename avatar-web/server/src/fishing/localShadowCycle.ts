@@ -5,7 +5,7 @@ import {
   type ShadowMatchResult,
 } from './inferenceClient.js';
 
-export const LOCAL_SHADOW_CYCLE_ID = 'p2cr-20260905-01';
+export const LOCAL_SHADOW_CYCLE_ID = 'p2cr2-20260906-01';
 
 export const LOCAL_SHADOW_CASES = [
   'success',

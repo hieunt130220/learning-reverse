@@ -32,7 +32,7 @@ from .dataset import (
 from .dataset_version import DatasetVersionV2, load_dataset_version
 from .metrics import Prediction, summarize_predictions
 from .model import FishingEncoder, cosine_similarity_matrix, episode_logits, episode_loss
-from .phase2_cycle import WorkingMembership, commit_ids
+from .phase2_cycle import CycleDataRoots, WorkingMembership, commit_ids
 from .schema import atomic_write_json, sha256_file
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -319,6 +319,7 @@ def run_training(
     *,
     working_membership: WorkingMembership | None = None,
     experiment_manifest_sha256: str | None = None,
+    cycle_data_roots: CycleDataRoots | None = None,
 ) -> Path:
     """Train on train, select on dev, and atomically publish the run contract."""
     if not run_id or run_id in {".", ".."} or Path(run_id).name != run_id:
@@ -350,6 +351,7 @@ def run_training(
             Path(raw_root), Path(labels_root), Path(splits_root),
             duplicate_reviews=Path(duplicate_reviews),
             membership=working_membership,
+            cycle_data_roots=cycle_data_roots,
         )
         # Load both permitted partitions before optimization so boundary errors fail early.
         first_train_episodes = load_training_episodes(
@@ -359,11 +361,13 @@ def run_training(
             epoch=1,
             global_seed=config.seed,
             membership=working_membership,
+            cycle_data_roots=cycle_data_roots,
         )
         dev_episodes = load_dev_episodes(
             raw_root, labels_root, splits_root, stats,
             duplicate_reviews=duplicate_reviews,
             membership=working_membership,
+            cycle_data_roots=cycle_data_roots,
         )
         device = _device(config.device)
         model = FishingEncoder(config.embedding_dim, config.channels).to(device)
@@ -381,6 +385,7 @@ def run_training(
                 epoch=epoch,
                 global_seed=config.seed,
                 membership=working_membership,
+                cycle_data_roots=cycle_data_roots,
             )
             train_loss = train_epoch(
                 model, train_episodes, optimizer,

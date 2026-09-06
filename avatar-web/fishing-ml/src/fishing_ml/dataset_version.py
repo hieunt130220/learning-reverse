@@ -32,7 +32,7 @@ from .schema import (
 # Historical Phase 2 reuses the Phase A canonical schema version.
 SCHEMA_VERSION = 1
 SCHEMA_VERSION_V2 = 2
-COVERAGE_RECOVERY_DATASET_ID = "phase2-coverage-recovery-20260905-01"
+COVERAGE_RECOVERY_DATASET_ID = "phase2-coverage-recovery-v2-20260906-01"
 COVERAGE_RECOVERY_PARENT_DATASET_ID = "phase2-20260904-01"
 
 # Phase 2 dataset-version.json lives under this relative data root and must

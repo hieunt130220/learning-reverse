@@ -10,7 +10,7 @@ from PIL import Image, ImageEnhance
 
 from .schema import load_label, load_manifest
 from .split import validate_splits
-from .phase2_cycle import WorkingMembership
+from .phase2_cycle import CycleDataRoots, WorkingMembership
 from .phase2_training import stable_seed_context
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +51,16 @@ def _validate_normalization_stats(stats: NormalizationStats) -> tuple[torch.Tens
         raise ValueError("normalization statistics contain non-finite or out-of-range values")
     return torch.tensor(mean_array, dtype=torch.float32).view(3, 1, 1), torch.tensor(std_array, dtype=torch.float32).view(3, 1, 1)
 
-def _entries(raw_root: Path, labels_root: Path, batch_id: str, stats: NormalizationStats | None):
+def _entries(
+    raw_root: Path,
+    labels_root: Path,
+    batch_id: str,
+    stats: NormalizationStats | None,
+    *,
+    cycle_data_roots: CycleDataRoots | None = None,
+):
+    if cycle_data_roots is not None:
+        raw_root, labels_root = cycle_data_roots.roots_for(batch_id)
     d = raw_root / batch_id; m = load_manifest(d / "manifest.json"); l = load_label(labels_root / f"{batch_id}.json")
     normalized = _validate_normalization_stats(stats) if stats is not None else None
     if l.status != "complete": raise ValueError(f"{batch_id}: label is not complete")
@@ -98,6 +107,7 @@ def compute_train_normalization(
     *,
     duplicate_reviews: Path | None = None,
     membership: WorkingMembership | None = None,
+    cycle_data_roots: CycleDataRoots | None = None,
 ) -> NormalizationStats:
     if membership is None:
         _validate_split_inputs(raw_root, labels_root, splits_root, duplicate_reviews)
@@ -106,7 +116,13 @@ def compute_train_normalization(
         ids = _membership_ids(membership, "train")
     values=[]
     for b in ids:
-        r,q,_ = _entries(raw_root, labels_root, b, None); values += [r,q]
+        r,q,_ = _entries(
+            raw_root,
+            labels_root,
+            b,
+            None,
+            cycle_data_roots=cycle_data_roots,
+        ); values += [r,q]
     x=torch.cat(values); mean=x.mean((0,2,3)); std=x.std((0,2,3), unbiased=False)
     if not torch.isfinite(mean).all() or not torch.isfinite(std).all() or (std<=0).any(): raise ValueError("invalid normalization statistics")
     return NormalizationStats(tuple(mean.tolist()), tuple(std.tolist()))
@@ -135,6 +151,7 @@ def _load(
     *, duplicate_reviews=None, train=False, seed=20260827, limit=None,
     augmentation_profile="legacy_combined", epoch=0, global_seed=None,
     membership: WorkingMembership | None = None,
+    cycle_data_roots: CycleDataRoots | None = None,
 ):
     if split == "final": raise ValueError("final split is locked; use fishing_ml.evaluate final loader")
     if membership is None:
@@ -148,7 +165,13 @@ def _load(
         if train and augmentation_profile == "legacy_combined":
             # v1 legacy: EXACT existing behavior — shuffle, then the shared rng
             # drives _augment on already-normalized tensors (clamp [-5, 5]).
-            r, q, t = _entries(raw_root, labels_root, bid, stats)
+            r, q, t = _entries(
+                raw_root,
+                labels_root,
+                bid,
+                stats,
+                cycle_data_roots=cycle_data_roots,
+            )
             order = list(range(len(r))); rng.shuffle(order)
             remap = {old: new for new, old in enumerate(order)}
             r = r[order]; t = torch.tensor([remap[int(v)] for v in t])
@@ -163,7 +186,13 @@ def _load(
             # does not depend on where the shuffle happens to place the image
             # (spec §3.3: results must not depend on traversal order, worker
             # scheduling, or RNG calls for other images).
-            r, q, t = _entries(raw_root, labels_root, bid, None)
+            r, q, t = _entries(
+                raw_root,
+                labels_root,
+                bid,
+                None,
+                cycle_data_roots=cycle_data_roots,
+            )
             base_seed = global_seed if global_seed is not None else seed
             r = torch.stack([
                 _augment_v2(v, augmentation_profile,
@@ -184,7 +213,13 @@ def _load(
             q = (q - mean) / std
         else:
             # Dev/final: NEVER augmented, regardless of profile (spec §3.3).
-            r, q, t = _entries(raw_root, labels_root, bid, stats)
+            r, q, t = _entries(
+                raw_root,
+                labels_root,
+                bid,
+                stats,
+                cycle_data_roots=cycle_data_roots,
+            )
         out.append(FishingEpisode(bid, r, q, t))
     return out
 
@@ -193,18 +228,21 @@ def load_training_episodes(
     duplicate_reviews=None, seed=20260827, limit=None,
     augmentation_profile="legacy_combined", epoch=0, global_seed=None,
     membership: WorkingMembership | None = None,
+    cycle_data_roots: CycleDataRoots | None = None,
 ): return _load(Path(raw_root), Path(labels_root), Path(splits_root), "train", stats,
                  duplicate_reviews=duplicate_reviews, train=True, seed=seed, limit=limit,
                  augmentation_profile=augmentation_profile, epoch=epoch, global_seed=global_seed,
-                 membership=membership)
+                 membership=membership, cycle_data_roots=cycle_data_roots)
 
 def load_dev_episodes(
     raw_root, labels_root, splits_root, stats, *,
     duplicate_reviews=None, limit=None, membership: WorkingMembership | None = None,
+    cycle_data_roots: CycleDataRoots | None = None,
 ):
     # Dev loader remains unaugmented; cycle callers may supply explicit membership.
     return _load(Path(raw_root), Path(labels_root), Path(splits_root), "dev", stats,
-                 duplicate_reviews=duplicate_reviews, limit=limit, membership=membership)
+                 duplicate_reviews=duplicate_reviews, limit=limit, membership=membership,
+                 cycle_data_roots=cycle_data_roots)
 def _load_final_episodes(
     raw_root,
     labels_root,

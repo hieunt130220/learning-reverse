@@ -36,8 +36,10 @@ from .phase2_cycle import (
     CYCLE_ID,
     DATASET_ID,
     EXPERIMENT_ID,
+    CycleDataRoots,
     StageBlockedError,
     load_final_membership_after_lock,
+    resolve_cycle_data_roots,
     verify_prefinal_integrity,
 )
 from .phase2_gate import (
@@ -77,8 +79,7 @@ class _CycleFinalContext:
     policy: GatePolicy
     command: Mapping[str, object]
     policy_path: Path
-    raw_root: Path
-    labels_root: Path
+    cycle_data_roots: CycleDataRoots
     lock_path: Path
     final_report_path: Path
     gate_report_path: Path
@@ -371,20 +372,6 @@ def _tracked_status_bytes() -> bytes:
     return completed.stdout
 
 
-def _cycle_data_roots(cycle_root: Path) -> tuple[Path, Path]:
-    root = Path(cycle_root).resolve()
-    if root.name != DATASET_ID or root.parent.name != "cycles" or root.parent.parent.name != "phase2":
-        raise ValueError("cycle root does not use the approved Phase 2 layout")
-    phase2_root = root.parent.parent
-    raw_root = phase2_root / "raw"
-    labels_root = phase2_root / "labels"
-    if not raw_root.is_dir() or raw_root.is_symlink():
-        raise ValueError("cycle raw root must be a real directory")
-    if not labels_root.is_dir() or labels_root.is_symlink():
-        raise ValueError("cycle labels root must be a real directory")
-    return raw_root, labels_root
-
-
 def _verify_cycle_final_prelock(
     frozen_dir: Path,
     cycle_root: Path,
@@ -491,14 +478,13 @@ def _verify_cycle_final_prelock(
         raise ValueError("cycle final command evidence no longer matches current state")
     if expected_evidence["datasetVersionSha256"] != freeze.dataset_version_sha256:
         raise ValueError("cycle final dataset-version digest does not match freeze")
-    raw_root, labels_root = _cycle_data_roots(cycle_data_root)
+    cycle_data_roots = resolve_cycle_data_roots(cycle_data_root)
     return _CycleFinalContext(
         freeze=freeze,
         policy=policy,
         command=command,
         policy_path=policy_path,
-        raw_root=raw_root,
-        labels_root=labels_root,
+        cycle_data_roots=cycle_data_roots,
         lock_path=lock_path,
         final_report_path=final_report_path,
         gate_report_path=gate_report_path,
@@ -506,8 +492,7 @@ def _verify_cycle_final_prelock(
 
 
 def _load_cycle_final_episodes(
-    raw_root: Path,
-    labels_root: Path,
+    cycle_data_roots: CycleDataRoots,
     final_ids: tuple[str, ...],
     stats: NormalizationStats,
 ) -> tuple[FishingEpisode, ...]:
@@ -515,6 +500,9 @@ def _load_cycle_final_episodes(
         raise ValueError("cycle final membership must contain exactly 30 sorted unique ids")
     episodes: list[FishingEpisode] = []
     for batch_id in final_ids:
+        raw_root, labels_root = cycle_data_roots.roots_for(batch_id)
+        if raw_root != cycle_data_roots.acquired_raw_root:
+            raise ValueError(f"cycle final batch must resolve to acquired data: {batch_id}")
         batch_dir = Path(raw_root) / batch_id
         manifest = load_manifest(batch_dir / "manifest.json")
         label = load_label(Path(labels_root) / f"{batch_id}.json")
@@ -534,7 +522,13 @@ def _load_cycle_final_episodes(
         episodes.append(
             FishingEpisode(
                 batch_id,
-                *_entries(Path(raw_root), Path(labels_root), batch_id, stats),
+                *_entries(
+                    Path(raw_root),
+                    Path(labels_root),
+                    batch_id,
+                    stats,
+                    cycle_data_roots=cycle_data_roots,
+                ),
             )
         )
     return tuple(episodes)
@@ -562,8 +556,7 @@ def evaluate_cycle_final_once(
     _create_final_lock(context.lock_path, context.freeze.run_id)
     final_ids = load_final_membership_after_lock(cycle_root, context.lock_path)
     episodes = _load_cycle_final_episodes(
-        context.raw_root,
-        context.labels_root,
+        context.cycle_data_roots,
         final_ids,
         stats,
     )

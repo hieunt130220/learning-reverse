@@ -39,10 +39,12 @@ from .phase2_cycle import (
     CYCLE_ID,
     DATASET_ID,
     EXPERIMENT_ID,
+    CycleDataRoots,
     StageBlockedError,
     WorkingMembership,
     commit_ids,
     load_working_membership,
+    resolve_cycle_data_roots,
 )
 from .phase2_training import PROFILE_PARAMETERS
 from .phase2_gate import GateBlockedError, load_gate_policy
@@ -834,6 +836,28 @@ def adjudicate_interrupted(
     return document
 
 
+def _validated_cycle_data_roots(
+    cycle_root: Path,
+    raw_root: Path | None = None,
+    labels_root: Path | None = None,
+) -> CycleDataRoots:
+    roots = resolve_cycle_data_roots(cycle_root)
+    for requested, expected, name in (
+        (raw_root, roots.parent_raw_root, "raw root"),
+        (labels_root, roots.parent_labels_root, "labels root"),
+    ):
+        if requested is None:
+            continue
+        candidate = Path(requested)
+        if (
+            not candidate.is_dir()
+            or candidate.is_symlink()
+            or candidate.resolve(strict=True) != expected
+        ):
+            raise ValueError(f"cycle {name} must equal the resolved parent {name}")
+    return roots
+
+
 def run_model(
     cycle_root: Path,
     artifacts_root: Path,
@@ -843,6 +867,9 @@ def run_model(
     run_id: str,
 ) -> dict[str, object]:
     _require_clean_tracked_worktree()
+    cycle_data_roots = _validated_cycle_data_roots(
+        cycle_root, raw_root, labels_root
+    )
     manifest, manifest_sha256, membership = _load_experiment(cycle_root, artifacts_root)
     model = _model_for_run(run_id)
     adjudication = _load_adjudication(artifacts_root, model.run_id, manifest_sha256)
@@ -893,6 +920,7 @@ def run_model(
             run_id=model.run_id,
             working_membership=membership,
             experiment_manifest_sha256=manifest_sha256,
+            cycle_data_roots=cycle_data_roots,
         )
     finally:
         temporary_path.unlink(missing_ok=True)
@@ -919,12 +947,12 @@ def run_model(
 
 
 def _dev_batch_shapes(
-    raw_root: Path,
-    labels_root: Path,
+    cycle_data_roots: CycleDataRoots,
     membership: WorkingMembership,
 ) -> dict[str, tuple[int, int]]:
     shapes: dict[str, tuple[int, int]] = {}
     for batch_id in membership.dev_ids:
+        raw_root, labels_root = cycle_data_roots.roots_for(batch_id)
         manifest = load_manifest(Path(raw_root) / batch_id / "manifest.json")
         label = load_label(Path(labels_root) / f"{batch_id}.json")
         if manifest.batch_id != batch_id or label.batch_id != batch_id:
@@ -1062,6 +1090,7 @@ def _validate_candidate(
     experiment_manifest: Mapping[str, object],
     experiment_manifest_sha256: str,
     membership: WorkingMembership,
+    batch_shapes: Mapping[str, tuple[int, int]],
 ) -> CandidateEvidence:
     path = candidate_record_path(artifacts_root, candidate.candidate_id)
     document = _read_mapping(path, "candidate record")
@@ -1093,7 +1122,7 @@ def _validate_candidate(
         experiment_manifest_sha256,
         membership,
         thresholds,
-        batch_shapes=None,
+        batch_shapes=batch_shapes,
     )
     if document != expected:
         raise ValueError("candidate record does not match immutable run evidence")
@@ -1122,6 +1151,9 @@ def calibrate_model(
     labels_root: Path,
     run_id: str,
 ) -> dict[str, object]:
+    cycle_data_roots = _validated_cycle_data_roots(
+        cycle_root, raw_root, labels_root
+    )
     manifest, manifest_sha256, membership = _load_experiment(cycle_root, artifacts_root)
     model = _model_for_run(run_id)
     run = _validate_run(
@@ -1132,7 +1164,7 @@ def calibrate_model(
         manifest_sha256,
         membership,
     )
-    batch_shapes = _dev_batch_shapes(raw_root, labels_root, membership)
+    batch_shapes = _dev_batch_shapes(cycle_data_roots, membership)
     shaped_raw_metrics = summarize_predictions(run.predictions, batch_shapes=batch_shapes)
     shaped_document = shaped_raw_metrics.to_json()
     unshaped_document = run.raw_metrics.to_json()
@@ -1168,6 +1200,7 @@ def calibrate_model(
             manifest,
             manifest_sha256,
             membership,
+            batch_shapes,
         )
         published.append(
             {
@@ -1200,6 +1233,7 @@ def _matrix_state(
     experiment_manifest: Mapping[str, object],
     experiment_manifest_sha256: str,
     membership: WorkingMembership,
+    cycle_data_roots: CycleDataRoots,
 ) -> tuple[
     dict[str, RunEvidence],
     tuple[CandidateEvidence, ...],
@@ -1210,6 +1244,7 @@ def _matrix_state(
     candidates: list[CandidateEvidence] = []
     rejected_runs: list[str] = []
     unresolved: list[str] = []
+    batch_shapes = _dev_batch_shapes(cycle_data_roots, membership)
     for model in enumerate_model_specs():
         run_dir = Path(artifacts_root) / "runs" / model.run_id
         run: RunEvidence | None = None
@@ -1264,6 +1299,7 @@ def _matrix_state(
                         experiment_manifest,
                         experiment_manifest_sha256,
                         membership,
+                        batch_shapes,
                     )
                 )
             except (OSError, ValueError) as error:
@@ -1289,8 +1325,7 @@ def _normalization_stats(run_dir: Path):
 
 def _benchmark_run(
     run: RunEvidence,
-    raw_root: Path,
-    labels_root: Path,
+    cycle_data_roots: CycleDataRoots,
     cycle_root: Path,
     membership: WorkingMembership,
 ) -> dict[str, object]:
@@ -1301,11 +1336,12 @@ def _benchmark_run(
 
     stats = _normalization_stats(run.run_dir)
     episodes = load_dev_episodes(
-        raw_root,
-        labels_root,
+        cycle_data_roots.parent_raw_root,
+        cycle_data_roots.parent_labels_root,
         Path(cycle_root) / "splits",
         stats,
         membership=membership,
+        cycle_data_roots=cycle_data_roots,
     )
     if len(episodes) != 45:
         raise ValueError("latency benchmark requires exactly 45 dev episodes")
@@ -1435,6 +1471,9 @@ def compare_candidates(
     raw_root: Path,
     labels_root: Path,
 ) -> dict[str, object]:
+    cycle_data_roots = _validated_cycle_data_roots(
+        cycle_root, raw_root, labels_root
+    )
     manifest, manifest_sha256, membership = _load_experiment(cycle_root, artifacts_root)
     runs, candidates, rejected_runs, unresolved = _matrix_state(
         cycle_root,
@@ -1442,6 +1481,7 @@ def compare_candidates(
         manifest,
         manifest_sha256,
         membership,
+        cycle_data_roots,
     )
     if unresolved:
         raise StageBlockedError(
@@ -1477,8 +1517,7 @@ def compare_candidates(
             evidence_by_run = {
                 run_id: _benchmark_run(
                     runs[run_id],
-                    raw_root,
-                    labels_root,
+                    cycle_data_roots,
                     cycle_root,
                     membership,
                 )
@@ -1638,6 +1677,7 @@ def _validate_selection(
 
 
 def verify_experiment(cycle_root: Path, artifacts_root: Path) -> dict[str, object]:
+    cycle_data_roots = resolve_cycle_data_roots(cycle_root)
     manifest, manifest_sha256, membership = _load_experiment(cycle_root, artifacts_root)
     runs, candidates, rejected_runs, unresolved = _matrix_state(
         cycle_root,
@@ -1645,6 +1685,7 @@ def verify_experiment(cycle_root: Path, artifacts_root: Path) -> dict[str, objec
         manifest,
         manifest_sha256,
         membership,
+        cycle_data_roots,
     )
     if unresolved:
         raise StageBlockedError(
@@ -1679,6 +1720,9 @@ def freeze_selected_candidate(
     raw_root: Path,
     labels_root: Path,
 ) -> dict[str, object]:
+    cycle_data_roots = _validated_cycle_data_roots(
+        cycle_root, raw_root, labels_root
+    )
     manifest, manifest_sha256, membership = _load_experiment(cycle_root, artifacts_root)
     runs, candidates, rejected_runs, unresolved = _matrix_state(
         cycle_root,
@@ -1686,6 +1730,7 @@ def freeze_selected_candidate(
         manifest,
         manifest_sha256,
         membership,
+        cycle_data_roots,
     )
     if unresolved:
         raise StageBlockedError(
@@ -1724,6 +1769,7 @@ def freeze_selected_candidate(
         experiment_manifest_path=experiment_manifest_path(artifacts_root),
         selection_path=_selection_path(artifacts_root),
         candidate_path=candidate.path,
+        cycle_data_roots=cycle_data_roots,
     )
     frozen = verify_cycle_freeze(frozen_dir)
     return {
@@ -2186,15 +2232,7 @@ def _replay_prerequisites(
     if set(membership).intersection(quarantine.batch_ids):
         raise ValueError("replay membership contains quarantined parent-final ids")
 
-    if cycle_data_root.name != DATASET_ID or cycle_data_root.parent.name != "cycles":
-        raise ValueError("cycle root does not use the approved layout")
-    phase2_root = cycle_data_root.parent.parent
-    raw_root = phase2_root / "raw"
-    labels_root = phase2_root / "labels"
-    if not raw_root.is_dir() or raw_root.is_symlink():
-        raise ValueError("replay raw root must be a real directory")
-    if not labels_root.is_dir() or labels_root.is_symlink():
-        raise ValueError("replay labels root must be a real directory")
+    cycle_data_roots = resolve_cycle_data_roots(cycle_data_root)
     return {
         "cycleRoot": cycle_data_root,
         "artifactsRoot": artifact_root,
@@ -2202,8 +2240,9 @@ def _replay_prerequisites(
         "frozen": frozen,
         "policyPath": policy_path,
         "policy": policy,
-        "rawRoot": raw_root,
-        "labelsRoot": labels_root,
+        "rawRoot": cycle_data_roots.parent_raw_root,
+        "labelsRoot": cycle_data_roots.parent_labels_root,
+        "cycleDataRoots": cycle_data_roots,
         "membership": membership,
         "finalReportSha256": final_report_sha256,
         "finalGateSha256": sha256_file(final_gate_path),
@@ -2648,6 +2687,7 @@ def run_cycle_replay(
             prerequisites["labelsRoot"],
             model_checksums=(frozen.files["best-dev.pt"],),
             batch_ids=prerequisites["membership"],
+            cycle_data_roots=prerequisites["cycleDataRoots"],
         )
         report_document = report.to_dict()
         publish_no_replace(paths["report"], report_document)

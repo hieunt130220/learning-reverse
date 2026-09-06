@@ -463,6 +463,8 @@ def build_cycle_dataset_snapshot(
     labels_root: Path,
     cycle_root: Path,
     dataset_version_sha256: str,
+    *,
+    cycle_data_roots=None,
 ) -> dict[str, object]:
     from .phase2_cycle import CYCLE_ID, DATASET_ID, load_working_membership, verify_prefinal_integrity
 
@@ -470,14 +472,25 @@ def build_cycle_dataset_snapshot(
         raise ValueError("cycle dataset-version digest must be a lowercase SHA-256")
     membership = load_working_membership(cycle_root)
     integrity = verify_prefinal_integrity(cycle_root)
-    batches = [
-        _cycle_snapshot_batch(raw_root, labels_root, batch_id, split)
-        for split, batch_ids in (
-            ("train", membership.train_ids),
-            ("dev", membership.dev_ids),
-        )
-        for batch_id in batch_ids
-    ]
+    batches: list[dict[str, object]] = []
+    for split, batch_ids in (
+        ("train", membership.train_ids),
+        ("dev", membership.dev_ids),
+    ):
+        for batch_id in batch_ids:
+            batch_raw_root, batch_labels_root = (
+                (Path(raw_root), Path(labels_root))
+                if cycle_data_roots is None
+                else cycle_data_roots.roots_for(batch_id)
+            )
+            batches.append(
+                _cycle_snapshot_batch(
+                    batch_raw_root,
+                    batch_labels_root,
+                    batch_id,
+                    split,
+                )
+            )
     return {
         "schemaVersion": 2,
         "cycleId": CYCLE_ID,
@@ -537,6 +550,8 @@ def freeze_cycle_run(
     experiment_manifest_path: Path,
     selection_path: Path,
     candidate_path: Path,
+    *,
+    cycle_data_roots=None,
 ) -> Path:
     from .config import config_to_document, load_training_config_from_document
     from .phase2_cycle import CYCLE_ID, DATASET_ID, EXPERIMENT_ID
@@ -713,6 +728,7 @@ def freeze_cycle_run(
                 labels_root,
                 cycle_root,
                 dataset_version_sha256,
+                cycle_data_roots=cycle_data_roots,
             ),
         )
         atomic_write_json(
