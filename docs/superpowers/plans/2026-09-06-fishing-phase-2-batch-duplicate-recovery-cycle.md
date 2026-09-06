@@ -4,7 +4,7 @@
 
 **Goal:** Close `p2cr-20260905-01` truthfully as `NO_DATASET`, precommit a role-aware batch-duplicate policy, capture a clean 90-batch successor corpus, and continue the existing Phase 2 train/freeze/final/replay/local-shadow gates under `p2cr2-20260906-01`.
 
-**Architecture:** Extract duplicate detection into a dependency-leaf Python module that compares complete RX79 batches using deterministic same-role maximum-cardinality matching, then make `phase2_cycle.py` consume that module for strict schema-v2 policy, exclusion, inventory, acquisition, ruling, and allocation contracts. Harden the existing active probe so it attaches waiters before sends, never invokes inference, and seals the only valid successor inventory directly after a successful `TX45 → TX41 → RX79 save → TX44` crawl. Reuse the already-implemented experiment, freeze, final, replay, and local-shadow machinery through exact successor identities plus a two-root resolver that reads reusable parent batches from `data/raw|labels` and acquired batches from the successor cycle without copying or link-based unions.
+**Architecture:** Extract duplicate detection into a dependency-leaf Python module that compares complete RX79 batches using deterministic same-role maximum-cardinality matching, then make `phase2_cycle.py` consume that module for strict schema-v2 policy, exclusion, inventory, acquisition, ruling, and allocation contracts. Harden the existing active probe so it attaches waiters before sends, never invokes inference, and seals the only valid successor inventory directly after a successful `TX45 → TX41 → RX79 save → TX44` crawl. Reuse the already-implemented experiment, freeze, final, replay, and local-shadow machinery through exact successor identities plus a two-root resolver that reads reusable parent batches from `data/phase2/raw|labels` and acquired batches from the successor cycle without copying or link-based unions.
 
 **Tech Stack:** Python 3.11/3.12, dataclasses, Pillow, existing `fishing_ml` schema/CLI modules, Node.js 22+, TypeScript 5.7, existing Avatar game client, GitNexus 1.6.x, shell verification with `shasum`, `rg`, and existing unittest/Node suites.
 
@@ -40,6 +40,7 @@
 - `.env` contains secrets. Never print it, copy it into evidence, or stage it. Never stage `.agents/`, generated cycle data, candidate artifacts, checkpoints, predictions, operational reports, or `avatar-web/fishing-ml/artifacts/phase2-selection.json` unless the user separately approves an exact sanitized publication set.
 - Avatar backend port `8787` is currently stopped and must remain stopped during active capture. The Vite UI on port `5173` may remain running because it is not acquisition evidence.
 - Every commit step below is a gate, not authorization. Before any `git add` or `git commit`, display exact paths and diff summary and wait for explicit user approval.
+- Standing approval update (`2026-09-06`): the user authorizes each task-local `git add` and `git commit` after that task's required verification succeeds, limited to the exact paths and commit message specified by the task. This does not authorize push, merge, external publication, operational data publication, training, freeze, final, replay, or local-shadow execution, and it does not replace any HIGH/CRITICAL GitNexus edit approval.
 
 ## File Responsibility Map
 
@@ -76,7 +77,7 @@
 - Consumes: old policy/quarantine/inventory files and the approved v1 detector outcome `0/90` eligible.
 - Produces: one sanitized `NO_DATASET` terminal record and a diagnostic exclusion handover consumed by Tasks 4 and 8.
 
-- [ ] **Step 1: Reverify immutable old-cycle evidence without opening labels or model artifacts**
+- [x] **Step 1: Reverify immutable old-cycle evidence without opening labels or model artifacts**
 
 Run:
 
@@ -94,7 +95,7 @@ stat -f '%Lp %N' \
 
 Expected: the three hashes equal the Global Constraints values; every permission is `600`; no old label, acquisition, allocation, dataset-version, candidate, freeze, final, replay, or local-shadow artifact is read.
 
-- [ ] **Step 2: Record the exact old-cycle terminal facts**
+- [x] **Step 2: Record the exact old-cycle terminal facts**
 
 Update the results ledger and handover with these exact aggregate facts:
 
@@ -115,11 +116,11 @@ downstreamArtifactCount = 0
 
 State that capture was an active diagnostic deviation, v1 policy could not admit any batch, and the 90 batches are exclusion-only evidence.
 
-- [ ] **Step 3: Update only truthful old-plan checkboxes**
+- [x] **Step 3: Update only truthful old-plan checkboxes**
 
 Mark Task 13 Step 7 and Task 19 Steps 1–4 complete after the terminal ledger/handover exists. Leave every unapproved commit step and every skipped allocation/training/freeze/final/replay/local-shadow step unchecked, with `NO_DATASET` explaining why they did not run.
 
-- [ ] **Step 4: Sanitize both old-cycle documents**
+- [x] **Step 4: Sanitize both old-cycle documents**
 
 Run:
 
@@ -135,7 +136,7 @@ git diff --check -- \
 
 Expected: matches are limited to explicit redaction-policy wording; no secret, private batch ID, image content, label, prediction, or final membership is present; diff check exits `0`.
 
-- [ ] **Step 5: Commit only after explicit old-cycle documentation approval**
+- [x] **Step 5: Commit only after explicit old-cycle documentation approval**
 
 After displaying the exact three-path diff, request approval before running:
 
@@ -158,7 +159,7 @@ git commit -m "docs: close phase2 diagnostic recovery cycle"
 - Consumes: current working tree including untracked recovery modules.
 - Produces: current index identity and per-symbol risk ledger required before Tasks 3–6.
 
-- [ ] **Step 1: Re-index the exact working tree**
+- [x] **Step 1: Re-index the exact working tree**
 
 Run:
 
@@ -173,7 +174,7 @@ git branch --show-current
 
 Expected: `learning-reverse` indexes successfully with no incomplete reason; repository root, branch, commit, and index time are recorded without printing `.env`.
 
-- [ ] **Step 2: Run impact for detector and cycle-contract edits**
+- [x] **Step 2: Run impact for detector and cycle-contract edits**
 
 Run upstream impact for each existing symbol before editing it:
 
@@ -192,7 +193,7 @@ done
 
 Expected: each result records direct callers, affected processes/modules, epistemic state, and risk. Ambiguous `main` results are rerun with the exact file path or UID returned by GitNexus.
 
-- [ ] **Step 3: Run impact for probe and downstream identity edits**
+- [x] **Step 3: Run impact for probe and downstream identity edits**
 
 Run:
 
@@ -215,7 +216,7 @@ node .gitnexus/run.cjs impact "replay_batches" --direction upstream --repo .
 
 Expected: identity-only consumers are separated from behavior edits. No HIGH/CRITICAL edit proceeds without a new explicit approval.
 
-- [ ] **Step 4: Resolve every UNKNOWN result before editing**
+- [x] **Step 4: Resolve every UNKNOWN result before editing**
 
 For each `UNKNOWN`, run exact source confirmation for the complete planned symbol set:
 
@@ -238,11 +239,11 @@ done
 
 Record why each UNKNOWN caller set is absent or unresolved; an empty search is not treated as proof of safety for an existing symbol.
 
-- [ ] **Step 5: Stop on HIGH or CRITICAL risk**
+- [x] **Step 5: Stop on HIGH or CRITICAL risk**
 
 Present the exact target, file, direct-caller count, affected processes, risk, and planned compatibility guard. Continue only after the user explicitly approves that named edit. Previous approvals for Tasks 3 or 5 of the old plan do not automatically authorize new successor edits.
 
-- [ ] **Step 6: Commit gate**
+- [x] **Step 6: Commit gate**
 
 No commit is expected because this task changes no production file. If a results ledger was created after plan approval, display its diff and request approval before staging only that file.
 
@@ -256,7 +257,7 @@ No commit is expected because this task changes no production file. If a results
 - Consumes: immutable batch manifests through `load_manifest()` and `validate_batch()` from `fishing_ml.schema`.
 - Produces: `DETECTOR_DESCRIPTOR`, `ImageEvidence`, `BatchEvidence`, `BatchComparison`, `BatchDuplicateGroup`, `detector_descriptor_sha256()`, `detector_implementation_sha256()`, `load_batch_evidence()`, `compare_batches()`, and `build_duplicate_groups()`.
 
-- [ ] **Step 1: Define the dependency-leaf public contract**
+- [x] **Step 1: Define the dependency-leaf public contract**
 
 Create these exact public types/signatures without importing training, calibration, evaluation, inference, replay, server, or `phase2_cycle`:
 
@@ -293,15 +294,15 @@ class BatchDuplicateGroup:
 
 Export exactly these callables: `detector_descriptor_sha256() -> str`; `detector_implementation_sha256(path: Path | None = None) -> str`; `load_batch_evidence(owner: BatchOwner, batch_id: str, raw_root: Path) -> BatchEvidence`; `compare_batches(left: BatchEvidence, right: BatchEvidence) -> BatchComparison`; and `build_duplicate_groups(batches: Sequence[BatchEvidence]) -> tuple[BatchDuplicateGroup, ...]`.
 
-- [ ] **Step 2: Encode the exact immutable descriptor**
+- [x] **Step 2: Encode the exact immutable descriptor**
 
 Use the Spec §9.2 object verbatim and derive descriptor identity from compact sorted-key UTF-8 JSON plus one trailing newline. Derive implementation identity from the exact module bytes at `Path(__file__)`; reject a missing, symlinked, or non-regular implementation path.
 
-- [ ] **Step 3: Implement strict image and batch evidence loading**
+- [x] **Step 3: Implement strict image and batch evidence loading**
 
 For each batch, require manifest ID equality, successful `validate_batch`, exactly six references, at least one query, unique contiguous indices, 75×75 PNGs, and matching SHA-256. Compute dHash from Pillow RGB → L → 9×8 BILINEAR and row-major left-greater-than-right bits. Compute `evidence_sha256` from the exact canonical object `{"references": [[sha256,dhashHex]], "queries": [[sha256,dhashHex]]}`, with each role list independently sorted, dHash encoded as 16-character lowercase hex, compact sorted-key JSON, and one trailing newline.
 
-- [ ] **Step 4: Implement deterministic maximum-cardinality matching**
+- [x] **Step 4: Implement deterministic maximum-cardinality matching**
 
 Build independent reference/reference and query/query bipartite graphs. Add an edge only when SHA-256 matches or Hamming distance is at most four. Visit left indices, adjacency lists, and augmenting paths in ascending index order so equal inputs produce equal match pairs. Never construct cross-role edges.
 
@@ -316,11 +317,11 @@ is_duplicate = (
 )
 ```
 
-- [ ] **Step 5: Build canonical transitive batch groups**
+- [x] **Step 5: Build canonical transitive batch groups**
 
 Create undirected batch edges from `compare_batches(...).is_duplicate`, compute connected components over all parent/diagnostic/acquired batches, and derive each group ID as SHA-256 of sorted unique member `evidence_sha256` strings joined with newline plus one trailing newline. Sort groups by group ID and group members by `(owner, evidence_sha256, batch_id)`.
 
-- [ ] **Step 6: Run deterministic inline checks without adding test files**
+- [x] **Step 6: Run deterministic inline checks without adding test files**
 
 Run:
 
@@ -483,7 +484,7 @@ PY
 
 Expected: script prints only `duplicate-detector-smoke: PASS`; no file is added under `tests/`.
 
-- [ ] **Step 7: Commit only after explicit detector approval**
+- [x] **Step 7: Commit only after explicit detector approval**
 
 After displaying impact and diff, request approval before:
 
@@ -504,7 +505,7 @@ git commit -m "feat: add role-aware batch duplicate detector"
 - Consumes: Task 3 detector API, parent dataset v1 metadata, old diagnostic inventory, successor capture inventory, manual labels, optional exact rulings.
 - Produces: strict successor policy/quarantine/inventory/ruling/acquisition/allocation dataclasses; sanitized screening output; no-replace CLI publications.
 
-- [ ] **Step 1: Separate legacy and successor identities**
+- [x] **Step 1: Separate legacy and successor identities**
 
 Define exact constants:
 
@@ -527,7 +528,7 @@ DIAGNOSTIC_INVENTORY_SHA256 = "c133238289a9d36dddc0861d4ac2c0347814b9d231fcb2c75
 
 Keep parsing needed to verify old schema-v1 evidence read-only, but make all publication commands emit only successor schema v2. Set `schema_version: Literal[2]` on successor `AcquisitionPolicy`, `QuarantineLedger`, `CaptureInventory`, `AcquisitionManifest`, and `AllocationManifest`; add `schema_version: Literal[2]` to `PrefinalIntegrity`; and require the ruling-document parser to accept only integer `schemaVersion = 2`. Keep legacy schema-v1 types and parsers separate rather than accepting both versions in one successor contract.
 
-- [ ] **Step 2: Implement strict policy and quarantine schema v2**
+- [x] **Step 2: Implement strict policy and quarantine schema v2**
 
 Policy must contain exactly the fields from Spec §7, including dataset ID, `[41,44,45]`, forbidden `[43]`, diagnostic commitment, exact detector descriptor/digest, exact detector implementation digest, activation timestamp, approver `hieunt`, and approval evidence `2026-09-06 approved Fishing Phase 2 Batch-Duplicate Recovery Cycle design`. Quarantine must contain exactly the fields from Spec §6.3, with 30 sorted parent-final IDs, 90 sorted diagnostic IDs, exact commitments, and reasons `post-policy-diagnostic` and `previous-final-exposed`.
 
@@ -535,17 +536,17 @@ Use exact signatures `publish_acquisition_policy(diagnostic_inventory_path: Path
 
 Reject diagnostic inventory bytes unless their SHA-256 equals the committed old hash and their exact record set commits to the stored diagnostic commitment. Compute that commitment with `commit_ids(record.batch_id for record in legacy_inventory.records)`, whose canonical payload is the sorted unique ID list joined by newline with exactly one trailing newline.
 
-- [ ] **Step 3: Implement strict capture inventory schema v2 parsing**
+- [x] **Step 3: Implement strict capture inventory schema v2 parsing**
 
 Add `parse_legacy_capture_inventory(value: object) -> LegacyCaptureInventory` for the committed old schema-v1 file and `parse_capture_inventory(value: object, policy: AcquisitionPolicy) -> CaptureInventory` for successor schema v2. Require exact keys `schemaVersion`, `cycleId`, `captureMode`, `startedAt`, `stoppedAt`, `requested`, `summary`, and `records`. Require successor ID, mode `active-rx79-crawl-no-answer`, request `map=14`, `area=1`, `target=90`, `delayMs>=2000`, summary reason `target-reached`, saved count `90`, record count `90`, unique safe IDs, `tx43Count=0`, sorted `(capturedAt,batchId)`, and every timestamp at or after `policy.activated_at`.
 
-- [ ] **Step 4: Replace image groups with batch groups in acquisition**
+- [x] **Step 4: Replace image groups with batch groups in acquisition**
 
 Load parent, diagnostic, and acquired evidence through `duplicate_detector.load_batch_evidence()`. Each acquired batch receives exactly one `duplicateGroupIds` entry. Reject parent-touching groups as `parent-duplicate-batch-group` and diagnostic-touching groups as `diagnostic-duplicate-batch-group`; neither path consults rulings. Require complete manual labels before selection and publish only the first 90 chronological eligible batches. The acquisition parser and publication both require exact integer `schemaVersion = 2`; schema v1 acquisition remains legacy-only and cannot satisfy successor verification.
 
 Use exact signature `publish_acquisition(*, inventory_path: Path, policy_path: Path, quarantine_path: Path, parent_version_path: Path, parent_raw_root: Path, diagnostic_raw_root: Path, acquired_raw_root: Path, acquired_labels_root: Path, rulings_path: Path | None, output_path: Path) -> AcquisitionManifest`.
 
-- [ ] **Step 5: Add sanitized screening and exact ruling publication**
+- [x] **Step 5: Add sanitized screening and exact ruling publication**
 
 Add a read-only `diagnostic-summary` command that loads only parent and committed diagnostic raw evidence and emits the aggregate fields `parentBatchEdgeCount`, `diagnosticMultiBatchGroupCount`, `maximumReferenceMatchCount`, `maximumReferenceMatchRatio`, `maximumQueryMatchRatio`, and `maximumCombinedMatchRatio`. It must reproduce `0`, `0`, `4`, `4/6`, `50%`, and `50%` without emitting a batch ID.
 
@@ -570,11 +571,11 @@ Add `publish-rulings` with the same inventory/policy/quarantine/parent/diagnosti
 
 The command reruns screening before publication. Missing, extra, singleton, parent-touching, diagnostic-touching, stale-detector, or stale-cycle rulings fail closed.
 
-- [ ] **Step 6: Preserve exact grouped allocation and sealed-final behavior**
+- [x] **Step 6: Preserve exact grouped allocation and sealed-final behavior**
 
 Keep batch duplicate groups atomic in `_allocation_units()` and `_solve_allocation()`. Use seed `20260906`, require exact acquired `45/15/30`, publish successor totals `185/45/30`, exclude all 30 parent-final and all 90 diagnostic IDs, and leave pre-final/final lock semantics unchanged. Require exact integer `schemaVersion = 2` in both `allocation.json` and `evidence/prefinal-integrity.json`; the prefinal parser must reject missing or legacy schema values before inspecting sealed-final metadata.
 
-- [ ] **Step 7: Extend the CLI with exact arguments**
+- [x] **Step 7: Extend the CLI with exact arguments**
 
 The CLI surface becomes:
 
@@ -591,7 +592,7 @@ verify --cycle-root --mode working|prefinal|final [--lock]
 
 Every command returns sanitized JSON and maps invalid input to exit `2`, blocked state to exit `4`, and success to exit `0`.
 
-- [ ] **Step 8: Commit only after explicit cycle-contract approval**
+- [x] **Step 8: Commit only after explicit cycle-contract approval**
 
 After displaying impact and diff, request approval before:
 
@@ -610,15 +611,15 @@ git commit -m "feat: add successor recovery cycle contracts"
 - Consumes: existing login/direct-join flow, `waitForRx45()`, `waitForRx79()`, and `saveCanCauBatch()`.
 - Produces: successor-only active crawl and canonical schema-v2 `capture-inventory.json` with no inference path.
 
-- [ ] **Step 1: Extend and strictly validate crawl arguments**
+- [x] **Step 1: Extend and strictly validate crawl arguments**
 
 Add required crawl strings `--cycle-id` and `--inventory-output`. In crawl mode require exact cycle `p2cr2-20260906-01`, absolute inventory path, target `90`, map `14`, area `1`, and delay at least `2000`. Reject successor-only flags outside crawl mode. Before login, require port `8787` closed, inventory absent, and output root absent or empty; create the root once and never clear it.
 
-- [ ] **Step 2: Remove all shadow inference from the probe**
+- [x] **Step 2: Remove all shadow inference from the probe**
 
 Delete the `maybeShadowMatch` import and both probe/crawl invocations. Do not replace them with another inference, telemetry, prediction, or model hook. Remove account ID from persisted/structured terminal summaries; runtime authentication still consumes the CLI account ID but never writes it into inventory or shareable evidence.
 
-- [ ] **Step 3: Attach waiters before protocol sends**
+- [x] **Step 3: Attach waiters before protocol sends**
 
 Use this exact ordering inside each crawl round:
 
@@ -636,15 +637,15 @@ const payload = await rx79;
 
 Use one crawl counter object with exact fields `savedBatchCount`, `skippedBatchCount`, `errorCount`, `tx41Count`, `tx44Count`, `tx45Count`, `tx43Count`, and `fatalEvidenceFailure`. Increment `tx43Count` for any observed metadata entry with command `43`, regardless of direction; any positive value sets `fatalEvidenceFailure` and blocks inventory publication.
 
-- [ ] **Step 4: Capture immutable inventory records from successful saves**
+- [x] **Step 4: Capture immutable inventory records from successful saves**
 
 For each `SavedCanCauBatch`, read the returned `manifestPath`, hash the exact bytes, and append `{batchId,capturedAt,manifestSha256}` only after the final directory exists. Use the manifest timestamp, not a later reconstructed timestamp. Save errors and malformed RX79 responses produce no record, set `fatalEvidenceFailure`, and leave no partial final batch directory.
 
-- [ ] **Step 5: Publish inventory only on exact success**
+- [x] **Step 5: Publish inventory only on exact success**
 
 On `target-reached`, require 90 records, 90 unique valid raw directories, 90 manifest hashes, `fatalEvidenceFailure=false`, zero `TX43`, and sorted records. Emit exactly the Spec §8.4 schema with `captureMode`, `requested`, summary `reason`, saved/skipped/error counts, and `tx43Count`. Serialize compact sorted-key JSON plus newline and publish with `fs.open(path, 'wx', 0o600)`, file `sync()`, close, chmod `0600`, and parent-directory fsync. On shutdown, login failure, repeated start rejection, malformed RX79, save failure, positive `tx43Count`, or short count, leave inventory absent and preserve all partial raw evidence.
 
-- [ ] **Step 6: Verify source safety and server compilation**
+- [x] **Step 6: Verify source safety and server compilation**
 
 Run:
 
@@ -657,7 +658,7 @@ rg -n 'TX43|finishFishing\(|maybeShadowMatch|InferenceClient|shadowMatcher|predi
 
 Expected: typecheck/build exit `0`; forbidden scan has no executable source match; documentation text may mention the prohibition only.
 
-- [ ] **Step 7: Commit only after explicit probe approval**
+- [x] **Step 7: Commit only after explicit probe approval**
 
 After displaying impact and diff, request approval before:
 
@@ -674,6 +675,7 @@ git commit -m "feat: seal successor fishing capture inventory"
 - Modify: `avatar-web/fishing-ml/src/fishing_ml/dataset_version.py:35`
 - Modify: `avatar-web/fishing-ml/src/fishing_ml/dataset.py:54`
 - Modify: `avatar-web/fishing-ml/src/fishing_ml/train.py:1`
+- Modify: `avatar-web/fishing-ml/src/fishing_ml/artifacts.py:461`
 - Modify: `avatar-web/fishing-ml/src/fishing_ml/coverage_recovery.py:837`
 - Modify: `avatar-web/fishing-ml/src/fishing_ml/evaluate.py:373`
 - Modify: `avatar-web/fishing-ml/src/fishing_ml/replay.py:757`
@@ -682,14 +684,14 @@ git commit -m "feat: seal successor fishing capture inventory"
 - Verify only: `avatar-web/fishing-ml/src/fishing_ml/phase2_gate.py:1`
 
 **Interfaces:**
-- Consumes: `CYCLE_ID`, `DATASET_ID`, successor cycle root, parent roots `data/raw` and `data/labels`, acquired roots `<cycle-root>/raw` and `<cycle-root>/labels`.
+- Consumes: `CYCLE_ID`, `DATASET_ID`, successor cycle root, parent roots `data/phase2/raw` and `data/phase2/labels`, acquired roots `<cycle-root>/raw` and `<cycle-root>/labels`.
 - Produces: exact successor identity acceptance and a no-copy/no-symlink batch resolver used by training, calibration, final, and replay.
 
-- [ ] **Step 1: Preserve historical dataset schema behavior**
+- [x] **Step 1: Preserve historical dataset schema behavior**
 
 Change the recovery schema-v2 identity constant to `phase2-coverage-recovery-v2-20260906-01`. Keep schema-v1 parsing/serialization byte-compatible and reject every other recovery schema-v2 dataset ID. Do not broaden accepted IDs with prefix matching.
 
-- [ ] **Step 2: Add the exact two-root resolver contract**
+- [x] **Step 2: Add the exact two-root resolver contract**
 
 Add to `phase2_cycle.py`:
 
@@ -706,23 +708,23 @@ Implement exact callables `CycleDataRoots.roots_for(batch_id: str) -> tuple[Path
 
 Require the cycle root name to equal `DATASET_ID`, its parent to be `cycles`, its grandparent to be `phase2`, and its great-grandparent to be `data`. Resolve parent roots as `<data>/raw` and `<data>/labels`; resolve acquired roots as `<cycle-root>/raw` and `<cycle-root>/labels`. Every root must be an existing real directory, not a symlink. `roots_for()` validates a safe ID, checks the manifest exists in exactly one raw root, rejects collision/missing source, and returns the matching label root without enumerating or inferring sealed-final IDs.
 
-- [ ] **Step 3: Route train/dev loading through the resolver**
+- [x] **Step 3: Route train/dev loading through the resolver**
 
 Add optional keyword `cycle_data_roots: CycleDataRoots | None = None` to `_entries()`, `compute_train_normalization()`, `_load()`, `load_training_episodes()`, `load_dev_episodes()`, and `run_training()`. Legacy calls with `None` keep their existing single-root behavior. Cycle calls resolve each explicit train/dev membership ID with `cycle_data_roots.roots_for(batch_id)` before reading its manifest, images, or label.
 
-In `coverage_recovery.run_model()`, `calibrate_model()`, candidate validation, dev shape checks, latency benchmark, and freeze verification, call `resolve_cycle_data_roots(cycle_root)` once and pass it through every dataset read. Keep the existing `--raw-root data/raw` and `--labels-root data/labels` arguments, but validate they equal the resolver’s parent roots; acquired roots always come from the exact cycle root.
+In `coverage_recovery.run_model()`, `calibrate_model()`, candidate validation, dev shape checks, latency benchmark, and freeze verification, call `resolve_cycle_data_roots(cycle_root)` once and pass it through every dataset read, including the frozen dataset snapshot in `artifacts.py`. Keep the existing `--raw-root data/phase2/raw` and `--labels-root data/phase2/labels` arguments, but validate they equal the resolver’s parent roots; acquired roots always come from the exact cycle root.
 
-- [ ] **Step 4: Route final and replay through the same resolver**
+- [x] **Step 4: Route final and replay through the same resolver**
 
 Replace `evaluate._cycle_data_roots()` with `resolve_cycle_data_roots()`. Before the durable final lock, do not call `roots_for()` on sealed-final IDs. After lock creation and `load_final_membership_after_lock()`, resolve each final batch and load it only from the unique acquired/parent source; successor final IDs are required to resolve to the acquired root.
 
 Extend `replay_batches()` with optional keyword `cycle_data_roots: CycleDataRoots | None = None`. When provided, open parent/acquired raw and label directory descriptors once, choose the descriptor pair for each explicit 260-ID membership entry by the same unique-source rule, and preserve the existing no-follow/size/hash/error accounting. The legacy single-root branch remains unchanged when the keyword is `None`.
 
-- [ ] **Step 5: Update local-shadow identity constants**
+- [x] **Step 5: Update local-shadow identity constants**
 
 Set `LOCAL_SHADOW_CYCLE_ID = 'p2cr2-20260906-01'` and require replay-gate dataset ID `phase2-coverage-recovery-v2-20260906-01`. Update the quarantine validator to the exact schema-v2 key set and diagnostic commitment fields; do not expose either private ID list in the report.
 
-- [ ] **Step 6: Verify identity, root, and namespace wiring**
+- [x] **Step 6: Verify identity, root, and namespace wiring**
 
 Run:
 
@@ -738,6 +740,7 @@ rg -n 'resolve_cycle_data_roots|cycle_data_roots|roots_for' \
   avatar-web/fishing-ml/src/fishing_ml/phase2_cycle.py \
   avatar-web/fishing-ml/src/fishing_ml/dataset.py \
   avatar-web/fishing-ml/src/fishing_ml/train.py \
+  avatar-web/fishing-ml/src/fishing_ml/artifacts.py \
   avatar-web/fishing-ml/src/fishing_ml/coverage_recovery.py \
   avatar-web/fishing-ml/src/fishing_ml/evaluate.py \
   avatar-web/fishing-ml/src/fishing_ml/replay.py
@@ -745,7 +748,7 @@ rg -n 'resolve_cycle_data_roots|cycle_data_roots|roots_for' \
 
 Expected: old IDs occur only in explicitly named legacy/diagnostic constants outside successor checks; every cycle data read uses the resolver; no copy, hardlink, symlink union, or fallback to the old cycle namespace exists.
 
-- [ ] **Step 7: Commit only after explicit identity/root approval**
+- [x] **Step 7: Commit only after explicit identity/root approval**
 
 After displaying impact and diff, request approval before:
 
@@ -755,6 +758,7 @@ git add \
   avatar-web/fishing-ml/src/fishing_ml/dataset_version.py \
   avatar-web/fishing-ml/src/fishing_ml/dataset.py \
   avatar-web/fishing-ml/src/fishing_ml/train.py \
+  avatar-web/fishing-ml/src/fishing_ml/artifacts.py \
   avatar-web/fishing-ml/src/fishing_ml/coverage_recovery.py \
   avatar-web/fishing-ml/src/fishing_ml/evaluate.py \
   avatar-web/fishing-ml/src/fishing_ml/replay.py \
@@ -774,7 +778,7 @@ git commit -m "fix: resolve successor parent and acquired data roots"
 - Consumes: completed successor production code and existing suites.
 - Produces: fresh compile/test/static/digest/GitNexus evidence required before policy publication.
 
-- [ ] **Step 1: Run focused existing Python verification**
+- [x] **Step 1: Run focused existing Python verification**
 
 Run:
 
@@ -800,7 +804,7 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
 
 Expected: compile exits `0`; all existing focused tests pass; no test file changes.
 
-- [ ] **Step 2: Run full existing Python verification**
+- [x] **Step 2: Run full existing Python verification**
 
 ```bash
 cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
@@ -811,7 +815,7 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
 
 Expected: all commands exit `0`; record exact test count and `pip check` result.
 
-- [ ] **Step 3: Run full server verification**
+- [x] **Step 3: Run full server verification**
 
 ```bash
 cd /Users/hieunt/learning-reverse/avatar-web/server
@@ -822,7 +826,7 @@ npm run build
 
 Expected: all commands exit `0`; record exact test count; do not fix unrelated warnings.
 
-- [ ] **Step 4: Run detector and capture safety checks**
+- [x] **Step 4: Run detector and capture safety checks**
 
 Repeat the Task 3 deterministic detector heredoc, then run:
 
@@ -830,7 +834,7 @@ Repeat the Task 3 deterministic detector heredoc, then run:
 cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
 .venv/bin/fishing-phase2-cycle diagnostic-summary \
   --parent-version data/phase2/dataset-version.json \
-  --parent-raw-root data/raw \
+  --parent-raw-root data/phase2/raw \
   --diagnostic-inventory data/phase2/cycles/phase2-coverage-recovery-20260905-01/evidence/capture-inventory.json \
   --diagnostic-raw-root data/phase2/cycles/phase2-coverage-recovery-20260905-01/raw
 rg -n 'TX43|finishFishing\(|maybeShadowMatch|InferenceClient|shadowMatcher|prediction' \
@@ -843,7 +847,7 @@ rg -n 'p2cr-20260905-01|phase2-coverage-recovery-20260905-01' \
 
 Expected: diagnostic summary reports zero parent batch edges, zero diagnostic multi-batch groups, maximum reference overlap `4/6`, maximum query overlap `50%`, and maximum combined overlap `50%`; no forbidden executable capture call exists; old IDs occur only in explicitly named legacy/diagnostic constants and old passive capture modules, never in successor output identity checks.
 
-- [ ] **Step 5: Reverify immutable baselines and inspect diff**
+- [x] **Step 5: Reverify immutable baselines and inspect diff**
 
 Run the Global Constraints hash list, the three old-cycle evidence hashes, then:
 
@@ -857,11 +861,11 @@ node .gitnexus/run.cjs detect-changes --scope all --repo .
 
 Expected: hashes unchanged; no whitespace errors; GitNexus result is neither partial nor truncated; generated data remains unstaged.
 
-- [ ] **Step 6: Publish a sanitized implementation checkpoint**
+- [x] **Step 6: Publish a sanitized implementation checkpoint**
 
 Record approvals, exact commands, exit codes, test counts, detector descriptor/implementation hashes, changed-symbol risks, and unresolved non-blocking warnings. Exclude secrets, account IDs, batch IDs, image bytes, labels, predictions, and final membership.
 
-- [ ] **Step 7: Commit the complete production revision only after explicit approval**
+- [x] **Step 7: Commit the complete production revision only after explicit approval**
 
 Experiment publication records a Git revision, so every imported production source must be tracked and the tracked worktree must be clean before Task 13. Display the exact combined diff and request approval before running this maximum implementation commit:
 
@@ -1302,7 +1306,7 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
   --policy data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/acquisition-policy.json \
   --quarantine data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/quarantine.json \
   --parent-version data/phase2/dataset-version.json \
-  --parent-raw-root data/raw \
+  --parent-raw-root data/phase2/raw \
   --diagnostic-raw-root data/phase2/cycles/phase2-coverage-recovery-20260905-01/raw \
   --acquired-raw-root data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/raw \
   --acquired-labels-root data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/labels
@@ -1329,7 +1333,7 @@ COMMAND=(
   --policy data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/acquisition-policy.json
   --quarantine data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/quarantine.json
   --parent-version data/phase2/dataset-version.json
-  --parent-raw-root data/raw
+  --parent-raw-root data/phase2/raw
   --diagnostic-raw-root data/phase2/cycles/phase2-coverage-recovery-20260905-01/raw
   --acquired-raw-root data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/raw
   --acquired-labels-root data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/labels
@@ -1352,7 +1356,7 @@ When the file exists, run:
   --policy data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/acquisition-policy.json \
   --quarantine data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/quarantine.json \
   --parent-version data/phase2/dataset-version.json \
-  --parent-raw-root data/raw \
+  --parent-raw-root data/phase2/raw \
   --diagnostic-raw-root data/phase2/cycles/phase2-coverage-recovery-20260905-01/raw \
   --acquired-raw-root data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/raw \
   --acquired-labels-root data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/labels \
@@ -1391,7 +1395,7 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
   --policy data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/acquisition-policy.json \
   --quarantine data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/quarantine.json \
   --parent-version data/phase2/dataset-version.json \
-  --parent-raw-root data/raw \
+  --parent-raw-root data/phase2/raw \
   --diagnostic-raw-root data/phase2/cycles/phase2-coverage-recovery-20260905-01/raw \
   --acquired-raw-root data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/raw \
   --acquired-labels-root data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01/labels \
@@ -1524,8 +1528,8 @@ for run_id in run_ids:
             "run-model",
             "--cycle-root", CYCLE_ROOT,
             "--artifacts-root", ARTIFACTS_ROOT,
-            "--raw-root", "data/raw",
-            "--labels-root", "data/labels",
+            "--raw-root", "data/phase2/raw",
+            "--labels-root", "data/phase2/labels",
             "--duplicate-reviews", "config/duplicate-reviews.json",
             "--run-id", run_id,
         ],
@@ -1564,8 +1568,8 @@ for run_id in manifest["executionOrder"]["runIds"]:
             "calibrate-model",
             "--cycle-root", CYCLE_ROOT,
             "--artifacts-root", ARTIFACTS_ROOT,
-            "--raw-root", "data/raw",
-            "--labels-root", "data/labels",
+            "--raw-root", "data/phase2/raw",
+            "--labels-root", "data/phase2/labels",
             "--run-id", run_id,
         ],
         check=True,
@@ -1587,8 +1591,8 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
 .venv/bin/fishing-phase2-coverage-recovery compare \
   --cycle-root data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01 \
   --artifacts-root artifacts/cycles/p2cr2-20260906-01 \
-  --raw-root data/raw \
-  --labels-root data/labels
+  --raw-root data/phase2/raw \
+  --labels-root data/phase2/labels
 ```
 
 If no candidate passes the unchanged dev gate, publish terminal `NO_CANDIDATE` and stop. Otherwise record selected candidate/model/run IDs and aggregate dev/latency evidence without per-example predictions.
@@ -1622,8 +1626,8 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
 .venv/bin/fishing-phase2-coverage-recovery freeze-selected \
   --cycle-root data/phase2/cycles/phase2-coverage-recovery-v2-20260906-01 \
   --artifacts-root artifacts/cycles/p2cr2-20260906-01 \
-  --raw-root data/raw \
-  --labels-root data/labels
+  --raw-root data/phase2/raw \
+  --labels-root data/phase2/labels
 .venv/bin/fishing-phase2-coverage-recovery verify-freeze \
   --artifacts-root artifacts/cycles/p2cr2-20260906-01
 ```
@@ -1883,7 +1887,7 @@ print("duplicate-detector-final-smoke: PASS")
 PY
 .venv/bin/fishing-phase2-cycle diagnostic-summary \
   --parent-version data/phase2/dataset-version.json \
-  --parent-raw-root data/raw \
+  --parent-raw-root data/phase2/raw \
   --diagnostic-inventory data/phase2/cycles/phase2-coverage-recovery-20260905-01/evidence/capture-inventory.json \
   --diagnostic-raw-root data/phase2/cycles/phase2-coverage-recovery-20260905-01/raw
 
