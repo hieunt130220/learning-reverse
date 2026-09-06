@@ -101,6 +101,19 @@
 - Both publications parsed as strict schema v2, matched cycle `p2cr2-20260906-01` and dataset `phase2-coverage-recovery-v2-20260906-01`, and retained mode `0600`.
 - Generated policy and quarantine remain ignored operational data and were not staged.
 
+## Task 9: Capture Preflight
+
+- All 16 immutable baseline hashes matched immediately before capture.
+- Local backend port `8787` was closed, successor policy/quarantine were present, successor inventory was absent, and the successor raw root was absent or empty.
+- Exactly one local account was selected transiently; no account identity is persisted in this ledger.
+- The fully materialized successor command ran exactly once and exited `1`.
+- Terminal reason: `fatal-evidence-failure`.
+- Two inbound `RX43` messages were observed during direct join before any acquisition `TX41`, `TX44`, or `TX45` was sent. The precommitted guard treats command `43` in either direction as a fatal evidence failure.
+- Saved batch count: `0`; skipped batch count: `0`; sanitized error count: `0`; inventory publication count: `0`.
+- The successor raw root remained empty and the capture inventory remained absent after process exit.
+- No retry was attempted. The successor cycle is terminal `NO_DATASET` because only a single successful 90-batch capture could publish an inventory.
+- Manual labeling, duplicate screening, acquisition/allocation, training, candidate comparison, freeze, final evaluation, replay, and local shadow did not run.
+
 ## Sanitization
 
 This ledger excludes secrets, private account or batch identities, raw protocol bytes, image content, manual labels, per-example model output, and sealed split contents.

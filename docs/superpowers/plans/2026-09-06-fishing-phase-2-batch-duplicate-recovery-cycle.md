@@ -1037,7 +1037,7 @@ Generated policy/quarantine remain untracked. Only the sanitized results ledger 
 - Consumes: activated policy/quarantine, one explicitly selected account credential through existing local config, stopped backend port `8787`.
 - Produces: exactly 90 new immutable batches and one sealed schema-v2 inventory.
 
-- [ ] **Step 1: Reverify preconditions immediately before capture**
+- [x] **Step 1: Reverify preconditions immediately before capture**
 
 Run baseline hashes, then:
 
@@ -1053,7 +1053,7 @@ test ! -d avatar-web/fishing-ml/data/phase2/cycles/phase2-coverage-recovery-v2-2
 
 Expected: backend closed, policy/quarantine present, successor raw root empty, inventory absent.
 
-- [ ] **Step 2: Select the account without persisting its identity**
+- [x] **Step 2: Select the account without persisting its identity**
 
 Ask the user for the exact numeric account to use. Keep it only in a transient shell variable populated interactively:
 
@@ -1066,7 +1066,7 @@ esac
 
 Do not echo the value into results, handover, inventory, logs, or command records.
 
-- [ ] **Step 3: Display the fully materialized capture command and stop for approval**
+- [x] **Step 3: Display the fully materialized capture command and stop for approval**
 
 The command structure is exact:
 
@@ -1086,7 +1086,7 @@ npm run fishing:probe -- \
 
 Show the exact numeric command transiently to the user, but keep the numeric ID out of persistent docs. Execute only after explicit capture approval.
 
-- [ ] **Step 4: Run once and classify the outcome**
+- [x] **Step 4: Run once and classify the outcome**
 
 Success requires process exit `0`, `reason=target-reached`, exactly 90 saved records, and a published inventory. Recoverable RX45/RX79 timeouts may increment sanitized skipped/error counters before the target is reached; malformed RX79, any save failure, repeated start rejection, shutdown, login failure, or short count is fatal, leaves inventory absent, preserves partial raw evidence, terminalizes this cycle as `NO_DATASET`, and stops all later tasks.
 
@@ -1167,9 +1167,15 @@ stat -f '%Lp %N' /Users/hieunt/learning-reverse/avatar-web/fishing-ml/data/phase
 
 Expected: mode `600`, 90 records, 540 references, non-zero queries, zero `TX43`, no orphan/partial batch directory.
 
-- [ ] **Step 6: Commit gate**
+- [x] **Step 6: Commit gate**
 
 Raw batches and inventory remain untracked. Only sanitized aggregate results may be staged after exact approval.
+
+Terminal note (`2026-09-06`): the one permitted successor capture exited `1` with
+`reason=fatal-evidence-failure` after two inbound `RX43` observations during direct join,
+before any acquisition `TX41`, `TX44`, or `TX45`. It saved zero batches, published no
+inventory, and left the raw root empty. The successor is terminal `NO_DATASET`; Tasks
+10–16 are intentionally skipped and remain unchecked.
 
 ### Task 10: Label in Sealed Chronological Order
 
