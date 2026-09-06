@@ -520,7 +520,7 @@ async function runProbe(
   let phase: ProbePhase = 'login';
   const onTraffic = (entry: TrafficEntry): void => {
     captureRelevantTraffic(metadata, phase, entry);
-    if (crawlCounters && entry.cmd === 43) {
+    if (crawlCounters && entry.dir === 'tx' && entry.cmd === 43) {
       crawlCounters.tx43Count += 1;
       crawlCounters.fatalEvidenceFailure = true;
     }
