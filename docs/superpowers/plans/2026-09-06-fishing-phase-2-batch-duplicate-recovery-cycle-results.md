@@ -145,33 +145,68 @@
 - Selection terminal state: `NO_CANDIDATE`; selection SHA-256: `9e900be8607848a4f7ad821d67da3c8c37c49bca5c8d2801a4fd2cb9b7da2f31`.
 - No latency tie-break was run because there was no gate-passing quality tie.
 
-## Tasks 14–16: Not Reached
+## Approved Recovery Selection
 
-- Freeze was not published because selection contains no candidate.
-- Final preflight and the one-shot final process were not invoked; no final lock or semantic final access occurred.
-- Replay and local shadow were not invoked because they require a final PASS and replay PASS respectively.
+- On `2026-09-07`, the user approved preserving the original `NO_CANDIDATE` selection while publishing a separate no-replace recovery selection and continuing the remaining plan without another spec or plan.
+- Production commit `c3caf28` added immutable recovery selection support, frozen recovery provenance, and a narrowly scoped descendant-compatibility anchor for recorded experiment revision `a2111f3`.
+- The original promotion gate remains recorded as accepted rate `>= 0.65`, top-1 accuracy `>= 0.99`, batch exact match `>= 0.95`, and both wrong-accepted counts equal to zero.
+- The approved recovery gate requires accepted rate `>= 0.64`, top-1 accuracy `>= 0.987220`, batch exact match `>= 0.95`, and both wrong-accepted counts equal to zero.
+- Exactly one of the verified 48 candidates passed the recovery gate; its dev metrics were accepted rate `0.642173`, top-1 accuracy `0.987220`, batch exact match `0.955556`, and zero wrong accepted queries in both required partitions.
+- The original selection remains byte-identical with SHA-256 `9e900be8607848a4f7ad821d67da3c8c37c49bca5c8d2801a4fd2cb9b7da2f31`.
+- Recovery selection SHA-256: `88873d18d5964fea40eed2ef0943fdeba37807f0a1ddeddd693636e059dae5c8`.
+- No latency tie-break ran because the recovery gate resolved exactly one candidate.
+
+## Task 14: Frozen Candidate
+
+- Independent experiment verification returned `SELECTED`, selection kind `RECOVERY`, `24/24` completed runs, `48/48` completed candidates, and zero rejected runs or candidates.
+- Selected run: `p2cr2-20260906-01-photometric_plus_geom_strong-ratio_0.50-dim_96-d76e999aaed051c1`.
+- Selected candidate: `p2cr2-20260906-01-photometric_plus_geom_strong-ratio_0.50-dim_96-d76e999aaed051c1-joint_zero_wrong`.
+- Candidate SHA-256: `fc60da827a4d8d3dbf2c817d439e3736e2184759a168ecaecd8d804061cd4d8b`; checkpoint SHA-256: `c529690c0d1c3dcdd93f256e5edd003f4f49ed6cf134725ecad2fdd0b286ab7b`.
+- Freeze manifest SHA-256: `e30f2524e5dca5691909bf8224e807d5e16d78afa9f8016e2188ec7ae1ac24f3`; frozen thresholds SHA-256: `99882ca76f226c1f2c1bd84b003d5702f8cb17c5f6f2908c9edc184b79214db0`.
+- Frozen recovery provenance records recovery selection SHA-256 `88873d18d5964fea40eed2ef0943fdeba37807f0a1ddeddd693636e059dae5c8`, original selection SHA-256 `9e900be8607848a4f7ad821d67da3c8c37c49bca5c8d2801a4fd2cb9b7da2f31`, and both gate documents.
+- Independent frozen-bundle verification passed with the exact nine-file inventory.
+
+## Task 15: One-Shot Final
+
+- The first preflight attempt stopped before authorization because the ignored operational gate YAML still carried the old cycle identity; no final command, lock, report, or gate artifact was created by that attempt.
+- The gate YAML was corrected to the successor cycle/experiment/dataset identity without changing final thresholds or safety rules; gate policy SHA-256: `c29a41a47e5de85b4499f71b6eeba77ca0cc52eca56e7485226d6c8d86b1b8ec`.
+- A fresh preflight and the final process ran in one persistent PTY. The authorization was consumed once and is not recorded in this ledger.
+- Final command SHA-256: `bd73dc8820c2d06658fbfa328e1a86c3ac8f4e3a05c64034d8ba7933cea37f49`; durable lock SHA-256: `972a12f190a71b88ad97fcfe7a11199e57f2cc509963aee81f3a7cdfcde5e810`.
+- Final report SHA-256: `76ec117d060e1c8714adac69975c69b222ec90899a96de2b7137a269adae60ed`; gate report SHA-256: `620e78da067e96650d72f5c9ac60ec8e826c17ad2484dbf4549d07a6d0039a00`.
+- Final aggregates were `30` batches and `210` queries, with `129` accepted and `81` abstained.
+- Accepted rate `0.614286`, top-1 accuracy `0.985714`, and batch exact match `0.933333` passed their final thresholds `0.60`, `0.98`, and `0.90`.
+- One accepted prediction was wrong, violating the mandatory zero-wrong rule. The gate had no blockers and returned failure `wrong_accepted_nonzero`.
+- The final process exited `3`; the terminal state is `FINAL_FAIL`.
+
+## Task 16: Not Reached
+
+- Replay was not invoked because it requires final gate PASS.
+- Local shadow was not invoked because it requires replay PASS.
+- Both replay and local-shadow namespaces remain absent.
 
 ## Task 17: Terminal Results and Handover
 
-- Exactly one successor terminal state was selected: `NO_CANDIDATE` on `2026-09-06`.
-- The terminal cause is the unchanged dev promotion gate rejecting all 48 candidates, specifically because every candidate remained below the required `0.99` top-1 accuracy.
-- The dataset, experiment, runs, calibrations, and selection remain immutable operational artifacts; freeze/final/replay/local-shadow namespaces remain absent.
-- The handover records only aggregate counts, metrics, identities, hashes, and gate state without exposing private batch identities, labels, predictions, or sealed final membership.
+- Exactly one successor terminal state was selected: `FINAL_FAIL` on `2026-09-07`.
+- The terminal cause is one wrong accepted query in the one-shot final evaluation; all three final coverage/quality thresholds otherwise passed.
+- The original selection, recovery selection, frozen bundle, final lock, final report, and final gate report remain immutable operational artifacts.
+- Replay and local shadow remain absent because their prerequisite gates were not satisfied.
+- The handover records only aggregate counts, metrics, identities, hashes, and gate state without exposing private batch identities, labels, predictions, authorization, or sealed final membership.
 
 ## Task 18: Final Verification
 
-- Fresh verification ran after terminal publication against the immutable `NO_CANDIDATE` state.
+- Fresh verification ran after terminal publication against the immutable `FINAL_FAIL` state.
 - Python source/test compilation exited `0`; all `37/37` existing tests passed; `pip check` reported no broken requirements.
 - The role-aware detector smoke printed `duplicate-detector-final-smoke: PASS`.
 - Diagnostic screening remained at zero parent batch edges and zero diagnostic multi-batch groups, with maximum reference overlap `4/6`, query overlap `50%`, and combined overlap `50%`.
-- Successor working verification passed with `185` train, `45` dev, and source commitment count `260`; prefinal verification passed with a sealed final commitment count of `30`.
-- Independent experiment verification returned `NO_CANDIDATE`, `24` completed runs, `48` completed candidates, zero rejections, and the expected selection SHA-256.
+- Successor working verification passed with `185` train, `45` dev, and source commitment count `260`; prefinal and durable-lock final verification passed with `30` final batches.
+- Independent experiment verification returned active recovery state `SELECTED`, `24` completed runs, `48` completed candidates, zero rejections, and both expected selection SHA-256 values.
+- Independent frozen-bundle verification passed and confirmed the recorded recovery provenance.
 - Server verification passed `270/270`; TypeScript typecheck and production build exited `0`; the existing `FakeClient` listener warning remained non-blocking.
 - The forbidden probe scan found only the three comments documenting the outbound `TX43` prohibition.
-- All historical, diagnostic, and successor immutable SHA-256 values matched; frozen/final/replay/local-shadow namespaces were absent.
-- Privacy and whitespace checks passed; only explicit redaction-policy text matched the sensitive-term scan.
-- The GitNexus CLI bootstrap failed in the bundled `pnpm` dependency installer at `spawnSync /bin/sh ENOENT`, while the outer shell proved `/bin/sh` executable. The already-indexed GitNexus MCP fallback completed successfully with `23` changed documentation symbols, `0` affected processes, `LOW` risk, and no partial or truncated result.
-- The exact tracked commit set contains only the successor plan, results ledger, and handover; generated corpus/model artifacts remain ignored and unstaged.
+- Recovery, freeze, gate-policy, final-command, final-lock, final-report, final-gate, and dataset SHA-256 checks matched exactly.
+- The final report/gate consistency check confirmed terminal `FINAL_FAIL`, one wrong accepted query, no blockers, and absent replay/local-shadow outputs.
+- The final added-line privacy scan found zero authorization literals, emails, UUIDs, private user paths, account IDs, or per-example prediction/label identifiers; `git diff --check` exited `0`.
+- GitNexus `1.6.11` analyzed the final three-document diff as 19 changed symbols, zero affected processes, and `LOW` risk; the command exited `0` without partial or truncated diagnostics.
 
 ## Sanitization
 

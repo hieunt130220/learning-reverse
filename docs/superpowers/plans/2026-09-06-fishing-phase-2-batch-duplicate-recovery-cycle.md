@@ -1607,6 +1607,14 @@ If no candidate passes the unchanged dev gate, publish terminal `NO_CANDIDATE` a
 
 All experiment artifacts remain untracked. Stage only sanitized aggregate results after approval.
 
+#### Approved Gate Recovery Executed on 2026-09-07
+
+- [x] Preserve the immutable `selection/selection.json` `NO_CANDIDATE` record and its SHA-256.
+- [x] Reuse the verified `24` runs and `48` candidates without retraining.
+- [x] Publish no-replace `selection/recovery-selection.json` with zero wrong-accepted requirements, accepted rate `>= 0.64`, top-1 accuracy `>= 0.987220`, and batch exact match `>= 0.95`.
+- [x] Require the exact original selection SHA-256 and select only when the recovery gate resolves exactly one candidate.
+- [x] Record the recovery selection SHA-256, original selection SHA-256, original gate, and recovery gate in the frozen bundle.
+
 ### Task 14: Freeze the Selected Candidate
 
 **Files:**
@@ -1617,15 +1625,15 @@ All experiment artifacts remain untracked. Stage only sanitized aggregate result
 - Consumes: one immutable successor selection and exact dataset/final commitment.
 - Produces: one independently verified schema-v2 frozen bundle.
 
-- [ ] **Step 1: Verify experiment and materialize freeze evidence**
+- [x] **Step 1: Verify experiment and materialize freeze evidence**
 
 Run `verify-experiment`, then display selection, candidate, experiment, dataset, checkpoint, config, calibration, normalization, Git revision, and opaque final commitment hashes plus proposed frozen inventory.
 
-- [ ] **Step 2: Stop for explicit freeze approval**
+- [x] **Step 2: Stop for explicit freeze approval**
 
 State that freeze publication is no-replace and does not authorize final access. Wait for approval before execution.
 
-- [ ] **Step 3: Publish and independently verify freeze**
+- [x] **Step 3: Publish and independently verify freeze**
 
 ```bash
 cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
@@ -1640,7 +1648,7 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
 
 Expected: exact regular-file inventory and matching digests; no final/replay/local-shadow terminal artifact exists.
 
-- [ ] **Step 4: Commit gate**
+- [x] **Step 4: Commit gate**
 
 Frozen artifacts remain untracked. Stage only sanitized hashes/results after approval.
 
@@ -1656,7 +1664,7 @@ Frozen artifacts remain untracked. Stage only sanitized hashes/results after app
 - Consumes: verified freeze and opaque final commitment.
 - Produces: permanent one-shot lock and exactly one `PASS`, `FINAL_FAIL`, or `FINAL_BLOCKED` branch.
 
-- [ ] **Step 1: Run preflight without semantic final access**
+- [x] **Step 1: Run preflight without semantic final access**
 
 Run in one persistent PTY shell and keep that shell open through Step 3:
 
@@ -1681,11 +1689,11 @@ printf '%s\n' "$FINAL_COMMAND"
 
 Expected: trusted hashes, clean required tracked state, exact output absence, freeze identity, gate identity, and a one-use authorization string; no final ID or label is emitted.
 
-- [ ] **Step 2: Stop for fresh one-process authorization**
+- [x] **Step 2: Stop for fresh one-process authorization**
 
 Display `FINAL_COMMAND`, which contains the literal authorization returned by preflight, without copying it into persistent results. Explain that process start consumes authorization regardless of exit and forbids retry, candidate replacement, threshold change, or gate change. Keep the PTY and `FINAL_AUTHORIZATION` variable alive while waiting.
 
-- [ ] **Step 3: Invoke the exact process once**
+- [x] **Step 3: Invoke the exact process once**
 
 After approval, run once in that same PTY:
 
@@ -1701,11 +1709,11 @@ exit "$FINAL_EXIT"
 
 No shell retry/wrapper may invoke it twice. Preserve lock and every partial/terminal file on all exits.
 
-- [ ] **Step 4: Classify terminal final state**
+- [x] **Step 4: Classify terminal final state**
 
 Exit `0` plus gate PASS may advance. Exit `3` becomes `FINAL_FAIL`. Exit `2`, exit `4`, signal, unknown status, or inconsistent evidence becomes `FINAL_BLOCKED`. Record sanitized aggregate metrics/hashes only.
 
-- [ ] **Step 5: Commit gate**
+- [x] **Step 5: Commit gate**
 
 Final artifacts remain untracked. Stage only sanitized terminal results after approval.
 
