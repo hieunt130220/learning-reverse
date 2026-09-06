@@ -1250,7 +1250,7 @@ Use the existing manual label command on captured batch directories. Do not run 
 
 Generate the exact group digest/checksum summary without image bytes or final membership. For each acquired-only group requiring a ruling, request explicit `reject-acquired` or `allow-same-role`, publish the signed ruling document no-replace, and re-run duplicate validation. Parent/quarantine-touching groups are auto-rejected without an override prompt.
 
-- [ ] **Step 7: Record a truthful acquisition checkpoint**
+- [x] **Step 7: Record a truthful acquisition checkpoint**
 
 Record aggregate captured/labeled/valid/rejected/blocked counts and file hashes. If fewer than 90 chronological eligible batches remain, publish terminal `NO_DATASET` and stop the Plan.
 
@@ -1427,15 +1427,15 @@ Require case count `6`, continuation count `6`, HTTP count `5`, zero gameplay si
 - Consumes: every implementation/operational verification record and the single truthful terminal state.
 - Produces: sanitized ledger, sanitized handover, completed plan checkboxes, final GitNexus/diff evidence.
 
-- [ ] **Step 1: Record exactly one terminal state**
+- [x] **Step 1: Record exactly one terminal state**
 
 Choose exactly one of `NO_DATASET`, `NO_CANDIDATE`, `FINAL_FAIL`, `FINAL_BLOCKED`, `REPLAY_FAIL`, `REPLAY_BLOCKED`, `LOCAL_SHADOW_FAIL`, `LOCAL_SHADOW_BLOCKED`, or `READY_FOR_SEPARATE_LIVE_SHADOW_REVIEW`. Record why later stages did not run.
 
-- [ ] **Step 2: Sanitize results and handover**
+- [x] **Step 2: Sanitize results and handover**
 
 Include dates, approved commands, exit codes, aggregate counts/metrics, hashes, model/cycle/dataset IDs, gate results, and unresolved risks. Exclude credentials, cookies, account/user IDs, packet bytes, image/base64 content, final membership, labels, per-example predictions, and error identities.
 
-- [ ] **Step 3: Run full final verification**
+- [x] **Step 3: Run full final verification**
 
 Repeat Task 12 tests/build/compile/package/hash/privacy checks and:
 
@@ -1448,7 +1448,7 @@ git diff --stat
 
 Expected: fresh successful verification for all applicable commands; GitNexus output not partial/truncated; generated artifacts remain unstaged; historical hashes unchanged.
 
-- [ ] **Step 4: Check every completed Plan step**
+- [x] **Step 4: Check every completed Plan step**
 
 Change only actually completed checkboxes from `- [ ]` to `- [x]`. Leave conditional/skipped steps unchecked and explain them in the terminal-state ledger.
 
