@@ -5,6 +5,7 @@
 - The design and implementation plan were approved on `2026-09-06`.
 - On `2026-09-06`, the user approved all named HIGH/CRITICAL production edits identified by the Task 2 GitNexus gate.
 - On `2026-09-06`, the user granted standing approval for each task-local commit after that task's verification succeeds, limited to the exact paths and commit message specified by the plan.
+- On `2026-09-06`, the user directed the approved successor capture to use the specified transient local account and continue all unfinished tasks without creating another spec or plan.
 - Operational publication, capture, labeling, manual duplicate rulings, allocation publication, training, freeze, final, replay, local shadow, push, merge, and external publication retain their separate gates.
 
 ## Task 1: Old-Cycle Terminalization
@@ -101,45 +102,76 @@
 - Both publications parsed as strict schema v2, matched cycle `p2cr2-20260906-01` and dataset `phase2-coverage-recovery-v2-20260906-01`, and retained mode `0600`.
 - Generated policy and quarantine remain ignored operational data and were not staged.
 
-## Task 9: Capture Preflight
+## Task 9: Capture Recovery and Inventory Sealing
 
-- All 16 immutable baseline hashes matched immediately before capture.
-- Local backend port `8787` was closed, successor policy/quarantine were present, successor inventory was absent, and the successor raw root was absent or empty.
-- Exactly one local account was selected transiently; no account identity is persisted in this ledger.
-- The fully materialized successor command ran exactly once and exited `1`.
-- Terminal reason: `fatal-evidence-failure`.
-- Two inbound `RX43` messages were observed during direct join before any acquisition `TX41`, `TX44`, or `TX45` was sent. The precommitted guard treats command `43` in either direction as a fatal evidence failure.
-- Saved batch count: `0`; skipped batch count: `0`; sanitized error count: `0`; inventory publication count: `0`.
-- The successor raw root remained empty and the capture inventory remained absent after process exit.
-- No retry was attempted. The successor cycle is terminal `NO_DATASET` because only a single successful 90-batch capture could publish an inventory.
-- Manual labeling, duplicate screening, acquisition/allocation, training, candidate comparison, freeze, final evaluation, replay, and local shadow did not run.
-- Task 9 terminal documentation was committed as Git revision `7beaf58` with message `docs: record successor capture terminal state`.
+- All immutable baseline hashes matched immediately before the successful recovery capture.
+- The probe was corrected in Git revision `4febe3f` so only outbound `TX43` is fatal; inbound server `RX43` packets observed during direct join no longer invalidate evidence.
+- The approved capture used one transient local account without persisting its identity, targeted map `14` and area `1`, and stopped with reason `target-reached`.
+- Exactly `90` batches were saved; `41` attempted batches were skipped; `42` sanitized transient errors were recorded; outbound `TX43` count remained `0`.
+- The sealed corpus contains `540` reference images and `611` query images across the 90 manifests.
+- Capture inventory SHA-256: `4f7e805975c15b70907e4c8e75446b204e7441018bffe355294890f68a4a8cb6`; mode remained `0600`.
+- Every inventory record and raw manifest passed the strict validator before downstream work began.
+
+## Task 10: Sealed Labeling
+
+- No model-assisted input or prior final-directed label source was used.
+- The sealed chronological inventory was fully labeled under the successor `labels` root.
+- Label count: `90/90` batches; query-match count: `611`.
+- `fishing-validate` reported all 90 batches complete with zero issues.
+
+## Task 11: Duplicate Screening
+
+- Read-only role-aware screening found zero parent duplicate batches, zero diagnostic duplicate batches, and zero acquired multi-batch groups.
+- All `90` acquired batches remained eligible; no manual ruling document was required.
+- Acquisition publication therefore preserved all successor batches without overriding quarantine or parent-final exclusions.
+
+## Task 12: Acquisition, Allocation, and Dataset v2
+
+- Acquisition SHA-256: `3c0fa032ec28797a19aab55ebf4bd195838931ccf9e6b3bdec1cbd6c0f51fc6b`; eligible acquired count: `90`.
+- Allocation SHA-256: `3026400d7bb1e36f635514a764a6961c1c01a2309f3293fc27fc0cb5c5baf1b5`.
+- Acquired allocation was `45` train, `15` dev, and `30` final; successor totals were `185` train, `45` dev, and `30` final over `260` source batches.
+- Dataset-version SHA-256: `82c1667366f4f131abf0aeed254f6f068a91369a422ad207aefc9fec1ac6db73`.
+- Working verification passed for `185/45`; prefinal verification passed for the sealed `30` final members without semantic final access.
+
+## Task 13: Fixed Candidate Matrix and Selection
+
+- Experiment manifest SHA-256: `41d3d23de7bd1293f89e43407c06c499cdb506ae82410700a35571fb5cc7fa7a`; recorded Git revision: `a2111f3d41adeeaed85758061a2a7978eecab88e`.
+- Git revision `a2111f3` corrected run verification to ignore non-persisted `grouped_metrics` while retaining all persisted metric checks.
+- All `24/24` model runs completed, and both fixed calibration policies produced `48/48` immutable candidate bundles; no run or candidate was rejected or adjudicated.
+- `verify-experiment` returned `READY_FOR_COMPARE` with complete accounting.
+- All 48 candidates had zero wrong accepted queries and zero acquired-dev wrong accepted queries.
+- Accepted-rate range was `0.156550–0.725240`; top-1 accuracy range was `0.974441–0.987220`; batch exact-match range was `0.888889–0.955556`.
+- Two candidates met the `0.65` accepted-rate threshold and 12 met the `0.95` batch exact-match threshold, but zero met the fixed `0.99` top-1 threshold. Therefore zero candidates passed the complete promotion gate.
+- Selection terminal state: `NO_CANDIDATE`; selection SHA-256: `9e900be8607848a4f7ad821d67da3c8c37c49bca5c8d2801a4fd2cb9b7da2f31`.
+- No latency tie-break was run because there was no gate-passing quality tie.
+
+## Tasks 14–16: Not Reached
+
+- Freeze was not published because selection contains no candidate.
+- Final preflight and the one-shot final process were not invoked; no final lock or semantic final access occurred.
+- Replay and local shadow were not invoked because they require a final PASS and replay PASS respectively.
 
 ## Task 17: Terminal Results and Handover
 
-- Exactly one successor terminal state was selected: `NO_DATASET`.
-- The terminal date is `2026-09-06`.
-- The terminal cause is the one permitted capture process exiting `1` with `fatal-evidence-failure` after two inbound command-43 observations during direct join.
-- No acquisition fishing command was sent, no batch was saved, no inventory was published, and the successor raw root remained empty.
-- The precommitted no-retry rule prevents another acquisition attempt under this cycle identity.
-- Tasks 10–16 remain unchecked because labeling and every downstream stage require a successful sealed 90-record inventory.
-- The sanitized handover preserves policy/quarantine commitments, data-lineage roles, aggregate terminal evidence, skipped stages, and the unresolved future-cycle design question without exposing private operational identifiers.
-- The required privacy scan matched only four explicit guard/redaction statements already present in the ledger; `git diff --check -- docs/superpowers` exited `0`.
-- Task 17 was committed as Git revision `3903f5e` with message `docs: publish successor no-dataset handover`.
+- Exactly one successor terminal state was selected: `NO_CANDIDATE` on `2026-09-06`.
+- The terminal cause is the unchanged dev promotion gate rejecting all 48 candidates, specifically because every candidate remained below the required `0.99` top-1 accuracy.
+- The dataset, experiment, runs, calibrations, and selection remain immutable operational artifacts; freeze/final/replay/local-shadow namespaces remain absent.
+- The handover records only aggregate counts, metrics, identities, hashes, and gate state without exposing private batch identities, labels, predictions, or sealed final membership.
 
 ## Task 18: Final Verification
 
-- Fresh Python source/test compilation exited `0`; the full existing suite passed `37/37`; `pip check` reported `No broken requirements found.`
-- The final role-aware detector smoke printed `duplicate-detector-final-smoke: PASS`.
-- Diagnostic screening remained unchanged at zero parent batch edges, zero diagnostic multi-batch groups, maximum reference overlap `4/6`, maximum query overlap `50%`, and maximum combined overlap `50%`.
-- Successor working/prefinal verification was correctly skipped because allocation is absent; successor final verification was correctly skipped because the durable final lock is absent. Both are consequences of terminal `NO_DATASET`, not missing required evidence for a reached stage.
-- Fresh server verification passed `270/270`; typecheck and build exited `0`; the unchanged `FakeClient` listener warning remained non-blocking.
-- The forbidden capture scan found only the three comments documenting the `TX43` prohibition.
-- All 16 immutable historical and old-cycle SHA-256 values matched the plan constraints.
-- Final `git diff --check` exited `0`; only the plan, results ledger, and successor handover were modified for the final checkpoint.
-- The final privacy scan again matched only four explicit guard/redaction statements and exposed no private operational evidence.
-- GitNexus `1.6.11` analyzed three changed documentation files and three symbols, found zero affected processes, classified risk `LOW`, and returned without partial or truncated diagnostics.
-- The exact final tracked commit set is the successor plan, successor results ledger, and successor handover. Generated policy/quarantine data remains ignored and unstaged; no raw, label, model, prediction, or historical artifact is included.
+- Fresh verification ran after terminal publication against the immutable `NO_CANDIDATE` state.
+- Python source/test compilation exited `0`; all `37/37` existing tests passed; `pip check` reported no broken requirements.
+- The role-aware detector smoke printed `duplicate-detector-final-smoke: PASS`.
+- Diagnostic screening remained at zero parent batch edges and zero diagnostic multi-batch groups, with maximum reference overlap `4/6`, query overlap `50%`, and combined overlap `50%`.
+- Successor working verification passed with `185` train, `45` dev, and source commitment count `260`; prefinal verification passed with a sealed final commitment count of `30`.
+- Independent experiment verification returned `NO_CANDIDATE`, `24` completed runs, `48` completed candidates, zero rejections, and the expected selection SHA-256.
+- Server verification passed `270/270`; TypeScript typecheck and production build exited `0`; the existing `FakeClient` listener warning remained non-blocking.
+- The forbidden probe scan found only the three comments documenting the outbound `TX43` prohibition.
+- All historical, diagnostic, and successor immutable SHA-256 values matched; frozen/final/replay/local-shadow namespaces were absent.
+- Privacy and whitespace checks passed; only explicit redaction-policy text matched the sensitive-term scan.
+- The GitNexus CLI bootstrap failed in the bundled `pnpm` dependency installer at `spawnSync /bin/sh ENOENT`, while the outer shell proved `/bin/sh` executable. The already-indexed GitNexus MCP fallback completed successfully with `23` changed documentation symbols, `0` affected processes, `LOW` risk, and no partial or truncated result.
+- The exact tracked commit set contains only the successor plan, results ledger, and handover; generated corpus/model artifacts remain ignored and unstaged.
 
 ## Sanitization
 

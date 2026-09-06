@@ -1090,7 +1090,7 @@ Show the exact numeric command transiently to the user, but keep the numeric ID 
 
 Success requires process exit `0`, `reason=target-reached`, exactly 90 saved records, and a published inventory. Recoverable RX45/RX79 timeouts may increment sanitized skipped/error counters before the target is reached; malformed RX79, any save failure, repeated start rejection, shutdown, login failure, or short count is fatal, leaves inventory absent, preserves partial raw evidence, terminalizes this cycle as `NO_DATASET`, and stops all later tasks.
 
-- [ ] **Step 5: Validate inventory and every raw batch**
+- [x] **Step 5: Validate inventory and every raw batch**
 
 Run:
 
@@ -1187,11 +1187,11 @@ inventory, and left the raw root empty. The successor is terminal `NO_DATASET`; 
 - Consumes: sealed 90-record inventory and raw batches only.
 - Produces: exactly 90 complete human label documents or terminal `NO_DATASET`.
 
-- [ ] **Step 1: Prove no model-assisted input is available**
+- [x] **Step 1: Prove no model-assisted input is available**
 
 Keep inference service stopped and do not open predictions, candidate artifacts, historical final evidence, or shadow output. Record only that labeling uses `fishing-label` and inventory order.
 
-- [ ] **Step 2: Launch the existing label UI in exact inventory order**
+- [x] **Step 2: Launch the existing label UI in exact inventory order**
 
 Run this driver; each `batchId` comes directly from the current sealed record and the subprocess blocks until that UI closes:
 
@@ -1227,7 +1227,7 @@ for record in records:
 PY
 ```
 
-- [ ] **Step 3: Require all 90 labels complete**
+- [x] **Step 3: Require all 90 labels complete**
 
 Run:
 
@@ -1285,11 +1285,11 @@ PY
 
 Expected: 90 complete, zero ambiguous, zero missing, zero extra, zero validation issues. Any other result terminalizes `NO_DATASET` because no additional post-policy batches may be appended to this sealed 90-record inventory.
 
-- [ ] **Step 4: Record sanitized labeling aggregates**
+- [x] **Step 4: Record sanitized labeling aggregates**
 
 Record complete/ambiguous/missing counts and total labeled query count only. Never record label mappings, batch IDs, per-example notes, or screenshots.
 
-- [ ] **Step 5: Commit gate**
+- [x] **Step 5: Commit gate**
 
 Labels remain untracked. Only sanitized aggregate results may be staged after exact approval.
 
@@ -1303,7 +1303,7 @@ Labels remain untracked. Only sanitized aggregate results may be staged after ex
 - Consumes: policy, quarantine, parent raw, old diagnostic raw, successor raw/labels.
 - Produces: sanitized duplicate screening and, only when required, an exact immutable ruling document.
 
-- [ ] **Step 1: Run the read-only screening command**
+- [x] **Step 1: Run the read-only screening command**
 
 ```bash
 cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
@@ -1320,7 +1320,7 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
 
 Expected: detector and implementation digests match policy; output contains no private batch IDs; parent/diagnostic rejection counts and acquired-only multi-batch group IDs/member counts are explicit.
 
-- [ ] **Step 2: Stop immediately if exclusion reduces eligibility below 90**
+- [x] **Step 2: Stop immediately if exclusion reduces eligibility below 90**
 
 Because the sealed inventory contains exactly 90 records, any parent/diagnostic rejection, invalid batch, incomplete label, or approved `reject-acquired` decision makes fewer than 90 eligible. Record `NO_DATASET` and stop without changing thresholds, policy, seed, or inventory.
 
@@ -1371,7 +1371,7 @@ When the file exists, run:
 
 Expected: zero missing/stale rulings, zero parent/diagnostic override, and exactly 90 eligible batches. Otherwise terminal `NO_DATASET`.
 
-- [ ] **Step 6: Commit gate**
+- [x] **Step 6: Commit gate**
 
 Rulings remain private/untracked. Only sanitized group/rejection counts and ruling-document hash may be staged after approval.
 
@@ -1390,7 +1390,7 @@ Rulings remain private/untracked. Only sanitized group/rejection counts and ruli
 - Consumes: exactly 90 screened eligible batches and immutable parent train/dev metadata.
 - Produces: one acquisition manifest, group-atomic `45/15/30` allocation, and successor schema-v2 dataset `185/45/30`.
 
-- [ ] **Step 1: Display and approve the exact acquisition command**
+- [x] **Step 1: Display and approve the exact acquisition command**
 
 Use the exact command below, adding the literal `--rulings` pair only if Task 11 published the file:
 
@@ -1410,7 +1410,7 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
 
 Execute only after explicit acquisition-publication approval. Expected: 90 eligible, no private IDs in stdout, and one no-replace file.
 
-- [ ] **Step 2: Dry-check exact group-atomic allocation**
+- [x] **Step 2: Dry-check exact group-atomic allocation**
 
 ```bash
 .venv/bin/fishing-phase2-cycle publish-allocation \
@@ -1426,11 +1426,11 @@ Execute only after explicit acquisition-publication approval. Expected: 90 eligi
 
 Expected: exact acquired `45/15/30`, successor `185/45/30`, source count `260`, group atomicity, seed `20260906`. If impossible, terminal `NO_DATASET`; do not alter seed or groups.
 
-- [ ] **Step 3: Stop for allocation/dataset publication approval**
+- [x] **Step 3: Stop for allocation/dataset publication approval**
 
 Present acquisition/policy/quarantine/detector hashes, public train/dev counts, opaque final count/hash, and proposed dataset-version digest without final IDs. Execute the same command without `--check` only after approval.
 
-- [ ] **Step 4: Verify working and prefinal contracts**
+- [x] **Step 4: Verify working and prefinal contracts**
 
 ```bash
 .venv/bin/python - <<'PY'
@@ -1459,7 +1459,7 @@ PY
 
 Expected: acquisition, allocation, dataset-version, and prefinal integrity all declare schema version `2`; exact `185/45/30`, source commitment `260`, zero parent-final/diagnostic/rejected membership, no cross-split batch group, and no final ID in output.
 
-- [ ] **Step 5: Commit gate**
+- [x] **Step 5: Commit gate**
 
 All generated data remains untracked. Stage only sanitized results after exact approval.
 
@@ -1475,7 +1475,7 @@ All generated data remains untracked. Stage only sanitized results after exact a
 - Consumes: verified successor working dataset and unchanged fixed matrix code.
 - Produces: immutable 24 run records, 48 candidate records, and deterministic dev-only selection.
 
-- [ ] **Step 1: Preview the exact matrix and manifest**
+- [x] **Step 1: Preview the exact matrix and manifest**
 
 ```bash
 cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
@@ -1488,11 +1488,11 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
 
 Expected: 24 model IDs, 48 candidate IDs, exact successor identities, no runtime override.
 
-- [ ] **Step 2: Stop for experiment/training approval**
+- [x] **Step 2: Stop for experiment/training approval**
 
 Present manifest digest, code revision, matrix IDs/counts, CPU/workers/epochs/hyperparameters, raw/labels roots, duplicate-review hash, and artifact root. Publish and run only after explicit approval.
 
-- [ ] **Step 3: Publish the experiment once and run all manifest models**
+- [x] **Step 3: Publish the experiment once and run all manifest models**
 
 First require the implementation revision from Task 7:
 
@@ -1546,7 +1546,7 @@ PY
 
 Verify each command’s published run inventory/checksum before advancing. Interrupted runs stop the driver and require a separately approved literal `adjudicate-interrupted --run-id <actual-id> --decision reject|reset` command; no run directory is overwritten silently.
 
-- [ ] **Step 4: Calibrate both policies and verify completeness**
+- [x] **Step 4: Calibrate both policies and verify completeness**
 
 Run:
 
@@ -1588,7 +1588,7 @@ PY
 
 Expected: every one of 24 runs and 48 candidates is completed or explicitly adjudicated; no unresolved run remains.
 
-- [ ] **Step 5: Compare candidates and publish selection**
+- [x] **Step 5: Compare candidates and publish selection**
 
 Run:
 
@@ -1603,7 +1603,7 @@ cd /Users/hieunt/learning-reverse/avatar-web/fishing-ml
 
 If no candidate passes the unchanged dev gate, publish terminal `NO_CANDIDATE` and stop. Otherwise record selected candidate/model/run IDs and aggregate dev/latency evidence without per-example predictions.
 
-- [ ] **Step 6: Commit gate**
+- [x] **Step 6: Commit gate**
 
 All experiment artifacts remain untracked. Stage only sanitized aggregate results after approval.
 
