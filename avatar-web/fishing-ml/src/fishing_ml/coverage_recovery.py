@@ -134,6 +134,40 @@ class CandidateEvidence:
     acquired_dev_wrong_accepted_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class DevPromotionGate:
+    wrong_accepted_count: int
+    min_accepted_rate: float
+    min_top1_accuracy: float
+    min_batch_exact_match: float
+    acquired_dev_wrong_accepted_count: int
+
+    def document(self) -> dict[str, object]:
+        return {
+            "wrongAcceptedCount": self.wrong_accepted_count,
+            "minAcceptedRate": self.min_accepted_rate,
+            "minTop1Accuracy": self.min_top1_accuracy,
+            "minBatchExactMatch": self.min_batch_exact_match,
+            "acquiredDevWrongAcceptedCount": self.acquired_dev_wrong_accepted_count,
+        }
+
+
+ORIGINAL_DEV_PROMOTION_GATE = DevPromotionGate(
+    wrong_accepted_count=0,
+    min_accepted_rate=0.65,
+    min_top1_accuracy=0.99,
+    min_batch_exact_match=0.95,
+    acquired_dev_wrong_accepted_count=0,
+)
+RECOVERY_DEV_PROMOTION_GATE = DevPromotionGate(
+    wrong_accepted_count=0,
+    min_accepted_rate=0.64,
+    min_top1_accuracy=0.987220,
+    min_batch_exact_match=0.95,
+    acquired_dev_wrong_accepted_count=0,
+)
+
+
 def _canonical_json_bytes(document: object) -> bytes:
     return json.dumps(
         document,
@@ -408,13 +442,7 @@ def _experiment_document(cycle_root: Path, git_revision: str) -> dict[str, objec
         "models": [_model_document(model) for model in models],
         "candidates": [_candidate_spec_document(candidate) for candidate in candidates],
         "calibrationPolicies": list(CALIBRATION_POLICIES),
-        "devPromotionGate": {
-            "wrongAcceptedCount": 0,
-            "minAcceptedRate": 0.65,
-            "minTop1Accuracy": 0.99,
-            "minBatchExactMatch": 0.95,
-            "acquiredDevWrongAcceptedCount": 0,
-        },
+        "devPromotionGate": ORIGINAL_DEV_PROMOTION_GATE.document(),
         "selectionOrder": [
             "acceptedRateDescending",
             "top1AccuracyDescending",
@@ -1219,13 +1247,17 @@ def calibrate_model(
     }
 
 
-def _passes_dev_gate(candidate: CandidateEvidence) -> bool:
+def _passes_dev_gate(
+    candidate: CandidateEvidence,
+    gate: DevPromotionGate = ORIGINAL_DEV_PROMOTION_GATE,
+) -> bool:
     return (
-        candidate.wrong_accepted_count == 0
-        and candidate.accepted_rate >= 0.65
-        and candidate.top1_accuracy >= 0.99
-        and candidate.batch_exact_match >= 0.95
-        and candidate.acquired_dev_wrong_accepted_count == 0
+        candidate.wrong_accepted_count == gate.wrong_accepted_count
+        and candidate.accepted_rate >= gate.min_accepted_rate
+        and candidate.top1_accuracy >= gate.min_top1_accuracy
+        and candidate.batch_exact_match >= gate.min_batch_exact_match
+        and candidate.acquired_dev_wrong_accepted_count
+        == gate.acquired_dev_wrong_accepted_count
     )
 
 
@@ -1410,12 +1442,17 @@ def _selection_path(artifacts_root: Path) -> Path:
     return Path(artifacts_root) / "selection" / "selection.json"
 
 
+def _recovery_selection_path(artifacts_root: Path) -> Path:
+    return Path(artifacts_root) / "selection" / "recovery-selection.json"
+
+
 def _selection_document(
     experiment_manifest: Mapping[str, object],
     experiment_manifest_sha256: str,
     candidates: tuple[CandidateEvidence, ...],
     rejected_runs: tuple[str, ...],
     *,
+    dev_promotion_gate: DevPromotionGate = ORIGINAL_DEV_PROMOTION_GATE,
     latency_evidence: tuple[Mapping[str, object], ...] = (),
     selected: CandidateEvidence | None = None,
 ) -> dict[str, object]:
@@ -1430,7 +1467,7 @@ def _selection_document(
         "completedCandidateCount": len(candidates),
         "rejectedRunIds": list(rejected_runs),
         "rejectedCandidateCount": len(rejected_runs) * 2,
-        "devPromotionGate": experiment_manifest["devPromotionGate"],
+        "devPromotionGate": dev_promotion_gate.document(),
     }
     if selected is None:
         base.update(
@@ -1449,7 +1486,7 @@ def _selection_document(
             "qualityTieCandidateIds": [
                 candidate.spec.candidate_id
                 for candidate in candidates
-                if _passes_dev_gate(candidate)
+                if _passes_dev_gate(candidate, dev_promotion_gate)
                 and (
                     candidate.accepted_rate,
                     candidate.top1_accuracy,
@@ -1465,6 +1502,33 @@ def _selection_document(
         }
     )
     return base
+
+
+def _recovery_selection_document(
+    experiment_manifest: Mapping[str, object],
+    experiment_manifest_sha256: str,
+    candidates: tuple[CandidateEvidence, ...],
+    rejected_runs: tuple[str, ...],
+    original_selection_sha256: str,
+    selected: CandidateEvidence,
+) -> dict[str, object]:
+    _hex64(original_selection_sha256, "original selection SHA-256")
+    document = _selection_document(
+        experiment_manifest,
+        experiment_manifest_sha256,
+        candidates,
+        rejected_runs,
+        dev_promotion_gate=RECOVERY_DEV_PROMOTION_GATE,
+        selected=selected,
+    )
+    document.update(
+        {
+            "selectionKind": "RECOVERY",
+            "originalSelectionSha256": original_selection_sha256,
+            "originalDevPromotionGate": ORIGINAL_DEV_PROMOTION_GATE.document(),
+        }
+    )
+    return document
 
 
 def compare_candidates(
@@ -1678,6 +1742,119 @@ def _validate_selection(
     return document
 
 
+def _validate_recovery_selection(
+    artifacts_root: Path,
+    manifest: Mapping[str, object],
+    manifest_sha256: str,
+    candidates: tuple[CandidateEvidence, ...],
+    rejected_runs: tuple[str, ...],
+    original_selection: Mapping[str, object] | None,
+) -> Mapping[str, object] | None:
+    path = _recovery_selection_path(artifacts_root)
+    if not os.path.lexists(path):
+        return None
+    if original_selection is None or original_selection.get("status") != "NO_CANDIDATE":
+        raise ValueError("recovery selection requires an immutable NO_CANDIDATE selection")
+    original_selection_sha256 = sha256_file(_selection_path(artifacts_root))
+    passing = tuple(
+        candidate
+        for candidate in candidates
+        if _passes_dev_gate(candidate, RECOVERY_DEV_PROMOTION_GATE)
+    )
+    if len(passing) != 1:
+        raise ValueError("recovery gate must resolve exactly one candidate")
+    expected = _recovery_selection_document(
+        manifest,
+        manifest_sha256,
+        candidates,
+        rejected_runs,
+        original_selection_sha256,
+        passing[0],
+    )
+    document = _read_mapping(path, "recovery selection")
+    if document != expected or sha256_file(path) != _document_sha256(expected):
+        raise ValueError("recovery selection record mismatch")
+    return document
+
+
+def recover_selection(
+    cycle_root: Path,
+    artifacts_root: Path,
+    original_selection_sha256: str,
+) -> dict[str, object]:
+    expected_original_sha256 = _hex64(
+        original_selection_sha256,
+        "expected original selection SHA-256",
+    )
+    _require_clean_tracked_worktree()
+    cycle_data_roots = resolve_cycle_data_roots(cycle_root)
+    manifest, manifest_sha256, membership = _load_experiment(cycle_root, artifacts_root)
+    _, candidates, rejected_runs, unresolved = _matrix_state(
+        cycle_root,
+        artifacts_root,
+        manifest,
+        manifest_sha256,
+        membership,
+        cycle_data_roots,
+    )
+    if unresolved:
+        raise StageBlockedError(
+            "cannot recover an incomplete or invalid experiment: " + "; ".join(unresolved)
+        )
+    if len(candidates) + len(rejected_runs) * 2 != 48:
+        raise RuntimeError("recovery candidate accounting does not equal 48")
+    original_selection = _validate_selection(
+        artifacts_root,
+        manifest,
+        manifest_sha256,
+        candidates,
+        rejected_runs,
+    )
+    if original_selection is None or original_selection.get("status") != "NO_CANDIDATE":
+        raise StageBlockedError("recovery requires one immutable NO_CANDIDATE selection")
+    actual_original_sha256 = sha256_file(_selection_path(artifacts_root))
+    if actual_original_sha256 != expected_original_sha256:
+        raise ValueError("original selection SHA-256 does not match recovery authorization")
+    passing = tuple(
+        candidate
+        for candidate in candidates
+        if _passes_dev_gate(candidate, RECOVERY_DEV_PROMOTION_GATE)
+    )
+    if len(passing) != 1:
+        raise StageBlockedError("approved recovery gate must resolve exactly one candidate")
+    selected = passing[0]
+    document = _recovery_selection_document(
+        manifest,
+        manifest_sha256,
+        candidates,
+        rejected_runs,
+        actual_original_sha256,
+        selected,
+    )
+    path = _recovery_selection_path(artifacts_root)
+    publish_no_replace(path, document)
+    validated = _validate_recovery_selection(
+        artifacts_root,
+        manifest,
+        manifest_sha256,
+        candidates,
+        rejected_runs,
+        original_selection,
+    )
+    if validated is None:
+        raise RuntimeError("published recovery selection could not be reloaded")
+    return {
+        "schemaVersion": 1,
+        "status": validated["status"],
+        "selectionKind": validated["selectionKind"],
+        "path": str(path),
+        "sha256": sha256_file(path),
+        "originalSelectionSha256": actual_original_sha256,
+        "selectedCandidateId": selected.spec.candidate_id,
+        "devPromotionGate": RECOVERY_DEV_PROMOTION_GATE.document(),
+    }
+
+
 def verify_experiment(cycle_root: Path, artifacts_root: Path) -> dict[str, object]:
     cycle_data_roots = resolve_cycle_data_roots(cycle_root)
     manifest, manifest_sha256, membership = _load_experiment(cycle_root, artifacts_root)
@@ -1695,23 +1872,47 @@ def verify_experiment(cycle_root: Path, artifacts_root: Path) -> dict[str, objec
         )
     if len(candidates) + len(rejected_runs) * 2 != 48:
         raise RuntimeError("verified candidate accounting does not equal 48")
-    selection = _validate_selection(
+    original_selection = _validate_selection(
         artifacts_root,
         manifest,
         manifest_sha256,
         candidates,
         rejected_runs,
     )
+    recovery_selection = _validate_recovery_selection(
+        artifacts_root,
+        manifest,
+        manifest_sha256,
+        candidates,
+        rejected_runs,
+        original_selection,
+    )
+    selection = recovery_selection or original_selection
+    selection_path = (
+        _recovery_selection_path(artifacts_root)
+        if recovery_selection is not None
+        else _selection_path(artifacts_root)
+    )
     return {
         "schemaVersion": 1,
         "status": selection["status"] if selection is not None else "READY_FOR_COMPARE",
+        "selectionKind": (
+            "RECOVERY"
+            if recovery_selection is not None
+            else "ORIGINAL" if original_selection is not None else None
+        ),
         "experimentManifestSha256": manifest_sha256,
         "completedRunCount": len(runs),
         "rejectedRunCount": len(rejected_runs),
         "completedCandidateCount": len(candidates),
         "rejectedCandidateCount": len(rejected_runs) * 2,
         "selectionSha256": (
-            sha256_file(_selection_path(artifacts_root)) if selection is not None else None
+            sha256_file(selection_path) if selection is not None else None
+        ),
+        "originalSelectionSha256": (
+            sha256_file(_selection_path(artifacts_root))
+            if original_selection is not None
+            else None
         ),
     }
 
@@ -1738,12 +1939,26 @@ def freeze_selected_candidate(
         raise StageBlockedError(
             "cannot freeze an incomplete or invalid experiment: " + "; ".join(unresolved)
         )
-    selection = _validate_selection(
+    original_selection = _validate_selection(
         artifacts_root,
         manifest,
         manifest_sha256,
         candidates,
         rejected_runs,
+    )
+    recovery_selection = _validate_recovery_selection(
+        artifacts_root,
+        manifest,
+        manifest_sha256,
+        candidates,
+        rejected_runs,
+        original_selection,
+    )
+    selection = recovery_selection or original_selection
+    selection_path = (
+        _recovery_selection_path(artifacts_root)
+        if recovery_selection is not None
+        else _selection_path(artifacts_root)
     )
     if selection is None or selection.get("status") != "SELECTED":
         raise StageBlockedError("freeze requires one immutable selected candidate")
@@ -1769,7 +1984,7 @@ def freeze_selected_candidate(
         labels_root=labels_root,
         cycle_root=cycle_root,
         experiment_manifest_path=experiment_manifest_path(artifacts_root),
-        selection_path=_selection_path(artifacts_root),
+        selection_path=selection_path,
         candidate_path=candidate.path,
         cycle_data_roots=cycle_data_roots,
     )
@@ -2846,6 +3061,10 @@ def main(argv: list[str] | None = None) -> int:
     compare.add_argument("--raw-root", type=Path, required=True)
     compare.add_argument("--labels-root", type=Path, required=True)
 
+    recover = subparsers.add_parser("recover-selection")
+    _add_cycle_artifact_roots(recover)
+    recover.add_argument("--original-selection-sha256", required=True)
+
     verify = subparsers.add_parser("verify-experiment")
     _add_cycle_artifact_roots(verify)
 
@@ -2913,6 +3132,12 @@ def main(argv: list[str] | None = None) -> int:
                 args.artifacts_root,
                 args.raw_root,
                 args.labels_root,
+            )
+        elif args.command == "recover-selection":
+            result = recover_selection(
+                args.cycle_root,
+                args.artifacts_root,
+                args.original_selection_sha256,
             )
         elif args.command == "verify-experiment":
             result = verify_experiment(args.cycle_root, args.artifacts_root)

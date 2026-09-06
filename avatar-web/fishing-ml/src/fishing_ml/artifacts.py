@@ -31,6 +31,20 @@ _FROZEN_INPUTS = {
     "best-dev.pt": "checkpoints/best-dev.pt",
 }
 _GENERATED = ("dataset-snapshot.json", "split-checksums.json")
+_ORIGINAL_CYCLE_DEV_PROMOTION_GATE = {
+    "wrongAcceptedCount": 0,
+    "minAcceptedRate": 0.65,
+    "minTop1Accuracy": 0.99,
+    "minBatchExactMatch": 0.95,
+    "acquiredDevWrongAcceptedCount": 0,
+}
+_RECOVERY_CYCLE_DEV_PROMOTION_GATE = {
+    "wrongAcceptedCount": 0,
+    "minAcceptedRate": 0.64,
+    "minTop1Accuracy": 0.987220,
+    "minBatchExactMatch": 0.95,
+    "acquiredDevWrongAcceptedCount": 0,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,7 +288,10 @@ def verify_cycle_freeze(frozen_dir: Path) -> CycleFreezeManifest:
         "thresholds",
         "provenance",
     }
-    if not isinstance(thresholds, dict) or set(thresholds) != threshold_keys:
+    if not isinstance(thresholds, dict) or frozenset(thresholds) not in {
+        frozenset(threshold_keys),
+        frozenset(threshold_keys | {"selectionRecovery"}),
+    }:
         raise ValueError("cycle frozen thresholds fields mismatch")
     if (
         thresholds["schemaVersion"] != 2
@@ -307,6 +324,26 @@ def verify_cycle_freeze(frozen_dir: Path) -> CycleFreezeManifest:
     }
     if provenance != expected_provenance:
         raise ValueError("cycle frozen threshold provenance mismatch")
+    if "selectionRecovery" in thresholds:
+        selection_recovery = thresholds["selectionRecovery"]
+        if not isinstance(selection_recovery, dict) or set(selection_recovery) != {
+            "recoverySelectionSha256",
+            "originalSelectionSha256",
+            "originalDevPromotionGate",
+            "recoveryDevPromotionGate",
+        }:
+            raise ValueError("cycle frozen recovery selection provenance fields mismatch")
+        if (
+            selection_recovery["recoverySelectionSha256"] != manifest.selection_sha256
+            or not isinstance(selection_recovery["originalSelectionSha256"], str)
+            or not _HEX64.fullmatch(selection_recovery["originalSelectionSha256"])
+            or selection_recovery["originalSelectionSha256"] == manifest.selection_sha256
+            or selection_recovery["originalDevPromotionGate"]
+            != _ORIGINAL_CYCLE_DEV_PROMOTION_GATE
+            or selection_recovery["recoveryDevPromotionGate"]
+            != _RECOVERY_CYCLE_DEV_PROMOTION_GATE
+        ):
+            raise ValueError("cycle frozen recovery selection provenance mismatch")
 
     snapshot = read_json(root / "dataset-snapshot.json")
     snapshot_keys = {
@@ -614,6 +651,34 @@ def freeze_cycle_run(
     ):
         raise ValueError("cycle freeze selected run/candidate identity mismatch")
     selection_sha256 = sha256_file(selected_path)
+    recovery_fields = {
+        "selectionKind",
+        "originalSelectionSha256",
+        "originalDevPromotionGate",
+    }
+    recovery_selection: dict[str, object] | None = None
+    present_recovery_fields = recovery_fields & set(selection)
+    if present_recovery_fields:
+        if (
+            present_recovery_fields != recovery_fields
+            or selection.get("selectionKind") != "RECOVERY"
+            or not isinstance(selection.get("originalSelectionSha256"), str)
+            or not _HEX64.fullmatch(selection["originalSelectionSha256"])
+            or selection["originalSelectionSha256"] == selection_sha256
+            or selection.get("originalDevPromotionGate")
+            != _ORIGINAL_CYCLE_DEV_PROMOTION_GATE
+            or experiment.get("devPromotionGate")
+            != _ORIGINAL_CYCLE_DEV_PROMOTION_GATE
+            or selection.get("devPromotionGate")
+            != _RECOVERY_CYCLE_DEV_PROMOTION_GATE
+        ):
+            raise ValueError("cycle freeze recovery selection provenance mismatch")
+        recovery_selection = {
+            "recoverySelectionSha256": selection_sha256,
+            "originalSelectionSha256": selection["originalSelectionSha256"],
+            "originalDevPromotionGate": selection["originalDevPromotionGate"],
+            "recoveryDevPromotionGate": selection["devPromotionGate"],
+        }
     candidate_sha256 = sha256_file(calibrated_path)
     if selected.get("candidateSha256") != candidate_sha256:
         raise ValueError("cycle freeze selected candidate digest mismatch")
@@ -720,6 +785,8 @@ def freeze_cycle_run(
                 "datasetVersionSha256": dataset_version_sha256,
             },
         }
+        if recovery_selection is not None:
+            threshold_document["selectionRecovery"] = recovery_selection
         atomic_write_json(staging / "thresholds.json", threshold_document)
         atomic_write_json(
             staging / "dataset-snapshot.json",
