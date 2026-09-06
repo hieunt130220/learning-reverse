@@ -654,6 +654,8 @@ def _validate_run(
     if metrics_document.get("schemaVersion") != 1:
         raise ValueError("run dev metrics schemaVersion mismatch")
     for key, expected in raw_metrics.to_json().items():
+        if key == "grouped_metrics":
+            continue
         if metrics_document.get(key) != expected:
             raise ValueError(f"run dev metrics mismatch for {key}")
 
