@@ -4,6 +4,9 @@ import type { Session } from '../proto/session.js';
 /** AVATAR_JOIN_PARK: i8 roomID, i8 boardID, then native join coordinates. */
 export const CMD_AVATAR_JOIN_PARK = 80;
 
+/** CAU_THANH_CONG: bool isF=true, i8 len, len × i8 answers. */
+export const CMD_AVATAR_CAU_THANH_CONG = 43;
+
 export interface NativeParkJoinPosition {
   x: number;
   y: number;
@@ -48,6 +51,31 @@ export class ParkService {
       .writeByte(area)
       .writeShort(position.x)
       .writeShort(position.y);
+    this.session.send(m);
+  }
+
+  /**
+   * CAU_THANH_CONG (TX43): bool isF=true, i8 len, len × i8 answers.
+   * Throws if answer is empty, length > 255, or any value is not integer in [0, 255].
+   */
+  doFinishFishing(answer: readonly number[]): void {
+    if (!Array.isArray(answer) || answer.length === 0) {
+      throw new Error('TX43: answer must be a non-empty array');
+    }
+    if (answer.length > 255) {
+      throw new Error(`TX43: answer length ${answer.length} exceeds 255`);
+    }
+    for (let i = 0; i < answer.length; i++) {
+      const b = answer[i];
+      if (!Number.isSafeInteger(b) || b < 0 || b > 255) {
+        throw new Error(`TX43: invalid answer byte at index ${i}: ${b}`);
+      }
+    }
+    const m = Message.create(CMD_AVATAR_CAU_THANH_CONG);
+    m.writer!.writeBoolean(true).writeByte(answer.length);
+    for (let i = 0; i < answer.length; i++) {
+      m.writer!.writeByte(answer[i]!);
+    }
     this.session.send(m);
   }
 }
