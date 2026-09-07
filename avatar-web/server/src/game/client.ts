@@ -49,6 +49,7 @@ import {
   DailyAttendanceService,
   type DailyAttendanceResult,
 } from './dailyAttendance.js';
+import { decodeCanCau } from './fishingDecode.js';
 import { ParkService } from './parkService.js';
 import { cmdName } from './opcodes.js';
 import {
@@ -586,6 +587,10 @@ export class GameClient extends EventEmitter {
 
   joinPark(map: number, area: number): void {
     this.park.doJoinPark(map, area);
+  }
+
+  finishFishing(answer: readonly number[]): void {
+    this.park.doFinishFishing(answer);
   }
 
   /**
@@ -1407,6 +1412,16 @@ export class GameClient extends EventEmitter {
           this.emit('log', `giải mã farm lỗi: ${(err as Error).message}`);
         }
         break;
+      case 79: {
+        // CAN_CAU (RX79) — cá cắn câu + ảnh mini-game
+        try {
+          const payload = decodeCanCau(msg.getData());
+          this.emit('fishing-challenge', payload);
+        } catch {
+          this.emit('log', 'RX79 CAN_CAU decode thất bại');
+        }
+        break;
+      }
       case -60: {
         const body = msg.getData();
         const rawHex = body.toString('hex');
