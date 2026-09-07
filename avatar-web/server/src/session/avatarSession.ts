@@ -47,6 +47,16 @@ import {
   runtimeSnapshotPatchFromEvent,
   type CachedRuntimeSnapshot,
 } from './runtimeCache.js';
+import {
+  buildAnswerDomain,
+  makeAutoDecision,
+  type CanCauPayload,
+} from '../fishing/autoDecision.js';
+import { ProductionInferenceClient } from '../fishing/productionInference.js';
+
+export function isFishingAutoTx43Enabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.FISHING_AUTO_TX43_ENABLED === 'true';
+}
 
 export const RETRY_BASE_MS = 10_000;
 export const RETRY_MAX_MS = 5 * 60 * 1000;
@@ -222,6 +232,9 @@ export class AvatarSession {
   private autoSyncKickoff?: NodeJS.Immediate;
   private readonly shop?: ShopCoordinator;
   private shopClientAttached = false;
+  private fishingChallengeGeneration = 0;
+  private readonly consumedFishingChallenges = new Set<number>();
+  private fishingInferenceClient?: ProductionInferenceClient;
 
   private readonly logs: LogLine[] = [];
   private readonly traffic: TrafficEntry[] = [];
@@ -332,6 +345,7 @@ export class AvatarSession {
   }
 
   stop(): void {
+    this.fishingChallengeGeneration += 1;
     this.setWanted(false);
     this.cancelRetry();
     this.cancelAutoCycleTimer();
@@ -922,6 +936,10 @@ export class AvatarSession {
           this.pushLog(`[captcha] lỗi lưu file: ${(err as Error).message}`);
         }
       })();
+    });
+
+    client.on('fishing-challenge', (payload: CanCauPayload) => {
+      this.handleFishingChallenge(client, epoch, payload);
     });
 
     this.auto!.on('state', (s: AutoFarmState) => {
@@ -1558,6 +1576,7 @@ export class AvatarSession {
   }
 
   private teardown(): void {
+    this.fishingChallengeGeneration += 1;
     this.invalidateAutomationTransitions();
     this.cancelAutoSyncKickoff();
     this.detachShop('Phiên game đã teardown');
@@ -1579,6 +1598,77 @@ export class AvatarSession {
     } catch {
       /* bỏ qua */
     }
+  }
+
+  private handleFishingChallenge(
+    client: GameClient,
+    epoch: number,
+    payload: CanCauPayload,
+  ): void {
+    if (!this.isCurrent(client, epoch) || client.status !== 'online' || !this.wanted) {
+      return;
+    }
+
+    const domain = buildAnswerDomain(payload);
+    if (!domain) {
+      this.pushLog('fishing: challenge không hợp lệ hoặc vượt ngưỡng reference (suppressed_invalid_domain)');
+      return;
+    }
+
+    const challengeGen = ++this.fishingChallengeGeneration;
+    const autoGen = this.automationGeneration;
+
+    const inferenceClient = this.fishingInferenceClient ??= new ProductionInferenceClient({
+      endpoint: process.env.FISHING_INFERENCE_URL || 'http://127.0.0.1:8000/match',
+      timeoutMs: Number(process.env.FISHING_INFERENCE_TIMEOUT_MS) || 5000,
+    });
+
+    void makeAutoDecision(payload, domain, (p) => inferenceClient.match(p))
+      .then((decision) => {
+        if (decision.status !== 'answer') {
+          this.pushLog('fishing: không xác định được đáp án hợp lệ');
+          return;
+        }
+
+        // Critical Pre-Send Gate (Strictly Synchronous, No Await)
+        if (this.consumedFishingChallenges.has(challengeGen)) return;
+        if (this.fishingChallengeGeneration !== challengeGen) return;
+        if (this.automationGeneration !== autoGen) return;
+        if (this.connectionEpoch !== epoch) return;
+        if (this.client !== client) return;
+        if (!this.isCurrent(client, epoch)) return;
+        if (!this.wanted) return;
+        if (client.status !== 'online') return;
+
+        // Verify answer matches domain
+        if (
+          !Array.isArray(decision.answer)
+          || decision.answer.length !== domain.queryCount
+          || !decision.answer.every((val, idx) => domain.validValuesByQuery[idx]!.includes(val))
+        ) {
+          this.pushLog('fishing: answer vi phạm domain');
+          return;
+        }
+
+        // Fail-closed environment kill switch checked immediately before send
+        if (!isFishingAutoTx43Enabled()) {
+          this.pushLog('fishing: TX43 bị chặn bởi FISHING_AUTO_TX43_ENABLED !== true');
+          return;
+        }
+
+        // Mark consumed immediately before synchronous send
+        this.consumedFishingChallenges.add(challengeGen);
+
+        try {
+          client.finishFishing(decision.answer);
+          this.pushLog(`fishing: đã gửi TX43 (${decision.source})`);
+        } catch (sendErr) {
+          this.pushLog(`fishing: gửi TX43 lỗi: ${(sendErr as Error).message}`);
+        }
+      })
+      .catch((err) => {
+        this.pushLog(`fishing: lỗi xử lý challenge: ${(err as Error).message}`);
+      });
   }
 
   private detachShop(reason: string): void {
