@@ -2,6 +2,8 @@ import { randomInt } from 'node:crypto';
 
 import type { CanCauPayload } from '../game/fishingDecode.js';
 
+export type { CanCauPayload };
+
 /** Verified immutable mapping: TX43 wire byte = 0-based reference index. */
 export const REFERENCE_TO_TX43_BYTE: readonly number[] = Object.freeze([0, 1, 2, 3, 4, 5]);
 
