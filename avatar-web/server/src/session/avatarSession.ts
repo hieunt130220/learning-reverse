@@ -34,6 +34,7 @@ import {
 } from './shopCoordinator.js';
 import {
   DEFAULT_FISHING_CONFIG,
+  getFishName,
   idleFindNpcRuntime,
   idleFishingRuntime,
   type AutomationLocation,
@@ -960,10 +961,12 @@ export class AvatarSession {
         return;
       }
       if (ev.idFish >= 0) {
+        const fishName = getFishName(ev.idFish);
         this.fishingRuntime.totalCatches += 1;
         this.fishingRuntime.lastFishId = ev.idFish;
+        this.fishingRuntime.lastFishName = fishName;
         this.fishingRuntime.status = 'caught';
-        this.pushLog(`[câu cá] bắt được cá ID ${ev.idFish}! (Tổng: ${this.fishingRuntime.totalCatches})`);
+        this.pushLog(`[câu cá] bắt được ${fishName} (ID ${ev.idFish})! (Tổng: ${this.fishingRuntime.totalCatches})`);
       } else {
         this.pushLog(`[câu cá] giật hụt hoặc sổng cá (mã ${ev.idFish})`);
         this.fishingRuntime.status = 'rejected';

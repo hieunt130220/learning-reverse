@@ -28,10 +28,30 @@ export type FishingStatus =
   | 'rejected'
   | 'resting';
 
+export const FISH_NAMES: Record<number, string> = {
+  444: 'Cá rô',
+  449: 'Cá lòng tong',
+  450: 'Cá chép vàng',
+  451: 'Cá lóc',
+  452: 'Cá nóc',
+  453: 'Con cua',
+  454: 'Cá chim',
+  455: 'Cá đuối',
+  456: 'Cá ngựa',
+  457: 'Cá mập',
+  4507: 'Cá biển (4507)',
+  4510: 'Cá biển (4510)',
+};
+
+export function getFishName(id: number): string {
+  return FISH_NAMES[id] ?? `Cá ID ${id}`;
+}
+
 export interface FishingRuntimeState {
   status: FishingStatus;
   totalCatches: number;
   lastFishId: number | null;
+  lastFishName?: string | null;
   lastError: string | null;
   currentMap: number;
   currentArea: number;
@@ -42,6 +62,7 @@ export function idleFishingRuntime(): FishingRuntimeState {
     status: 'idle',
     totalCatches: 0,
     lastFishId: null,
+    lastFishName: null,
     lastError: null,
     currentMap: 14,
     currentArea: 0,

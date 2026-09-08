@@ -361,6 +361,7 @@ export interface FishingRuntimeState {
   status: FishingStatus;
   totalCatches: number;
   lastFishId: number | null;
+  lastFishName?: string | null;
   lastError: string | null;
   currentMap: number;
   currentArea: number;

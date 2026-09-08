@@ -21,6 +21,28 @@ const FISHING_MAPS = [
   { id: 27, name: 'Bến tàu / Đảo Hawai (Map 27)' },
 ];
 
+export const FISH_NAMES: Record<number, string> = {
+  444: 'Cá rô',
+  449: 'Cá lòng tong',
+  450: 'Cá chép vàng',
+  451: 'Cá lóc',
+  452: 'Cá nóc',
+  453: 'Con cua',
+  454: 'Cá chim',
+  455: 'Cá đuối',
+  456: 'Cá ngựa',
+  457: 'Cá mập',
+  4507: 'Cá biển (4507)',
+  4510: 'Cá biển (4510)',
+};
+
+export function formatFishName(id: number | null | undefined, name?: string | null): string {
+  if (!id || id <= 0) return '—';
+  if (name) return `${name} (ID ${id})`;
+  const mapped = FISH_NAMES[id];
+  return mapped ? `${mapped} (ID ${id})` : `Cá ID ${id}`;
+}
+
 function formatFishingStatus(
   isFishingDesired: boolean,
   status?: FishingRuntimeState['status'],
@@ -169,8 +191,8 @@ export function FishingPanel({
 
         <div style={{ padding: '0.75rem', background: '#12161d', borderRadius: '6px', border: '1px solid var(--line)' }}>
           <div className="hint" style={{ fontSize: '0.8rem' }}>Cá vừa bắt được</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#d2a8ff', marginTop: '0.2rem' }}>
-            {fishingState?.lastFishId && fishingState.lastFishId > 0 ? `ID ${fishingState.lastFishId}` : '—'}
+          <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#d2a8ff', marginTop: '0.3rem' }}>
+            {formatFishName(fishingState?.lastFishId, fishingState?.lastFishName)}
           </div>
         </div>
 
