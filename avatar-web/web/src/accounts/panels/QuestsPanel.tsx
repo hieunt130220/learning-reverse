@@ -120,7 +120,7 @@ export function QuestsPanel({
       await apiPost(`/api/accounts/${accountId}/quests/progress/refresh`);
       setStatusMsg('Đã gửi yêu cầu tải nhiệm vụ!');
       setTimeout(() => setStatusMsg(null), 3000);
-      [500, 1200, 2500].forEach((delay) => {
+      [800, 2000, 4500].forEach((delay) => {
         setTimeout(async () => {
           try {
             const res = await apiGet<QuestOverviewState>(`/api/accounts/${accountId}/quests`);

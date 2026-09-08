@@ -202,7 +202,7 @@ export interface QuestOverviewState {
   daily: DailyQuestState | null;
   beginner: ProgressQuestChain | null;
   farmer: ProgressQuestChain | null;
-  fisherman: ProgressQuestChain | null;
+  fisherman?: ProgressQuestChain | null;
   upgradeRequirements?: FarmUpgradeRequirements | null;
   source?: 'live' | 'cached' | 'none';
   updatedAt: number;

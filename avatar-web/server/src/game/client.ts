@@ -439,6 +439,7 @@ export class GameClient extends EventEmitter {
 
   logout(): void {
     this.currentHandlerContext = 'unknown';
+    this.isRefreshingProgress = false;
     this.stopKeepAlive();
     this.stopSilenceWatchdog();
     this.session.close();
@@ -831,6 +832,7 @@ export class GameClient extends EventEmitter {
   }
 
   private lastProgressRefreshAt = 0;
+  private isRefreshingProgress = false;
 
   /** Làm mới chuỗi nhiệm vụ tiến trình (Tân Thủ và Nhà Nông) từ game qua Cmd 104 & NPC Lái buôn. */
   async refreshProgressQuests(force = false): Promise<void> {
@@ -838,10 +840,14 @@ export class GameClient extends EventEmitter {
       this.emit('log', `không thể làm mới nhiệm vụ: client ${this.status}`);
       return;
     }
-    const now = Date.now();
-    if (!force && now - this.lastProgressRefreshAt < 2000) {
+    if (this.isRefreshingProgress) {
       return;
     }
+    const now = Date.now();
+    if (!force && now - this.lastProgressRefreshAt < 5000) {
+      return;
+    }
+    this.isRefreshingProgress = true;
     this.lastProgressRefreshAt = now;
     try {
       this.emit('log', 'gửi yêu cầu lấy nhiệm vụ tiến trình & tương tác NPC Lái buôn...');
@@ -873,6 +879,8 @@ export class GameClient extends EventEmitter {
       await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (err) {
       this.emit('log', `làm mới nhiệm vụ tiến trình lỗi: ${(err as Error).message}`);
+    } finally {
+      this.isRefreshingProgress = false;
     }
   }
 

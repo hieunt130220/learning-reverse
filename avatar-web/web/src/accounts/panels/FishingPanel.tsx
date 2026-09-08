@@ -101,17 +101,23 @@ export function FishingPanel({
   const [refreshingQuest, setRefreshingQuest] = useState(false);
 
   const fishermanQuest = quests?.fisherman ?? null;
+  const isAllConditionsDone = Boolean(
+    fishermanQuest &&
+      fishermanQuest.conditions.length > 0 &&
+      fishermanQuest.conditions.every((c) => c.isDone),
+  );
 
   const handleRefreshQuest = async () => {
     if (!accountId || refreshingQuest) return;
     setRefreshingQuest(true);
+    setError('');
     try {
       await apiPost(`/api/accounts/${accountId}/quests/progress/refresh`);
       onChanged?.();
-    } catch {
-      // ignore
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
-      setTimeout(() => setRefreshingQuest(false), 1500);
+      setTimeout(() => setRefreshingQuest(false), 4000);
     }
   };
 
@@ -227,21 +233,13 @@ export function FishingPanel({
                   fontSize: '0.75rem',
                   padding: '2px 8px',
                   borderRadius: '10px',
-                  background:
-                    fishermanQuest.conditions.length > 0 &&
-                    fishermanQuest.conditions.every((c) => c.isDone)
-                      ? 'rgba(63, 185, 80, 0.15)'
-                      : 'rgba(88, 166, 255, 0.12)',
-                  color:
-                    fishermanQuest.conditions.length > 0 &&
-                    fishermanQuest.conditions.every((c) => c.isDone)
-                      ? '#3fb950'
-                      : '#58a6ff',
-                  border:
-                    fishermanQuest.conditions.length > 0 &&
-                    fishermanQuest.conditions.every((c) => c.isDone)
-                      ? '1px solid rgba(63, 185, 80, 0.3)'
-                      : '1px solid rgba(88, 166, 255, 0.25)',
+                  background: isAllConditionsDone
+                    ? 'rgba(63, 185, 80, 0.15)'
+                    : 'rgba(88, 166, 255, 0.12)',
+                  color: isAllConditionsDone ? '#3fb950' : '#58a6ff',
+                  border: isAllConditionsDone
+                    ? '1px solid rgba(63, 185, 80, 0.3)'
+                    : '1px solid rgba(88, 166, 255, 0.25)',
                 }}
               >
                 {fishermanQuest.conditions.filter((c) => c.isDone).length}/
