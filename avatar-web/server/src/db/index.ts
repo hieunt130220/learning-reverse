@@ -36,6 +36,7 @@ export function openDb(file: string): Db {
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_player_level INTEGER');
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_farm_level INTEGER');
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_metrics_at INTEGER');
+  addColumn('ALTER TABLE avatar_automation_state ADD COLUMN fishing_config_json TEXT');
 
   // Nâng cấp CHECK constraint cho avatar_automation_state nếu chưa hỗ trợ auto_fishing
   const stateTable = db
@@ -54,6 +55,7 @@ export function openDb(file: string): Db {
           desired_mode            TEXT NOT NULL DEFAULT 'off'
                                   CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc', 'auto_fishing')),
           find_npc_config_json    TEXT,
+          fishing_config_json     TEXT,
           current_map             INTEGER,
           current_area            INTEGER,
           location_observed_at    INTEGER,

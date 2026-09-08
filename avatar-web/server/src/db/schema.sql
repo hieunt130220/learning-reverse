@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS avatar_automation_state (
   desired_mode            TEXT NOT NULL DEFAULT 'off'
                           CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc', 'auto_fishing')),
   find_npc_config_json    TEXT,
+  fishing_config_json     TEXT,
   current_map             INTEGER,
   current_area            INTEGER,
   location_observed_at    INTEGER,
