@@ -945,15 +945,30 @@ export class AvatarSession {
     });
 
     client.on('fishing-challenge', (payload: CanCauPayload) => {
+      if (!this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+      // CHỈ xử lý challenge thuộc về chính nhân vật của mình trong hồ!
+      if (client.playerId === undefined || payload.idUser !== client.playerId) {
+        return;
+      }
       this.handleFishingChallenge(client, epoch, payload);
     });
 
     client.on('fishing-success-result', (ev: { idUser: number; idFish: number }) => {
       if (!this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
-      this.fishingRuntime.totalCatches += 1;
-      this.fishingRuntime.lastFishId = ev.idFish;
-      this.fishingRuntime.status = 'caught';
-      this.pushLog(`[câu cá] bắt được cá ID ${ev.idFish}! (Tổng: ${this.fishingRuntime.totalCatches})`);
+      // CHỈ xử lý kết quả thuộc về chính nhân vật của mình trong hồ!
+      if (client.playerId === undefined || ev.idUser !== client.playerId) {
+        return;
+      }
+      if (ev.idFish >= 0) {
+        this.fishingRuntime.totalCatches += 1;
+        this.fishingRuntime.lastFishId = ev.idFish;
+        this.fishingRuntime.status = 'caught';
+        this.pushLog(`[câu cá] bắt được cá ID ${ev.idFish}! (Tổng: ${this.fishingRuntime.totalCatches})`);
+      } else {
+        this.pushLog(`[câu cá] giật hụt hoặc sổng cá (mã ${ev.idFish})`);
+        this.fishingRuntime.status = 'rejected';
+        this.fishingRuntime.lastError = `Giật hụt / sổng cá (${ev.idFish})`;
+      }
       this.emitAutomation();
     });
 
@@ -1764,7 +1779,7 @@ export class AvatarSession {
 
         client.quanCau();
 
-        // Chờ cá cắn câu và câu thành công (hoặc timeout 25s)
+        // Chờ cá cắn câu và câu thành công (hoặc timeout 35s)
         const catchPromise = new Promise<boolean>((resolve) => {
           let settled = false;
           let timer: NodeJS.Timeout | undefined;
@@ -1773,11 +1788,13 @@ export class AvatarSession {
             signal.removeEventListener('abort', onAbort);
             if (timer) clearTimeout(timer);
           };
-          const onSuccess = () => {
+          const onSuccess = (ev: { idUser: number; idFish: number }) => {
+            // Bỏ qua kết quả của người chơi khác trong hồ!
+            if (client.playerId === undefined || ev.idUser !== client.playerId) return;
             if (settled) return;
             settled = true;
             cleanup();
-            resolve(true);
+            resolve(ev.idFish >= 0);
           };
           const onAbort = () => {
             if (settled) return;
@@ -1792,7 +1809,7 @@ export class AvatarSession {
             settled = true;
             cleanup();
             resolve(false);
-          }, 25000);
+          }, 35000);
         });
 
         await catchPromise;
@@ -1845,6 +1862,8 @@ export class AvatarSession {
       || client.status !== 'online'
       || !this.wanted
       || this.desiredMode !== 'auto_fishing'
+      || client.playerId === undefined
+      || payload.idUser !== client.playerId
     ) {
       return;
     }

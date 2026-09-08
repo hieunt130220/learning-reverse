@@ -170,7 +170,7 @@ export function FishingPanel({
         <div style={{ padding: '0.75rem', background: '#12161d', borderRadius: '6px', border: '1px solid var(--line)' }}>
           <div className="hint" style={{ fontSize: '0.8rem' }}>Cá vừa bắt được</div>
           <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#d2a8ff', marginTop: '0.2rem' }}>
-            {fishingState?.lastFishId ? `ID ${fishingState.lastFishId}` : '—'}
+            {fishingState?.lastFishId && fishingState.lastFishId > 0 ? `ID ${fishingState.lastFishId}` : '—'}
           </div>
         </div>
 
