@@ -36,5 +36,40 @@ export function openDb(file: string): Db {
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_player_level INTEGER');
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_farm_level INTEGER');
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_metrics_at INTEGER');
+
+  // Nâng cấp CHECK constraint cho avatar_automation_state nếu chưa hỗ trợ auto_fishing
+  const stateTable = db
+    .prepare<[string], { sql: string }>(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?",
+    )
+    .get('avatar_automation_state');
+  if (stateTable && !stateTable.sql.includes('auto_fishing')) {
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      db.exec(`
+        ALTER TABLE avatar_automation_state RENAME TO _avatar_automation_state_old;
+        CREATE TABLE avatar_automation_state (
+          account_id              INTEGER PRIMARY KEY
+                                  REFERENCES avatar_accounts(id) ON DELETE CASCADE,
+          desired_mode            TEXT NOT NULL DEFAULT 'off'
+                                  CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc', 'auto_fishing')),
+          find_npc_config_json    TEXT,
+          current_map             INTEGER,
+          current_area            INTEGER,
+          location_observed_at    INTEGER,
+          updated_at              INTEGER NOT NULL,
+          CHECK (
+            (current_map IS NULL AND current_area IS NULL AND location_observed_at IS NULL)
+            OR
+            (current_map IS NOT NULL AND current_area IS NOT NULL AND location_observed_at IS NOT NULL)
+          )
+        );
+        INSERT INTO avatar_automation_state SELECT * FROM _avatar_automation_state_old;
+        DROP TABLE _avatar_automation_state_old;
+      `);
+    })();
+    db.pragma('foreign_keys = ON');
+  }
+
   return db;
 }
