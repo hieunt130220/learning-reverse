@@ -186,8 +186,7 @@ export class SessionManager {
   }
 
   updateFishingConfig(accountId: number, state: StoredFishingConfigState): void {
-    const session = this.sessions.get(accountId) as (AvatarSession & { setFishingConfig?(state: StoredFishingConfigState): void }) | undefined;
-    session?.setFishingConfig?.(state);
+    this.sessions.get(accountId)?.setFishingConfig?.(state);
   }
 
   async stopAutomation(accountId: number): Promise<void> {

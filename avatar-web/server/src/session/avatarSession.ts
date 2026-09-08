@@ -35,6 +35,9 @@ import {
 } from './shopCoordinator.js';
 import {
   DEFAULT_FISHING_CONFIG,
+  FISHING_BAITS,
+  FISHING_RODS,
+  FISHING_TICKETS,
   getFishName,
   idleFindNpcRuntime,
   idleFishingRuntime,
@@ -46,7 +49,9 @@ import {
   type FishingRuntimeState,
   type LoadedAutomationIntent,
   type NpcMapLocation,
+  type StoredFishingConfigState,
 } from './automationTypes.js';
+import { defaultFishingConfig } from '../accounts/automationRepo.js';
 import {
   emptyRuntimeSnapshot,
   runtimeSnapshotPatchFromEvent,
@@ -248,6 +253,7 @@ export class AvatarSession {
   private activeMode: AutomationMode = 'off';
   private transitionState: 'stable' | 'switching' = 'stable';
   private findNpcConfig = { revision: 0, config: { npcName: '' } };
+  private fishingConfig: StoredFishingConfigState = defaultFishingConfig();
   private automationLocation: AutomationLocation | null = null;
   private findNpc?: AutoFindNpc;
   private findNpcRuntime: AutoFindNpcState = idleFindNpcRuntime('');
@@ -403,6 +409,7 @@ export class AvatarSession {
     return await this.switchAutomationMode({
       desiredMode: 'auto_farm',
       findNpcConfig: this.findNpcConfig,
+      fishingConfig: this.fishingConfig,
       location: this.automationLocation,
     });
   }
@@ -416,10 +423,16 @@ export class AvatarSession {
     return 'next-start';
   }
 
+  setFishingConfig(state: StoredFishingConfigState): void {
+    this.fishingConfig = state;
+    this.emitAutomation();
+  }
+
   async stopAutomation(): Promise<void> {
     await this.switchAutomationMode({
       desiredMode: 'off',
       findNpcConfig: this.findNpcConfig,
+      fishingConfig: this.fishingConfig,
       location: this.automationLocation,
     });
   }
@@ -445,6 +458,9 @@ export class AvatarSession {
       try {
         this.desiredMode = intent.desiredMode;
         this.findNpcConfig = intent.findNpcConfig;
+        if (intent.fishingConfig) {
+          this.fishingConfig = intent.fishingConfig;
+        }
         this.automationLocation = intent.location;
         if (intent.desiredMode === 'find_npc') this.cancelAutoSyncKickoff();
         this.transitionState = 'switching';
@@ -473,6 +489,9 @@ export class AvatarSession {
         // only while this exact generation still owns the continuation.
         this.desiredMode = intent.desiredMode;
         this.findNpcConfig = intent.findNpcConfig;
+        if (intent.fishingConfig) {
+          this.fishingConfig = intent.fishingConfig;
+        }
         this.automationLocation = intent.location;
         this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
         const client = this.client;
@@ -667,6 +686,7 @@ export class AvatarSession {
       transitionState: this.transitionState,
       findNpcConfig: this.findNpcConfig,
       findNpcRuntime: this.findNpcRuntime,
+      fishingConfig: this.fishingConfig,
       fishingRuntime: this.fishingRuntime,
       location: this.automationLocation,
     };
@@ -757,6 +777,9 @@ export class AvatarSession {
     if (!this.isAutomationGenerationCurrent(generation) || !this.wanted) return;
     this.desiredMode = creds.automation.desiredMode;
     this.findNpcConfig = creds.automation.findNpcConfig;
+    if (creds.automation.fishingConfig) {
+      this.fishingConfig = creds.automation.fishingConfig;
+    }
     this.automationLocation = creds.automation.location;
     this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
     this.lastAutoConfig = creds.autoConfig ?? {};
@@ -1727,13 +1750,131 @@ export class AvatarSession {
     })();
   }
 
+  private async executeParkPurchase(
+    client: GameClient,
+    epoch: number,
+    signal: AbortSignal,
+    missingType: 'ticket' | 'rod' | 'bait',
+  ): Promise<boolean> {
+    const cfg = this.fishingConfig.config;
+    const targetMap = cfg.map;
+    const targetArea = cfg.area;
+
+    this.fishingRuntime.status = 'buying';
+    this.emitAutomation();
+
+    if (missingType === 'ticket') {
+      if (!cfg.autoBuyTicket) {
+        const msg = 'Thiếu vé câu nhưng chưa bật tự mua vé';
+        this.pushLog(`[câu cá] ${msg} — Dừng câu`);
+        this.fishingRuntime.lastError = msg;
+        return false;
+      }
+      const ticket = FISHING_TICKETS[targetMap];
+      if (!ticket) {
+        const msg = `Map ${targetMap} cần vé sự kiện riêng, NPC không bán`;
+        this.pushLog(`[câu cá] ${msg} — Dừng câu`);
+        this.fishingRuntime.lastError = msg;
+        return false;
+      }
+      this.pushLog(`[câu cá] Đang di chuyển sang Khu sinh thái (Map 13) để mua ${ticket.name}…`);
+    } else if (missingType === 'rod') {
+      if (cfg.rodType <= 0) {
+        const msg = 'Thiếu cần câu nhưng cấu hình Không tự mua cần';
+        this.pushLog(`[câu cá] ${msg} — Dừng câu`);
+        this.fishingRuntime.lastError = msg;
+        return false;
+      }
+      const rod = FISHING_RODS.find((r) => r.id === cfg.rodType);
+      if (!rod) {
+        const msg = `Không tìm thấy loại cần câu ID ${cfg.rodType}`;
+        this.pushLog(`[câu cá] ${msg} — Dừng câu`);
+        this.fishingRuntime.lastError = msg;
+        return false;
+      }
+      this.pushLog(`[câu cá] Đang di chuyển sang Khu sinh thái (Map 13) để mua ${rod.name}…`);
+    } else if (missingType === 'bait') {
+      if (cfg.baitType <= 0) {
+        const msg = 'Thiếu mồi câu nhưng cấu hình Không tự mua mồi';
+        this.pushLog(`[câu cá] ${msg} — Dừng câu`);
+        this.fishingRuntime.lastError = msg;
+        return false;
+      }
+      const bait = FISHING_BAITS.find((b) => b.id === cfg.baitType);
+      if (!bait) {
+        const msg = `Không tìm thấy loại mồi câu ID ${cfg.baitType}`;
+        this.pushLog(`[câu cá] ${msg} — Dừng câu`);
+        this.fishingRuntime.lastError = msg;
+        return false;
+      }
+      this.pushLog(`[câu cá] Đang di chuyển sang Khu sinh thái (Map 13) để mua ${bait.name} (×${cfg.baitQuantity})…`);
+    }
+
+    // 1. Di chuyển sang Map 13 (Khu sinh thái, tọa độ NPC 364, 64)
+    try {
+      const map13Snapshot = client.waitForWorldSnapshot(signal, 6000, { map: 13, area: 0 });
+      client.joinPark(13, 0);
+      await map13Snapshot;
+    } catch (err) {
+      if (signal.aborted || !this.isCurrent(client, epoch)) return false;
+      const msg = `Không vào được Khu sinh thái: ${(err as Error).message}`;
+      this.pushLog(`[câu cá] ${msg}`);
+      this.fishingRuntime.lastError = msg;
+      return false;
+    }
+
+    await this.delayCancellable(800, signal);
+    if (signal.aborted || !this.isCurrent(client, epoch)) return false;
+
+    // 2. Gửi lệnh mua vật phẩm tương ứng
+    if (missingType === 'ticket') {
+      const ticket = FISHING_TICKETS[targetMap]!;
+      client.parkBuyItem(ticket.id, ticket.typeMoney);
+      this.pushLog(`[câu cá] Đã gửi lệnh mua ${ticket.name}`);
+      await this.delayCancellable(1000, signal);
+    } else if (missingType === 'rod') {
+      const rod = FISHING_RODS.find((r) => r.id === cfg.rodType)!;
+      client.parkBuyItem(rod.id, rod.typeMoney);
+      this.pushLog(`[câu cá] Đã gửi lệnh mua ${rod.name}`);
+      await this.delayCancellable(1000, signal);
+    } else if (missingType === 'bait') {
+      const bait = FISHING_BAITS.find((b) => b.id === cfg.baitType)!;
+      const qty = cfg.baitQuantity;
+      this.pushLog(`[câu cá] Đang mua ${bait.name} (số lượng ${qty})…`);
+      for (let i = 0; i < qty; i++) {
+        if (signal.aborted || !this.isCurrent(client, epoch)) return false;
+        client.parkBuyItem(bait.id, bait.typeMoney);
+        await this.delayCancellable(300, signal);
+      }
+      this.pushLog(`[câu cá] Đã gửi lệnh mua xong ${qty} ${bait.name}`);
+      await this.delayCancellable(800, signal);
+    }
+
+    // 3. Quay trở lại hồ câu mục tiêu
+    this.pushLog(`[câu cá] Đang quay trở lại hồ câu map ${targetMap}…`);
+    try {
+      const targetSnapshot = client.waitForWorldSnapshot(signal, 6000, { map: targetMap, area: targetArea });
+      client.joinPark(targetMap, targetArea);
+      await targetSnapshot;
+    } catch (err) {
+      if (signal.aborted || !this.isCurrent(client, epoch)) return false;
+      const msg = `Không quay lại được hồ câu: ${(err as Error).message}`;
+      this.pushLog(`[câu cá] ${msg}`);
+      this.fishingRuntime.lastError = msg;
+      return false;
+    }
+
+    await this.delayCancellable(1000, signal);
+    return true;
+  }
+
   private async runFishingLoop(
     client: GameClient,
     generation: number,
     epoch: number,
     signal: AbortSignal,
   ): Promise<void> {
-    const config = DEFAULT_FISHING_CONFIG;
+    const config = this.fishingConfig.config;
     const map = config.map; // 14: Khu cá rô mặc định
     const area = config.area; // 0
 
@@ -1786,51 +1927,94 @@ export class AvatarSession {
     this.pushLog(`[câu cá] đã vào khu vực câu cá map ${map}`);
 
     try {
-      this.fishingRuntime.status = 'starting';
-      this.emitAutomation();
+      let consecutiveFailures = 0;
+      let startSuccess = false;
 
-      const rx45Promise = new Promise<{ iss: boolean; error?: string }>((resolve) => {
-        let settled = false;
-        let timer: NodeJS.Timeout | undefined;
-        const cleanup = () => {
-          client.removeListener('fishing-start-result', onStartResult);
-          signal.removeEventListener('abort', onAbort);
-          if (timer) clearTimeout(timer);
-        };
-        const onStartResult = (res: { iss: boolean; error?: string }) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resolve(res);
-        };
-        const onAbort = () => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resolve({ iss: false, error: 'bị hủy' });
-        };
-        client.on('fishing-start-result', onStartResult);
-        signal.addEventListener('abort', onAbort, { once: true });
-        timer = setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resolve({ iss: false, error: 'hết giờ chờ bắt đầu câu' });
-        }, 8000);
-      });
+      while (!startSuccess) {
+        if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
 
-      client.startFishing();
-      const startResult = await rx45Promise;
-
-      if (signal.aborted || this.desiredMode !== 'auto_fishing') return;
-
-      if (!startResult.iss) {
-        const reason = startResult.error ?? 'server từ chối bắt đầu câu';
-        this.fishingRuntime.status = 'rejected';
-        this.fishingRuntime.lastError = reason;
-        this.pushLog(`[câu cá] server từ chối: ${reason}`);
+        this.fishingRuntime.status = 'starting';
         this.emitAutomation();
-        return;
+
+        const rx45Promise = new Promise<{ iss: boolean; error?: string }>((resolve) => {
+          let settled = false;
+          let timer: NodeJS.Timeout | undefined;
+          const cleanup = () => {
+            client.removeListener('fishing-start-result', onStartResult);
+            signal.removeEventListener('abort', onAbort);
+            if (timer) clearTimeout(timer);
+          };
+          const onStartResult = (res: { iss: boolean; error?: string }) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(res);
+          };
+          const onAbort = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve({ iss: false, error: 'bị hủy' });
+          };
+          client.on('fishing-start-result', onStartResult);
+          signal.addEventListener('abort', onAbort, { once: true });
+          timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve({ iss: false, error: 'hết giờ chờ bắt đầu câu' });
+          }, 8000);
+        });
+
+        client.startFishing();
+        const startResult = await rx45Promise;
+
+        if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+
+        if (!startResult.iss) {
+          const reason = startResult.error ?? 'server từ chối bắt đầu câu';
+          const errText = reason.toLowerCase();
+
+          let missingType: 'ticket' | 'rod' | 'bait' | null = null;
+          if (errText.includes('vé') || errText.includes('bến tàu')) {
+            missingType = 'ticket';
+          } else if (errText.includes('cần')) {
+            missingType = 'rod';
+          } else if (errText.includes('mồi')) {
+            missingType = 'bait';
+          }
+
+          if (missingType) {
+            if (consecutiveFailures >= 2) {
+              this.fishingRuntime.status = 'rejected';
+              this.fishingRuntime.lastError = `Đã thử mua ${missingType} nhưng vẫn thất bại: ${reason}`;
+              this.pushLog(`[câu cá] Dừng câu: ${this.fishingRuntime.lastError}`);
+              this.emitAutomation();
+              return;
+            }
+
+            const bought = await this.executeParkPurchase(client, epoch, signal, missingType);
+            if (bought) {
+              consecutiveFailures++;
+              continue;
+            } else {
+              this.fishingRuntime.status = 'rejected';
+              if (!this.fishingRuntime.lastError) {
+                this.fishingRuntime.lastError = reason;
+              }
+              this.emitAutomation();
+              return;
+            }
+          }
+
+          this.fishingRuntime.status = 'rejected';
+          this.fishingRuntime.lastError = reason;
+          this.pushLog(`[câu cá] server từ chối: ${reason}`);
+          this.emitAutomation();
+          return;
+        }
+
+        startSuccess = true;
       }
 
       this.fishingRuntime.lastError = null;
@@ -1973,7 +2157,9 @@ export class AvatarSession {
           /* bỏ qua */
         }
       }
-      this.fishingRuntime.status = 'idle';
+      if (this.fishingRuntime.status !== 'rejected') {
+        this.fishingRuntime.status = 'idle';
+      }
       this.emitAutomation();
     }
   }

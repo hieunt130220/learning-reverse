@@ -331,6 +331,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
           const intent: LoadedAutomationIntent = {
             desiredMode: mode,
             findNpcConfig: stored.findNpcConfig,
+            fishingConfig: stored.fishingConfig,
             location: stored.location,
           };
           const outcome = await sessions.switchAutomationMode(id, intent);
