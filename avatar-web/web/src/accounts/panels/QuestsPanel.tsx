@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { apiGet, apiPost } from '../../api.js';
 import type { QuestOverviewState, ProgressQuestChain, FarmUpgradeRequirements } from '../../types.js';
 
-type QuestTab = 'daily' | 'beginner' | 'farmer' | 'upgrade';
+type QuestTab = 'daily' | 'beginner' | 'farmer' | 'fisherman' | 'upgrade';
 
 const SHOW_UPGRADE_TAB = false;
 
@@ -33,7 +33,7 @@ export function QuestsPanel({
   }, [activeTab]);
 
   useEffect(() => {
-    if (!quests?.daily && !quests?.beginner && !quests?.farmer) {
+    if (!quests?.daily && !quests?.beginner && !quests?.farmer && !quests?.fisherman) {
       void apiGet<QuestOverviewState>(`/api/accounts/${accountId}/quests`)
         .then((res) => {
           if (res) setLocalQuests(res);
@@ -46,6 +46,7 @@ export function QuestsPanel({
   const daily = effectiveQuests?.daily ?? null;
   const beginner = effectiveQuests?.beginner ?? null;
   const farmer = effectiveQuests?.farmer ?? null;
+  const fisherman = effectiveQuests?.fisherman ?? null;
   const upgrade = effectiveQuests?.upgradeRequirements ?? null;
 
   const runAction = async (endpoint: string, label: string) => {
@@ -147,6 +148,9 @@ export function QuestsPanel({
   const completedFarmerCount = farmer?.conditions?.filter((c) => c.isDone).length ?? 0;
   const totalFarmerCount = farmer?.conditions?.length ?? 0;
 
+  const completedFishermanCount = fisherman?.conditions?.filter((c) => c.isDone).length ?? 0;
+  const totalFishermanCount = fisherman?.conditions?.length ?? 0;
+
   return (
     <section className="card drawer-panel quests-panel">
       <header className="quests-header">
@@ -204,6 +208,18 @@ export function QuestsPanel({
           {farmer && totalFarmerCount > 0 && (
             <span className={`tab-badge ${completedFarmerCount >= totalFarmerCount ? 'tab-badge--done' : ''}`}>
               {completedFarmerCount}/{totalFarmerCount}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          className={`quests-tab-btn ${activeTab === 'fisherman' ? 'active' : ''}`}
+          onClick={() => setActiveTab('fisherman')}
+        >
+          🎣 Thợ Câu
+          {fisherman && totalFishermanCount > 0 && (
+            <span className={`tab-badge ${completedFishermanCount >= totalFishermanCount ? 'tab-badge--done' : ''}`}>
+              {completedFishermanCount}/{totalFishermanCount}
             </span>
           )}
         </button>
@@ -431,7 +447,18 @@ export function QuestsPanel({
           />
         )}
 
-        {/* TAB 4: YÊU CẦU NÂNG CẤP NÔNG TRẠI */}
+        {/* TAB 4: NHIỆM VỤ THỢ CÂU */}
+        {activeTab === 'fisherman' && (
+          <ProgressQuestSection
+            heading="Nhiệm Vụ Thợ Câu"
+            icon="🎣"
+            quest={fisherman}
+            busy={busy}
+            onRefresh={handleRefreshProgress}
+          />
+        )}
+
+        {/* TAB 5: YÊU CẦU NÂNG CẤP NÔNG TRẠI */}
         {SHOW_UPGRADE_TAB && activeTab === 'upgrade' && (
           <UpgradeRequirementsSection requirements={upgrade} busy={busy} onRefresh={handleRefreshProgress} />
         )}
@@ -455,11 +482,11 @@ function ProgressQuestSection({
 }) {
   if (!quest) {
     return (
-      <div className="quests-empty-state">
+      <div className="quests-empty-state quest-empty">
         <span className="empty-icon">{icon}</span>
         <p className="hint">Chưa nhận dữ liệu {heading} từ máy chủ game.</p>
-        <button type="button" className="btn-secondary" onClick={onRefresh} disabled={busy}>
-          🔄 Tải {heading} từ game
+        <button type="button" className="btn-secondary btn-compact" onClick={onRefresh} disabled={busy}>
+          {busy ? '⏳ Đang tải…' : `🔄 Tải ${heading} từ game`}
         </button>
       </div>
     );
@@ -469,12 +496,12 @@ function ProgressQuestSection({
   const totalCount = quest.conditions.length;
 
   return (
-    <div className="progress-quest-section">
+    <div className="progress-quest-section progress-quest-view">
       <div className="progress-quest-header">
         <div className="progress-quest-title">
           <h4>{quest.title || heading}</h4>
           {quest.step !== null && (
-            <span className="badge badge--step">Bước {quest.step}</span>
+            <span className="badge badge--step badge--neutral">Bước {quest.step}</span>
           )}
         </div>
         <span className={`tab-pill ${completedCount >= totalCount && totalCount > 0 ? 'pill-done' : ''}`}>
@@ -487,12 +514,16 @@ function ProgressQuestSection({
           <span className="banner-icon">🎉</span>
           <div className="banner-text">
             <h5>Đã hoàn thành chuỗi nhiệm vụ!</h5>
-            <p>Tài khoản đã nâng cấp nông trại lên cấp 2 — nhiệm vụ này dành cho người mới (cấp 1 → 2).</p>
+            <p>
+              {quest.kind === 'beginner'
+                ? 'Tài khoản đã nâng cấp nông trại lên cấp 2 — nhiệm vụ này dành cho người mới (cấp 1 → 2).'
+                : 'Tài khoản đã hoàn tất toàn bộ chuỗi nhiệm vụ.'}
+            </p>
           </div>
         </div>
       )}
 
-      <div className="progress-quest-conditions-list">
+      <div className="progress-quest-conditions-list progress-quest-conditions">
         {quest.conditions.length === 0 ? (
           <p className="hint">Không có điều kiện nhiệm vụ nào.</p>
         ) : (
@@ -501,20 +532,20 @@ function ProgressQuestSection({
             return (
               <div
                 key={idx}
-                className={`mission-item-card ${cond.isDone ? 'mission-item-card--done' : ''}`}
+                className={`mission-item-card condition-item ${cond.isDone ? 'mission-item-card--done condition-item--done' : ''}`}
               >
-                <div className="mission-item-header">
+                <div className="mission-item-header condition-info">
                   <div className="mission-item-title">
                     <span className="mission-bullet">{cond.isDone ? '✅' : '📌'}</span>
-                    <span className="mission-name">{cond.name}</span>
+                    <span className="mission-name condition-name">{cond.name}</span>
                   </div>
-                  <span className={`mission-badge ${cond.isDone ? 'badge-success' : 'badge-pending'}`}>
-                    {cond.current.toLocaleString('vi-VN')} / {cond.total.toLocaleString('vi-VN')} ({pct}%)
+                  <span className={`mission-badge condition-counter ${cond.isDone ? 'badge-success' : 'badge-pending'}`}>
+                    {cond.isDone ? '✅ Hoàn thành' : `${cond.current.toLocaleString('vi-VN')} / ${cond.total.toLocaleString('vi-VN')} (${pct}%)`}
                   </span>
                 </div>
-                <div className="mission-mini-bar">
+                <div className="mission-mini-bar condition-progress-bar">
                   <div
-                    className={`mission-mini-bar-fill ${cond.isDone ? 'bar-done' : ''}`}
+                    className={`mission-mini-bar-fill condition-progress-fill ${cond.isDone ? 'bar-done' : ''}`}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
@@ -525,11 +556,11 @@ function ProgressQuestSection({
       </div>
 
       {quest.rewards.length > 0 && (
-        <div className="daily-rewards-block">
+        <div className="daily-rewards-block progress-quest-rewards">
           <span className="label-caption">Phần thưởng hoàn thành:</span>
-          <div className="rewards-pill-group">
+          <div className="rewards-pill-group rewards-list">
             {quest.rewards.map((r, i) => (
-              <span key={i} className="reward-pill reward-pill--progress">
+              <span key={i} className="reward-pill reward-pill--progress badge badge--reward">
                 🎁 {r.displayName || `Thưởng #${r.type}: ${r.value || r.amount}`}
               </span>
             ))}

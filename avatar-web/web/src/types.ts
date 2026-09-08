@@ -157,7 +157,7 @@ export interface DailyQuestState {
   updatedAt: number;
 }
 
-export type ProgressQuestKind = 'beginner' | 'farmer';
+export type ProgressQuestKind = 'beginner' | 'farmer' | 'fisherman';
 
 export interface ProgressQuestCondition {
   name: string;
@@ -202,7 +202,9 @@ export interface QuestOverviewState {
   daily: DailyQuestState | null;
   beginner: ProgressQuestChain | null;
   farmer: ProgressQuestChain | null;
+  fisherman: ProgressQuestChain | null;
   upgradeRequirements?: FarmUpgradeRequirements | null;
+  source?: 'live' | 'cached' | 'none';
   updatedAt: number;
 }
 
