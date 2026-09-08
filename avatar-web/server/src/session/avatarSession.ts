@@ -187,6 +187,36 @@ const DISABLED_SHOP_STATE: ShopRuntimeState = {
   },
 };
 
+export const FISHING_HUMAN_TIMING = {
+  /** Trễ nhận diện ban đầu khi bảng mini-game xuất hiện (ms) */
+  PERCEPTION_MIN_MS: 700,
+  PERCEPTION_MAX_MS: 1200,
+
+  /** Trễ mô phỏng bấm từng phím mũi tên (ms / phím) */
+  PER_KEY_MIN_MS: 300,
+  PER_KEY_MAX_MS: 520,
+
+  /** Trễ xem thông tin cá / animation kéo cần lên trước khi gửi TX 44 (ms) */
+  POST_CATCH_MIN_MS: 1800,
+  POST_CATCH_MAX_MS: 3200,
+
+  /** Jitter ngẫu nhiên cộng thêm vào castDelayMs giữa 2 lần quăng cần (ms) */
+  CAST_JITTER_MIN_MS: 500,
+  CAST_JITTER_MAX_MS: 2000,
+
+  /** Khoảng số lượt câu trước khi nghỉ tay định kỳ */
+  MICRO_BREAK_INTERVAL_MIN_CATCHES: 8,
+  MICRO_BREAK_INTERVAL_MAX_CATCHES: 14,
+
+  /** Thời gian nghỉ tay mô phỏng người chơi uống nước/xem đồ (ms) */
+  MICRO_BREAK_MIN_MS: 6000,
+  MICRO_BREAK_MAX_MS: 12000,
+} as const;
+
+function randomBetween(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 /**
  * Một tài khoản avatar đang sống trên server: giữ `GameClient` + `AutoFarm` +
  * `MacroRunner`, đệm log/traffic trong RAM, và tự kết nối lại khi rớt.
@@ -1769,6 +1799,12 @@ export class AvatarSession {
 
       this.fishingRuntime.lastError = null;
 
+      let catchesSinceBreak = 0;
+      let nextBreakThreshold = randomBetween(
+        FISHING_HUMAN_TIMING.MICRO_BREAK_INTERVAL_MIN_CATCHES,
+        FISHING_HUMAN_TIMING.MICRO_BREAK_INTERVAL_MAX_CATCHES,
+      );
+
       // Vòng lặp quăng cần liên tục (giữ nguyên vị trí ngồi câu, KHÔNG gọi cauCaXong giữa các lượt)
       while (
         !signal.aborted
@@ -1820,8 +1856,12 @@ export class AvatarSession {
 
         if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
 
-        // Chờ 1.5s để animation kéo cá lên và transaction thưởng vật phẩm trên server lắng xuống
-        await this.delayCancellable(1500, signal);
+        // Chờ mô phỏng animation kéo cá lên và người chơi xem phần thưởng cá
+        const postCatchDelay = randomBetween(
+          FISHING_HUMAN_TIMING.POST_CATCH_MIN_MS,
+          FISHING_HUMAN_TIMING.POST_CATCH_MAX_MS,
+        );
+        await this.delayCancellable(postCatchDelay, signal);
         if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
 
         // Bắt buộc gửi TX 44 (doCauCaXong) để server chốt kết quả và chuyển cá vào giỏ
@@ -1861,10 +1901,33 @@ export class AvatarSession {
 
         if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
 
-        // Nghỉ giữa các lượt câu trước khi quăng cần lượt mới
+        catchesSinceBreak++;
+        if (catchesSinceBreak >= nextBreakThreshold) {
+          const breakMs = randomBetween(
+            FISHING_HUMAN_TIMING.MICRO_BREAK_MIN_MS,
+            FISHING_HUMAN_TIMING.MICRO_BREAK_MAX_MS,
+          );
+          this.pushLog(`[câu cá] nghỉ tay ${(breakMs / 1000).toFixed(1)}s mô phỏng người chơi…`);
+          this.fishingRuntime.status = 'resting';
+          this.emitAutomation();
+          await this.delayCancellable(breakMs, signal);
+          catchesSinceBreak = 0;
+          nextBreakThreshold = randomBetween(
+            FISHING_HUMAN_TIMING.MICRO_BREAK_INTERVAL_MIN_CATCHES,
+            FISHING_HUMAN_TIMING.MICRO_BREAK_INTERVAL_MAX_CATCHES,
+          );
+        }
+
+        if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
+
+        // Nghỉ giữa các lượt câu trước khi quăng cần lượt mới (kèm jitter ngẫu nhiên)
         this.fishingRuntime.status = 'resting';
         this.emitAutomation();
-        await this.delayCancellable(config.castDelayMs, signal);
+        const restJitter = randomBetween(
+          FISHING_HUMAN_TIMING.CAST_JITTER_MIN_MS,
+          FISHING_HUMAN_TIMING.CAST_JITTER_MAX_MS,
+        );
+        await this.delayCancellable(config.castDelayMs + restJitter, signal);
       }
     } finally {
       if (this.isCurrent(client, epoch) && client.status === 'online') {
@@ -1929,13 +1992,27 @@ export class AvatarSession {
     });
 
     void makeAutoDecision(payload, domain, (p) => inferenceClient.match(p))
-      .then((decision) => {
+      .then(async (decision) => {
         if (decision.status !== 'answer') {
           this.pushLog('fishing: không xác định được đáp án hợp lệ');
           return;
         }
 
-        // Critical Pre-Send Gate (Strictly Synchronous, No Await)
+        // Mô phỏng thời gian con người nhìn màn hình và bấm phím mũi tên
+        const perception = randomBetween(
+          FISHING_HUMAN_TIMING.PERCEPTION_MIN_MS,
+          FISHING_HUMAN_TIMING.PERCEPTION_MAX_MS,
+        );
+        const perKey = randomBetween(
+          FISHING_HUMAN_TIMING.PER_KEY_MIN_MS,
+          FISHING_HUMAN_TIMING.PER_KEY_MAX_MS,
+        );
+        const totalSolvingDelay = perception + decision.answer.length * perKey;
+
+        const abortSignal = this.fishingAbortController?.signal ?? new AbortController().signal;
+        await this.delayCancellable(totalSolvingDelay, abortSignal);
+
+        // Critical Pre-Send Gate (Strictly Synchronous, No Await after re-check)
         if (this.consumedFishingChallenges.has(challengeGen)) return;
         if (this.fishingChallengeGeneration !== challengeGen) return;
         if (this.automationGeneration !== autoGen) return;
@@ -1967,7 +2044,7 @@ export class AvatarSession {
 
         try {
           client.finishFishing(decision.answer);
-          this.pushLog(`fishing: đã gửi TX43 (${decision.source})`);
+          this.pushLog(`fishing: đã gửi TX43 (${decision.source}) sau ${(totalSolvingDelay / 1000).toFixed(2)}s`);
         } catch (sendErr) {
           this.pushLog(`fishing: gửi TX43 lỗi: ${(sendErr as Error).message}`);
         }
