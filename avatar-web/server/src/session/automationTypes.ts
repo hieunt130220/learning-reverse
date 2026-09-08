@@ -124,7 +124,7 @@ export interface StoredFindNpcConfigState {
 export interface LoadedAutomationIntent {
   desiredMode: AutomationMode;
   findNpcConfig: StoredFindNpcConfigState;
-  fishingConfig: StoredFishingConfigState;
+  fishingConfig?: StoredFishingConfigState;
   location: AutomationLocation | null;
 }
 
@@ -161,7 +161,7 @@ export interface AutomationSnapshot {
   transitionState: AutomationTransitionState;
   findNpcConfig: StoredFindNpcConfigState;
   findNpcRuntime: AutoFindNpcState;
-  fishingConfig: StoredFishingConfigState;
+  fishingConfig?: StoredFishingConfigState;
   fishingRuntime?: FishingRuntimeState;
   location: AutomationLocation | null;
 }
@@ -177,7 +177,9 @@ export type AutomationApiErrorCode =
   | 'find-npc-disabled'
   | 'revision-conflict'
   | 'automation-connect-pending'
-  | 'automation-start-failed';
+  | 'automation-start-failed'
+  | 'invalid-fishing-config'
+  | 'automation-save-failed';
 
 export function idleFindNpcRuntime(targetName: string): AutoFindNpcState {
   return { phase: 'idle', running: false, targetName, cursor: 0, total: 0, timeoutStreak: 0 };

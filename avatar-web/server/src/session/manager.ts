@@ -27,6 +27,7 @@ import type {
   AutomationStartOutcome,
   LoadedAutomationIntent,
   NpcMapLocation,
+  StoredFishingConfigState,
 } from './automationTypes.js';
 import { FIND_NPC_DISABLED } from './featureFlags.js';
 import { runtimeSnapshotPatchFromEvent } from './runtimeCache.js';
@@ -146,6 +147,7 @@ export class SessionManager {
     return {
       ...live,
       findNpcConfig: persisted.findNpcConfig,
+      fishingConfig: persisted.fishingConfig,
     };
   }
 
@@ -181,6 +183,11 @@ export class SessionManager {
     intent: LoadedAutomationIntent,
   ): Promise<AutomationStartOutcome> {
     return this.getOrCreate(accountId).switchAutomationMode(intent);
+  }
+
+  updateFishingConfig(accountId: number, state: StoredFishingConfigState): void {
+    const session = this.sessions.get(accountId) as (AvatarSession & { setFishingConfig?(state: StoredFishingConfigState): void }) | undefined;
+    session?.setFishingConfig?.(state);
   }
 
   async stopAutomation(accountId: number): Promise<void> {
