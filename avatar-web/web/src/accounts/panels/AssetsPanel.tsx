@@ -1,6 +1,5 @@
 import { useState } from 'react';
 
-import { apiPost } from '../../api.js';
 import type { AnimalInfo, FarmAnimal, FarmCell, FarmState, InventoryItem, ItemInfo, TreeInfo } from '../../types.js';
 import { fmtDuration, parseAnimalSpec } from '../animalSpec.js';
 import { ANIMAL_PRODUCT_NAMES } from './CookingPanel.js';
@@ -42,7 +41,7 @@ export function AssetsPanel({
   animals,
   items,
 }: {
-  accountId: number;
+  accountId?: number;
   farm: FarmState | null;
   inventory: InventoryItem[];
   produce: InventoryItem[];
@@ -54,7 +53,6 @@ export function AssetsPanel({
     <>
       <FarmSection farm={farm} trees={trees} />
       <KhoSection
-        accountId={accountId}
         inventory={inventory}
         produce={produce}
         trees={trees}
@@ -69,14 +67,12 @@ export function AssetsPanel({
 type KhoTab = 'nong-san' | 'vat-pham';
 
 function KhoSection({
-  accountId,
   inventory,
   produce,
   trees,
   items,
   animals,
 }: {
-  accountId: number;
   inventory: InventoryItem[];
   produce: InventoryItem[];
   trees: TreeInfo[];
@@ -122,24 +118,6 @@ function KhoSection({
           ))}
         </div>
       )}
-      <div className="row">
-        <button
-          className="ghost"
-          onClick={() =>
-            void apiPost(`/api/accounts/${accountId}/farm`, { name: 'getInventory', args: [] })
-          }
-        >
-          làm mới kho
-        </button>
-        <button
-          className="ghost"
-          onClick={() =>
-            void apiPost(`/api/accounts/${accountId}/farm`, { name: 'getTreeInfo', args: [] })
-          }
-        >
-          tải bảng cây
-        </button>
-      </div>
     </section>
   );
 }
