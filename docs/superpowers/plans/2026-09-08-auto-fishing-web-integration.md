@@ -29,7 +29,7 @@
 - Consumes: `CMD_AVATAR_JOIN_PARK = 80`, `Message` from `../proto/message.js`.
 - Produces: `doStartFishing()`, `doQuanCau()`, `doCauCaXong()` in `ParkService`; `startFishing()`, `quanCau()`, `cauCaXong()` in `GameClient`; events `fishing-start-result`, `fishing-quan-cau`, `fishing-success-result`, `fishing-done`.
 
-- [ ] **Step 1: Update `NATIVE_PARK_JOIN_POSITIONS` and add TX methods to `ParkService`**
+- [x] **Step 1: Update `NATIVE_PARK_JOIN_POSITIONS` and add TX methods to `ParkService`**
   Add map 15, 16, 27 to `NATIVE_PARK_JOIN_POSITIONS`.
   Define:
   - `CMD_AVATAR_QUANG_CAU = 41`
@@ -53,7 +53,7 @@
   }
   ```
 
-- [ ] **Step 2: Add RX listeners and delegates in `GameClient`**
+- [x] **Step 2: Add RX listeners and delegates in `GameClient`**
   In `GameClient`:
   - Delegate `startFishing()`, `quanCau()`, `cauCaXong()`.
   - In `onMessage`:
@@ -62,11 +62,11 @@
     - Case 43 (`CAU_THANH_CONG`): decode `idUser = r.readInt()`, `idFish = r.readShort()`, emit `fishing-success-result` `{ idUser, idFish }`.
     - Case 44 (`CAU_CA_XONG`): decode `idUser = r.readInt()`, emit `fishing-done` `{ idUser }`.
 
-- [ ] **Step 3: Verify TypeScript Compilation**
+- [x] **Step 3: Verify TypeScript Compilation**
   Run: `cd avatar-web/server && npm run typecheck`
   Expected: 0 errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
   Run git status, detect changes, and commit:
   `git commit -m "feat(fishing): add start, cast, and finish fishing protocol in park service and client"`
 
@@ -82,7 +82,7 @@
 - Consumes: SQLite `Db` connection.
 - Produces: `AutomationMode = 'off' | 'auto_farm' | 'find_npc' | 'auto_fishing'`, `FishingConfig`, `FishingRuntimeState`.
 
-- [ ] **Step 1: Extend `automationTypes.ts`**
+- [x] **Step 1: Extend `automationTypes.ts`**
   Add `'auto_fishing'` to `AutomationMode`.
   Add `FishingConfig`:
   ```ts
@@ -109,14 +109,14 @@
   }
   ```
 
-- [ ] **Step 2: Update `automationRepo.ts`**
+- [x] **Step 2: Update `automationRepo.ts`**
   Allow `'auto_fishing'` as a valid string value in `setDesiredMode` validation.
 
-- [ ] **Step 3: Verify TypeScript Compilation**
+- [x] **Step 3: Verify TypeScript Compilation**
   Run: `cd avatar-web/server && npm run typecheck`
   Expected: 0 errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
   `git commit -m "feat(fishing): add auto_fishing to automation modes and config types"`
 
 ---
@@ -131,14 +131,14 @@
 - Consumes: `GameClient` fishing events, `ParkService`, `makeAutoDecision`, `ProductionInferenceClient`.
 - Produces: `runFishingLoop()`, `fishingState` snapshot in runtime broadcasts.
 
-- [ ] **Step 1: Add fishing state and event listeners in `AvatarSession`**
+- [x] **Step 1: Add fishing state and event listeners in `AvatarSession`**
   In `AvatarSession`:
   - Add `private fishingState: FishingRuntimeState`.
   - Wire client events `fishing-start-result`, `fishing-success-result` in `wire(client, epoch)`.
   - When `fishing-success-result` arrives for current user: increment `totalCatches`, update `lastFishId`, update `fishingState.status = 'caught'`, push log `[câu cá] bắt được cá ID ${idFish}!`.
   - In `getRuntimeSnapshot()`: include `fishing: this.fishingState`.
 
-- [ ] **Step 2: Implement `runFishingLoop` in `AvatarSession`**
+- [x] **Step 2: Implement `runFishingLoop` in `AvatarSession`**
   When `desiredMode === 'auto_fishing'`:
   - If not in Park context: `client.enterParkContext()`.
   - Join map: `client.park.doJoinPark(config.map, config.area)`.
@@ -156,15 +156,15 @@
         - Update state `status = 'resting'`.
         - Delay `config.castDelayMs` (default 3000ms).
 
-- [ ] **Step 3: Wire `auto_fishing` in `switchAutomationMode` and `onOnline`**
+- [x] **Step 3: Wire `auto_fishing` in `switchAutomationMode` and `onOnline`**
   In `switchAutomationMode`: handle `intent.desiredMode === 'auto_fishing'` by canceling farm sync and launching `runFishingLoop`.
   In `onOnline`: if `this.desiredMode === 'auto_fishing'`, resume `runFishingLoop`.
 
-- [ ] **Step 4: Verify TypeScript Compilation**
+- [x] **Step 4: Verify TypeScript Compilation**
   Run: `cd avatar-web/server && npm run typecheck`
   Expected: 0 errors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
   `git commit -m "feat(fishing): implement continuous auto-fishing loop in avatar session"`
 
 ---
@@ -180,12 +180,12 @@
 - Consumes: `/api/accounts/:id/auto/mode`, `/api/accounts/:id/auto/config`, account runtime WebSocket state.
 - Produces: `FishingPanel` component, `['fishing', 'Câu cá']` tab in drawer.
 
-- [ ] **Step 1: Update `avatar-web/web/src/types.ts`**
+- [x] **Step 1: Update `avatar-web/web/src/types.ts`**
   Add `'auto_fishing'` to `AutomationMode`.
   Add `FishingConfig` and `FishingRuntimeState` matching backend contracts.
   Add optional `fishing?: FishingRuntimeState` to `AccountRuntimeSnapshot`.
 
-- [ ] **Step 2: Create `FishingPanel.tsx`**
+- [x] **Step 2: Create `FishingPanel.tsx`**
   Build clean, responsive React component:
   - Header: Trạng thái câu cá (badge), nút Bật Auto Câu Cá / Tắt Auto Câu Cá.
   - Card Cấu hình:
@@ -198,15 +198,15 @@
     - Trạng thái trực tiếp: Đang vào hồ, Đang quăng cần, Đang giải challenge ML, Đã dính cá, Nghỉ.
     - Lỗi gần nhất nếu có (`lastError`).
 
-- [ ] **Step 3: Add Tab to `AccountOperationsDrawer.tsx`**
+- [x] **Step 3: Add Tab to `AccountOperationsDrawer.tsx`**
   Add `['fishing', 'Câu cá']` to `PANEL_TABS`.
   Render `<FishingPanel account={account} runtime={runtime} />` when active.
 
-- [ ] **Step 4: Verify TypeScript Compilation on Web**
+- [x] **Step 4: Verify TypeScript Compilation on Web**
   Run: `cd avatar-web/web && npm run build`
   Expected: 0 errors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
   `git commit -m "feat(fishing): add fishing panel and drawer tab in web ui"`
 
 ---
@@ -216,14 +216,14 @@
 **Files:**
 - Read/Verify: `avatar-web/server` and `avatar-web/web` runtime logs.
 
-- [ ] **Step 1: Run typecheck across the whole workspace**
+- [x] **Step 1: Run typecheck across the whole workspace**
   Run: `cd avatar-web/server && npm run typecheck`
   Run: `cd avatar-web/web && npm run build`
   Expected: Both pass with 0 errors.
 
-- [ ] **Step 2: Verify live Web UI on port 5173**
+- [x] **Step 2: Verify live Web UI on port 5173**
   Verify the drawer renders the "Câu cá" tab and controls.
   Verify switching mode to `auto_fishing` triggers backend logging.
 
-- [ ] **Step 3: Document completed features and hand off to user**
+- [x] **Step 3: Document completed features and hand off to user**
   Update documentation and present results to user.
