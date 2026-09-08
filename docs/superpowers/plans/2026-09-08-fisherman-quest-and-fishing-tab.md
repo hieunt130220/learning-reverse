@@ -32,7 +32,7 @@
   - `DEFAULT_FISHERMAN_QUEST_STATE`: `ProgressQuestChain`
   - `parseQuestDialogText(text: string)`: hỗ trợ `kind: 'fisherman'` khi text chứa tiêu đề Thợ Câu
 
-- [ ] **Step 1: Cập nhật `progressQuests.ts`**
+- [x] **Step 1: Cập nhật `progressQuests.ts`**
   - Mở rộng type:
     ```ts
     export type ProgressQuestKind = 'beginner' | 'farmer' | 'fisherman';
@@ -75,7 +75,7 @@
     };
     ```
 
-- [ ] **Step 2: Cập nhật `farmData.ts`**
+- [x] **Step 2: Cập nhật `farmData.ts`**
   - Thêm `fisherman: ProgressQuestChain | null;` vào `QuestOverviewState`:
     ```ts
     export interface QuestOverviewState {
@@ -89,11 +89,11 @@
     }
     ```
 
-- [ ] **Step 3: Kiểm tra biên dịch TypeScript phía Server**
+- [x] **Step 3: Kiểm tra biên dịch TypeScript phía Server**
   Run: `cd /Users/devios/learning-reverse/avatar-web/server && npx tsc --noEmit`
   Expected: Không có lỗi TypeScript (Exit code 0).
 
-- [ ] **Step 4: Commit thay đổi Task 1**
+- [x] **Step 4: Commit thay đổi Task 1**
   ```bash
   git add avatar-web/server/src/game/progressQuests.ts avatar-web/server/src/game/farmData.ts
   git commit -m "feat(quests): add fisherman quest kind and update dialog parser"
@@ -114,7 +114,7 @@
   - `GameClient.refreshProgressQuests()`: gửi lệnh lấy quest Thợ Câu `userID = 38`
   - `AvatarSession.getQuestOverview()`: trả về trường `fisherman`
 
-- [ ] **Step 1: Thêm `fishermanQuestState` và phân luồng gói tin trong `client.ts`**
+- [x] **Step 1: Thêm `fishermanQuestState` và phân luồng gói tin trong `client.ts`**
   - Trong khai báo class `GameClient`:
     ```ts
     fishermanQuestState: ProgressQuestChain | null = null;
@@ -164,7 +164,7 @@
     }
     ```
 
-- [ ] **Step 2: Cập nhật `refreshProgressQuests()` trong `client.ts`**
+- [x] **Step 2: Cập nhật `refreshProgressQuests()` trong `client.ts`**
   - Thêm truy vấn hỏi NPC 90 với `userID = 38`:
     ```ts
     this.farm.communicate(90);
@@ -173,7 +173,7 @@
     await new Promise((resolve) => setTimeout(resolve, 500));
     ```
 
-- [ ] **Step 3: Cập nhật `AvatarSession.getQuestOverview()` trong `avatarSession.ts`**
+- [x] **Step 3: Cập nhật `AvatarSession.getQuestOverview()` trong `avatarSession.ts`**
   - Bổ sung `fisherman`:
     ```ts
     getQuestOverview(): QuestOverviewState {
@@ -214,11 +214,11 @@
     }
     ```
 
-- [ ] **Step 4: Kiểm tra biên dịch Server**
+- [x] **Step 4: Kiểm tra biên dịch Server**
   Run: `cd /Users/devios/learning-reverse/avatar-web/server && npx tsc --noEmit`
   Expected: Biên dịch thành công 0 lỗi.
 
-- [ ] **Step 5: Commit thay đổi Task 2**
+- [x] **Step 5: Commit thay đổi Task 2**
   ```bash
   git add avatar-web/server/src/game/client.ts avatar-web/server/src/session/avatarSession.ts
   git commit -m "feat(fishing): wire fisherman quest querying and session state"
@@ -238,7 +238,7 @@
   - `QuestTab`: `'daily' | 'beginner' | 'farmer' | 'fisherman' | 'upgrade'`
   - Tab UI `"🎣 Thợ Câu"` trong `QuestsPanel`
 
-- [ ] **Step 1: Cập nhật `types.ts` trên Web**
+- [x] **Step 1: Cập nhật `types.ts` trên Web**
   - Mở rộng `ProgressQuestKind`:
     ```ts
     export type ProgressQuestKind = 'beginner' | 'farmer' | 'fisherman';
@@ -256,7 +256,7 @@
     }
     ```
 
-- [ ] **Step 2: Cập nhật `QuestsPanel.tsx`**
+- [x] **Step 2: Cập nhật `QuestsPanel.tsx`**
   - Mở rộng `QuestTab`:
     ```ts
     type QuestTab = 'daily' | 'beginner' | 'farmer' | 'fisherman' | 'upgrade';
@@ -341,11 +341,11 @@
     )}
     ```
 
-- [ ] **Step 3: Kiểm tra biên dịch Web**
+- [x] **Step 3: Kiểm tra biên dịch Web**
   Run: `cd /Users/devios/learning-reverse/avatar-web/web && npm run build`
   Expected: Build thành công không có lỗi type/lint.
 
-- [ ] **Step 4: Commit thay đổi Task 3**
+- [x] **Step 4: Commit thay đổi Task 3**
   ```bash
   git add avatar-web/web/src/types.ts avatar-web/web/src/accounts/panels/QuestsPanel.tsx
   git commit -m "feat(quests): add fisherman quest tab in web quests panel"
@@ -363,7 +363,7 @@
 - Consumes: `quests` từ `useAccountRuntime(accountId)`
 - Produces: Thẻ widget Nhiệm Vụ Thợ Câu trong `FishingPanel.tsx`
 
-- [ ] **Step 1: Cập nhật `AccountOperationsDrawer.tsx`**
+- [x] **Step 1: Cập nhật `AccountOperationsDrawer.tsx`**
   - Truyền prop `quests={snapshot?.quests ?? null}` vào `FishingPanel`:
     ```tsx
     <FishingPanel
@@ -378,7 +378,7 @@
     />
     ```
 
-- [ ] **Step 2: Cập nhật `FishingPanel.tsx`**
+- [x] **Step 2: Cập nhật `FishingPanel.tsx`**
   - Mở rộng `FishingPanelProps`:
     ```ts
     interface FishingPanelProps {
@@ -411,11 +411,11 @@
     - Nếu có `fishermanQuest`: Hiển thị tên nhiệm vụ (ví dụ `Nhiệm Vụ Thợ Câu 1`), các mục tiêu cá cần câu kèm `current/total`, thanh tiến trình mini và nút icon `🔄` làm mới.
     - Nếu chưa có dữ liệu: Hiển thị một dòng gợi ý nhẹ kèm nút "Tải nhiệm vụ Thợ Câu".
 
-- [ ] **Step 3: Kiểm tra biên dịch Web**
+- [x] **Step 3: Kiểm tra biên dịch Web**
   Run: `cd /Users/devios/learning-reverse/avatar-web/web && npm run build`
   Expected: Build thành công không có lỗi.
 
-- [ ] **Step 4: Commit thay đổi Task 4**
+- [x] **Step 4: Commit thay đổi Task 4**
   ```bash
   git add avatar-web/web/src/accounts/AccountOperationsDrawer.tsx avatar-web/web/src/accounts/panels/FishingPanel.tsx
   git commit -m "feat(fishing): embed fisherman quest widget in fishing panel"
@@ -428,16 +428,16 @@
 **Files:**
 - None (Kiểm tra & đồng bộ)
 
-- [ ] **Step 1: Xác minh toàn bộ build Server & Web**
+- [x] **Step 1: Xác minh toàn bộ build Server & Web**
   Run: `cd /Users/devios/learning-reverse/avatar-web/server && npx tsc --noEmit && cd /Users/devios/learning-reverse/avatar-web/web && npm run build`
   Expected: Cả hai lệnh chạy thành công exit code 0.
 
-- [ ] **Step 2: Kiểm tra phạm vi thay đổi qua GitNexus**
+- [x] **Step 2: Kiểm tra phạm vi thay đổi qua GitNexus**
   Chạy `gitnexus_detect_changes({ scope: 'unstaged' })` hoặc `gitnexus_detect_changes({ scope: 'compare', base_ref: 'main' })` để đảm bảo chỉ thay đổi đúng các file đã lên kế hoạch.
 
-- [ ] **Step 3: Cập nhật index GitNexus**
+- [x] **Step 3: Cập nhật index GitNexus**
   Run: `npx gitnexus analyze`
   Expected: Knowledge graph được cập nhật phiên bản mới nhất.
 
-- [ ] **Step 4: Xác minh Live (nếu account online)**
+- [x] **Step 4: Xác minh Live (nếu account online)**
   Gửi yêu cầu làm mới nhiệm vụ qua endpoint `/api/accounts/:id/quests/progress/refresh` và kiểm tra phản hồi chứa dữ liệu `fisherman`.
