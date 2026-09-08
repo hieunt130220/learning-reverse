@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import crypto from 'node:crypto';
 
 import { Message } from '../proto/message.js';
+import { MyReader } from '../proto/reader.js';
 import { CMD_GET_KEY, Session } from '../proto/session.js';
 import {
   classifyFarmSlots,
@@ -589,8 +590,20 @@ export class GameClient extends EventEmitter {
     this.park.doJoinPark(map, area);
   }
 
+  startFishing(): void {
+    this.park.doStartFishing();
+  }
+
+  quanCau(): void {
+    this.park.doQuanCau();
+  }
+
   finishFishing(answer: readonly number[]): void {
     this.park.doFinishFishing(answer);
+  }
+
+  cauCaXong(): void {
+    this.park.doCauCaXong();
   }
 
   /**
@@ -1412,6 +1425,52 @@ export class GameClient extends EventEmitter {
           this.emit('log', `giải mã farm lỗi: ${(err as Error).message}`);
         }
         break;
+      case 45: {
+        // START_CAU_CA (RX45): bool iss, [utf error if iss=false]
+        try {
+          const r = new MyReader(msg.getData());
+          const iss = r.readBoolean();
+          const error = iss ? undefined : r.readUTF();
+          this.emit('fishing-start-result', { iss, error });
+        } catch {
+          this.emit('fishing-start-result', { iss: false, error: 'RX45 decode error' });
+        }
+        break;
+      }
+      case 41: {
+        // QUANG_CAU (RX41): i32 idUser
+        try {
+          const r = new MyReader(msg.getData());
+          const idUser = r.readInt();
+          this.emit('fishing-quan-cau', { idUser });
+        } catch {
+          // ignore
+        }
+        break;
+      }
+      case 43: {
+        // CAU_THANH_CONG (RX43): i32 idUser, i16 idFish
+        try {
+          const r = new MyReader(msg.getData());
+          const idUser = r.readInt();
+          const idFish = r.readShort();
+          this.emit('fishing-success-result', { idUser, idFish });
+        } catch {
+          this.emit('log', 'RX43 CAU_THANH_CONG decode thất bại');
+        }
+        break;
+      }
+      case 44: {
+        // CAU_CA_XONG (RX44): i32 idUser
+        try {
+          const r = new MyReader(msg.getData());
+          const idUser = r.readInt();
+          this.emit('fishing-done', { idUser });
+        } catch {
+          // ignore
+        }
+        break;
+      }
       case 79: {
         // CAN_CAU (RX79) — cá cắn câu + ảnh mini-game
         try {

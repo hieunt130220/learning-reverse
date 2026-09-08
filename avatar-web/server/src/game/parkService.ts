@@ -4,8 +4,17 @@ import type { Session } from '../proto/session.js';
 /** AVATAR_JOIN_PARK: i8 roomID, i8 boardID, then native join coordinates. */
 export const CMD_AVATAR_JOIN_PARK = 80;
 
+/** QUANG_CAU: empty body. */
+export const CMD_AVATAR_QUANG_CAU = 41;
+
 /** CAU_THANH_CONG: bool isF=true, i8 len, len × i8 answers. */
 export const CMD_AVATAR_CAU_THANH_CONG = 43;
+
+/** CAU_CA_XONG: empty body. */
+export const CMD_AVATAR_CAU_CA_XONG = 44;
+
+/** START_CAU_CA: empty body. */
+export const CMD_AVATAR_START_CAU_CA = 45;
 
 export interface NativeParkJoinPosition {
   x: number;
@@ -23,6 +32,9 @@ export interface NativeParkJoinPosition {
  *   8: Ngoại ô (100, 100)
  *   9: Mê cung (57, 209)
  *   14: Khu cá rô (254, 82) — sub-area verified in auto-fishing spec
+ *   15: Khu cá lóc (36, 97)
+ *   16: Khu cá mập (324, 157)
+ *   27: Bến tàu / Đảo Hawai (254, 82)
  */
 export const NATIVE_PARK_JOIN_POSITIONS: Readonly<Record<number, NativeParkJoinPosition>> =
   Object.freeze({
@@ -34,6 +46,9 @@ export const NATIVE_PARK_JOIN_POSITIONS: Readonly<Record<number, NativeParkJoinP
     8: Object.freeze({ x: 100, y: 100 }),
     9: Object.freeze({ x: 57, y: 209 }),
     14: Object.freeze({ x: 254, y: 82 }),
+    15: Object.freeze({ x: 36, y: 97 }),
+    16: Object.freeze({ x: 324, y: 157 }),
+    27: Object.freeze({ x: 254, y: 82 }),
   });
 
 /** V1 chỉ encode cmd 80 — không có REQUEST_JOIN_ANY/-23 hay opcode tương tác. */
@@ -76,6 +91,21 @@ export class ParkService {
     for (let i = 0; i < answer.length; i++) {
       m.writer!.writeByte(answer[i]!);
     }
+    this.session.send(m);
+  }
+
+  doStartFishing(): void {
+    const m = Message.create(CMD_AVATAR_START_CAU_CA);
+    this.session.send(m);
+  }
+
+  doQuanCau(): void {
+    const m = Message.create(CMD_AVATAR_QUANG_CAU);
+    this.session.send(m);
+  }
+
+  doCauCaXong(): void {
+    const m = Message.create(CMD_AVATAR_CAU_CA_XONG);
     this.session.send(m);
   }
 }
