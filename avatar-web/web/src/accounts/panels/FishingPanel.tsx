@@ -1,11 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { apiPost, ApiError } from '../../api.js';
-import type {
-  AccountWithRuntime,
-  AutomationSnapshot,
-  FishingRuntimeState,
-  QuestOverviewState,
+import { apiPost, apiPut, ApiError } from '../../api.js';
+import {
+  DEFAULT_FISHING_CONFIG,
+  FISHING_BAITS,
+  FISHING_RODS,
+  FISHING_TICKETS,
+  type AccountWithRuntime,
+  type AutomationSnapshot,
+  type FishingConfig,
+  type FishingRuntimeState,
+  type QuestOverviewState,
 } from '../../types.js';
 
 interface FishingPanelProps {
@@ -45,6 +50,23 @@ export function formatFishName(id: number | null | undefined, name?: string | nu
   return mapped ? `${mapped} (ID ${id})` : `Cá ID ${id}`;
 }
 
+function getTicketHint(mapId: number): string {
+  switch (mapId) {
+    case 14:
+      return 'Tự mua Vé cá rô (1.000 xu)';
+    case 15:
+      return 'Tự mua Vé cá lóc (10.000 xu)';
+    case 16:
+      return 'Tự mua Vé cá mập (2 Lượng) ⚠️ Tiêu Lượng';
+    case 27:
+      return 'Bến tàu cần vé sự kiện riêng, NPC không bán';
+    default:
+      return FISHING_TICKETS[mapId]
+        ? `Tự mua ${FISHING_TICKETS[mapId].name}`
+        : 'Bản đồ này không có vé bán tại NPC';
+  }
+}
+
 function formatFishingStatus(
   isFishingDesired: boolean,
   status?: FishingRuntimeState['status'],
@@ -56,6 +78,8 @@ function formatFishingStatus(
   switch (status) {
     case 'moving':
       return 'Đang di chuyển vào hồ câu';
+    case 'buying':
+      return 'Đang đi mua vật phẩm câu cá tại Khu sinh thái (Map 13)…';
     case 'starting':
       return 'Đang gửi yêu cầu câu (TX45)…';
     case 'casting':
@@ -93,12 +117,98 @@ export function FishingPanel({
   const isFishing = isFishingDesired || isFishingActive;
   const isSwitching = automation?.transitionState === 'switching';
 
+  const initialConfig = automation?.fishingConfig?.config ?? DEFAULT_FISHING_CONFIG;
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [selectedMap, setSelectedMap] = useState(14);
-  const [area, setArea] = useState(0);
-  const [delayMs, setDelayMs] = useState(3000);
+  const [selectedMap, setSelectedMap] = useState<number>(initialConfig.map ?? DEFAULT_FISHING_CONFIG.map);
+  const [area, setArea] = useState<number>(initialConfig.area ?? DEFAULT_FISHING_CONFIG.area);
+  const [delayMs, setDelayMs] = useState<number>(initialConfig.castDelayMs ?? DEFAULT_FISHING_CONFIG.castDelayMs);
+  const [autoBuyTicket, setAutoBuyTicket] = useState<boolean>(initialConfig.autoBuyTicket ?? DEFAULT_FISHING_CONFIG.autoBuyTicket);
+  const [rodType, setRodType] = useState<number>(initialConfig.rodType ?? DEFAULT_FISHING_CONFIG.rodType);
+  const [baitType, setBaitType] = useState<number>(initialConfig.baitType ?? DEFAULT_FISHING_CONFIG.baitType);
+  const [baitQuantity, setBaitQuantity] = useState<number>(initialConfig.baitQuantity ?? DEFAULT_FISHING_CONFIG.baitQuantity);
+
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [refreshingQuest, setRefreshingQuest] = useState(false);
+
+  useEffect(() => {
+    const cfg = automation?.fishingConfig?.config ?? DEFAULT_FISHING_CONFIG;
+    setSelectedMap(cfg.map);
+    setArea(cfg.area);
+    setDelayMs(cfg.castDelayMs);
+    setAutoBuyTicket(cfg.autoBuyTicket);
+    setRodType(cfg.rodType);
+    setBaitType(cfg.baitType);
+    setBaitQuantity(cfg.baitQuantity);
+    setSaveSuccess(false);
+    setSaveError('');
+  }, [account?.id, automation?.fishingConfig?.revision]);
+
+  const handleSaveConfig = async () => {
+    if (!accountId || savingConfig || isFishing) return;
+    setSavingConfig(true);
+    setSaveError('');
+    setSaveSuccess(false);
+
+    try {
+      const payload = {
+        expectedRevision: automation?.fishingConfig?.revision ?? 0,
+        config: {
+          map: selectedMap,
+          area,
+          castDelayMs: delayMs,
+          autoBuyTicket,
+          rodType,
+          baitType,
+          baitQuantity,
+        },
+      };
+
+      const result = await apiPut<{
+        revision: number;
+        config: FishingConfig;
+        application: string;
+      }>(`/api/accounts/${accountId}/automation/fishing/config`, payload);
+
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 4000);
+
+      if (automation && onAutomationChange) {
+        onAutomationChange({
+          ...automation,
+          fishingConfig: {
+            revision: result.revision,
+            config: result.config,
+          },
+        });
+      }
+      onChanged?.();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const body = err.body as {
+          code?: string;
+          current?: { revision: number; config: FishingConfig };
+          error?: string;
+        } | undefined;
+        setSaveError(
+          body?.error || 'Xung đột phiên bản: cấu hình đã được cập nhật từ nơi khác. Vui lòng thử lại.',
+        );
+        if (body?.current && automation && onAutomationChange) {
+          onAutomationChange({
+            ...automation,
+            fishingConfig: body.current,
+          });
+        }
+      } else {
+        setSaveError((err as Error).message);
+      }
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   const fishermanQuest = quests?.fisherman ?? null;
   const isAllConditionsDone = Boolean(
@@ -122,6 +232,8 @@ export function FishingPanel({
   };
 
   const fishingState = automation?.fishingRuntime;
+  const selectedRod = FISHING_RODS.find((r) => r.id === rodType);
+  const isRodLuong = selectedRod?.typeMoney === 2;
 
   const handleToggle = async () => {
     if (!accountId || loading || isSwitching) return;
@@ -482,9 +594,159 @@ export function FishingPanel({
           </div>
         </div>
 
+        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '0.25rem 0' }} />
+
+        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>Cấu hình mua vật phẩm tự động</h4>
+
+        {/* 1. Vé câu */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              cursor: isFishing ? 'not-allowed' : 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={autoBuyTicket}
+              onChange={(e) => setAutoBuyTicket(e.target.checked)}
+              disabled={isFishing}
+              style={{ cursor: isFishing ? 'not-allowed' : 'pointer' }}
+            />
+            <span>Tự động mua vé câu theo hồ</span>
+          </label>
+          <div
+            style={{
+              fontSize: '0.8rem',
+              color: selectedMap === 16 ? '#e3b341' : 'var(--muted)',
+              marginLeft: '1.4rem',
+            }}
+          >
+            {getTicketHint(selectedMap)}
+          </div>
+        </div>
+
+        {/* 2. Cần câu */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Cần câu:</label>
+            {isRodLuong && (
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  background: 'rgba(210, 153, 34, 0.15)',
+                  color: '#e3b341',
+                  border: '1px solid rgba(210, 153, 34, 0.4)',
+                  fontWeight: 500,
+                }}
+              >
+                ⚠️ Tiêu Lượng
+              </span>
+            )}
+          </div>
+          <select
+            value={rodType}
+            onChange={(e) => setRodType(Number(e.target.value))}
+            disabled={isFishing}
+            style={{
+              padding: '0.4rem 0.6rem',
+              background: '#1d2430',
+              color: '#fff',
+              border: '1px solid var(--line)',
+              borderRadius: '4px',
+            }}
+          >
+            {FISHING_RODS.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}{r.cost ? ` - ${r.cost}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 3. Mồi câu & Số lượng */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Mồi câu:</label>
+            <select
+              value={baitType}
+              onChange={(e) => setBaitType(Number(e.target.value))}
+              disabled={isFishing}
+              style={{
+                padding: '0.4rem 0.6rem',
+                background: '#1d2430',
+                color: '#fff',
+                border: '1px solid var(--line)',
+                borderRadius: '4px',
+              }}
+            >
+              {FISHING_BAITS.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}{b.cost ? ` - ${b.cost}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Số lượng mồi mua mỗi lần:</label>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={baitQuantity}
+              onChange={(e) => setBaitQuantity(Number(e.target.value))}
+              onBlur={() => setBaitQuantity((prev) => Math.max(1, Math.min(200, Number(prev) || 50)))}
+              disabled={isFishing}
+              style={{
+                padding: '0.4rem 0.6rem',
+                background: '#1d2430',
+                color: '#fff',
+                border: '1px solid var(--line)',
+                borderRadius: '4px',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* 4. Nút Lưu Cấu Hình */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={handleSaveConfig}
+            disabled={isFishing || savingConfig || !accountId}
+            style={{
+              padding: '0.5rem 1.25rem',
+              fontWeight: 600,
+              cursor: isFishing || savingConfig || !accountId ? 'not-allowed' : 'pointer',
+              background: isFishing || savingConfig || !accountId ? '#23863688' : '#238636',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+            }}
+          >
+            {savingConfig ? 'Đang lưu…' : 'Lưu Cấu Hình'}
+          </button>
+          {saveSuccess && (
+            <span style={{ color: '#3fb950', fontSize: '0.85rem', fontWeight: 500 }}>
+              Đã lưu cấu hình thành công!
+            </span>
+          )}
+          {saveError && (
+            <span style={{ color: '#f85149', fontSize: '0.85rem', fontWeight: 500 }}>
+              {saveError}
+            </span>
+          )}
+        </div>
+
         <p className="hint" style={{ margin: '0.3rem 0 0 0', fontSize: '0.8rem' }}>
-          💡 Lưu ý: Map mặc định là <strong>Khu cá rô (ID 14)</strong>. Vui lòng chuẩn bị sẵn cần câu và vé câu cá
-          (ID 458) trong hành trang trước khi bắt đầu.
+          💡 Lưu ý: Map mặc định là <strong>Khu cá rô (ID 14)</strong>. Bot sẽ tự động di chuyển đến Khu sinh thái (Map 13) để mua cần câu, mồi hoặc vé theo cấu hình khi hết vật phẩm.
         </p>
       </div>
     </div>
