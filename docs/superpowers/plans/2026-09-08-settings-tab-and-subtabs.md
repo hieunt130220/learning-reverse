@@ -26,7 +26,7 @@
 **Interfaces:**
 - Produces: CSS classes `.settings-tabs-nav`, `.settings-tab-btn`, `.settings-tab-btn.active`, `.fishing-settings-panel`, `.fishing-link-hint`
 
-- [ ] **Step 1: Viết CSS cho sub-tab navigation của SettingsPanel và hint trong FishingPanel**
+- [x] **Step 1: Viết CSS cho sub-tab navigation của SettingsPanel và hint trong FishingPanel**
 
 Thêm vào cuối phần QuestsPanel styling trong `avatar-web/web/src/styles.css`:
 
@@ -79,7 +79,7 @@ Thêm vào cuối phần QuestsPanel styling trong `avatar-web/web/src/styles.cs
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add avatar-web/web/src/styles.css
@@ -97,7 +97,7 @@ git commit -m "style(web): add settings subtabs and slot styling"
 - Consumes: `apiPut`, `ApiError`, types `AutomationSnapshot`, `FishingConfig`, constants `DEFAULT_FISHING_CONFIG`, `FISHING_BAITS`, `FISHING_RODS`, `FISHING_TICKETS`
 - Produces: `export function FishingSettingsPanel(props: FishingSettingsPanelProps)`
 
-- [ ] **Step 1: Tạo file `FishingSettingsPanel.tsx`**
+- [x] **Step 1: Tạo file `FishingSettingsPanel.tsx`**
 
 Tách toàn bộ form "Cấu hình hồ câu", "Cấu hình mua vật phẩm tự động" và logic lưu config từ `FishingPanel.tsx` vào `FishingSettingsPanel.tsx`:
 
@@ -497,7 +497,7 @@ export function FishingSettingsPanel({
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add avatar-web/web/src/accounts/panels/FishingSettingsPanel.tsx
@@ -515,7 +515,7 @@ git commit -m "feat(web): create FishingSettingsPanel component"
 - Consumes: `AutoFarmPanel`, `FishingSettingsPanel`, types `AccountWithRuntime`, `AutomationSnapshot`
 - Produces: `export function SettingsPanel(props: SettingsPanelProps)`
 
-- [ ] **Step 1: Tạo file `SettingsPanel.tsx`**
+- [x] **Step 1: Tạo file `SettingsPanel.tsx`**
 
 ```tsx
 import { useState } from 'react';
@@ -602,7 +602,7 @@ export function SettingsPanel({
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add avatar-web/web/src/accounts/panels/SettingsPanel.tsx
@@ -620,7 +620,7 @@ git commit -m "feat(web): create SettingsPanel component with farm and fishing s
 - Consumes: `apiPost`, `ApiError`, `AutomationSnapshot`, `FishingRuntimeState`, `QuestOverviewState`
 - Produces: `export function FishingPanel(props: FishingPanelProps)`
 
-- [ ] **Step 1: Cập nhật `FishingPanel.tsx`**
+- [x] **Step 1: Cập nhật `FishingPanel.tsx`**
 
 Bỏ toàn bộ form cấu hình và nút "Lưu Cấu Hình", thêm prop `onSelectSettingsTab?: () => void`. Giữ nguyên:
 - Nút Bắt đầu / Dừng câu cá.
@@ -1063,7 +1063,7 @@ export function FishingPanel({
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add avatar-web/web/src/accounts/panels/FishingPanel.tsx
@@ -1082,7 +1082,7 @@ git commit -m "refactor(web): streamline FishingPanel to focus on operations and
 - Consumes: `SettingsPanel`, `FishingPanel`
 - Produces: Drawer với tab `settings` ("Cài đặt") thay cho `autofarm` ("Tự động")
 
-- [ ] **Step 1: Cập nhật `AccountOperationsDrawer.tsx`**
+- [x] **Step 1: Cập nhật `AccountOperationsDrawer.tsx`**
 
 1. Import `SettingsPanel`:
 ```tsx
@@ -1153,7 +1153,7 @@ Render `SettingsPanel` và truyền `onSelectSettingsTab`:
         </div>
 ```
 
-- [ ] **Step 2: Cập nhật `accountsRoutes.test.tsx`**
+- [x] **Step 2: Cập nhật `accountsRoutes.test.tsx`**
 
 Đổi tab assertion từ `'Tự động'` thành `'Cài đặt'`:
 ```tsx
@@ -1161,13 +1161,13 @@ Render `SettingsPanel` và truyền `onSelectSettingsTab`:
   expect(screen.getByRole('tab', { name: 'Cài đặt' })).toHaveAttribute('aria-selected', 'true');
 ```
 
-- [ ] **Step 3: Chạy test và type-check**
+- [x] **Step 3: Chạy test và type-check**
 
 Run: `npm --prefix avatar-web/web test -- --run`
 Run: `npm --prefix avatar-web/web run build`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add avatar-web/web/src/accounts/AccountOperationsDrawer.tsx avatar-web/web/src/accounts/accountsRoutes.test.tsx
