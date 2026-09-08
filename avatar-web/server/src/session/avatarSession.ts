@@ -321,6 +321,9 @@ export class AvatarSession {
         daily: null,
         beginner: null,
         farmer: null,
+        fisherman: null,
+        upgradeRequirements: null,
+        source: 'none',
         updatedAt: this.now(),
       };
     }
@@ -328,22 +331,23 @@ export class AvatarSession {
     const daily = c.dailyQuestState ?? null;
     const beginner = c.beginnerQuestState ?? null;
     const farmer = c.farmerQuestState ?? null;
+    const fisherman = c.fishermanQuestState ?? null;
     const overview: QuestOverviewState = {
       daily,
       beginner,
       farmer,
+      fisherman,
       upgradeRequirements: c.farmUpgradeRequirements ?? null,
+      source: daily || beginner || farmer || fisherman ? 'live' : 'none',
       updatedAt: Math.max(
         daily?.updatedAt ?? 0,
         beginner?.updatedAt ?? 0,
         farmer?.updatedAt ?? 0,
-      ) || this.now(),
+        fisherman?.updatedAt ?? 0,
+        this.now(),
+      ),
     };
-    this.runtimeSnapshot = {
-      ...this.runtimeSnapshot,
-      quests: overview,
-      capturedAt: this.now(),
-    };
+    this.patchRuntimeSnapshot('quests', overview);
     return overview;
   }
 

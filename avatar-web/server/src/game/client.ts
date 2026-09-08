@@ -29,6 +29,7 @@ import {
   type FarmAnimal,
   type ItemInfo,
   type TreeInfo,
+  type QuestOverviewState,
 } from './farmData.js';
 import {
   decodeProgressQuestPacket,
@@ -253,6 +254,8 @@ export class GameClient extends EventEmitter {
   beginnerQuestState: ProgressQuestChain | null = DEFAULT_BEGINNER_QUEST_STATE;
   /** Trạng thái nhiệm vụ nhà nông (cmd 104 / dialog NPC). */
   farmerQuestState: ProgressQuestChain | null = DEFAULT_FARMER_QUEST_STATE;
+  /** Trạng thái nhiệm vụ thợ câu (cmd 104 / dialog NPC). */
+  fishermanQuestState: ProgressQuestChain | null = null;
   /** Danh sách nhiệm vụ NPC (cmd -81, "Xem danh sách nhiệm vụ") — dữ liệu phụ trợ. */
   questCatalog: QuestCatalogEntry[] = [];
   /** Danh sách mapping giải mã tiến trình nhiệm vụ. */
@@ -606,6 +609,10 @@ export class GameClient extends EventEmitter {
     this.park.doCauCaXong();
   }
 
+  parkBuyItem(id: number, typeMoney: number): void {
+    this.park.doParkBuyItem(id, typeMoney);
+  }
+
   /**
    * Chờ RX80 mới; nếu server báo đã ở đúng Park room/board thì dùng lại
    * snapshot RX80 gần nhất của chính connection đó, tránh timeout giả.
@@ -811,6 +818,18 @@ export class GameClient extends EventEmitter {
     return changed;
   }
 
+  getQuestOverview(): QuestOverviewState {
+    return {
+      daily: this.dailyQuestState,
+      beginner: this.beginnerQuestState,
+      farmer: this.farmerQuestState,
+      fisherman: this.fishermanQuestState,
+      upgradeRequirements: this.farmUpgradeRequirements,
+      source: this.beginnerQuestState || this.farmerQuestState || this.fishermanQuestState || this.dailyQuestState ? 'live' : 'none',
+      updatedAt: Date.now(),
+    };
+  }
+
   private lastProgressRefreshAt = 0;
 
   /** Làm mới chuỗi nhiệm vụ tiến trình (Tân Thủ và Nhà Nông) từ game qua Cmd 104 & NPC Lái buôn. */
@@ -847,6 +866,10 @@ export class GameClient extends EventEmitter {
       this.farm.communicate(90);
       await new Promise((resolve) => setTimeout(resolve, 450));
       this.farm.doMenuOption(19, 0, 0); // "Xem nhiệm vụ hiện tại" (Tân Thủ) → cmd -62
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      this.farm.communicate(90);
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      this.farm.doMenuOption(38, 0, 0); // "Xem nhiệm vụ hiện tại" (Thợ Câu) → cmd -62
       await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (err) {
       this.emit('log', `làm mới nhiệm vụ tiến trình lỗi: ${(err as Error).message}`);
@@ -964,11 +987,17 @@ export class GameClient extends EventEmitter {
           if (questState) {
             if (questState.kind === 'beginner') {
               this.beginnerQuestState = questState;
+            } else if (questState.kind === 'fisherman') {
+              this.fishermanQuestState = questState;
             } else if (questState.kind === 'farmer') {
               this.farmerQuestState = questState;
             }
             this.syncProgressQuests();
-            const q = questState.kind === 'beginner' ? this.beginnerQuestState : this.farmerQuestState;
+            const q = questState.kind === 'beginner'
+              ? this.beginnerQuestState
+              : questState.kind === 'fisherman'
+                ? this.fishermanQuestState
+                : this.farmerQuestState;
             if (q) {
               this.emit(
                 'log',
@@ -997,11 +1026,17 @@ export class GameClient extends EventEmitter {
         if (questState) {
           if (questState.kind === 'beginner') {
             this.beginnerQuestState = questState;
+          } else if (questState.kind === 'fisherman') {
+            this.fishermanQuestState = questState;
           } else if (questState.kind === 'farmer') {
             this.farmerQuestState = questState;
           }
           this.syncProgressQuests();
-          const q = questState.kind === 'beginner' ? this.beginnerQuestState : this.farmerQuestState;
+          const q = questState.kind === 'beginner'
+            ? this.beginnerQuestState
+            : questState.kind === 'fisherman'
+              ? this.fishermanQuestState
+              : this.farmerQuestState;
           if (q) {
             this.emit(
               'log',
@@ -1019,11 +1054,17 @@ export class GameClient extends EventEmitter {
           if (questState) {
             if (questState.kind === 'beginner') {
               this.beginnerQuestState = questState;
+            } else if (questState.kind === 'fisherman') {
+              this.fishermanQuestState = questState;
             } else if (questState.kind === 'farmer') {
               this.farmerQuestState = questState;
             }
             this.syncProgressQuests();
-            const q = questState.kind === 'beginner' ? this.beginnerQuestState : this.farmerQuestState;
+            const q = questState.kind === 'beginner'
+              ? this.beginnerQuestState
+              : questState.kind === 'fisherman'
+                ? this.fishermanQuestState
+                : this.farmerQuestState;
             if (q) {
               this.emit(
                 'log',
@@ -1053,6 +1094,8 @@ export class GameClient extends EventEmitter {
           if (questState) {
             if (questState.kind === 'beginner') {
               this.beginnerQuestState = questState;
+            } else if (questState.kind === 'fisherman') {
+              this.fishermanQuestState = questState;
             } else {
               this.farmerQuestState = questState;
             }
