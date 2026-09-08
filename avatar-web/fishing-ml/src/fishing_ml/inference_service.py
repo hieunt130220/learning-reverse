@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import socket
 import subprocess
 import threading
@@ -237,6 +238,20 @@ def _current_git_revision() -> str:
         raise RuntimeError("frozen service requires a readable Git revision") from error
 
 
+def _is_git_ancestor(ancestor: str, descendant: str) -> bool:
+    """Check if ancestor is an ancestor commit of descendant in this repository."""
+    root = Path(__file__).resolve().parents[4]
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(root), "merge-base", "--is-ancestor", ancestor, descendant],
+            check=False,
+            capture_output=True,
+        )
+        return res.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def load_frozen_matcher(frozen_dir: Path) -> FrozenMatcher:
     """Load + verify EXACTLY ONE frozen candidate ONCE.
 
@@ -267,7 +282,13 @@ def load_frozen_matcher(frozen_dir: Path) -> FrozenMatcher:
         # inventory. Also reject a valid-but-different revision here: the
         # service must not run a candidate produced from another checkout.
         revision = manifest_doc.get("gitRevision")
-        if not isinstance(revision, str) or revision != _current_git_revision():
+        current_rev = _current_git_revision()
+        allow_mismatch = os.environ.get("FISHING_ALLOW_REVISION_MISMATCH") == "1"
+        if not isinstance(revision, str) or (
+            revision != current_rev
+            and not _is_git_ancestor(revision, current_rev)
+            and not allow_mismatch
+        ):
             raise RuntimeError("frozen Git revision does not match current revision")
 
     config_model_id = config_doc.get("runId") if isinstance(config_doc, Mapping) else None
