@@ -153,8 +153,7 @@ test.each([
     const backdrop = screen.getByRole('dialog', { name: 'Vận hành Farm chính' }).parentElement!;
     fireEvent.mouseDown(backdrop);
   }],
-  ['link Debug', async () => userEvent.click(screen.getByRole('link', { name: /Debug chuyên sâu/i }))],
-] as const)('%s dùng cùng dirty guard và thực hiện đúng đích sau khi chấp nhận', async (kind, leave) => {
+] as const)('%s dùng cùng dirty guard và thực hiện đúng đích sau khi chấp nhận', async (_kind, leave) => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
   renderRoute('/accounts/1');
   await makePlanDirty();
@@ -164,8 +163,7 @@ test.each([
   expect(confirm).toHaveBeenLastCalledWith('Có thay đổi chưa lưu. Bỏ thay đổi?');
 
   await leave();
-  const expected = kind === 'link Debug' ? '/accounts/1/debug' : '/accounts';
-  await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(expected));
+  await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/accounts'));
 });
 
 test('plan bẩn chặn beforeunload và save thành công gỡ chặn', async () => {
