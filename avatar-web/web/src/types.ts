@@ -333,7 +333,38 @@ export interface ShopRuntimeState {
   lastError?: { code: string; message: string };
 }
 
-export type AutomationMode = 'off' | 'auto_farm' | 'find_npc';
+export type AutomationMode = 'off' | 'auto_farm' | 'find_npc' | 'auto_fishing';
+
+export interface FishingConfig {
+  readonly map: number;
+  readonly area: number;
+  readonly castDelayMs: number;
+}
+
+export const DEFAULT_FISHING_CONFIG: FishingConfig = Object.freeze({
+  map: 14,
+  area: 0,
+  castDelayMs: 3000,
+});
+
+export type FishingStatus =
+  | 'idle'
+  | 'moving'
+  | 'starting'
+  | 'casting'
+  | 'hooked'
+  | 'caught'
+  | 'rejected'
+  | 'resting';
+
+export interface FishingRuntimeState {
+  status: FishingStatus;
+  totalCatches: number;
+  lastFishId: number | null;
+  lastError: string | null;
+  currentMap: number;
+  currentArea: number;
+}
 
 export interface AutomationLocation {
   map: number;
@@ -373,6 +404,7 @@ export interface AutomationSnapshot {
   transitionState: 'stable' | 'switching';
   findNpcConfig: StoredFindNpcConfigState;
   findNpcRuntime: AutoFindNpcState;
+  fishingRuntime?: FishingRuntimeState;
   location: AutomationLocation | null;
 }
 

@@ -10,6 +10,7 @@ import { AssetsPanel } from './panels/AssetsPanel.js';
 import { AutoFarmPanel } from './panels/AutoFarmPanel.js';
 import { CookingPanel } from './panels/CookingPanel.js';
 import { FindNpcPanel } from './panels/FindNpcPanel.js';
+import { FishingPanel } from './panels/FishingPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
 import { QuestsPanel } from './panels/QuestsPanel.js';
 import { ShopPanel } from './panels/ShopPanel.js';
@@ -18,6 +19,7 @@ import { StatusPanel } from './panels/StatusPanel.js';
 const PANEL_TABS = [
   ['status', 'Trạng thái'],
   ['autofarm', 'Tự động'],
+  ['fishing', 'Câu cá'],
   ['find_npc', 'Tìm NPC'],
   ['quests', 'Nhiệm vụ'],
   ['cooking', 'Nấu ăn'],
@@ -187,6 +189,13 @@ function LoadedOperations({
             shop={snapshot?.shop}
             produce={snapshot?.produce}
             onPlanDirtyChange={onPlanDirtyChange}
+          />
+        </div>
+        <div id="drawer-panel-fishing" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-fishing' : undefined} hidden={!visible('fishing')}>
+          <FishingPanel
+            account={account}
+            automation={automation}
+            onChanged={() => void reload()}
           />
         </div>
         {!FIND_NPC_TAB_HIDDEN && (
