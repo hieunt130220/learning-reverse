@@ -124,7 +124,14 @@ function LoadedOperations({
   const panelsRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const visible = (id: PanelId) => !isMobile || activePanel === id;
-  const automation = snapshot?.automation ?? fetchedAutomation;
+
+  useEffect(() => {
+    if (snapshot?.automation) {
+      setFetchedAutomation(snapshot.automation);
+    }
+  }, [snapshot?.automation]);
+
+  const automation = fetchedAutomation ?? snapshot?.automation;
 
   const refreshAutomation = useCallback(async () => {
     try {

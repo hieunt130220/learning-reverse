@@ -84,12 +84,12 @@ export function FishingPanel({
     try {
       if (isFishing) {
         const snap = await apiPost<AutomationSnapshot>(`/api/accounts/${accountId}/automation/stop`, {});
-        if (snap?.desiredMode) onAutomationChange?.(snap);
+        if (snap) onAutomationChange?.(snap);
       } else {
         const snap = await apiPost<AutomationSnapshot>(`/api/accounts/${accountId}/automation/start`, {
           mode: 'auto_fishing',
         });
-        if (snap?.desiredMode) onAutomationChange?.(snap);
+        if (snap) onAutomationChange?.(snap);
       }
       onChanged?.();
     } catch (err) {

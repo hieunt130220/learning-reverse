@@ -949,7 +949,7 @@ export class AvatarSession {
     });
 
     client.on('fishing-success-result', (ev: { idUser: number; idFish: number }) => {
-      if (!this.isCurrent(client, epoch)) return;
+      if (!this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
       this.fishingRuntime.totalCatches += 1;
       this.fishingRuntime.lastFishId = ev.idFish;
       this.fishingRuntime.status = 'caught';
@@ -1269,6 +1269,16 @@ export class AvatarSession {
     if (this.fishingAbortController) {
       this.fishingAbortController.abort();
       this.fishingAbortController = undefined;
+    }
+    if (this.activeMode === 'auto_fishing') {
+      if (this.client && this.client.status === 'online') {
+        try {
+          this.client.cauCaXong();
+        } catch {
+          /* bỏ qua */
+        }
+      }
+      this.pushLog('[câu cá] đã dừng tự động câu cá.');
     }
     this.fishingRuntime.status = 'idle';
     if (!this.isAutomationGenerationCurrent(generation)) return false;
@@ -1691,113 +1701,122 @@ export class AvatarSession {
     if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
     this.pushLog(`[câu cá] đã vào khu vực câu cá map ${map}`);
 
-    while (
-      !signal.aborted
-      && this.isCurrent(client, epoch)
-      && this.isAutomationGenerationCurrent(generation)
-      && this.desiredMode === 'auto_fishing'
-      && client.status === 'online'
-    ) {
-      this.fishingRuntime.status = 'starting';
-      this.emitAutomation();
-
-      const rx45Promise = new Promise<{ iss: boolean; error?: string }>((resolve) => {
-        let settled = false;
-        let timer: NodeJS.Timeout | undefined;
-        const cleanup = () => {
-          client.removeListener('fishing-start-result', onStartResult);
-          signal.removeEventListener('abort', onAbort);
-          if (timer) clearTimeout(timer);
-        };
-        const onStartResult = (res: { iss: boolean; error?: string }) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resolve(res);
-        };
-        const onAbort = () => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resolve({ iss: false, error: 'bị hủy' });
-        };
-        client.on('fishing-start-result', onStartResult);
-        signal.addEventListener('abort', onAbort, { once: true });
-        timer = setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resolve({ iss: false, error: 'hết giờ chờ bắt đầu câu' });
-        }, 8000);
-      });
-
-      client.startFishing();
-      const startResult = await rx45Promise;
-
-      if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
-
-      if (!startResult.iss) {
-        const reason = startResult.error ?? 'server từ chối bắt đầu câu';
-        this.fishingRuntime.status = 'rejected';
-        this.fishingRuntime.lastError = reason;
-        this.pushLog(`[câu cá] server từ chối: ${reason}`);
+    try {
+      while (
+        !signal.aborted
+        && this.isCurrent(client, epoch)
+        && this.isAutomationGenerationCurrent(generation)
+        && this.desiredMode === 'auto_fishing'
+        && client.status === 'online'
+      ) {
+        this.fishingRuntime.status = 'starting';
         this.emitAutomation();
-        await this.delayCancellable(10000, signal);
-        continue;
+
+        const rx45Promise = new Promise<{ iss: boolean; error?: string }>((resolve) => {
+          let settled = false;
+          let timer: NodeJS.Timeout | undefined;
+          const cleanup = () => {
+            client.removeListener('fishing-start-result', onStartResult);
+            signal.removeEventListener('abort', onAbort);
+            if (timer) clearTimeout(timer);
+          };
+          const onStartResult = (res: { iss: boolean; error?: string }) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(res);
+          };
+          const onAbort = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve({ iss: false, error: 'bị hủy' });
+          };
+          client.on('fishing-start-result', onStartResult);
+          signal.addEventListener('abort', onAbort, { once: true });
+          timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve({ iss: false, error: 'hết giờ chờ bắt đầu câu' });
+          }, 8000);
+        });
+
+        client.startFishing();
+        const startResult = await rx45Promise;
+
+        if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
+
+        if (!startResult.iss) {
+          const reason = startResult.error ?? 'server từ chối bắt đầu câu';
+          this.fishingRuntime.status = 'rejected';
+          this.fishingRuntime.lastError = reason;
+          this.pushLog(`[câu cá] server từ chối: ${reason}`);
+          this.emitAutomation();
+          await this.delayCancellable(10000, signal);
+          continue;
+        }
+
+        this.fishingRuntime.lastError = null;
+        this.fishingRuntime.status = 'casting';
+        this.pushLog('[câu cá] đang quăng cần…');
+        this.emitAutomation();
+
+        client.quanCau();
+
+        // Chờ cá cắn câu và câu thành công (hoặc timeout 25s)
+        const catchPromise = new Promise<boolean>((resolve) => {
+          let settled = false;
+          let timer: NodeJS.Timeout | undefined;
+          const cleanup = () => {
+            client.removeListener('fishing-success-result', onSuccess);
+            signal.removeEventListener('abort', onAbort);
+            if (timer) clearTimeout(timer);
+          };
+          const onSuccess = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(true);
+          };
+          const onAbort = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(false);
+          };
+          client.on('fishing-success-result', onSuccess);
+          signal.addEventListener('abort', onAbort, { once: true });
+          timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(false);
+          }, 25000);
+        });
+
+        await catchPromise;
+
+        if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
+
+        // Đóng màn hình câu để server reset state
+        client.cauCaXong();
+
+        this.fishingRuntime.status = 'resting';
+        this.emitAutomation();
+        await this.delayCancellable(config.castDelayMs, signal);
       }
-
-      this.fishingRuntime.lastError = null;
-      this.fishingRuntime.status = 'casting';
-      this.pushLog('[câu cá] đang quăng cần…');
+    } finally {
+      if (this.isCurrent(client, epoch) && client.status === 'online') {
+        try {
+          client.cauCaXong();
+        } catch {
+          /* bỏ qua */
+        }
+      }
+      this.fishingRuntime.status = 'idle';
       this.emitAutomation();
-
-      client.quanCau();
-
-      // Chờ cá cắn câu và câu thành công (hoặc timeout 25s)
-      const catchPromise = new Promise<boolean>((resolve) => {
-        let settled = false;
-        let timer: NodeJS.Timeout | undefined;
-        const cleanup = () => {
-          client.removeListener('fishing-success-result', onSuccess);
-          signal.removeEventListener('abort', onAbort);
-          if (timer) clearTimeout(timer);
-        };
-        const onSuccess = () => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resolve(true);
-        };
-        const onAbort = () => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resolve(false);
-        };
-        client.on('fishing-success-result', onSuccess);
-        signal.addEventListener('abort', onAbort, { once: true });
-        timer = setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resolve(false);
-        }, 25000);
-      });
-
-      await catchPromise;
-
-      if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
-
-      // Đóng màn hình câu để server reset state
-      client.cauCaXong();
-
-      this.fishingRuntime.status = 'resting';
-      this.emitAutomation();
-      await this.delayCancellable(config.castDelayMs, signal);
     }
-
-    this.fishingRuntime.status = 'idle';
-    this.emitAutomation();
   }
 
   private delayCancellable(ms: number, signal: AbortSignal): Promise<void> {
@@ -1821,14 +1840,17 @@ export class AvatarSession {
     epoch: number,
     payload: CanCauPayload,
   ): void {
-    if (!this.isCurrent(client, epoch) || client.status !== 'online' || !this.wanted) {
+    if (
+      !this.isCurrent(client, epoch)
+      || client.status !== 'online'
+      || !this.wanted
+      || this.desiredMode !== 'auto_fishing'
+    ) {
       return;
     }
 
-    if (this.desiredMode === 'auto_fishing') {
-      this.fishingRuntime.status = 'hooked';
-      this.emitAutomation();
-    }
+    this.fishingRuntime.status = 'hooked';
+    this.emitAutomation();
 
     const domain = buildAnswerDomain(payload);
     if (!domain) {
@@ -1859,6 +1881,7 @@ export class AvatarSession {
         if (this.client !== client) return;
         if (!this.isCurrent(client, epoch)) return;
         if (!this.wanted) return;
+        if (this.desiredMode !== 'auto_fishing') return;
         if (client.status !== 'online') return;
 
         // Verify answer matches domain
