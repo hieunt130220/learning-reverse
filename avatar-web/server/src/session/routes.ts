@@ -239,7 +239,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
   router.post('/:id/automation/start', owned, async (req, res) => {
     if (
       !exactObject(req.body, ['mode'])
-      || (req.body.mode !== 'auto_farm' && req.body.mode !== 'find_npc')
+      || (req.body.mode !== 'auto_farm' && req.body.mode !== 'find_npc' && req.body.mode !== 'auto_fishing')
     ) {
       automationError(res, 400, 'invalid-automation-mode', 'mode automation không hợp lệ');
       return;

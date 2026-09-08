@@ -3,8 +3,50 @@
  * Module thuần type + helper — không import runtime gì để tránh chu kỳ phụ thuộc.
  */
 
-export type AutomationMode = 'off' | 'auto_farm' | 'find_npc';
+export type AutomationMode = 'off' | 'auto_farm' | 'find_npc' | 'auto_fishing';
 export type AutomationTransitionState = 'stable' | 'switching';
+
+export interface FishingConfig {
+  readonly map: number;
+  readonly area: number;
+  readonly castDelayMs: number;
+}
+
+export const DEFAULT_FISHING_CONFIG: FishingConfig = Object.freeze({
+  map: 14,
+  area: 0,
+  castDelayMs: 3000,
+});
+
+export type FishingStatus =
+  | 'idle'
+  | 'moving'
+  | 'starting'
+  | 'casting'
+  | 'hooked'
+  | 'caught'
+  | 'rejected'
+  | 'resting';
+
+export interface FishingRuntimeState {
+  status: FishingStatus;
+  totalCatches: number;
+  lastFishId: number | null;
+  lastError: string | null;
+  currentMap: number;
+  currentArea: number;
+}
+
+export function idleFishingRuntime(): FishingRuntimeState {
+  return {
+    status: 'idle',
+    totalCatches: 0,
+    lastFishId: null,
+    lastError: null,
+    currentMap: 14,
+    currentArea: 0,
+  };
+}
 
 export interface AutomationLocation {
   map: number;
@@ -61,6 +103,7 @@ export interface AutomationSnapshot {
   transitionState: AutomationTransitionState;
   findNpcConfig: StoredFindNpcConfigState;
   findNpcRuntime: AutoFindNpcState;
+  fishingRuntime?: FishingRuntimeState;
   location: AutomationLocation | null;
 }
 
