@@ -10,6 +10,7 @@ import { AutoFarm, DEFAULT_AUTO_INTERVAL_MS, type AutoFarmConfig, type AutoFarmS
 import { AutoFindNpc, type AutoFindNpcOptions } from '../autoFindNpc.js';
 import {
   GameClient,
+  PARK_ALREADY_IN_AREA_DIALOG,
   type CaptchaEvent,
   type ClientStatus,
   type DeviceProfile,
@@ -1739,12 +1740,43 @@ export class AvatarSession {
     this.emitAutomation();
 
     client.enterParkContext();
-    await this.delayCancellable(1000, signal);
+    await this.delayCancellable(800, signal);
 
     if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
 
-    client.joinPark(map, area);
-    await this.delayCancellable(2000, signal);
+    try {
+      const pendingSnapshot = client.waitForWorldSnapshot(signal, 6000, { map, area });
+
+      const dialogRejectionPromise = new Promise<never>((_, reject) => {
+        const onDialog = (reason: string) => {
+          if (reason.trim() !== PARK_ALREADY_IN_AREA_DIALOG) {
+            reject(new Error(`server từ chối vào map: ${reason}`));
+          }
+        };
+        const cleanup = () => {
+          client.removeListener('dialog', onDialog);
+          signal.removeEventListener('abort', onAbort);
+        };
+        const onAbort = () => {
+          cleanup();
+          reject(new Error('chờ vào map bị hủy'));
+        };
+        client.on('dialog', onDialog);
+        signal.addEventListener('abort', onAbort, { once: true });
+        pendingSnapshot.finally(() => cleanup());
+      });
+
+      client.joinPark(map, area);
+      await Promise.race([pendingSnapshot, dialogRejectionPromise]);
+    } catch (err) {
+      if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+      const msg = (err as Error).message;
+      this.fishingRuntime.status = 'rejected';
+      this.fishingRuntime.lastError = msg;
+      this.pushLog(`[câu cá] ${msg}`);
+      this.emitAutomation();
+      return;
+    }
 
     if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
     this.pushLog(`[câu cá] đã vào khu vực câu cá map ${map}`);

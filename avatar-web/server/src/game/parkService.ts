@@ -31,7 +31,7 @@ export interface NativeParkJoinPosition {
  *   7: Nông trại (524, 423)
  *   8: Ngoại ô (100, 100)
  *   9: Mê cung (57, 209)
- *   14: Khu cá rô (254, 82) — sub-area verified in auto-fishing spec
+ *   14: Khu cá rô (460, 97) — verified from native bot bs_0.java & live traffic
  *   15: Khu cá lóc (36, 97)
  *   16: Khu cá mập (324, 157)
  *   27: Bến tàu / Đảo Hawai (254, 82)
@@ -45,7 +45,7 @@ export const NATIVE_PARK_JOIN_POSITIONS: Readonly<Record<number, NativeParkJoinP
     7: Object.freeze({ x: 524, y: 423 }),
     8: Object.freeze({ x: 100, y: 100 }),
     9: Object.freeze({ x: 57, y: 209 }),
-    14: Object.freeze({ x: 254, y: 82 }),
+    14: Object.freeze({ x: 460, y: 97 }),
     15: Object.freeze({ x: 36, y: 97 }),
     16: Object.freeze({ x: 324, y: 157 }),
     27: Object.freeze({ x: 254, y: 82 }),
