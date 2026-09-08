@@ -93,7 +93,7 @@ Tuy nhiên, chu trình câu thường xuyên bị gián đoạn vì:
 | `schema.sql` / `index.ts` | `avatar-web/server/src/db/` | Thêm cột `fishing_config_json` vào bảng `avatar_automation_state`. |
 | `automationRepo.ts` | `avatar-web/server/src/accounts/automationRepo.ts` | Lưu và đọc `fishingConfig` từ SQLite kèm revision. |
 | `routes.ts` | `avatar-web/server/src/session/routes.ts` | Endpoint `PUT /api/accounts/:id/automation/fishing/config`. |
-| `parkService.ts` | `avatar-web/server/src/game/parkService.ts` | Thêm `CMD_PARK_BUY_ITEM = -8` và method `doParkBuyItem(id, typeMoney)`. |
+| `parkService.ts` | `avatar-web/server/src/game/parkService.ts` | Thêm `CMD_PARK_BUY_ITEM = -24` và method `doParkBuyItem(id, typeMoney)`. |
 | `client.ts` | `avatar-web/server/src/game/client.ts` | Thêm wrapper `parkBuyItem(id, typeMoney)` cho `GameClient`. |
 | `avatarSession.ts` | `avatar-web/server/src/session/avatarSession.ts` | Nạp `fishingConfig`, xử lý reactive purchase khi `RX45` bị reject, di chuyển Map 13 mua đồ và quay lại. |
 | `FishingPanel.tsx` | `avatar-web/web/src/accounts/panels/FishingPanel.tsx` | Giao diện cấu hình, form inputs, validation và trạng thái `buying`. |
@@ -170,18 +170,25 @@ export const FISHING_BAITS = [
 
 ### 3.3. Chi Tiết Gói Tin & Protocol Game
 
-#### 3.3.1. `CMD_PARK_BUY_ITEM = -8`
-Disassembly tại RVA `0x71B968` xác nhận cấu trúc:
+#### 3.3.1. `CMD_PARK_BUY_ITEM = -24`
+Phân tích từ bot gốc `er_0.java:170` (phương thức `do(n, n2)` gửi opcode `do[10] = -24`) và handler nhận gói `fj_0.java:1477` (`case -24:` giải mã cập nhật ví và túi đồ qua `gs_0.do`) xác nhận cấu trúc:
 ```text
-Opcode: -8 (signed byte 0xF8)
-Payload:
+Opcode: -24 (signed byte 0xE8)
+Payload gửi:
   - i16: idItem      (2 bytes big-endian)
   - i8:  typeMoney   (1 byte: 1 = Xu, 2 = Lượng)
+Phản hồi từ server:
+  - i16: idItem      (-1 nếu thất bại, > 0 nếu thành công)
+  - [i32, i8]        (nếu idItem != -1)
+  - utf: text        (thông báo server)
+  - i32: xu
+  - i32: luong
+  - i32: luongKhoa
 ```
 
 Triển khai trong `ParkService`:
 ```typescript
-export const CMD_PARK_BUY_ITEM = -8;
+export const CMD_PARK_BUY_ITEM = -24;
 
 doParkBuyItem(id: number, typeMoney: number): void {
   const m = Message.create(CMD_PARK_BUY_ITEM);

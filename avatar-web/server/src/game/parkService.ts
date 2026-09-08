@@ -16,8 +16,11 @@ export const CMD_AVATAR_CAU_CA_XONG = 44;
 /** START_CAU_CA: empty body. */
 export const CMD_AVATAR_START_CAU_CA = 45;
 
-/** PARK_BUY_ITEM: i16 idItem, i8 typeMoney (1=Xu, 2=Lượng). Opcode -8 (verified RVA 0x71B968). */
-export const CMD_PARK_BUY_ITEM = -8;
+/**
+ * PARK_BUY_ITEM: i16 idItem, i8 typeMoney (1=Xu, 2=Lượng).
+ * Opcode -24 (verified from J2ME auto bot er_0.java:170 do[10] = -24 and packet receiver fj_0.java:1477).
+ */
+export const CMD_PARK_BUY_ITEM = -24;
 
 export interface NativeParkJoinPosition {
   x: number;

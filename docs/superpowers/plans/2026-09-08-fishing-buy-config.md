@@ -273,7 +273,7 @@ git commit -m "feat(fishing): add fishing_config_json column and repo persistenc
 
 **Interfaces:**
 - Consumes: `Session` từ `game/proto/session.ts`
-- Produces: `CMD_PARK_BUY_ITEM = -8`, `ParkService.doParkBuyItem(id, typeMoney)`, `GameClient.parkBuyItem(id, typeMoney)`
+- Produces: `CMD_PARK_BUY_ITEM = -24`, `ParkService.doParkBuyItem(id, typeMoney)`, `GameClient.parkBuyItem(id, typeMoney)`
 
 - [ ] **Step 1: Thêm `CMD_PARK_BUY_ITEM` & `doParkBuyItem` vào `parkService.ts`**
 
@@ -282,8 +282,8 @@ Trước khi sửa `parkService.ts`, chạy:
 
 Trong `avatar-web/server/src/game/parkService.ts`:
 ```typescript
-/** PARK_BUY_ITEM: i16 idItem, i8 typeMoney (1=Xu, 2=Lượng). Opcode -8 (verified RVA 0x71B968). */
-export const CMD_PARK_BUY_ITEM = -8;
+/** PARK_BUY_ITEM: i16 idItem, i8 typeMoney (1=Xu, 2=Lượng). Opcode -24 (verified from J2ME er_0.java:170 do[10]=-24 and fj_0.java:1477). */
+export const CMD_PARK_BUY_ITEM = -24;
 ```
 Thêm phương thức vào class `ParkService`:
 ```typescript

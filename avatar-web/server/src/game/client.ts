@@ -1019,6 +1019,33 @@ export class GameClient extends EventEmitter {
         }
         break;
       }
+      case -24: { // PARK_BUY_ITEM / CITY_BUY_ITEM — phản hồi mua vật phẩm tại shop NPC
+        try {
+          const r = msg.reader!;
+          const itemId = r.readShort();
+          if (itemId !== -1) {
+            r.readInt();
+            r.readByte();
+          }
+          const text = r.readUTF();
+          const xu = r.readInt();
+          const luong = r.readInt();
+          const luongKhoa = r.readInt();
+          this.money = xu;
+          this.luong = luong;
+          this.luongKhoa = luongKhoa;
+          this.emit('metrics', { xu, luong, luongKhoa });
+          if (itemId !== -1) {
+            this.emit('log', `mua vật phẩm #${itemId} thành công: ${text} (xu=${xu}, lượng=${luong})`);
+          } else {
+            this.emit('log', `mua vật phẩm thất bại: ${text}`);
+          }
+          this.emit('park-buy-item', { itemId, text, xu, luong, luongKhoa });
+        } catch (err) {
+          this.emit('log', `decode phản hồi mua vật phẩm (-24) lỗi: ${(err as Error).message}`);
+        }
+        break;
+      }
       case -10: // thông báo lỗi phiên bản / từ chối đăng nhập (thế giới J2ME)
       case -40: { // hộp thoại thông báo chung của server (lỗi login, nhiệm vụ NPC, giục update…)
         const reason = safeUtf(msg);

@@ -1908,24 +1908,85 @@ export class AvatarSession {
     // 2. Gửi lệnh mua vật phẩm tương ứng
     if (missingType === 'ticket') {
       const ticket = FISHING_TICKETS[targetMap]!;
+      this.pushLog(`[câu cá] Đang gửi lệnh mua ${ticket.name}…`);
+      const buyPromise = new Promise<{ itemId: number; text: string } | null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), 3000);
+        const onBuy = (evt: { itemId: number; text: string }): void => {
+          clearTimeout(timer);
+          client.removeListener('park-buy-item', onBuy);
+          resolve(evt);
+        };
+        client.on('park-buy-item', onBuy);
+      });
       client.parkBuyItem(ticket.id, ticket.typeMoney);
-      this.pushLog(`[câu cá] Đã gửi lệnh mua ${ticket.name}`);
+      const res = await buyPromise;
+      if (res && res.itemId === -1) {
+        const msg = `Mua ${ticket.name} thất bại: ${res.text}`;
+        this.pushLog(`[câu cá] ${msg} — Dừng câu`);
+        this.fishingRuntime.lastError = msg;
+        return false;
+      }
+      this.pushLog(`[câu cá] Đã mua thành công ${ticket.name}`);
       await this.delayCancellable(1000, signal);
     } else if (missingType === 'rod') {
       const rod = FISHING_RODS.find((r) => r.id === cfg.rodType)!;
+      this.pushLog(`[câu cá] Đang gửi lệnh mua ${rod.name}…`);
+      const buyPromise = new Promise<{ itemId: number; text: string } | null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), 3000);
+        const onBuy = (evt: { itemId: number; text: string }): void => {
+          clearTimeout(timer);
+          client.removeListener('park-buy-item', onBuy);
+          resolve(evt);
+        };
+        client.on('park-buy-item', onBuy);
+      });
       client.parkBuyItem(rod.id, rod.typeMoney);
-      this.pushLog(`[câu cá] Đã gửi lệnh mua ${rod.name}`);
+      const res = await buyPromise;
+      if (res && res.itemId === -1) {
+        const msg = `Mua ${rod.name} thất bại: ${res.text}`;
+        this.pushLog(`[câu cá] ${msg} — Dừng câu`);
+        this.fishingRuntime.lastError = msg;
+        return false;
+      }
+      this.pushLog(`[câu cá] Đã mua thành công ${rod.name}`);
       await this.delayCancellable(1000, signal);
     } else if (missingType === 'bait') {
       const bait = FISHING_BAITS.find((b) => b.id === cfg.baitType)!;
       const qty = cfg.baitQuantity;
       this.pushLog(`[câu cá] Đang mua ${bait.name} (số lượng ${qty})…`);
-      for (let i = 0; i < qty; i++) {
-        if (signal.aborted || !this.isCurrent(client, epoch)) return false;
-        client.parkBuyItem(bait.id, bait.typeMoney);
-        await this.delayCancellable(300, signal);
+      let failed = false;
+      let failReason = '';
+      let successCount = 0;
+
+      const onBuy = (evt: { itemId: number; text: string }): void => {
+        if (evt.itemId === -1) {
+          failed = true;
+          failReason = evt.text;
+        } else {
+          successCount++;
+        }
+      };
+      client.on('park-buy-item', onBuy);
+
+      try {
+        for (let i = 0; i < qty; i++) {
+          if (signal.aborted || !this.isCurrent(client, epoch) || failed) break;
+          client.parkBuyItem(bait.id, bait.typeMoney);
+          await this.delayCancellable(200, signal);
+        }
+        await this.delayCancellable(600, signal);
+      } finally {
+        client.removeListener('park-buy-item', onBuy);
       }
-      this.pushLog(`[câu cá] Đã gửi lệnh mua xong ${qty} ${bait.name}`);
+
+      if (failed && successCount === 0) {
+        const msg = `Mua ${bait.name} thất bại: ${failReason}`;
+        this.pushLog(`[câu cá] ${msg} — Dừng câu`);
+        this.fishingRuntime.lastError = msg;
+        return false;
+      }
+
+      this.pushLog(`[câu cá] Đã mua thành công ${successCount > 0 ? successCount : qty} ${bait.name}`);
       await this.delayCancellable(800, signal);
     }
 
