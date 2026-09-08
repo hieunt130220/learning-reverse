@@ -8,18 +8,18 @@ import { useAccounts } from './AccountsProvider.js';
 import { useAccountRuntime } from './useAccountRuntime.js';
 import { useDialogFocus } from './useDialogFocus.js';
 import { AssetsPanel } from './panels/AssetsPanel.js';
-import { AutoFarmPanel } from './panels/AutoFarmPanel.js';
 import { CookingPanel } from './panels/CookingPanel.js';
 import { FindNpcPanel } from './panels/FindNpcPanel.js';
 import { FishingPanel } from './panels/FishingPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
 import { QuestsPanel } from './panels/QuestsPanel.js';
+import { SettingsPanel } from './panels/SettingsPanel.js';
 import { ShopPanel } from './panels/ShopPanel.js';
 import { StatusPanel } from './panels/StatusPanel.js';
 
 const PANEL_TABS = [
   ['status', 'Trạng thái'],
-  ['autofarm', 'Tự động'],
+  ['settings', 'Cài đặt'],
   ['fishing', 'Câu cá'],
   ['find_npc', 'Tìm NPC'],
   ['quests', 'Nhiệm vụ'],
@@ -46,13 +46,16 @@ export function AccountOperationsDrawer() {
     : undefined;
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const [dirtySources, setDirtySources] = useState({ farm: false, findNpc: false });
-  const anyDirty = dirtySources.farm || dirtySources.findNpc;
+  const [dirtySources, setDirtySources] = useState({ farm: false, findNpc: false, fishing: false });
+  const anyDirty = dirtySources.farm || dirtySources.findNpc || dirtySources.fishing;
   const setFarmDirty = useCallback((dirty: boolean) => {
     setDirtySources((current) => current.farm === dirty ? current : { ...current, farm: dirty });
   }, []);
   const setFindNpcDirty = useCallback((dirty: boolean) => {
     setDirtySources((current) => current.findNpc === dirty ? current : { ...current, findNpc: dirty });
+  }, []);
+  const setFishingDirty = useCallback((dirty: boolean) => {
+    setDirtySources((current) => current.fishing === dirty ? current : { ...current, fishing: dirty });
   }, []);
   const canLeave = () => !anyDirty || window.confirm('Có thay đổi chưa lưu. Bỏ thay đổi?');
   const close = () => {
@@ -85,6 +88,7 @@ export function AccountOperationsDrawer() {
             account={account}
             reload={reload}
             onPlanDirtyChange={setFarmDirty}
+            onFishingDirtyChange={setFishingDirty}
             onFindNpcDirtyChange={setFindNpcDirty}
           />
         ) : (
@@ -100,11 +104,13 @@ function LoadedOperations({
   account,
   reload,
   onPlanDirtyChange,
+  onFishingDirtyChange,
   onFindNpcDirtyChange,
 }: {
   account: AccountWithRuntime;
   reload(): Promise<void>;
   onPlanDirtyChange(dirty: boolean): void;
+  onFishingDirtyChange(dirty: boolean): void;
   onFindNpcDirtyChange(dirty: boolean): void;
 }) {
   const snapshot = useAccountRuntime(account.id, account.runtime);
@@ -202,16 +208,18 @@ function LoadedOperations({
             onAutomationMutationBusyChange={setAutomationMutationBusy}
           />
         </div>
-        <div id="drawer-panel-autofarm" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-autofarm' : undefined} hidden={!visible('autofarm')}>
-          <AutoFarmPanel
-            accountId={account.id}
-            foods={snapshot?.foods}
-            trees={snapshot?.trees}
-            animals={snapshot?.animals}
-            items={snapshot?.items}
-            shop={snapshot?.shop}
-            produce={snapshot?.produce}
+        <div id="drawer-panel-settings" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-settings' : undefined} hidden={!visible('settings')}>
+          <SettingsPanel
+            account={account}
+            snapshot={snapshot}
+            automation={automation}
             onPlanDirtyChange={onPlanDirtyChange}
+            onFishingDirtyChange={onFishingDirtyChange}
+            onAutomationChange={handleAutomationChange}
+            onChanged={() => {
+              void reload();
+              void refreshAutomation();
+            }}
           />
         </div>
         <div id="drawer-panel-fishing" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-fishing' : undefined} hidden={!visible('fishing')}>
@@ -224,6 +232,7 @@ function LoadedOperations({
               void reload();
               void refreshAutomation();
             }}
+            onSelectSettingsTab={() => selectPanel('settings')}
           />
         </div>
         {!FIND_NPC_TAB_HIDDEN && (
