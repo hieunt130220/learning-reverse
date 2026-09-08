@@ -1872,10 +1872,59 @@ button.ghost {
 @media (pointer: coarse) {
   button,
   .tab,
-  .quests-tab-btn { min-height: 40px; }
+  .quests-tab-btn,
+  .settings-tab-btn { min-height: 40px; }
 
   input:not([type='checkbox']):not([type='radio']),
   select { min-height: 40px; }
 
   .tree-plan-palette select { min-height: 40px; }
 }
+
+/* ==========================================================================
+   SettingsPanel Sub-tabs Styling
+   ========================================================================== */
+
+.settings-tabs-nav {
+  display: flex;
+  gap: 6px;
+  background: #161b22;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+
+.settings-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-tab-btn:hover {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.settings-tab-btn.active {
+  background: #21262d;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.settings-tab-slot[hidden] {
+  display: none;
+}
+
