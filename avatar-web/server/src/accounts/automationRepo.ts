@@ -1,6 +1,7 @@
 import type { Db } from '../db/index.js';
 import {
   idleFindNpcRuntime,
+  idleFishingRuntime,
   type AutomationLocation,
   type AutomationMode,
   type AutomationSnapshot,
@@ -220,5 +221,6 @@ export function offlineAutomationSnapshot(state: StoredAutomationState): Automat
     findNpcConfig: state.findNpcConfig,
     findNpcRuntime: idleFindNpcRuntime(state.findNpcConfig.config.npcName),
     location: state.location,
+    fishingRuntime: idleFishingRuntime(),
   };
 }

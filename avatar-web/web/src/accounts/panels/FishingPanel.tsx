@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { apiPost } from '../../api.js';
+import { apiPost, ApiError } from '../../api.js';
 import type {
   AccountWithRuntime,
   AutomationSnapshot,
@@ -10,6 +10,7 @@ import type {
 interface FishingPanelProps {
   account?: AccountWithRuntime;
   automation?: AutomationSnapshot;
+  onAutomationChange?(snapshot: AutomationSnapshot): void;
   onChanged?(): void;
 }
 
@@ -20,7 +21,14 @@ const FISHING_MAPS = [
   { id: 27, name: 'Bến tàu / Đảo Hawai (Map 27)' },
 ];
 
-function formatFishingStatus(status?: FishingRuntimeState['status']): string {
+function formatFishingStatus(
+  isFishingDesired: boolean,
+  status?: FishingRuntimeState['status'],
+  accountStatus?: string,
+): string {
+  if (!isFishingDesired && (!status || status === 'idle')) {
+    return 'Đang tắt';
+  }
   switch (status) {
     case 'moving':
       return 'Đang di chuyển vào hồ câu';
@@ -38,6 +46,12 @@ function formatFishingStatus(status?: FishingRuntimeState['status']): string {
       return 'Đang nghỉ giữa vòng quăng cần';
     case 'idle':
     default:
+      if (isFishingDesired) {
+        if (accountStatus !== 'online') {
+          return 'Đang chờ kết nối game…';
+        }
+        return 'Đang chuẩn bị vào hồ…';
+      }
       return 'Đang tắt';
   }
 }
@@ -45,6 +59,7 @@ function formatFishingStatus(status?: FishingRuntimeState['status']): string {
 export function FishingPanel({
   account,
   automation,
+  onAutomationChange,
   onChanged,
 }: FishingPanelProps) {
   const accountId = account?.id;
@@ -68,15 +83,23 @@ export function FishingPanel({
 
     try {
       if (isFishing) {
-        await apiPost(`/api/accounts/${accountId}/automation/stop`, {});
+        const snap = await apiPost<AutomationSnapshot>(`/api/accounts/${accountId}/automation/stop`, {});
+        if (snap?.desiredMode) onAutomationChange?.(snap);
       } else {
-        await apiPost(`/api/accounts/${accountId}/automation/start`, {
+        const snap = await apiPost<AutomationSnapshot>(`/api/accounts/${accountId}/automation/start`, {
           mode: 'auto_fishing',
         });
+        if (snap?.desiredMode) onAutomationChange?.(snap);
       }
       onChanged?.();
     } catch (err) {
-      setError((err as Error).message);
+      if (err instanceof ApiError && err.status === 409) {
+        const bodySnap = (err.body as { snapshot?: AutomationSnapshot })?.snapshot;
+        if (bodySnap) onAutomationChange?.(bodySnap);
+        onChanged?.();
+      } else {
+        setError((err as Error).message);
+      }
     } finally {
       setLoading(false);
     }
@@ -99,7 +122,7 @@ export function FishingPanel({
         <div>
           <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>Tự Động Câu Cá (Phase 3 ML)</h3>
           <p className="hint" style={{ margin: '0.2rem 0 0 0' }}>
-            Trạng thái: <strong>{formatFishingStatus(fishingState?.status)}</strong>
+            Trạng thái: <strong>{formatFishingStatus(isFishingDesired, fishingState?.status, account?.runtime?.status)}</strong>
             {isSwitching && ' · Đang chuyển chế độ…'}
           </p>
         </div>

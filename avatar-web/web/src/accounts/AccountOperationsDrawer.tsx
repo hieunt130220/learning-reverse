@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
+import { apiGet } from '../api.js';
 import type { AccountWithRuntime, AutomationSnapshot } from '../types.js';
 import { useMediaQuery } from '../useMediaQuery.js';
 import { useAccounts } from './AccountsProvider.js';
@@ -124,6 +125,26 @@ function LoadedOperations({
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const visible = (id: PanelId) => !isMobile || activePanel === id;
   const automation = snapshot?.automation ?? fetchedAutomation;
+
+  const refreshAutomation = useCallback(async () => {
+    try {
+      const snap = await apiGet<AutomationSnapshot>(`/api/accounts/${account.id}/automation`);
+      setFetchedAutomation(snap);
+      setAutomationSupported(true);
+    } catch {
+      // Bỏ qua lỗi mạng khi load tự động ngầm
+    }
+  }, [account.id]);
+
+  useEffect(() => {
+    void refreshAutomation();
+  }, [refreshAutomation]);
+
+  const handleAutomationChange = useCallback((loaded: AutomationSnapshot) => {
+    setFetchedAutomation(loaded);
+    setAutomationSupported(true);
+  }, []);
+
   const handleAutomationCapabilityChange = useCallback((supported: boolean, loaded?: AutomationSnapshot) => {
     setAutomationSupported(supported);
     if (loaded) setFetchedAutomation(loaded);
@@ -174,7 +195,10 @@ function LoadedOperations({
             automation={automation}
             automationSupported={snapshot?.automation ? true : automationSupported}
             gameUser={account.gameUser}
-            onChanged={() => void reload()}
+            onChanged={() => {
+              void reload();
+              void refreshAutomation();
+            }}
             automationMutationBusy={automationMutationBusy}
             onAutomationMutationBusyChange={setAutomationMutationBusy}
           />
@@ -195,7 +219,11 @@ function LoadedOperations({
           <FishingPanel
             account={account}
             automation={automation}
-            onChanged={() => void reload()}
+            onAutomationChange={handleAutomationChange}
+            onChanged={() => {
+              void reload();
+              void refreshAutomation();
+            }}
           />
         </div>
         {!FIND_NPC_TAB_HIDDEN && (
