@@ -1820,7 +1820,48 @@ export class AvatarSession {
 
         if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
 
-        // Nghỉ giữa các lượt câu để cá vào giỏ và animation hoàn tất (KHÔNG gọi cauCaXong)
+        // Chờ 1.5s để animation kéo cá lên và transaction thưởng vật phẩm trên server lắng xuống
+        await this.delayCancellable(1500, signal);
+        if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
+
+        // Bắt buộc gửi TX 44 (doCauCaXong) để server chốt kết quả và chuyển cá vào giỏ
+        const donePromise = new Promise<void>((resolve) => {
+          let settled = false;
+          let timer: NodeJS.Timeout | undefined;
+          const cleanup = () => {
+            client.removeListener('fishing-done', onDone);
+            signal.removeEventListener('abort', onAbort);
+            if (timer) clearTimeout(timer);
+          };
+          const onDone = (ev: { idUser: number }) => {
+            if (client.playerId === undefined || ev.idUser !== client.playerId) return;
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve();
+          };
+          const onAbort = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve();
+          };
+          client.on('fishing-done', onDone);
+          signal.addEventListener('abort', onAbort, { once: true });
+          timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve();
+          }, 5000);
+        });
+
+        client.cauCaXong();
+        await donePromise;
+
+        if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
+
+        // Nghỉ giữa các lượt câu trước khi quăng cần lượt mới
         this.fishingRuntime.status = 'resting';
         this.emitAutomation();
         await this.delayCancellable(config.castDelayMs, signal);

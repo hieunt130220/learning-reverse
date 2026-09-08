@@ -1043,8 +1043,9 @@ export class GameClient extends EventEmitter {
           const text = parts.find((s) => /nhiệm vụ hiện tại/i.test(s));
           if (!text) {
             const meaningful = parts.map((p) => p.trim()).filter(Boolean);
-            if (meaningful.length > 0) {
-              this.emit('log', `thông báo (-62): ${meaningful.join(' | ')}`);
+            const joined = meaningful.join(' | ').trim();
+            if (joined.length > 0) {
+              this.emit('log', `thông báo (-62): ${joined}`);
             }
             break;
           }
