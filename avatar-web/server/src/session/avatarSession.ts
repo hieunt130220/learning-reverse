@@ -339,13 +339,13 @@ export class AvatarSession {
       fisherman,
       upgradeRequirements: c.farmUpgradeRequirements ?? null,
       source: daily || beginner || farmer || fisherman ? 'live' : 'none',
-      updatedAt: Math.max(
-        daily?.updatedAt ?? 0,
-        beginner?.updatedAt ?? 0,
-        farmer?.updatedAt ?? 0,
-        fisherman?.updatedAt ?? 0,
-        this.now(),
-      ),
+      updatedAt:
+        Math.max(
+          daily?.updatedAt ?? 0,
+          beginner?.updatedAt ?? 0,
+          farmer?.updatedAt ?? 0,
+          fisherman?.updatedAt ?? 0,
+        ) || this.now(),
     };
     this.patchRuntimeSnapshot('quests', overview);
     return overview;
