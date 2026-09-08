@@ -51,6 +51,10 @@ class StrictReader {
     return this;
   }
 
+  rem(): number {
+    return Math.max(0, this.buf.length - this.pos);
+  }
+
   private need(n: number): void {
     if (n < 0 || this.pos + n > this.buf.length) {
       throw new WorldDataDecodeError(
@@ -194,7 +198,9 @@ export function decodeParkJoinWorld(body: Buffer, playerId: number): EnterWorldS
 
   const parkCount = (section: string): number => {
     r.in(section);
+    if (r.rem() < 1) return 0;
     const count = r.i8();
+    if (count === -1 || count === 0) return 0;
     if (count < 0 || count > 64) {
       throw new WorldDataDecodeError(section, r.pos - 1, `count ngoài bounds: ${count}`);
     }
@@ -215,54 +221,67 @@ export function decodeParkJoinWorld(body: Buffer, playerId: number): EnterWorldS
     r.utf();
     const partCount = parkCount(`park-players[${i}].parts`);
     r.skip(partCount * 2, `park-players[${i}].parts`);
-    // Native ParkService response uses the 18-byte list-player state tail.
-    r.skip(18, `park-players[${i}].state`);
+    // Native ParkService / readListPlayer state tail is 22 bytes (15 fields).
+    readPlayerStateTail(r);
   }
 
-  const dropCount = parkCount('park-drop-parts');
-  r.skip(dropCount * 11, 'park-drop-parts');
-
-  r.in('park-map-marker');
-  const mapMarker = r.i16();
-  if (mapMarker >= 1) {
-    const typeCount = parkCount('park-map-item-types');
-    for (let i = 0; i < typeCount; i += 1) {
-      r.skip(8, `park-map-item-types[${i}]`);
-      const notTransCount = parkCount(`park-map-item-types[${i}].notTrans`);
-      r.skip(notTransCount * 2, `park-map-item-types[${i}].notTrans`);
-    }
-    const itemCount = parkCount('park-map-items');
-    r.skip(itemCount * 4, 'park-map-items');
-  }
-
-  const animationCount = parkCount('park-animations');
-  r.skip(animationCount * 10, 'park-animations');
-
-  const specialCount = parkCount('park-specials');
   const specials: MapSpecial[] = [];
-  for (let i = 0; i < specialCount; i += 1) {
-    r.in(`park-specials[${i}]`);
-    const id = r.i32();
-    const name = r.utf();
-    const specialX = r.i32();
-    const specialY = r.i32();
-    const type = r.i8();
-    const imageCount = parkCount(`park-specials[${i}].images`);
-    const imageIds: number[] = [];
-    for (let image = 0; image < imageCount; image += 1) imageIds.push(r.i16());
-    r.skip(8 * 4, `park-specials[${i}].state`);
-    const menuCount = parkCount(`park-specials[${i}].menus`);
-    const menuIds: number[] = [];
-    for (let menu = 0; menu < menuCount; menu += 1) menuIds.push(r.i16());
-    specials.push({
-      id,
-      name,
-      type,
-      imageIds,
-      menuIds,
-      x: specialX,
-      y: specialY,
-    });
+
+  // Các khối map, animation và special phía sau là tùy chọn / best-effort:
+  try {
+    if (r.rem() >= 2) {
+      r.in('park-map-marker');
+      const mapMarker = r.i16();
+      if (mapMarker >= 1) {
+        const typeCount = parkCount('park-map-item-types');
+        for (let i = 0; i < typeCount; i += 1) {
+          r.skip(8, `park-map-item-types[${i}]`);
+          const notTransCount = parkCount(`park-map-item-types[${i}].notTrans`);
+          r.skip(notTransCount * 2, `park-map-item-types[${i}].notTrans`);
+        }
+        const itemCount = parkCount('park-map-items');
+        r.skip(itemCount * 4, 'park-map-items');
+      }
+    }
+
+    if (r.rem() >= 1) {
+      r.in('park-animations');
+      const animationCount = parkCount('park-animations');
+      if (animationCount > 0) {
+        r.skip(animationCount * 10, 'park-animations');
+      }
+    }
+
+    if (r.rem() >= 1) {
+      r.in('park-specials');
+      const specialCount = parkCount('park-specials');
+      for (let i = 0; i < specialCount; i += 1) {
+        r.in(`park-specials[${i}]`);
+        const id = r.i32();
+        const name = r.utf();
+        const specialX = r.i32();
+        const specialY = r.i32();
+        const type = r.i8();
+        const imageCount = parkCount(`park-specials[${i}].images`);
+        const imageIds: number[] = [];
+        for (let image = 0; image < imageCount; image += 1) imageIds.push(r.i16());
+        r.skip(8 * 4, `park-specials[${i}].state`);
+        const menuCount = parkCount(`park-specials[${i}].menus`);
+        const menuIds: number[] = [];
+        for (let menu = 0; menu < menuCount; menu += 1) menuIds.push(r.i16());
+        specials.push({
+          id,
+          name,
+          type,
+          imageIds,
+          menuIds,
+          x: specialX,
+          y: specialY,
+        });
+      }
+    }
+  } catch {
+    // Không làm sập parser nếu trailing metadata của map khác phiên bản
   }
 
   return {
