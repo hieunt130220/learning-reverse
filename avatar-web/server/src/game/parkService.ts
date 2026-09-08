@@ -16,6 +16,9 @@ export const CMD_AVATAR_CAU_CA_XONG = 44;
 /** START_CAU_CA: empty body. */
 export const CMD_AVATAR_START_CAU_CA = 45;
 
+/** PARK_BUY_ITEM: i16 idItem, i8 typeMoney (1=Xu, 2=Lượng). Opcode -8 (verified RVA 0x71B968). */
+export const CMD_PARK_BUY_ITEM = -8;
+
 export interface NativeParkJoinPosition {
   x: number;
   y: number;
@@ -106,6 +109,18 @@ export class ParkService {
 
   doCauCaXong(): void {
     const m = Message.create(CMD_AVATAR_CAU_CA_XONG);
+    this.session.send(m);
+  }
+
+  doParkBuyItem(id: number, typeMoney: number): void {
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new Error(`doParkBuyItem: id không hợp lệ: ${id}`);
+    }
+    if (!Number.isSafeInteger(typeMoney) || (typeMoney !== 1 && typeMoney !== 2)) {
+      throw new Error(`doParkBuyItem: typeMoney không hợp lệ: ${typeMoney}`);
+    }
+    const m = Message.create(CMD_PARK_BUY_ITEM);
+    m.writer!.writeShort(id).writeByte(typeMoney);
     this.session.send(m);
   }
 }
