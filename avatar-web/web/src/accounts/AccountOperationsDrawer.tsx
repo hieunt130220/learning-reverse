@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { apiGet } from '../api.js';
@@ -70,11 +70,6 @@ export function AccountOperationsDrawer() {
     return () => window.removeEventListener('beforeunload', blockUnload);
   }, [anyDirty]);
 
-  const openDebug = (event: MouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
-    if (canLeave()) navigate(`/accounts/${accountId}/debug`);
-  };
-
   return (
     <div className="dialog-backdrop dialog-backdrop--drawer" onMouseDown={(event) => {
       if (event.target === event.currentTarget) close();
@@ -91,7 +86,6 @@ export function AccountOperationsDrawer() {
             reload={reload}
             onPlanDirtyChange={setFarmDirty}
             onFindNpcDirtyChange={setFindNpcDirty}
-            onOpenDebug={openDebug}
           />
         ) : (
           <div className="drawer-empty"><p className="err">không có tài khoản này</p><Link to="/accounts">Về dashboard</Link></div>
@@ -107,13 +101,11 @@ function LoadedOperations({
   reload,
   onPlanDirtyChange,
   onFindNpcDirtyChange,
-  onOpenDebug,
 }: {
   account: AccountWithRuntime;
   reload(): Promise<void>;
   onPlanDirtyChange(dirty: boolean): void;
   onFindNpcDirtyChange(dirty: boolean): void;
-  onOpenDebug(event: MouseEvent<HTMLAnchorElement>): void;
 }) {
   const snapshot = useAccountRuntime(account.id, account.runtime);
   const isMobile = useMediaQuery('(max-width: 679px)');
@@ -282,9 +274,6 @@ function LoadedOperations({
         <div id="drawer-panel-logs" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-logs' : undefined} hidden={!visible('logs')}>
           <LogPanel logs={snapshot?.logs ?? []} />
         </div>
-        <Link className="btn-link drawer-debug-link" to={`/accounts/${account.id}/debug`} onClick={onOpenDebug}>
-          Debug chuyên sâu →
-        </Link>
       </div>
     </div>
   );

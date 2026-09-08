@@ -558,7 +558,6 @@ button.ghost {
   gap: 16px;
   overflow: auto;
 }
-.drawer-debug-link { justify-self: start; margin-bottom: 20px; }
 .dashboard-empty { text-align: center; }
 
 .find-npc-status { display: grid; gap: 0.45rem; }
