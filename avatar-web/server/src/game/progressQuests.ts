@@ -6,7 +6,7 @@ import type {
   TreeInfo,
 } from './farmData.js';
 
-export type ProgressQuestKind = 'beginner' | 'farmer';
+export type ProgressQuestKind = 'beginner' | 'farmer' | 'fisherman';
 
 export interface ProgressQuestCondition {
   name: string;
@@ -72,7 +72,7 @@ const MAX_REWARDS = 32;
 const MAX_CONDITIONS = 64;
 
 function parseStepFromTitle(title: string): number | null {
-  const match = /(?:tân thủ|nhà nông|bước|cấp)\s*[-:]?\s*(\d+)/i.exec(title);
+  const match = /(?:tân thủ|nhà nông|thợ câu|bước|cấp)\s*[-:]?\s*(\d+)/i.exec(title);
   if (match) {
     const num = parseInt(match[1], 10);
     return isNaN(num) ? null : num;
@@ -153,8 +153,9 @@ export function parseQuestDialogText(text: string): ProgressQuestChain | null {
   const titleMatch = /(?:nhiệm vụ hiện tại của bạn là nhiệm vụ:)?\s*([^\n:]+):/i.exec(text);
   const title = titleMatch ? titleMatch[1].trim() : 'Nhiệm Vụ Nhà Nông - 1';
   const isBeginner = /tân thủ/i.test(title);
-  const kind: ProgressQuestKind = isBeginner ? 'beginner' : 'farmer';
-  const step = parseStepFromTitle(title) ?? (kind === 'farmer' ? 1 : 2);
+  const isFisherman = /thợ câu|câu cá/i.test(title);
+  const kind: ProgressQuestKind = isBeginner ? 'beginner' : isFisherman ? 'fisherman' : 'farmer';
+  const step = parseStepFromTitle(title) ?? (kind === 'farmer' ? 1 : kind === 'fisherman' ? 1 : 2);
 
   const parts = text.split(/Phần Thưởng:/i);
   const condPart = parts[0] || '';
@@ -254,7 +255,7 @@ export function parseQuestDialogText(text: string): ProgressQuestChain | null {
 
   return {
     kind,
-    screenType: isBeginner ? 1 : 0,
+    screenType: isBeginner ? 1 : isFisherman ? 2 : 0,
     title,
     step,
     conditions,
@@ -322,6 +323,17 @@ export const DEFAULT_FARMER_QUEST_STATE: ProgressQuestChain = {
     },
   ],
   source: 'game-packet',
+  updatedAt: Date.now(),
+};
+
+export const DEFAULT_FISHERMAN_QUEST_STATE: ProgressQuestChain = {
+  kind: 'fisherman',
+  screenType: 2,
+  title: 'Nhiệm Vụ Thợ Câu',
+  step: 1,
+  conditions: [],
+  rewards: [],
+  source: 'default',
   updatedAt: Date.now(),
 };
 
