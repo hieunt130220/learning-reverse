@@ -1042,10 +1042,10 @@ export class GameClient extends EventEmitter {
           const parts = decodeQuestDialogStrings(msg.getData());
           const text = parts.find((s) => /nhiệm vụ hiện tại/i.test(s));
           if (!text) {
-            this.emit(
-              'log',
-              `cmd -62 không chứa nội dung quest: ${parts.map((p) => p.slice(0, 30)).join(' | ')}`,
-            );
+            const meaningful = parts.map((p) => p.trim()).filter(Boolean);
+            if (meaningful.length > 0) {
+              this.emit('log', `thông báo (-62): ${meaningful.join(' | ')}`);
+            }
             break;
           }
           const questState = parseQuestDialogText(text);

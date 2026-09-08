@@ -1717,6 +1717,56 @@ export class AvatarSession {
     this.pushLog(`[câu cá] đã vào khu vực câu cá map ${map}`);
 
     try {
+      this.fishingRuntime.status = 'starting';
+      this.emitAutomation();
+
+      const rx45Promise = new Promise<{ iss: boolean; error?: string }>((resolve) => {
+        let settled = false;
+        let timer: NodeJS.Timeout | undefined;
+        const cleanup = () => {
+          client.removeListener('fishing-start-result', onStartResult);
+          signal.removeEventListener('abort', onAbort);
+          if (timer) clearTimeout(timer);
+        };
+        const onStartResult = (res: { iss: boolean; error?: string }) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(res);
+        };
+        const onAbort = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve({ iss: false, error: 'bị hủy' });
+        };
+        client.on('fishing-start-result', onStartResult);
+        signal.addEventListener('abort', onAbort, { once: true });
+        timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve({ iss: false, error: 'hết giờ chờ bắt đầu câu' });
+        }, 8000);
+      });
+
+      client.startFishing();
+      const startResult = await rx45Promise;
+
+      if (signal.aborted || this.desiredMode !== 'auto_fishing') return;
+
+      if (!startResult.iss) {
+        const reason = startResult.error ?? 'server từ chối bắt đầu câu';
+        this.fishingRuntime.status = 'rejected';
+        this.fishingRuntime.lastError = reason;
+        this.pushLog(`[câu cá] server từ chối: ${reason}`);
+        this.emitAutomation();
+        return;
+      }
+
+      this.fishingRuntime.lastError = null;
+
+      // Vòng lặp quăng cần liên tục (giữ nguyên vị trí ngồi câu, KHÔNG gọi cauCaXong giữa các lượt)
       while (
         !signal.aborted
         && this.isCurrent(client, epoch)
@@ -1724,55 +1774,6 @@ export class AvatarSession {
         && this.desiredMode === 'auto_fishing'
         && client.status === 'online'
       ) {
-        this.fishingRuntime.status = 'starting';
-        this.emitAutomation();
-
-        const rx45Promise = new Promise<{ iss: boolean; error?: string }>((resolve) => {
-          let settled = false;
-          let timer: NodeJS.Timeout | undefined;
-          const cleanup = () => {
-            client.removeListener('fishing-start-result', onStartResult);
-            signal.removeEventListener('abort', onAbort);
-            if (timer) clearTimeout(timer);
-          };
-          const onStartResult = (res: { iss: boolean; error?: string }) => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            resolve(res);
-          };
-          const onAbort = () => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            resolve({ iss: false, error: 'bị hủy' });
-          };
-          client.on('fishing-start-result', onStartResult);
-          signal.addEventListener('abort', onAbort, { once: true });
-          timer = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            resolve({ iss: false, error: 'hết giờ chờ bắt đầu câu' });
-          }, 8000);
-        });
-
-        client.startFishing();
-        const startResult = await rx45Promise;
-
-        if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
-
-        if (!startResult.iss) {
-          const reason = startResult.error ?? 'server từ chối bắt đầu câu';
-          this.fishingRuntime.status = 'rejected';
-          this.fishingRuntime.lastError = reason;
-          this.pushLog(`[câu cá] server từ chối: ${reason}`);
-          this.emitAutomation();
-          await this.delayCancellable(10000, signal);
-          continue;
-        }
-
-        this.fishingRuntime.lastError = null;
         this.fishingRuntime.status = 'casting';
         this.pushLog('[câu cá] đang quăng cần…');
         this.emitAutomation();
@@ -1816,9 +1817,7 @@ export class AvatarSession {
 
         if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
 
-        // Đóng màn hình câu để server reset state
-        client.cauCaXong();
-
+        // Nghỉ giữa các lượt câu để cá vào giỏ và animation hoàn tất (KHÔNG gọi cauCaXong)
         this.fishingRuntime.status = 'resting';
         this.emitAutomation();
         await this.delayCancellable(config.castDelayMs, signal);
