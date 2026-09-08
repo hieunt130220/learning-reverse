@@ -134,6 +134,17 @@ export function FishingPanel({
   const [saveError, setSaveError] = useState('');
   const [refreshingQuest, setRefreshingQuest] = useState(false);
 
+  const currentSavedConfig = automation?.fishingConfig?.config ?? DEFAULT_FISHING_CONFIG;
+  const isDirty = (
+    selectedMap !== (currentSavedConfig.map ?? DEFAULT_FISHING_CONFIG.map) ||
+    area !== (currentSavedConfig.area ?? DEFAULT_FISHING_CONFIG.area) ||
+    delayMs !== (currentSavedConfig.castDelayMs ?? DEFAULT_FISHING_CONFIG.castDelayMs) ||
+    autoBuyTicket !== (currentSavedConfig.autoBuyTicket ?? DEFAULT_FISHING_CONFIG.autoBuyTicket) ||
+    rodType !== (currentSavedConfig.rodType ?? DEFAULT_FISHING_CONFIG.rodType) ||
+    baitType !== (currentSavedConfig.baitType ?? DEFAULT_FISHING_CONFIG.baitType) ||
+    baitQuantity !== (currentSavedConfig.baitQuantity ?? DEFAULT_FISHING_CONFIG.baitQuantity)
+  );
+
   useEffect(() => {
     const cfg = automation?.fishingConfig?.config ?? DEFAULT_FISHING_CONFIG;
     setSelectedMap(cfg.map);
@@ -147,8 +158,8 @@ export function FishingPanel({
     setSaveError('');
   }, [account?.id, automation?.fishingConfig?.revision]);
 
-  const handleSaveConfig = async () => {
-    if (!accountId || savingConfig || isFishing) return;
+  const handleSaveConfig = async (): Promise<boolean> => {
+    if (!accountId || savingConfig || isFishing) return false;
     setSavingConfig(true);
     setSaveError('');
     setSaveSuccess(false);
@@ -186,6 +197,7 @@ export function FishingPanel({
         });
       }
       onChanged?.();
+      return true;
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         const body = err.body as {
@@ -205,6 +217,7 @@ export function FishingPanel({
       } else {
         setSaveError((err as Error).message);
       }
+      return false;
     } finally {
       setSavingConfig(false);
     }
@@ -245,6 +258,13 @@ export function FishingPanel({
         const snap = await apiPost<AutomationSnapshot>(`/api/accounts/${accountId}/automation/stop`, {});
         if (snap) onAutomationChange?.(snap);
       } else {
+        if (isDirty) {
+          const saved = await handleSaveConfig();
+          if (!saved) {
+            setError('Không thể lưu cấu hình câu cá trước khi bắt đầu. Vui lòng kiểm tra lại cấu hình.');
+            return;
+          }
+        }
         const snap = await apiPost<AutomationSnapshot>(`/api/accounts/${accountId}/automation/start`, {
           mode: 'auto_fishing',
         });
@@ -733,6 +753,11 @@ export function FishingPanel({
           >
             {savingConfig ? 'Đang lưu…' : 'Lưu Cấu Hình'}
           </button>
+          {isDirty && !savingConfig && (
+            <span style={{ color: '#e3b341', fontSize: '0.85rem' }}>
+              (Có thay đổi chưa lưu)
+            </span>
+          )}
           {saveSuccess && (
             <span style={{ color: '#3fb950', fontSize: '0.85rem', fontWeight: 500 }}>
               Đã lưu cấu hình thành công!

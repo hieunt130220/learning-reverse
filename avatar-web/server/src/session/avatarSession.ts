@@ -1928,6 +1928,7 @@ export class AvatarSession {
 
     try {
       let consecutiveFailures = 0;
+      let lastMissingType: 'ticket' | 'rod' | 'bait' | null = null;
       let startSuccess = false;
 
       while (!startSuccess) {
@@ -1978,13 +1979,24 @@ export class AvatarSession {
           let missingType: 'ticket' | 'rod' | 'bait' | null = null;
           if (errText.includes('vé') || errText.includes('bến tàu')) {
             missingType = 'ticket';
-          } else if (errText.includes('cần')) {
-            missingType = 'rod';
           } else if (errText.includes('mồi')) {
             missingType = 'bait';
+          } else if (
+            errText.includes('cần câu')
+            || errText.includes('sử dụng cần')
+            || errText.includes('phải có cần')
+            || errText.includes('cần tre')
+            || errText.includes('cần sắt')
+          ) {
+            missingType = 'rod';
           }
 
           if (missingType) {
+            if (missingType !== lastMissingType) {
+              lastMissingType = missingType;
+              consecutiveFailures = 0;
+            }
+
             if (consecutiveFailures >= 2) {
               this.fishingRuntime.status = 'rejected';
               this.fishingRuntime.lastError = `Đã thử mua ${missingType} nhưng vẫn thất bại: ${reason}`;
