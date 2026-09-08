@@ -5,11 +5,13 @@ import type {
   AccountWithRuntime,
   AutomationSnapshot,
   FishingRuntimeState,
+  QuestOverviewState,
 } from '../../types.js';
 
 interface FishingPanelProps {
   account?: AccountWithRuntime;
   automation?: AutomationSnapshot;
+  quests?: QuestOverviewState | null;
   onAutomationChange?(snapshot: AutomationSnapshot): void;
   onChanged?(): void;
 }
@@ -81,6 +83,7 @@ function formatFishingStatus(
 export function FishingPanel({
   account,
   automation,
+  quests,
   onAutomationChange,
   onChanged,
 }: FishingPanelProps) {
@@ -95,6 +98,22 @@ export function FishingPanel({
   const [selectedMap, setSelectedMap] = useState(14);
   const [area, setArea] = useState(0);
   const [delayMs, setDelayMs] = useState(3000);
+  const [refreshingQuest, setRefreshingQuest] = useState(false);
+
+  const fishermanQuest = quests?.fisherman ?? null;
+
+  const handleRefreshQuest = async () => {
+    if (!accountId || refreshingQuest) return;
+    setRefreshingQuest(true);
+    try {
+      await apiPost(`/api/accounts/${accountId}/quests/progress/refresh`);
+      onChanged?.();
+    } catch {
+      // ignore
+    } finally {
+      setTimeout(() => setRefreshingQuest(false), 1500);
+    }
+  };
 
   const fishingState = automation?.fishingRuntime;
 
@@ -173,6 +192,191 @@ export function FishingPanel({
           Lỗi câu gần nhất: {fishingState.lastError}
         </p>
       )}
+
+      {/* ─── Fisherman Quest Card ─── */}
+      <div
+        style={{
+          padding: '0.85rem 1rem',
+          background: '#12161d',
+          borderRadius: '8px',
+          border: '1px solid var(--line)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.65rem',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '1.1rem' }}>🎣</span>
+            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>
+              {fishermanQuest?.title || 'Nhiệm Vụ Thợ Câu'}
+            </h4>
+            {fishermanQuest?.step !== null && fishermanQuest?.step !== undefined && (
+              <span className="badge badge--step">Bước {fishermanQuest.step}</span>
+            )}
+            {fishermanQuest && (
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  background:
+                    fishermanQuest.conditions.length > 0 &&
+                    fishermanQuest.conditions.every((c) => c.isDone)
+                      ? 'rgba(63, 185, 80, 0.15)'
+                      : 'rgba(88, 166, 255, 0.12)',
+                  color:
+                    fishermanQuest.conditions.length > 0 &&
+                    fishermanQuest.conditions.every((c) => c.isDone)
+                      ? '#3fb950'
+                      : '#58a6ff',
+                  border:
+                    fishermanQuest.conditions.length > 0 &&
+                    fishermanQuest.conditions.every((c) => c.isDone)
+                      ? '1px solid rgba(63, 185, 80, 0.3)'
+                      : '1px solid rgba(88, 166, 255, 0.25)',
+                }}
+              >
+                {fishermanQuest.conditions.filter((c) => c.isDone).length}/
+                {fishermanQuest.conditions.length} điều kiện
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="ghost"
+            onClick={handleRefreshQuest}
+            disabled={refreshingQuest || !accountId}
+            title="Làm mới nhiệm vụ từ máy chủ game"
+            style={{
+              fontSize: '0.8rem',
+              padding: '2px 8px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              cursor: refreshingQuest ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {refreshingQuest ? '⏳' : '🔄'} Làm mới
+          </button>
+        </div>
+
+        {fishermanQuest ? (
+          fishermanQuest.source === 'completed' ? (
+            <div
+              style={{
+                padding: '0.5rem 0.75rem',
+                background: 'rgba(63, 185, 80, 0.1)',
+                borderRadius: '6px',
+                border: '1px solid rgba(63, 185, 80, 0.25)',
+                fontSize: '0.85rem',
+                color: '#3fb950',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <span>🎉</span>
+              <span>Đã hoàn thành toàn bộ chuỗi nhiệm vụ Thợ Câu!</span>
+            </div>
+          ) : fishermanQuest.conditions.length === 0 ? (
+            <p className="hint" style={{ margin: 0, fontSize: '0.85rem' }}>
+              Không có điều kiện nhiệm vụ nào.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {fishermanQuest.conditions.map((cond, idx) => {
+                const pct =
+                  cond.total > 0
+                    ? Math.min(100, Math.round((cond.current / cond.total) * 100))
+                    : cond.isDone
+                    ? 100
+                    : 0;
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      background: cond.isDone ? 'rgba(63, 185, 80, 0.04)' : '#161b22',
+                      borderRadius: '6px',
+                      border: cond.isDone
+                        ? '1px solid rgba(63, 185, 80, 0.3)'
+                        : '1px solid var(--line)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.35rem',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      <span style={{ fontWeight: 500, color: 'var(--fg)' }}>
+                        {cond.isDone ? '✅' : '🐟'} {cond.name}
+                      </span>
+                      <span
+                        className={`mission-badge ${cond.isDone ? 'badge-success' : 'badge-pending'}`}
+                      >
+                        {cond.isDone
+                          ? 'Hoàn thành'
+                          : `${cond.current.toLocaleString('vi-VN')} / ${cond.total.toLocaleString(
+                              'vi-VN',
+                            )} (${pct}%)`}
+                      </span>
+                    </div>
+
+                    <div className="mission-mini-bar">
+                      <div
+                        className={`mission-mini-bar-fill ${cond.isDone ? 'bar-done' : ''}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '0.25rem 0',
+            }}
+          >
+            <p className="hint" style={{ margin: 0, fontSize: '0.85rem' }}>
+              Chưa có dữ liệu nhiệm vụ Thợ Câu từ game.
+            </p>
+            <button
+              type="button"
+              className="ghost"
+              onClick={handleRefreshQuest}
+              disabled={refreshingQuest || !accountId}
+              style={{
+                fontSize: '0.8rem',
+                padding: '4px 10px',
+                cursor: refreshingQuest ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {refreshingQuest ? '⏳ Đang tải…' : 'Tải nhiệm vụ Thợ Câu'}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* ─── Live Metrics & Status ─── */}
       <div

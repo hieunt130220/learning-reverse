@@ -226,6 +226,7 @@ function LoadedOperations({
           <FishingPanel
             account={account}
             automation={automation}
+            quests={snapshot?.quests ?? null}
             onAutomationChange={handleAutomationChange}
             onChanged={() => {
               void reload();
