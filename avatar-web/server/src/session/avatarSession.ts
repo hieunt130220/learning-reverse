@@ -19,6 +19,7 @@ import {
 } from '../game/client.js';
 import { saveCaptchaDiagnostic, savePassiveCaptcha } from '../game/captchaPassiveSaver.js';
 import { type QuestOverviewState } from '../game/farmData.js';
+import { parseQuestDialogText } from '../game/progressQuests.js';
 import { MacroRunner, type Macro, type MacroState } from '../macro.js';
 import type { AccountMetricsPatch, CachedAccountMetrics } from '../accounts/repo.js';
 import type { ShopRepository, ProduceSnapshot, ShopRuntimeState, ShopTransaction } from '../accounts/shopRepo.js';
@@ -218,6 +219,13 @@ export const FISHING_HUMAN_TIMING = {
   MICRO_BREAK_MIN_MS: 6000,
   MICRO_BREAK_MAX_MS: 12000,
 } as const;
+
+/**
+ * Cooldown tối thiểu giữa hai lệnh joinPark (cmd 80) liên tiếp.
+ * Server anti-spam trả dialog "Chầm chậm thôi nào bạn hiền" và KHÔNG gửi
+ * RX80 nếu nhận joinPark dồn trong ~2s (đã verify live 2026-09-08).
+ */
+const PARK_JOIN_COOLDOWN_MS = 2200;
 
 function randomBetween(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -1750,6 +1758,79 @@ export class AvatarSession {
     })();
   }
 
+  /**
+   * Tham gia Park (cmd 80) kèm cooldown chống rate-limit và retry khi server
+   * từ chối bằng dialog ("Chầm chậm thôi nào bạn hiền" — server anti-spam với
+   * các lệnh joinPark gửi dồn trong ~2s).
+   *
+   * Khác `waitForWorldSnapshot` đơn thuần: lắng nghe sự kiện 'dialog' để
+   * fail-fast thay vì đốt hết timeout 6s, rồi backoff 2.2s/4.4s trước khi thử lại.
+   * Ném lỗi sau tối đa 3 lần thử (tổng ~12s) để caller quyết định dừng.
+   */
+  private async joinParkWithRetry(
+    client: GameClient,
+    map: number,
+    area: number,
+    signal: AbortSignal,
+    epoch: number,
+  ): Promise<void> {
+    const MAX_ATTEMPTS = 3;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      if (signal.aborted || !this.isCurrent(client, epoch)) {
+        throw new Error('bị hủy');
+      }
+
+      // Cooldown giữa các lệnh joinPark: server anti-spam chặn join dồn (~2s).
+      await this.delayCancellable(PARK_JOIN_COOLDOWN_MS, signal);
+      if (signal.aborted || !this.isCurrent(client, epoch)) {
+        throw new Error('bị hủy');
+      }
+
+      try {
+        const pendingSnapshot = client.waitForWorldSnapshot(signal, 6000, { map, area });
+
+        const dialogRejectionPromise = new Promise<never>((_, reject) => {
+          const onDialog = (reason: string) => {
+            // Bỏ qua dialog "đã ở đúng khu" và dialog nhiệm vụ (cmd -40 cũng
+            // dùng để đẩy tiến trình nhiệm vụ, không phải từ chối join).
+            if (
+              reason.trim() === PARK_ALREADY_IN_AREA_DIALOG
+              || parseQuestDialogText(reason) !== null
+            ) {
+              return;
+            }
+            reject(new Error(`server từ chối vào map: ${reason}`));
+          };
+          const cleanup = () => {
+            client.removeListener('dialog', onDialog);
+            signal.removeEventListener('abort', onAbort);
+          };
+          const onAbort = () => {
+            cleanup();
+            reject(new Error('chờ vào map bị hủy'));
+          };
+          client.on('dialog', onDialog);
+          signal.addEventListener('abort', onAbort, { once: true });
+          pendingSnapshot.finally(() => cleanup());
+        });
+
+        client.joinPark(map, area);
+        await Promise.race([pendingSnapshot, dialogRejectionPromise]);
+        return;
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (signal.aborted || !this.isCurrent(client, epoch)) {
+          throw new Error('bị hủy');
+        }
+        if (attempt >= MAX_ATTEMPTS) {
+          throw new Error(`${msg} (đã thử ${MAX_ATTEMPTS} lần)`);
+        }
+        this.pushLog(`[câu cá] vào map ${map} bị chặn (${msg}) — thử lại sau ${(PARK_JOIN_COOLDOWN_MS * attempt / 1000).toFixed(1)}s…`);
+        await this.delayCancellable(PARK_JOIN_COOLDOWN_MS * attempt, signal);
+      }
+    }
+  }
+
   private async executeParkPurchase(
     client: GameClient,
     epoch: number,
@@ -1812,9 +1893,7 @@ export class AvatarSession {
 
     // 1. Di chuyển sang Map 13 (Khu sinh thái, tọa độ NPC 364, 64)
     try {
-      const map13Snapshot = client.waitForWorldSnapshot(signal, 6000, { map: 13, area: 0 });
-      client.joinPark(13, 0);
-      await map13Snapshot;
+      await this.joinParkWithRetry(client, 13, 0, signal, epoch);
     } catch (err) {
       if (signal.aborted || !this.isCurrent(client, epoch)) return false;
       const msg = `Không vào được Khu sinh thái: ${(err as Error).message}`;
@@ -1853,9 +1932,7 @@ export class AvatarSession {
     // 3. Quay trở lại hồ câu mục tiêu
     this.pushLog(`[câu cá] Đang quay trở lại hồ câu map ${targetMap}…`);
     try {
-      const targetSnapshot = client.waitForWorldSnapshot(signal, 6000, { map: targetMap, area: targetArea });
-      client.joinPark(targetMap, targetArea);
-      await targetSnapshot;
+      await this.joinParkWithRetry(client, targetMap, targetArea, signal, epoch);
     } catch (err) {
       if (signal.aborted || !this.isCurrent(client, epoch)) return false;
       const msg = `Không quay lại được hồ câu: ${(err as Error).message}`;
