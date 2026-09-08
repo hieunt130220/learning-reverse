@@ -66,7 +66,13 @@ export function openDb(file: string): Db {
             (current_map IS NOT NULL AND current_area IS NOT NULL AND location_observed_at IS NOT NULL)
           )
         );
-        INSERT INTO avatar_automation_state SELECT * FROM _avatar_automation_state_old;
+        INSERT INTO avatar_automation_state (
+          account_id, desired_mode, find_npc_config_json, fishing_config_json,
+          current_map, current_area, location_observed_at, updated_at
+        ) SELECT
+          account_id, desired_mode, find_npc_config_json, fishing_config_json,
+          current_map, current_area, location_observed_at, updated_at
+        FROM _avatar_automation_state_old;
         DROP TABLE _avatar_automation_state_old;
       `);
     })();
