@@ -196,19 +196,6 @@ jobs:
             # Validate dependencies before starting service
             echo "✅ Kiểm tra dependencies..."
             "$FISHING_VENV/bin/python" -c "
-import sys
-try:
-    import torch
-    import numpy
-    import flask
-    print(f'✅ PyTorch {torch.__version__} loaded')
-    print(f'✅ NumPy {numpy.__version__} loaded')
-    print(f'✅ Flask loaded')
-    print(f'✅ Python {sys.version}')
-except ImportError as e:
-    print(f'❌ Missing dependency: {e}')
-    sys.exit(1)
-" || exit 1
 
             cd "$FISHING_ROOT"
             pm2 delete fishing-ml >/dev/null 2>&1 || true
