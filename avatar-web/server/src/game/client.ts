@@ -457,7 +457,13 @@ export class GameClient extends EventEmitter {
     this.keepAliveTimer = setInterval(() => {
       if (this.status !== 'online') return this.stopKeepAlive();
       try {
-        this.farm.getInventory();
+        if (this.currentHandlerContext === HANDLER_PARK) {
+          // Ngữ cảnh Park: CMD -94 (Global) luôn có phản hồi, CMD 70 (Farm) bị ParkHandler bỏ qua
+          this.requestYourInfo();
+        } else {
+          // Ngữ cảnh Farm / Main: CMD 70 (getInventory)
+          this.farm.getInventory();
+        }
       } catch {
         this.stopKeepAlive();
       }
@@ -647,18 +653,38 @@ export class GameClient extends EventEmitter {
       };
       const onSameArea = (reason: string): void => {
         if (!expected || reason.trim() !== PARK_ALREADY_IN_AREA_DIALOG) return;
+        cleanup();
         const cached = this.latestParkSnapshot;
         if (
-          !cached
-          || cached.roomId !== expected.map
-          || cached.boardId !== expected.area
-        ) return;
-        cleanup();
-        this.emit(
-          'log',
-          `Park snapshot cache: server xác nhận đã ở map ${expected.map} khu ${expected.area}`,
-        );
-        resolve(cloneParkSnapshot(cached));
+          cached
+          && cached.roomId === expected.map
+          && cached.boardId === expected.area
+        ) {
+          this.emit(
+            'log',
+            `Park snapshot cache: server xác nhận đã ở map ${expected.map} khu ${expected.area}`,
+          );
+          resolve(cloneParkSnapshot(cached));
+        } else {
+          // Server xác nhận nhân vật đã ở đúng map/khu, tạo snapshot tối thiểu
+          const synSnap: EnterWorldSnapshot = {
+            playerId: this.playerId ?? 0,
+            roomId: expected.map,
+            boardId: expected.area,
+            x: 0,
+            y: 0,
+            specials: [],
+            specialSectionEnd: 0,
+            totalBytes: 0,
+            trailingBytes: 0,
+          };
+          this.latestParkSnapshot = synSnap;
+          this.emit(
+            'log',
+            `Server xác nhận nhân vật đã ở map ${expected.map} khu ${expected.area} (chấp nhận dialog)`,
+          );
+          resolve(synSnap);
+        }
       };
       const onAbort = (): void => {
         cleanup();
@@ -678,7 +704,10 @@ export class GameClient extends EventEmitter {
       };
       timer = setTimeout(() => {
         cleanup();
-        reject(new Error('hết giờ chờ gói enter-world (-34)'));
+        const msg = expected
+          ? `hết giờ chờ vào map ${expected.map} khu ${expected.area} (RX80)`
+          : 'hết giờ chờ gói enter-world (-34)';
+        reject(new Error(msg));
       }, timeoutMs);
       this.once('world-snapshot', onSnapshot);
       this.once('world-snapshot-error', onSnapshotError);

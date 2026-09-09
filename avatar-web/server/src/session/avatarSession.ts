@@ -678,9 +678,22 @@ export class AvatarSession {
       || this.pendingFindNpcTransitions > 0;
   }
 
+  private fishingOwnsOrTargetsContext(): boolean {
+    return this.desiredMode === 'auto_fishing'
+      || this.activeMode === 'auto_fishing'
+      || this.fishingAbortController !== undefined;
+  }
+
+  private parkOwnsOrTargetsContext(): boolean {
+    return this.findNpcOwnsOrTargetsContext() || this.fishingOwnsOrTargetsContext();
+  }
+
   private assertFarmContextAvailable(): void {
     if (this.findNpcOwnsOrTargetsContext()) {
       throw new Error('Find NPC đang sở hữu ngữ cảnh Park; không thể chuyển sang farm');
+    }
+    if (this.fishingOwnsOrTargetsContext()) {
+      throw new Error('Auto Fishing đang sở hữu ngữ cảnh Park; không thể chuyển sang farm');
     }
   }
 
@@ -1069,10 +1082,10 @@ export class AvatarSession {
     // khi ghi log điểm danh, để log điểm danh và toàn bộ vòng mới cùng tồn tại.
     // Vòng không logout vẫn được dọn ở tryStartAuto().
     if (this.desiredMode === 'auto_farm') this.clearLogs();
-    if (!this.findNpcOwnsOrTargetsContext()) {
+    if (!this.parkOwnsOrTargetsContext()) {
       this.autoSyncKickoff = setImmediate(() => {
         this.autoSyncKickoff = undefined;
-        if (this.findNpcOwnsOrTargetsContext()) return;
+        if (this.parkOwnsOrTargetsContext()) return;
         const sync = this.syncFarmAfterOnline(client, epoch);
         this.farmSyncPromise = sync;
         void sync.finally(() => {
@@ -2310,46 +2323,18 @@ export class AvatarSession {
     });
     client.sendRaw(90, [{ t: 'i8', v: String(map) }]);
     await rx90Promise;
-    this.pushLog(`[câu cá] nhận RX90 — gửi joinPark(${map}, ${area})`);
+    this.pushLog(`[câu cá] nhận RX90 — di chuyển vào map ${map} (khu ${area})…`);
 
     if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
 
     try {
-      const pendingSnapshot = client.waitForWorldSnapshot(signal, 6000, { map, area });
-
-      const dialogRejectionPromise = new Promise<never>((_, reject) => {
-        const onDialog = (reason: string) => {
-          // Bỏ qua dialog "đã ở đúng khu" và dialog nhiệm vụ (cmd -40 cũng
-          // dùng để đẩy tiến trình nhiệm vụ, không phải từ chối join).
-          if (
-            reason.trim() === PARK_ALREADY_IN_AREA_DIALOG
-            || parseQuestDialogText(reason) !== null
-          ) {
-            return;
-          }
-          reject(new Error(`server từ chối vào map: ${reason}`));
-        };
-        const cleanup = () => {
-          client.removeListener('dialog', onDialog);
-          signal.removeEventListener('abort', onAbort);
-        };
-        const onAbort = () => {
-          cleanup();
-          reject(new Error('chờ vào map bị hủy'));
-        };
-        client.on('dialog', onDialog);
-        signal.addEventListener('abort', onAbort, { once: true });
-        pendingSnapshot.finally(() => cleanup());
-      });
-
-      client.joinPark(map, area);
-      await Promise.race([pendingSnapshot, dialogRejectionPromise]);
+      await this.joinParkWithRetry(client, map, area, signal, epoch);
     } catch (err) {
       if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
       const msg = (err as Error).message;
       this.fishingRuntime.status = 'rejected';
       this.fishingRuntime.lastError = msg;
-      this.pushLog(`[câu cá] ${msg}`);
+      this.pushLog(`[câu cá] vào map thất bại: ${msg}`);
       this.emitAutomation();
       return;
     }
@@ -2616,6 +2601,14 @@ export class AvatarSession {
         }
 
         if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
+
+        // Xử lý khi không bắt được cá (hết 35s không cắn câu hoặc giật hụt/sổng cá)
+        if (catchResult === false) {
+          this.pushLog('[câu cá] không bắt được cá lượt này — reset phiên câu và thử lại…');
+          try { client.cauCaXong(); } catch { /* bỏ qua */ }
+          await this.delayCancellable(1000, signal);
+          continue outerLoop;
+        }
 
         // Chờ mô phỏng animation kéo cá lên và người chơi xem phần thưởng cá
         const postCatchDelay = randomBetween(
