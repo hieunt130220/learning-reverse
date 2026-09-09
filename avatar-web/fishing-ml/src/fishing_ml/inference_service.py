@@ -760,6 +760,13 @@ def _make_handler(matcher: FrozenMatcher, config: InferenceServerConfig):
             self._send_json(405, {"code": "method_not_allowed", "reason": "use POST"})
 
         def do_GET(self) -> None:
+            if _request_path(self.path) == "/health":
+                self._send_json(200, {
+                    "code": "ok",
+                    "status": "ok",
+                    "model_id": matcher.model_id,
+                })
+                return
             self._method_not_allowed()
 
         def do_HEAD(self) -> None:

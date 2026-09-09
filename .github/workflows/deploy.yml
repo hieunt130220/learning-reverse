@@ -104,6 +104,10 @@ jobs:
             SOLVER_VENV="$TARGET_DIR/.venv-captcha"
             PUBLIC_SOLVER_URL="https://avt3xauto.duckdns.org/api/solver/"
 
+            FISHING_ROOT="$TARGET_DIR/$BASE_PATH/fishing-ml"
+            FISHING_VENV="$FISHING_ROOT/.venv"
+            FISHING_FROZEN="$FISHING_ROOT/artifacts/p2-photometric_plus_geom-off-t0.05-dim_128-db8460d9b1cabc01/frozen"
+
             echo "🔎 Đang kiểm tra runtime assets của captcha solver..."
             for required_file in \
               "$SOLVER_ROOT/solver_server.py" \
@@ -119,8 +123,23 @@ jobs:
               fi
             done
 
+            echo "🔎 Đang kiểm tra runtime assets của fishing-ml..."
+            for required_file in \
+              "$FISHING_ROOT/run_service.py" \
+              "$FISHING_FROZEN/best-dev.pt" \
+              "$FISHING_FROZEN/freeze-manifest.json" \
+              "$FISHING_FROZEN/model-config.json" \
+              "$FISHING_FROZEN/normalization.json" \
+              "$FISHING_FROZEN/thresholds.json"
+            do
+              if [ ! -f "$required_file" ]; then
+                echo "❌ Thiếu fishing-ml runtime asset: $required_file"
+                exit 1
+              fi
+            done
+
             # 3. Triển khai Captcha Solver
-            echo "🧠 [1/3] Đang cập nhật Captcha Solver..."
+            echo "🧠 [1/4] Đang cập nhật Captcha Solver..."
             if ! python3 -m venv "$SOLVER_VENV"; then
               echo "ℹ️ python3-venv không có; dùng virtualenv zipapp không cần sudo..."
               PYTHON_MINOR=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
@@ -157,8 +176,44 @@ jobs:
               exit 1
             fi
 
-            # 4. Triển khai Backend Server
-            echo "📦 [2/3] Đang cập nhật Backend Server..."
+            # 4. Triển khai AI Fishing ML
+            echo "🎣 [2/4] Đang cập nhật AI Fishing ML Service..."
+            if ! python3 -m venv "$FISHING_VENV"; then
+              echo "ℹ️ python3-venv không có; dùng virtualenv zipapp không cần sudo..."
+              PYTHON_MINOR=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+              VIRTUALENV_PYZ="$TARGET_DIR/.cache/virtualenv-${PYTHON_MINOR}.pyz"
+              mkdir -p "$TARGET_DIR/.cache"
+              curl --fail --silent --show-error --location \
+                --retry 3 --retry-delay 2 --retry-all-errors \
+                "https://bootstrap.pypa.io/virtualenv/${PYTHON_MINOR}/virtualenv.pyz" \
+                -o "$VIRTUALENV_PYZ"
+              python3 "$VIRTUALENV_PYZ" --clear "$FISHING_VENV"
+            fi
+            "$FISHING_VENV/bin/python" -m pip install --upgrade pip
+            "$FISHING_VENV/bin/python" -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+            "$FISHING_VENV/bin/python" -m pip install -e "$FISHING_ROOT"
+
+            cd "$FISHING_ROOT"
+            pm2 delete fishing-ml >/dev/null 2>&1 || true
+            pm2 start run_service.py \
+              --name fishing-ml \
+              --interpreter "$FISHING_VENV/bin/python" \
+              -- \
+              --host 127.0.0.1 \
+              --port 8080 \
+              --frozen-dir "$FISHING_FROZEN"
+
+            if ! curl --fail --silent --show-error \
+              --retry 12 --retry-delay 2 --retry-all-errors \
+              http://127.0.0.1:8080/health
+            then
+              echo "❌ Fishing ML service local health check thất bại"
+              pm2 logs fishing-ml --lines 120 --nostream || true
+              exit 1
+            fi
+
+            # 5. Triển khai Backend Server
+            echo "📦 [3/4] Đang cập nhật Backend Server..."
             cd "$TARGET_DIR/$BASE_PATH/server"
             npm install
             npm run build
@@ -182,8 +237,8 @@ jobs:
               exit 1
             fi
 
-            # 5. Triển khai Frontend Web UI
-            echo "🎨 [3/3] Đang cập nhật Frontend Web UI..."
+            # 6. Triển khai Frontend Web UI
+            echo "🎨 [4/4] Đang cập nhật Frontend Web UI..."
             cd "$TARGET_DIR/$BASE_PATH/web"
             npm install
             npm run build

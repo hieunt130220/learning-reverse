@@ -38,6 +38,13 @@ avatar-web/fishing-ml/artifacts/*/
 *.egg-info/
 # keep the publishable-bundle policy doc tracked
 !avatar-web/fishing-ml/artifacts/README.md
+
+# Whitelist production frozen artifact bundle
+!avatar-web/fishing-ml/artifacts/p2-photometric_plus_geom-off-t0.05-dim_128-db8460d9b1cabc01/
+avatar-web/fishing-ml/artifacts/p2-photometric_plus_geom-off-t0.05-dim_128-db8460d9b1cabc01/*
+!avatar-web/fishing-ml/artifacts/p2-photometric_plus_geom-off-t0.05-dim_128-db8460d9b1cabc01/frozen/
+!avatar-web/fishing-ml/artifacts/p2-photometric_plus_geom-off-t0.05-dim_128-db8460d9b1cabc01/frozen/*
+!avatar-web/fishing-ml/artifacts/p2-photometric_plus_geom-off-t0.05-dim_128-db8460d9b1cabc01/frozen/*.pt
 avatar-web/server/captcha-dataset/
 # Python venv
 .venv-captcha312/
