@@ -276,7 +276,7 @@ test('tắt auto trong lúc chờ thì hủy vòng đăng nhập kế tiếp', a
   assert.equal(h.clients.length, 1);
 });
 
-test('stopAutomation tắt desiredConnected nhưng giữ kết nối game', async () => {
+test('stopAutomation tắt desiredConnected và ngắt kết nối game (logout)', async () => {
   const h = harness({ autoConfig: { intervalMs: 321 } });
   await h.session.startAuto({ intervalMs: 321 });
   assert.equal(h.session.snapshot().desiredConnected, true);
@@ -286,7 +286,8 @@ test('stopAutomation tắt desiredConnected nhưng giữ kết nối game', asyn
 
   assert.equal(h.session.snapshot().desiredConnected, false);
   assert.equal(h.session.snapshot().automation?.desiredMode, 'off');
-  assert.equal(h.session.status, 'online', 'dừng automation không được ngắt kết nối game');
+  assert.equal(h.session.status, 'idle', 'dừng automation phải ngắt kết nối game');
+  assert.equal(h.clients[0].logoutCount, 1, 'client phải được gọi logout');
 });
 test('update config khi auto chạy queue cho vòng kế tiếp, không start lại', async () => {
   const h = harness({ autoEnabled: true, autoConfig: { seedId: 5 } });
