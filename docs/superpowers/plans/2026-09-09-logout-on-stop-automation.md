@@ -27,7 +27,7 @@
 - Consumes: `this.switchAutomationMode(...)`, `this.stop()` trong `AvatarSession`.
 - Produces: `stopAutomation(): Promise<void>` ngắt kết nối game sau khi chuyển mode về `off`.
 
-- [ ] **Step 1: Thêm `this.stop()` vào `AvatarSession.stopAutomation()`**
+- [x] **Step 1: Thêm `this.stop()` vào `AvatarSession.stopAutomation()`**
 
 Trong [avatar-web/server/src/session/avatarSession.ts](avatar-web/server/src/session/avatarSession.ts):
 ```ts
@@ -42,17 +42,17 @@ Trong [avatar-web/server/src/session/avatarSession.ts](avatar-web/server/src/ses
   }
 ```
 
-- [ ] **Step 2: Kiểm tra test suite phát hiện đúng sự thay đổi hành vi**
+- [x] **Step 2: Kiểm tra test suite phát hiện đúng sự thay đổi hành vi**
 
 Run: `node --import tsx --test "avatar-web/server/src/session/avatarSession.test.ts"`
 Expected: Test case cũ `stopAutomation tắt desiredConnected nhưng giữ kết nối game` bị FAIL vì status hiện tại là `'idle'` thay vì `'online'`.
 
-- [ ] **Step 3: Kiểm tra GitNexus trước khi commit**
+- [x] **Step 3: Kiểm tra GitNexus trước khi commit**
 
 Run: `gitnexus_detect_changes({scope: "unstaged"})`
 Expected: Chỉ thay đổi symbol `AvatarSession.stopAutomation` trong file `avatar-web/server/src/session/avatarSession.ts`.
 
-- [ ] **Step 4: Commit thay đổi production code**
+- [x] **Step 4: Commit thay đổi production code**
 
 ```bash
 git add avatar-web/server/src/session/avatarSession.ts
@@ -70,7 +70,7 @@ git commit -m "feat(server): logout game account when stopping automation"
 - Consumes: `harness` từ `avatarSession.test.ts`, `h.session.stopAutomation()`.
 - Produces: Test case xác thực `status === 'idle'`, `desiredConnected === false` và `clients[0].closed === true`.
 
-- [ ] **Step 1: Cập nhật test case trong `avatarSession.test.ts`**
+- [x] **Step 1: Cập nhật test case trong `avatarSession.test.ts`**
 
 Sửa test case tại dòng 279-290 trong [avatar-web/server/src/session/avatarSession.test.ts](avatar-web/server/src/session/avatarSession.test.ts):
 ```ts
@@ -85,26 +85,26 @@ test('stopAutomation tắt desiredConnected và ngắt kết nối game (logout)
   assert.equal(h.session.snapshot().desiredConnected, false);
   assert.equal(h.session.snapshot().automation?.desiredMode, 'off');
   assert.equal(h.session.status, 'idle', 'dừng automation phải ngắt kết nối game');
-  assert.equal(h.clients[0].closed, true, 'client socket phải được đóng');
+  assert.equal(h.clients[0].logoutCount, 1, 'client phải được gọi logout');
 });
 ```
 
-- [ ] **Step 2: Chạy toàn bộ server test suite**
+- [x] **Step 2: Chạy toàn bộ server test suite**
 
 Run: `npm --prefix avatar-web/server test`
 Expected: Tất cả 274 tests đều PASS, 0 fail.
 
-- [ ] **Step 3: Chạy web test suite để đảm bảo tính tương thích UI**
+- [x] **Step 3: Chạy web test suite để đảm bảo tính tương thích UI**
 
 Run: `npm --prefix avatar-web/web test`
 Expected: Tất cả 75 tests đều PASS, 0 fail.
 
-- [ ] **Step 4: Kiểm tra GitNexus trước khi commit**
+- [x] **Step 4: Kiểm tra GitNexus trước khi commit**
 
 Run: `gitnexus_detect_changes({scope: "unstaged"})`
 Expected: Chỉ thay đổi file `avatar-web/server/src/session/avatarSession.test.ts`.
 
-- [ ] **Step 5: Commit cập nhật test**
+- [x] **Step 5: Commit cập nhật test**
 
 ```bash
 git add avatar-web/server/src/session/avatarSession.test.ts
