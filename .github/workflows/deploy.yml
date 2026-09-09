@@ -193,24 +193,70 @@ jobs:
             "$FISHING_VENV/bin/python" -m pip install torch --index-url https://download.pytorch.org/whl/cpu
             "$FISHING_VENV/bin/python" -m pip install -e "$FISHING_ROOT"
 
+            # Validate dependencies before starting service
+            echo "✅ Kiểm tra dependencies..."
+            "$FISHING_VENV/bin/python" -c "
+import sys
+try:
+    import torch
+    import numpy
+    import flask
+    print(f'✅ PyTorch {torch.__version__} loaded')
+    print(f'✅ NumPy {numpy.__version__} loaded')
+    print(f'✅ Flask loaded')
+    print(f'✅ Python {sys.version}')
+except ImportError as e:
+    print(f'❌ Missing dependency: {e}')
+    sys.exit(1)
+" || exit 1
+
             cd "$FISHING_ROOT"
             pm2 delete fishing-ml >/dev/null 2>&1 || true
+            
+            # Start service with proper error handling
+            echo "⏳ Đang khởi động Fishing ML service..."
             pm2 start run_service.py \
               --name fishing-ml \
               --interpreter "$FISHING_VENV/bin/python" \
+              --watch false \
+              --exp-backoff-restart-delay=100 \
               -- \
               --host 127.0.0.1 \
               --port 8080 \
-              --frozen-dir "$FISHING_FROZEN"
-
-            if ! curl --fail --silent --show-error \
-              --retry 30 --retry-delay 2 --retry-all-errors \
-              http://127.0.0.1:8080/health
-            then
-              echo "❌ Fishing ML service local health check thất bại"
-              pm2 logs fishing-ml --lines 120 --nostream || true
+              --frozen-dir "$FISHING_FROZEN" || {
+              echo "❌ Lỗi khi khởi động PM2 service"
+              pm2 logs fishing-ml --lines 200 --nostream || true
               exit 1
-            fi
+            }
+
+            # Wait for service to fully initialize
+            echo "⏳ Chờ 15 giây để service khởi động đầy đủ..."
+            sleep 15
+
+            # Health check with more retries and better diagnostics
+            RETRY_COUNT=0
+            MAX_RETRIES=60
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              if curl --fail --silent --show-error \
+                http://127.0.0.1:8080/health >/dev/null 2>&1
+              then
+                echo "✅ Fishing ML service health check thành công!"
+                break
+              fi
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+                echo "❌ Fishing ML service local health check thất bại sau $MAX_RETRIES lần thử"
+                echo "📋 Logs từ PM2:"
+                pm2 logs fishing-ml --lines 300 --nostream || true
+                echo "📋 Process status:"
+                pm2 status || true
+                echo "📋 System status:"
+                ps aux | grep -E "python|fishing" || true
+                exit 1
+              fi
+              echo "🔄 Thử lại ($RETRY_COUNT/$MAX_RETRIES)..."
+              sleep 1
+            done
 
             # 5. Triển khai Backend Server
             echo "📦 [3/4] Đang cập nhật Backend Server..."
