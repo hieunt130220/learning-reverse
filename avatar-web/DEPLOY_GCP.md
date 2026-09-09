@@ -16,6 +16,7 @@ Nginx (Cổng 80/443 - Reverse Proxy + SSL Let's Encrypt)
        └── Proxy REST API & WS ──► Node.js Server (Port 8787 / 127.0.0.1)
                                         │
                                         ├── SQLite Database (server/data/avatar-web.db)
+                                        ├── Python ML Inference (Port 8080 / 127.0.0.1 - fishing-ml)
                                         └── Outbound TCP (27.0.14.120:19129) ──► Game Server Avatar
 ```
 
@@ -112,7 +113,7 @@ Thực thi chuỗi lệnh sau để cập nhật hệ điều hành và cài đ�
 ```bash
 # Cập nhật danh sách gói và cài đặt công cụ cần thiết
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y curl git build-essential python3 nginx certbot python3-certbot-nginx
+sudo apt install -y curl git build-essential python3 python3-venv python3-pip nginx certbot python3-certbot-nginx
 
 # Cài đặt Node.js 20 LTS từ NodeSource
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
@@ -148,6 +149,16 @@ npm run build     # Biên dịch TypeScript sang JavaScript trong thư mục dis
 cd /var/www/avatar-web/web
 npm install
 npm run build     # Đóng gói giao diện tĩnh vào web/dist/
+
+# 5. Cài đặt môi trường cho AI Câu cá (fishing-ml)
+cd /var/www/avatar-web/fishing-ml
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+# ⚠️ Cài đặt PyTorch bản CPU-only nhẹ để tiết kiệm RAM trên e2-micro (1GB RAM)
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -e .
+deactivate
 ```
 
 ---
@@ -175,13 +186,23 @@ Tại thư mục `/var/www/avatar-web/server`:
    INVITE_CODE=MaMoiDangKyCuaBan123
    MAX_SESSIONS=20
    DB_PATH=/var/www/avatar-web/server/data/avatar-web.db
+
+   # AI Fishing Matching (fishing-ml)
+   FISHING_AUTO_TX43_ENABLED=true
+   FISHING_INFERENCE_URL=http://127.0.0.1:8080/infer
+   FISHING_INFERENCE_TIMEOUT_MS=5000
    ```
    *(Nhấn `Ctrl + O` ➔ `Enter` để lưu, sau đó nhấn `Ctrl + X` để thoát)*.
 
    > ⚠️ **LƯU Ý QUAN TRỌNG**: Hãy sao lưu chuỗi `MASTER_KEY` cất vào nơi an toàn. Mọi mật khẩu tài khoản game lưu trong database đều được mã hóa bằng khóa này. Nếu mất khóa, bạn sẽ không thể khôi phục lại mật khẩu trong DB.
 
-3. **Khởi chạy Backend với PM2**:
+3. **Khởi chạy AI Fishing & Backend Server bằng PM2**:
    ```bash
+   # 1. Khởi chạy AI Fishing Inference Service
+   cd /var/www/avatar-web/fishing-ml
+   pm2 start ".venv/bin/python -m fishing_ml.inference_service --host 127.0.0.1 --port 8080 --frozen-dir artifacts/p2-photometric_plus_geom-off-t0.05-dim_128-db8460d9b1cabc01/frozen" --name "fishing-ml"
+
+   # 2. Khởi chạy Backend Web Server
    cd /var/www/avatar-web/server
    pm2 start dist/index.js --name "avatar-web"
    
