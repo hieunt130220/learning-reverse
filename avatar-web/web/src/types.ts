@@ -388,6 +388,7 @@ export type FishingStatus =
   | 'idle'
   | 'moving'
   | 'buying'
+  | 'selling'
   | 'starting'
   | 'casting'
   | 'hooked'

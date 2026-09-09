@@ -95,7 +95,7 @@
 - Consumes: `client.chatPark`, `client.cauCaXong`, event `park-chat`, event `dialog`, event `metrics`
 - Produces: `FishingStatus = 'selling'`, `executeSellFish`, tự động dọn rương khi `startFishing` hoặc `quanCau` gặp dialog rương đầy
 
-- [ ] **Step 1: Mở rộng kiểu dữ liệu `FishingStatus`**
+- [x] **Step 1: Mở rộng kiểu dữ liệu `FishingStatus`**
   Trong `avatarSession.ts` (hoặc nơi định nghĩa `FishingStatus`), bổ sung giá trị `'selling'`:
   ```typescript
   export type FishingStatus =
@@ -111,7 +111,7 @@
     | 'rejected';
   ```
 
-- [ ] **Step 2: Cài đặt phương thức `executeSellFish` trong `AvatarSession`**
+- [x] **Step 2: Cài đặt phương thức `executeSellFish` trong `AvatarSession`**
   Cài đặt logic bán cá có chốt chặn an toàn:
   - Gửi `client.cauCaXong()` để thoát lượt câu cũ.
   - Vòng lặp tối đa 40 lần (số ô rương): gửi `client.chatPark('banca')`.
@@ -120,7 +120,7 @@
   - Dừng vòng lặp khi hết cá hoặc sau 2 lần không có phản hồi mới.
   - Trả về `true` nếu đã bán được ít nhất 1 con cá; `false` nếu không thể bán.
 
-- [ ] **Step 3: Tích hợp `executeSellFish` vào `runFishingLoop` tại 2 điểm phát hiện rương đầy**
+- [x] **Step 3: Tích hợp `executeSellFish` vào `runFishingLoop` tại 2 điểm phát hiện rương đầy**
   - **Điểm 1 (Khi gọi `startFishing`)**:
     Tại dòng xử lý `if (errText.includes('rương') && (errText.includes('đầy') || errText.includes('không thể câu')))`:
     Thay vì `return`, gọi `const sold = await this.executeSellFish(client, epoch, signal);`
@@ -137,11 +137,11 @@
     }
     ```
 
-- [ ] **Step 4: Kiểm tra build TypeScript**
+- [x] **Step 4: Kiểm tra build TypeScript**
   Run: `npm --prefix avatar-web/server run build`
   Expected: Build thành công không có lỗi type.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
   `git commit -m "feat(fishing): implement auto sell fish loop on inventory full"`
 
 ---

@@ -52,6 +52,8 @@ function formatFishingStatus(
       return 'Đang di chuyển vào hồ câu';
     case 'buying':
       return 'Đang đi mua vật phẩm câu cá tại Khu sinh thái (Map 13)…';
+    case 'selling':
+      return 'Rương đầy, đang tự động bán cá (banca)…';
     case 'starting':
       return 'Đang gửi yêu cầu câu (TX45)…';
     case 'casting':

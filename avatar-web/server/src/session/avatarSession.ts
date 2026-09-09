@@ -2137,6 +2137,135 @@ export class AvatarSession {
     return true;
   }
 
+  /**
+   * Tự động bán cá khi rương đầy bằng lệnh chat in-game "banca" (TX-85).
+   * Lắng nghe xác nhận qua sự kiện park-chat, dialog và cập nhật metrics (Xu tăng).
+   * Dừng khi hết cá hoặc sau 2 lần không có phản hồi mới.
+   */
+  private async executeSellFish(
+    client: GameClient,
+    epoch: number,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    this.fishingRuntime.status = 'selling';
+    this.emitAutomation();
+    this.pushLog('[câu cá] Rương đầy cá — đang thực hiện tự động bán cá (chat banca)…');
+
+    try {
+      client.cauCaXong();
+    } catch {
+      /* bỏ qua */
+    }
+    await this.delayCancellable(1000, signal);
+
+    let soldCount = 0;
+    let totalXuEarned = 0;
+    let consecutiveNoResponse = 0;
+    const MAX_SELL_ATTEMPTS = 40; // Tối đa số ô rương
+
+    for (let attempt = 1; attempt <= MAX_SELL_ATTEMPTS; attempt++) {
+      if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return false;
+
+      let soldInThisTurn = false;
+      let turnXuGained = 0;
+      let noMoreFish = false;
+      const startXu = client.money ?? 0;
+
+      const sellTurnPromise = new Promise<void>((resolve) => {
+        let settled = false;
+        let timer: NodeJS.Timeout | undefined;
+
+        const cleanup = () => {
+          client.removeListener('park-chat', onChat);
+          client.removeListener('dialog', onDialog);
+          client.removeListener('metrics', onMetrics);
+          signal.removeEventListener('abort', onAbort);
+          if (timer) clearTimeout(timer);
+        };
+
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve();
+        };
+
+        const onChat = (evt: { idUser: number; text: string }) => {
+          const lower = evt.text.toLowerCase();
+          if (lower.includes('bán') && (lower.includes('cá') || lower.includes('xu'))) {
+            soldInThisTurn = true;
+            this.pushLog(`[câu cá] ${evt.text}`);
+            finish();
+          } else if (lower.includes('không có cá') || lower.includes('hết cá')) {
+            noMoreFish = true;
+            finish();
+          }
+        };
+
+        const onDialog = (reason: string) => {
+          const lower = reason.toLowerCase();
+          if (lower.includes('không có cá') || lower.includes('hết cá')) {
+            noMoreFish = true;
+            finish();
+          } else if (lower.includes('bán') && (lower.includes('cá') || lower.includes('xu'))) {
+            soldInThisTurn = true;
+            this.pushLog(`[câu cá] ${reason}`);
+            finish();
+          }
+        };
+
+        const onMetrics = (m: { xu: number }) => {
+          if (m.xu > startXu) {
+            soldInThisTurn = true;
+            turnXuGained = m.xu - startXu;
+            finish();
+          }
+        };
+
+        const onAbort = () => finish();
+
+        client.on('park-chat', onChat);
+        client.on('dialog', onDialog);
+        client.on('metrics', onMetrics);
+        signal.addEventListener('abort', onAbort, { once: true });
+
+        timer = setTimeout(() => finish(), 2500);
+      });
+
+      client.chatPark('banca');
+      await sellTurnPromise;
+
+      if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return false;
+
+      if (noMoreFish) {
+        break;
+      }
+
+      if (soldInThisTurn) {
+        soldCount++;
+        totalXuEarned += turnXuGained;
+        consecutiveNoResponse = 0;
+        await this.delayCancellable(randomBetween(800, 1200), signal);
+      } else {
+        consecutiveNoResponse++;
+        if (consecutiveNoResponse >= 2) {
+          break;
+        }
+        await this.delayCancellable(1000, signal);
+      }
+    }
+
+    if (soldCount > 0) {
+      const xuLog = totalXuEarned > 0 ? ` (thu được ~${totalXuEarned} xu)` : '';
+      this.pushLog(`[câu cá] Đã bán xong ${soldCount} lượt cá${xuLog}! Rương đã được dọn trống.`);
+      await this.delayCancellable(1500, signal);
+      return true;
+    }
+
+    this.pushLog('[câu cá] Không thể bán cá qua lệnh banca hoặc rương không chứa cá');
+    return false;
+  }
+
   private async runFishingLoop(
     client: GameClient,
     generation: number,
@@ -2304,11 +2433,15 @@ export class AvatarSession {
           this.pushLog(`[câu cá] Server từ chối bắt đầu câu: ${reason}`);
 
           if (errText.includes('rương') && (errText.includes('đầy') || errText.includes('không thể câu'))) {
-            this.fishingRuntime.status = 'rejected';
-            this.fishingRuntime.lastError = reason;
-            this.pushLog(`[câu cá] Dừng câu: ${reason}`);
-            this.emitAutomation();
-            return;
+            const sold = await this.executeSellFish(client, epoch, signal);
+            if (!sold) {
+              this.fishingRuntime.status = 'rejected';
+              this.fishingRuntime.lastError = reason;
+              this.pushLog(`[câu cá] Dừng câu: ${reason}`);
+              this.emitAutomation();
+              return;
+            }
+            continue outerLoop;
           }
 
           let missingType: 'ticket' | 'rod' | 'bait' | null = null;
@@ -2436,10 +2569,22 @@ export class AvatarSession {
 
         const catchResult = await catchPromise;
 
-        // Xử lý dialog lỗi khi quăng cần (mồi, vé, cần câu…)
+        // Xử lý dialog lỗi khi quăng cần (mồi, vé, cần câu, rương đầy…)
         if (typeof catchResult === 'string') {
           const castErrText = catchResult.toLowerCase();
           this.pushLog(`[câu cá] lỗi khi quăng cần: ${catchResult}`);
+
+          if (castErrText.includes('rương') && (castErrText.includes('đầy') || castErrText.includes('không thể câu'))) {
+            const sold = await this.executeSellFish(client, epoch, signal);
+            if (!sold) {
+              this.fishingRuntime.status = 'rejected';
+              this.fishingRuntime.lastError = catchResult;
+              this.emitAutomation();
+              return;
+            }
+            continue outerLoop;
+          }
+
           let castMissingType: 'ticket' | 'rod' | 'bait' | null = null;
           if (castErrText.includes('vé') || castErrText.includes('bến tàu')) {
             castMissingType = 'ticket';
