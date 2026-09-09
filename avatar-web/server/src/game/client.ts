@@ -1019,30 +1019,49 @@ export class GameClient extends EventEmitter {
         }
         break;
       }
-      case -24: { // PARK_BUY_ITEM / CITY_BUY_ITEM — phản hồi mua vật phẩm tại shop NPC
+      case -92: // AVATAR_BUY_ITEM — phản hồi mua vật phẩm tại shop NPC / vé câu cá / mồi / cần câu (RVA 0x5EC29C)
+      case -24: // PARK_BUY_ITEM — fallback cũ J2ME
+      case -8: { // Dự phòng trường hợp server gửi -8
         try {
           const r = msg.reader!;
           const itemId = r.readShort();
-          if (itemId !== -1) {
-            r.readInt();
-            r.readByte();
+          let price = 0;
+          let typeMoney = 1;
+          if (itemId !== -1 && r.available() >= 5) {
+            price = r.readInt();
+            typeMoney = r.readByte();
+          } else if (itemId !== -1 && r.available() >= 4) {
+            price = r.readInt();
           }
-          const text = r.readUTF();
-          const xu = r.readInt();
-          const luong = r.readInt();
-          const luongKhoa = r.readInt();
+          let message = '';
+          if (r.available() >= 2) {
+            try {
+              message = r.readUTF();
+            } catch {
+              /* không có utf message */
+            }
+          }
+          const xu = r.available() >= 4 ? r.readInt() : (this.money ?? 0);
+          let luong = this.luong ?? 0;
+          let luongKhoa = this.luongKhoa ?? 0;
+          if (r.available() >= 4) {
+            luong = r.readInt();
+          }
+          if (r.available() >= 4) {
+            luongKhoa = r.readInt();
+          }
           this.money = xu;
           this.luong = luong;
           this.luongKhoa = luongKhoa;
           this.emit('metrics', { xu, luong, luongKhoa });
           if (itemId !== -1) {
-            this.emit('log', `mua vật phẩm #${itemId} thành công: ${text} (xu=${xu}, lượng=${luong})`);
+            this.emit('log', `mua vật phẩm #${itemId} thành công${message ? `: ${message}` : ` (giá ${price}, xu=${xu}, lượng=${luong})`}`);
           } else {
-            this.emit('log', `mua vật phẩm thất bại: ${text}`);
+            this.emit('log', `mua vật phẩm #${itemId} thất bại${message ? `: ${message}` : ''}`);
           }
-          this.emit('park-buy-item', { itemId, text, xu, luong, luongKhoa });
+          this.emit('park-buy-item', { itemId, price, typeMoney, message, xu, luong, luongKhoa });
         } catch (err) {
-          this.emit('log', `decode phản hồi mua vật phẩm (-24) lỗi: ${(err as Error).message}`);
+          this.emit('log', `decode phản hồi mua vật phẩm (${msg.command}) lỗi: ${(err as Error).message}`);
         }
         break;
       }
@@ -1510,6 +1529,7 @@ export class GameClient extends EventEmitter {
           const r = new MyReader(msg.getData());
           const iss = r.readBoolean();
           const error = iss ? undefined : r.readUTF();
+          this.emit('log', `[câu cá] phản hồi bắt đầu câu (RX45): iss=${iss}${error ? ` (lỗi: ${error})` : ''}`);
           this.emit('fishing-start-result', { iss, error });
         } catch {
           this.emit('fishing-start-result', { iss: false, error: 'RX45 decode error' });

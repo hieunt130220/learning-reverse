@@ -17,10 +17,12 @@ export const CMD_AVATAR_CAU_CA_XONG = 44;
 export const CMD_AVATAR_START_CAU_CA = 45;
 
 /**
- * PARK_BUY_ITEM: i16 idItem, i8 typeMoney (1=Xu, 2=Lượng).
- * Opcode -24 (verified from J2ME auto bot er_0.java:170 do[10] = -24 and packet receiver fj_0.java:1477).
+ * AVATAR_BUY_ITEM: i16 idItem, i8 typeMoney (1=Xu, 2=Lượng).
+ * Opcode -92 (verified from AvatarService.doBuyItem @ 0x9610B0 & GlobalMessageHandler @ 0x5EC29C).
+ * Opcode -8 in libil2cpp.so was doBuyIceDream (mua kem), not fishing shop.
+ * Opcode -24 in AvatarHD 3.4.4 is REQUEST_CITY_MAP (cmd_message.json & GlobalMessageHandler @ 0x5E9D6C).
  */
-export const CMD_PARK_BUY_ITEM = -24;
+export const CMD_PARK_BUY_ITEM = -92;
 
 export interface NativeParkJoinPosition {
   x: number;

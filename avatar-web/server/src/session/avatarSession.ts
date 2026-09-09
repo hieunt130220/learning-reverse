@@ -1910,9 +1910,9 @@ export class AvatarSession {
     if (missingType === 'ticket') {
       const ticket = FISHING_TICKETS[targetMap]!;
       this.pushLog(`[câu cá] Đang gửi lệnh mua ${ticket.name}…`);
-      const buyPromise = new Promise<{ itemId: number; text: string } | null>((resolve) => {
-        const timer = setTimeout(() => resolve(null), 3000);
-        const onBuy = (evt: { itemId: number; text: string }): void => {
+      const buyPromise = new Promise<{ itemId: number; message?: string } | null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), 4000);
+        const onBuy = (evt: { itemId: number; message?: string }): void => {
           clearTimeout(timer);
           client.removeListener('park-buy-item', onBuy);
           resolve(evt);
@@ -1921,8 +1921,9 @@ export class AvatarSession {
       });
       client.parkBuyItem(ticket.id, ticket.typeMoney);
       const res = await buyPromise;
-      if (res && res.itemId === -1) {
-        const msg = `Mua ${ticket.name} thất bại: ${res.text}`;
+      if (!res || res.itemId === -1) {
+        const serverReason = res?.message ? `: ${res.message}` : '';
+        const msg = !res ? `Mua ${ticket.name} thất bại: server không phản hồi gói mua vật phẩm` : `Mua ${ticket.name} thất bại${serverReason || ': server từ chối'}`;
         this.pushLog(`[câu cá] ${msg} — Dừng câu`);
         this.fishingRuntime.lastError = msg;
         return false;
@@ -1932,24 +1933,41 @@ export class AvatarSession {
     } else if (missingType === 'rod') {
       const rod = FISHING_RODS.find((r) => r.id === cfg.rodType)!;
       this.pushLog(`[câu cá] Đang gửi lệnh mua ${rod.name}…`);
-      const buyPromise = new Promise<{ itemId: number; text: string } | null>((resolve) => {
-        const timer = setTimeout(() => resolve(null), 3000);
-        const onBuy = (evt: { itemId: number; text: string }): void => {
-          clearTimeout(timer);
+      const buyPromise = new Promise<{ itemId: number; message?: string; alreadyOwned?: boolean } | null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), 4000);
+        const cleanup = () => {
           client.removeListener('park-buy-item', onBuy);
+          client.removeListener('dialog', onDialog);
+        };
+        const onBuy = (evt: { itemId: number; message?: string }): void => {
+          clearTimeout(timer);
+          cleanup();
           resolve(evt);
         };
+        const onDialog = (reason: string): void => {
+          if (reason.toLowerCase().includes('đang sử dụng') || reason.toLowerCase().includes('đã có')) {
+            clearTimeout(timer);
+            cleanup();
+            resolve({ itemId: rod.id, message: reason, alreadyOwned: true });
+          }
+        };
         client.on('park-buy-item', onBuy);
+        client.on('dialog', onDialog);
       });
       client.parkBuyItem(rod.id, rod.typeMoney);
       const res = await buyPromise;
-      if (res && res.itemId === -1) {
-        const msg = `Mua ${rod.name} thất bại: ${res.text}`;
+      if (!res || res.itemId === -1) {
+        const serverReason = res?.message ? `: ${res.message}` : '';
+        const msg = !res ? `Mua ${rod.name} thất bại: server không phản hồi gói mua vật phẩm` : `Mua ${rod.name} thất bại${serverReason || ': server từ chối'}`;
         this.pushLog(`[câu cá] ${msg} — Dừng câu`);
         this.fishingRuntime.lastError = msg;
         return false;
       }
-      this.pushLog(`[câu cá] Đã mua thành công ${rod.name}`);
+      if (res.alreadyOwned) {
+        this.pushLog(`[câu cá] Nhân vật đã sở hữu/đang sử dụng ${rod.name}`);
+      } else {
+        this.pushLog(`[câu cá] Đã mua thành công ${rod.name}`);
+      }
       await this.delayCancellable(1000, signal);
     } else if (missingType === 'bait') {
       const bait = FISHING_BAITS.find((b) => b.id === cfg.baitType)!;
@@ -1959,35 +1977,43 @@ export class AvatarSession {
       let failReason = '';
       let successCount = 0;
 
-      const onBuy = (evt: { itemId: number; text: string }): void => {
+      const onBuy = (evt: { itemId: number; message?: string }): void => {
         if (evt.itemId === -1) {
           failed = true;
-          failReason = evt.text;
+          failReason = evt.message ? `server từ chối: ${evt.message}` : 'server từ chối mua';
         } else {
           successCount++;
         }
       };
+      const onDialog = (reason: string): void => {
+        if (reason.toLowerCase().includes('rương') && reason.toLowerCase().includes('đầy')) {
+          failed = true;
+          failReason = reason;
+        }
+      };
       client.on('park-buy-item', onBuy);
+      client.on('dialog', onDialog);
 
       try {
         for (let i = 0; i < qty; i++) {
           if (signal.aborted || !this.isCurrent(client, epoch) || failed) break;
           client.parkBuyItem(bait.id, bait.typeMoney);
-          await this.delayCancellable(200, signal);
+          await this.delayCancellable(250, signal);
         }
-        await this.delayCancellable(600, signal);
+        await this.delayCancellable(1500, signal);
       } finally {
         client.removeListener('park-buy-item', onBuy);
+        client.removeListener('dialog', onDialog);
       }
 
-      if (failed && successCount === 0) {
-        const msg = `Mua ${bait.name} thất bại: ${failReason}`;
+      if (successCount === 0) {
+        const msg = `Mua ${bait.name} thất bại: ${failReason || 'server không phản hồi gói mua vật phẩm'}`;
         this.pushLog(`[câu cá] ${msg} — Dừng câu`);
         this.fishingRuntime.lastError = msg;
         return false;
       }
 
-      this.pushLog(`[câu cá] Đã mua thành công ${successCount > 0 ? successCount : qty} ${bait.name}`);
+      this.pushLog(`[câu cá] Đã mua thành công ${successCount}/${qty} ${bait.name}`);
       await this.delayCancellable(800, signal);
     }
 
@@ -2003,7 +2029,7 @@ export class AvatarSession {
       return false;
     }
 
-    await this.delayCancellable(1000, signal);
+    await this.delayCancellable(2000, signal);
     return true;
   }
 
@@ -2033,9 +2059,15 @@ export class AvatarSession {
 
       const dialogRejectionPromise = new Promise<never>((_, reject) => {
         const onDialog = (reason: string) => {
-          if (reason.trim() !== PARK_ALREADY_IN_AREA_DIALOG) {
-            reject(new Error(`server từ chối vào map: ${reason}`));
+          // Bỏ qua dialog "đã ở đúng khu" và dialog nhiệm vụ (cmd -40 cũng
+          // dùng để đẩy tiến trình nhiệm vụ, không phải từ chối join).
+          if (
+            reason.trim() === PARK_ALREADY_IN_AREA_DIALOG
+            || parseQuestDialogText(reason) !== null
+          ) {
+            return;
           }
+          reject(new Error(`server từ chối vào map: ${reason}`));
         };
         const cleanup = () => {
           client.removeListener('dialog', onDialog);
@@ -2064,6 +2096,9 @@ export class AvatarSession {
 
     if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
     this.pushLog(`[câu cá] đã vào khu vực câu cá map ${map}`);
+    // Chờ 3000ms để server đồng bộ hoàn toàn trạng thái thế giới và nhân vật trước khi gọi startFishing.
+    // Probe live xác nhận server cần ~3s sau RX80 để sẵn sàng nhận TX45; 2000ms gây timeout RX45.
+    await this.delayCancellable(3000, signal);
 
     try {
       let consecutiveFailures = 0;
@@ -2081,6 +2116,7 @@ export class AvatarSession {
           let timer: NodeJS.Timeout | undefined;
           const cleanup = () => {
             client.removeListener('fishing-start-result', onStartResult);
+            client.removeListener('dialog', onDialog);
             signal.removeEventListener('abort', onAbort);
             if (timer) clearTimeout(timer);
           };
@@ -2090,6 +2126,19 @@ export class AvatarSession {
             cleanup();
             resolve(res);
           };
+          const onDialog = (reason: string) => {
+            // Bỏ qua các dialog thông tin không liên quan đến lỗi câu cá
+            if (
+              reason.trim() === PARK_ALREADY_IN_AREA_DIALOG
+              || parseQuestDialogText(reason) !== null
+            ) {
+              return;
+            }
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve({ iss: false, error: reason });
+          };
           const onAbort = () => {
             if (settled) return;
             settled = true;
@@ -2097,6 +2146,7 @@ export class AvatarSession {
             resolve({ iss: false, error: 'bị hủy' });
           };
           client.on('fishing-start-result', onStartResult);
+          client.on('dialog', onDialog);
           signal.addEventListener('abort', onAbort, { once: true });
           timer = setTimeout(() => {
             if (settled) return;
@@ -2114,6 +2164,15 @@ export class AvatarSession {
         if (!startResult.iss) {
           const reason = startResult.error ?? 'server từ chối bắt đầu câu';
           const errText = reason.toLowerCase();
+          this.pushLog(`[câu cá] Server từ chối bắt đầu câu: ${reason}`);
+
+          if (errText.includes('rương') && (errText.includes('đầy') || errText.includes('không thể câu'))) {
+            this.fishingRuntime.status = 'rejected';
+            this.fishingRuntime.lastError = reason;
+            this.pushLog(`[câu cá] Dừng câu: ${reason}`);
+            this.emitAutomation();
+            return;
+          }
 
           let missingType: 'ticket' | 'rod' | 'bait' | null = null;
           if (errText.includes('vé') || errText.includes('bến tàu')) {
@@ -2136,9 +2195,11 @@ export class AvatarSession {
               consecutiveFailures = 0;
             }
 
-            if (consecutiveFailures >= 2) {
+            // Nếu đã mua loại này 1 lần rồi mà server vẫn từ chối cùng lý do:
+            // Dừng ngay lập tức để tránh vòng lặp mua tiếp làm đầy rương và tốn tiền
+            if (consecutiveFailures >= 1) {
               this.fishingRuntime.status = 'rejected';
-              this.fishingRuntime.lastError = `Đã thử mua ${missingType} nhưng vẫn thất bại: ${reason}`;
+              this.fishingRuntime.lastError = `Đã mua ${missingType} nhưng server vẫn từ chối: ${reason}`;
               this.pushLog(`[câu cá] Dừng câu: ${this.fishingRuntime.lastError}`);
               this.emitAutomation();
               return;
@@ -2160,7 +2221,6 @@ export class AvatarSession {
 
           this.fishingRuntime.status = 'rejected';
           this.fishingRuntime.lastError = reason;
-          this.pushLog(`[câu cá] server từ chối: ${reason}`);
           this.emitAutomation();
           return;
         }
