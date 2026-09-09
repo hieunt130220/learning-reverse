@@ -193,10 +193,6 @@ jobs:
             "$FISHING_VENV/bin/python" -m pip install torch --index-url https://download.pytorch.org/whl/cpu
             "$FISHING_VENV/bin/python" -m pip install -e "$FISHING_ROOT"
 
-            # Validate dependencies before starting service
-            echo "✅ Kiểm tra dependencies..."
-            "$FISHING_VENV/bin/python" -c "
-
             cd "$FISHING_ROOT"
             pm2 delete fishing-ml >/dev/null 2>&1 || true
             
