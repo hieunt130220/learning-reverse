@@ -168,7 +168,7 @@ jobs:
               --public-base-url "$PUBLIC_SOLVER_URL"
 
             if ! curl --fail --silent --show-error \
-              --retry 12 --retry-delay 2 --retry-all-errors \
+              --retry 30 --retry-delay 2 --retry-all-errors \
               http://127.0.0.1:8643/health
             then
               echo "❌ Captcha solver local health check thất bại"
@@ -204,7 +204,7 @@ jobs:
               --frozen-dir "$FISHING_FROZEN"
 
             if ! curl --fail --silent --show-error \
-              --retry 12 --retry-delay 2 --retry-all-errors \
+              --retry 30 --retry-delay 2 --retry-all-errors \
               http://127.0.0.1:8080/health
             then
               echo "❌ Fishing ML service local health check thất bại"
