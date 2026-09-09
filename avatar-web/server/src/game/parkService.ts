@@ -29,6 +29,13 @@ export const CMD_AVATAR_BUY_ITEM_STACK = -43;
  */
 export const CMD_PARK_BUY_ITEM = -43;
 
+/**
+ * PARK_CHAT: utf text, i8 style (mặc định 0).
+ * Opcode 85: Gửi tin nhắn chat trong Park / Khu câu cá (RVA 0x71AD98 ParkService.chatToBoard).
+ * Dùng cho các lệnh chat in-game như "banca", "cauca"...
+ */
+export const CMD_PARK_CHAT = 85;
+
 export interface NativeParkJoinPosition {
   x: number;
   y: number;
@@ -145,5 +152,19 @@ export class ParkService {
 
   doParkBuyItem(id: number, typeMoney: number): void {
     this.doBuyItemStack(id, 1, typeMoney);
+  }
+
+  /**
+   * Gửi tin nhắn chat trong Park / Khu câu cá (TX-85).
+   * Payload: utf text, i8 style (mặc định 0).
+   * Dùng cho các lệnh chat in-game như "banca", "cauca"...
+   */
+  chat(text: string, style = 0): void {
+    if (typeof text !== 'string' || text.length === 0) {
+      throw new Error('chat: nội dung text không hợp lệ');
+    }
+    const m = Message.create(CMD_PARK_CHAT);
+    m.writer!.writeUTF(text).writeByte(style);
+    this.session.send(m);
   }
 }

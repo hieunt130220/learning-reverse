@@ -618,6 +618,10 @@ export class GameClient extends EventEmitter {
     this.park.doBuyItemStack(id, num, typeMoney);
   }
 
+  chatPark(text: string, style = 0): void {
+    this.park.chat(text, style);
+  }
+
   /**
    * Chờ RX80 mới; nếu server báo đã ở đúng Park room/board thì dùng lại
    * snapshot RX80 gần nhất của chính connection đó, tránh timeout giả.
@@ -1582,6 +1586,23 @@ export class GameClient extends EventEmitter {
           this.emit('fishing-challenge', payload);
         } catch {
           this.emit('log', 'RX79 CAN_CAU decode thất bại');
+        }
+        break;
+      }
+      case 85: {
+        // PARK_CHAT (RX85): i32 idUser, utf text, [i8 style]
+        try {
+          const r = new MyReader(msg.getData());
+          const idUser = r.readInt();
+          const text = r.readUTF();
+          let style = 0;
+          if (r.available() >= 1) {
+            style = r.readByte();
+          }
+          this.emit('log', `[chat park] ${idUser}: ${text}`);
+          this.emit('park-chat', { idUser, text, style });
+        } catch (err) {
+          this.emit('log', `decode park-chat (85) lỗi: ${(err as Error).message}`);
         }
         break;
       }
