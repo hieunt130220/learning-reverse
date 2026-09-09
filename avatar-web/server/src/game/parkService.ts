@@ -17,12 +17,17 @@ export const CMD_AVATAR_CAU_CA_XONG = 44;
 export const CMD_AVATAR_START_CAU_CA = 45;
 
 /**
- * PARK_BUY_ITEM: i16 idItem, i8 typeMoney (1=Xu, 2=Lượng).
- * Opcode -24: mua vật phẩm trong Park/Khu sinh thái (vé, cần, mồi câu dạng stack).
- * Verified from J2ME auto bot er_0.java:170 do[10] = -24 & packet receiver fj_0.java:1477.
- * KHÔNG dùng -92: -92 là mua trang bị/thời trang tạo item rương không stack gây đầy rương!
+ * BUY_ITEM_STACK: i16 idPart, i32 num, i8 type (1=Xu, 2=Lượng).
+ * Opcode -43 (0xD5): AvatarService.doBuyItem(short idPart, int num, byte type)
+ * RVA 0x96125C, gọi từ MapScr.IActionBuyStack (0x8518C8) & MapScr.IActionSelectedMoney (0x8547B0).
+ * Mua vật phẩm xếp chồng (mồi câu, vé câu...).
  */
-export const CMD_PARK_BUY_ITEM = -24;
+export const CMD_AVATAR_BUY_ITEM_STACK = -43;
+
+/**
+ * @deprecated Opcode -24 trong AvatarHD là REQUEST_CITY_MAP (tile map). Dùng CMD_AVATAR_BUY_ITEM_STACK (-43).
+ */
+export const CMD_PARK_BUY_ITEM = -43;
 
 export interface NativeParkJoinPosition {
   x: number;
@@ -119,15 +124,26 @@ export class ParkService {
     this.session.send(m);
   }
 
-  doParkBuyItem(id: number, typeMoney: number): void {
+  /**
+   * BUY_ITEM_STACK (TX-43): Mua vật phẩm xếp chồng (mồi câu, vé câu).
+   * Payload: i16 idPart, i32 num, i8 typeMoney (1=Xu, 2=Lượng).
+   */
+  doBuyItemStack(id: number, num: number, typeMoney: number): void {
     if (!Number.isSafeInteger(id) || id <= 0) {
-      throw new Error(`doParkBuyItem: id không hợp lệ: ${id}`);
+      throw new Error(`doBuyItemStack: id không hợp lệ: ${id}`);
+    }
+    if (!Number.isSafeInteger(num) || num <= 0) {
+      throw new Error(`doBuyItemStack: num không hợp lệ: ${num}`);
     }
     if (!Number.isSafeInteger(typeMoney) || (typeMoney !== 1 && typeMoney !== 2)) {
-      throw new Error(`doParkBuyItem: typeMoney không hợp lệ: ${typeMoney}`);
+      throw new Error(`doBuyItemStack: typeMoney không hợp lệ: ${typeMoney}`);
     }
-    const m = Message.create(CMD_PARK_BUY_ITEM);
-    m.writer!.writeShort(id).writeByte(typeMoney);
+    const m = Message.create(CMD_AVATAR_BUY_ITEM_STACK);
+    m.writer!.writeShort(id).writeInt(num).writeByte(typeMoney);
     this.session.send(m);
+  }
+
+  doParkBuyItem(id: number, typeMoney: number): void {
+    this.doBuyItemStack(id, 1, typeMoney);
   }
 }

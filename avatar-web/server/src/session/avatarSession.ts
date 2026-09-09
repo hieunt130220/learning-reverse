@@ -1910,20 +1910,72 @@ export class AvatarSession {
     if (missingType === 'ticket') {
       const ticket = FISHING_TICKETS[targetMap]!;
       this.pushLog(`[câu cá] Đang gửi lệnh mua ${ticket.name}…`);
-      const buyPromise = new Promise<{ itemId: number; message?: string } | null>((resolve) => {
-        const timer = setTimeout(() => resolve(null), 4000);
-        const onBuy = (evt: { itemId: number; message?: string }): void => {
-          clearTimeout(timer);
-          client.removeListener('park-buy-item', onBuy);
-          resolve(evt);
+      let settled = false;
+      let failReason = '';
+      let timer: NodeJS.Timeout | undefined;
+      let onBuy: (evt: { itemId: number; message?: string }) => void;
+      let onMetrics: () => void;
+      let onDialog: (reason: string) => void;
+      let onAbort: () => void;
+      const cleanup = () => {
+        client.removeListener('park-buy-item', onBuy);
+        client.removeListener('metrics', onMetrics);
+        client.removeListener('dialog', onDialog);
+        signal.removeEventListener('abort', onAbort);
+        if (timer) clearTimeout(timer);
+      };
+      const buyPromise = new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          failReason = 'Server không phản hồi gói mua vật phẩm';
+          resolve(false);
+        }, 4000);
+        onBuy = (evt: { itemId: number; message?: string }): void => {
+          if (settled) return;
+          if (evt.itemId === -1) {
+            settled = true;
+            cleanup();
+            failReason = evt.message ? `Server từ chối: ${evt.message}` : 'Server từ chối mua';
+            resolve(false);
+          } else {
+            settled = true;
+            cleanup();
+            resolve(true);
+          }
+        };
+        onMetrics = (): void => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(true);
+        };
+        onDialog = (reason: string): void => {
+          const lower = reason.toLowerCase();
+          if (lower.includes('không đủ') || lower.includes('đã có')) {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            failReason = reason;
+            resolve(false);
+          }
+        };
+        onAbort = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(false);
         };
         client.on('park-buy-item', onBuy);
+        client.on('metrics', onMetrics);
+        client.on('dialog', onDialog);
+        signal.addEventListener('abort', onAbort, { once: true });
       });
-      client.parkBuyItem(ticket.id, ticket.typeMoney);
-      const res = await buyPromise;
-      if (!res || res.itemId === -1) {
-        const serverReason = res?.message ? `: ${res.message}` : '';
-        const msg = !res ? `Mua ${ticket.name} thất bại: server không phản hồi gói mua vật phẩm` : `Mua ${ticket.name} thất bại${serverReason || ': server từ chối'}`;
+      client.buyItemStack(ticket.id, 1, ticket.typeMoney);
+      const ok = await buyPromise;
+      if (!ok) {
+        const msg = `Mua ${ticket.name} thất bại: ${failReason || 'Server từ chối mua'}`;
         this.pushLog(`[câu cá] ${msg} — Dừng câu`);
         this.fishingRuntime.lastError = msg;
         return false;
@@ -1954,7 +2006,7 @@ export class AvatarSession {
         client.on('park-buy-item', onBuy);
         client.on('dialog', onDialog);
       });
-      client.parkBuyItem(rod.id, rod.typeMoney);
+      client.buyItemStack(rod.id, 1, rod.typeMoney);
       const res = await buyPromise;
       if (!res || res.itemId === -1) {
         const serverReason = res?.message ? `: ${res.message}` : '';
@@ -1971,47 +2023,102 @@ export class AvatarSession {
       await this.delayCancellable(1000, signal);
     } else if (missingType === 'bait') {
       const bait = FISHING_BAITS.find((b) => b.id === cfg.baitType)!;
-      this.pushLog(`[câu cá] Đang gửi lệnh mua ${bait.name}…`);
-      let failed = false;
+      const quantity = Math.max(1, Math.min(cfg.baitQuantity || 50, 999));
+      this.pushLog(`[câu cá] Đang gửi lệnh mua ${bait.name} (x${quantity})…`);
+      let settled = false;
       let failReason = '';
-      let successCount = 0;
+      let timer: NodeJS.Timeout | undefined;
+      let onBuy: (evt: { itemId: number; message?: string }) => void;
+      let onMetrics: () => void;
+      let onDialog: (reason: string) => void;
+      let onAbort: () => void;
 
-      const onBuy = (evt: { itemId: number; message?: string }): void => {
-        if (evt.itemId === -1) {
-          failed = true;
-          failReason = evt.message ? `server từ chối: ${evt.message}` : 'server từ chối mua';
-        } else {
-          successCount++;
-        }
-      };
-      const onDialog = (reason: string): void => {
-        if (reason.toLowerCase().includes('rương') && reason.toLowerCase().includes('đầy')) {
-          failed = true;
-          failReason = reason;
-        }
-      };
-      client.on('park-buy-item', onBuy);
-      client.on('dialog', onDialog);
-
-      try {
-        // Mỗi lần mua mồi chỉ gửi 1 lệnh duy nhất (giống Java bot er_0.do(448, 1)).
-        // Server tự cộng dồn vào stack mồi hiện có. Gửi nhiều lần gây đầy rương!
-        client.parkBuyItem(bait.id, bait.typeMoney);
-        await this.delayCancellable(1500, signal);
-      } finally {
+      const cleanup = () => {
         client.removeListener('park-buy-item', onBuy);
+        client.removeListener('metrics', onMetrics);
         client.removeListener('dialog', onDialog);
-      }
+        signal.removeEventListener('abort', onAbort);
+        if (timer) clearTimeout(timer);
+      };
 
-      if (successCount === 0 && failed) {
-        const msg = `Mua ${bait.name} thất bại: ${failReason || 'server từ chối mua'}`;
+      const buyPromise = new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          if (!failReason) {
+            failReason = 'Server không phản hồi gói mua vật phẩm (timeout 4s)';
+          }
+          resolve(false);
+        }, 4000);
+
+        onBuy = (evt: { itemId: number; message?: string }): void => {
+          if (settled) return;
+          if (evt.itemId === -1) {
+            settled = true;
+            cleanup();
+            failReason = evt.message ? `Server từ chối: ${evt.message}` : 'Server từ chối mua';
+            resolve(false);
+          } else {
+            settled = true;
+            cleanup();
+            resolve(true);
+          }
+        };
+
+        onMetrics = (): void => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(true);
+        };
+
+        onDialog = (reason: string): void => {
+          const lower = reason.toLowerCase();
+          if (
+            lower.includes('không đủ') ||
+            lower.includes('hết tiền') ||
+            (lower.includes('rương') && lower.includes('đầy'))
+          ) {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            failReason = reason;
+            resolve(false);
+          } else if (lower.includes('thành công') || lower.includes('đã mua')) {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(true);
+          }
+        };
+
+        onAbort = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          failReason = 'Bị huỷ';
+          resolve(false);
+        };
+
+        client.on('park-buy-item', onBuy);
+        client.on('metrics', onMetrics);
+        client.on('dialog', onDialog);
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
+
+      client.buyItemStack(bait.id, quantity, bait.typeMoney);
+      const ok = await buyPromise;
+
+      if (!ok) {
+        const msg = `Mua ${bait.name} (x${quantity}) thất bại: ${failReason || 'Server từ chối'}`;
         this.pushLog(`[câu cá] ${msg} — Dừng câu`);
         this.fishingRuntime.lastError = msg;
         return false;
       }
 
-      this.pushLog(`[câu cá] Đã mua thành công ${bait.name}`);
-      await this.delayCancellable(800, signal);
+      this.pushLog(`[câu cá] Đã mua thành công ${bait.name} (x${quantity})`);
+      await this.delayCancellable(1000, signal);
     }
 
     // 3. Quay trở lại hồ câu mục tiêu
@@ -2501,7 +2608,7 @@ export class AvatarSession {
     const autoGen = this.automationGeneration;
 
     const inferenceClient = this.fishingInferenceClient ??= new ProductionInferenceClient({
-      endpoint: process.env.FISHING_INFERENCE_URL || 'http://127.0.0.1:8000/match',
+      endpoint: process.env.FISHING_INFERENCE_URL || 'http://127.0.0.1:8080/infer',
       timeoutMs: Number(process.env.FISHING_INFERENCE_TIMEOUT_MS) || 5000,
     });
 

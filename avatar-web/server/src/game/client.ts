@@ -614,6 +614,10 @@ export class GameClient extends EventEmitter {
     this.park.doParkBuyItem(id, typeMoney);
   }
 
+  buyItemStack(id: number, num: number, typeMoney: number): void {
+    this.park.doBuyItemStack(id, num, typeMoney);
+  }
+
   /**
    * Chờ RX80 mới; nếu server báo đã ở đúng Park room/board thì dùng lại
    * snapshot RX80 gần nhất của chính connection đó, tránh timeout giả.
@@ -1019,6 +1023,7 @@ export class GameClient extends EventEmitter {
         }
         break;
       }
+      case -43: // BUY_ITEM_STACK — phản hồi mua vật phẩm xếp chồng (RVA 0x96125C)
       case -92: // AVATAR_BUY_ITEM — phản hồi mua vật phẩm tại shop NPC / vé câu cá / mồi / cần câu (RVA 0x5EC29C)
       case -24: // PARK_BUY_ITEM — fallback cũ J2ME
       case -8: { // Dự phòng trường hợp server gửi -8
