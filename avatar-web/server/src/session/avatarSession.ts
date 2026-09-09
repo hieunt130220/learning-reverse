@@ -443,6 +443,7 @@ export class AvatarSession {
       fishingConfig: this.fishingConfig,
       location: this.automationLocation,
     });
+    this.stop();
   }
 
   async stopAuto(): Promise<void> {
