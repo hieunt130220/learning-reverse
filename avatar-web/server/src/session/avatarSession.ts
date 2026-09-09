@@ -1971,8 +1971,7 @@ export class AvatarSession {
       await this.delayCancellable(1000, signal);
     } else if (missingType === 'bait') {
       const bait = FISHING_BAITS.find((b) => b.id === cfg.baitType)!;
-      const qty = cfg.baitQuantity;
-      this.pushLog(`[câu cá] Đang mua ${bait.name} (số lượng ${qty})…`);
+      this.pushLog(`[câu cá] Đang gửi lệnh mua ${bait.name}…`);
       let failed = false;
       let failReason = '';
       let successCount = 0;
@@ -1995,25 +1994,23 @@ export class AvatarSession {
       client.on('dialog', onDialog);
 
       try {
-        for (let i = 0; i < qty; i++) {
-          if (signal.aborted || !this.isCurrent(client, epoch) || failed) break;
-          client.parkBuyItem(bait.id, bait.typeMoney);
-          await this.delayCancellable(250, signal);
-        }
+        // Mỗi lần mua mồi chỉ gửi 1 lệnh duy nhất (giống Java bot er_0.do(448, 1)).
+        // Server tự cộng dồn vào stack mồi hiện có. Gửi nhiều lần gây đầy rương!
+        client.parkBuyItem(bait.id, bait.typeMoney);
         await this.delayCancellable(1500, signal);
       } finally {
         client.removeListener('park-buy-item', onBuy);
         client.removeListener('dialog', onDialog);
       }
 
-      if (successCount === 0) {
-        const msg = `Mua ${bait.name} thất bại: ${failReason || 'server không phản hồi gói mua vật phẩm'}`;
+      if (successCount === 0 && failed) {
+        const msg = `Mua ${bait.name} thất bại: ${failReason || 'server từ chối mua'}`;
         this.pushLog(`[câu cá] ${msg} — Dừng câu`);
         this.fishingRuntime.lastError = msg;
         return false;
       }
 
-      this.pushLog(`[câu cá] Đã mua thành công ${successCount}/${qty} ${bait.name}`);
+      this.pushLog(`[câu cá] Đã mua thành công ${bait.name}`);
       await this.delayCancellable(800, signal);
     }
 
