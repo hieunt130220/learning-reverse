@@ -173,6 +173,54 @@ export interface TemporaryLoginRejection {
 const MIN_LOGIN_RETRY_MS = 10_000;
 export const PARK_ALREADY_IN_AREA_DIALOG = 'Bạn đã ở trong khu vực muốn chuyển đến';
 
+/**
+ * Kiểm tra xem một dialog từ server có phải là thông báo phần thưởng / sự kiện hay không.
+ */
+export function isRewardDialog(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (normalized.includes('chúc mừng')) return true;
+  if (
+    normalized.includes('nhận được')
+    && !normalized.includes('không thể')
+    && !normalized.includes('không được')
+    && !normalized.includes('thất bại')
+  ) {
+    return true;
+  }
+  if (normalized.includes('phần thưởng')) return true;
+  return false;
+}
+
+/**
+ * Kiểm tra xem một dialog từ server có phải là thông báo thông tin chung cần bỏ qua
+ * (không phải lỗi từ chối thao tác câu cá, di chuyển, hay vào map).
+ */
+export function isInformationalDialog(reason: string): boolean {
+  const trimmed = reason.trim();
+  if (!trimmed) return true;
+
+  // 1. Dialog "đã ở trong khu vực này rồi"
+  if (trimmed === PARK_ALREADY_IN_AREA_DIALOG) return true;
+
+  // 2. Dialog cập nhật tiến trình nhiệm vụ (Tân Thủ, Nhà Nông, Thợ Câu)
+  if (parseQuestDialogText(reason) !== null) return true;
+
+  // 3. Hộp thoại thông báo nhận thưởng sự kiện / chúc mừng
+  if (isRewardDialog(trimmed)) return true;
+
+  // 4. Hộp thoại broadcast thông báo hệ thống / bảo trì định kỳ
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith('thông báo:')
+    || lower.startsWith('hệ thống:')
+    || lower.startsWith('server:')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function parseTemporaryLoginRejection(text: string): TemporaryLoginRejection | null {
   const isThrottle = /đang đăng nhập|đăng nhập quá nhanh|đăng nhập lại sau\s+\d+\s*s|quá tải/i.test(text);
   if (!isThrottle) return null;
