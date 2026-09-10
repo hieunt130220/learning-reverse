@@ -286,8 +286,10 @@ export class AvatarSession {
   private fishingAbortController?: AbortController;
   private fishingFarmPhase: FishingFarmPhase = 'idle';
   private fishingFarmTimer?: NodeJS.Timeout;
+  private fishingFarmScheduleToken?: symbol;
   private fishingFarmDue = false;
   private fishingFarmAbortController?: AbortController;
+  private fishingFarmCycleToken?: symbol;
   private fishingFarmWake?: () => void;
   private automationTransition: Promise<AutomationStartOutcome> = Promise.resolve('active');
   private pendingAutomationTransitions = 0;
@@ -1087,6 +1089,7 @@ export class AvatarSession {
       if (this.isCurrent(client, epoch)) this.pushLog(line);
     });
     this.auto!.on('cycle-complete', () => {
+      if (this.fishingFarmCycleToken) return;
       if (this.isCurrent(client, epoch)) this.onAutoCycleComplete(epoch);
     });
     this.macros!.on('state', (s: MacroState) => {
@@ -1589,7 +1592,8 @@ export class AvatarSession {
 
   private onAutoCycleComplete(epoch: number): void {
     if (
-      epoch !== this.connectionEpoch
+      this.fishingFarmCycleToken
+      || epoch !== this.connectionEpoch
       || this.desiredMode !== 'auto_farm'
       || this.status !== 'online'
     ) return;
@@ -1658,6 +1662,7 @@ export class AvatarSession {
   }
 
   private failPermanently(reason: string): void {
+    this.fishingChallengeGeneration += 1;
     this.permanentlyFailed = true;
     this.invalidateAutomationTransitions();
     this.setWanted(false);
@@ -1667,6 +1672,10 @@ export class AvatarSession {
     this.cancelRetry();
     this.cancelAutoCycleTimer();
     this.cancelFishingFarmSchedule();
+    if (this.fishingAbortController) {
+      this.fishingAbortController.abort();
+      this.fishingAbortController = undefined;
+    }
     void this.auto?.stop();
     const finder = this.findNpc;
     this.findNpc = undefined;
@@ -1784,14 +1793,30 @@ export class AvatarSession {
 
   private scheduleFishingFarm(generation: number, epoch: number): void {
     if (this.fishingFarmTimer) this.clearTimeoutFn(this.fishingFarmTimer);
+    this.fishingFarmTimer = undefined;
+    const scheduleToken = Symbol('fishing-farm-schedule');
+    this.fishingFarmScheduleToken = scheduleToken;
     this.fishingFarmDue = false;
-    this.fishingFarmTimer = this.setTimeoutFn(() => {
+    const parent = this.fishingAbortController;
+    if (!parent) {
+      this.fishingFarmScheduleToken = undefined;
+      return;
+    }
+    let timer: NodeJS.Timeout | undefined;
+    timer = this.setTimeoutFn(() => {
+      if (
+        this.fishingFarmScheduleToken !== scheduleToken
+        || this.fishingFarmTimer !== timer
+        || this.fishingAbortController !== parent
+        || parent.signal.aborted
+      ) return;
       this.fishingFarmTimer = undefined;
+      this.fishingFarmScheduleToken = undefined;
       if (
         !this.isAutomationGenerationCurrent(generation)
         || epoch !== this.connectionEpoch
         || this.desiredMode !== 'auto_fishing'
-        || this.fishingAbortController?.signal.aborted !== false
+        || this.fishingAbortController !== parent
       ) return;
       this.fishingFarmDue = true;
       this.fishingFarmPhase = 'farm-due';
@@ -1799,12 +1824,14 @@ export class AvatarSession {
       this.fishingFarmWake = undefined;
       wake?.();
     }, FISHING_FARM_INTERVAL_MS);
-    this.fishingFarmTimer.unref?.();
+    this.fishingFarmTimer = timer;
+    timer.unref?.();
   }
 
   private cancelFishingFarmSchedule(): void {
     if (this.fishingFarmTimer) this.clearTimeoutFn(this.fishingFarmTimer);
     this.fishingFarmTimer = undefined;
+    this.fishingFarmScheduleToken = undefined;
     this.fishingFarmDue = false;
     const wake = this.fishingFarmWake;
     this.fishingFarmWake = undefined;
@@ -1844,6 +1871,26 @@ export class AvatarSession {
     });
   }
 
+  private isCurrentFishingFarmCycle(
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    child: AbortController,
+    token: symbol,
+    parentSignal: AbortSignal,
+    allowAbortedChild = false,
+    allowNonFishingMode = false,
+  ): boolean {
+    return this.fishingFarmCycleToken === token
+      && this.fishingFarmAbortController === child
+      && (allowAbortedChild || !child.signal.aborted)
+      && !parentSignal.aborted
+      && this.isAutomationGenerationCurrent(generation)
+      && this.isCurrent(client, epoch)
+      && client.status === 'online'
+      && (allowNonFishingMode ? this.desiredMode !== 'off' : this.desiredMode === 'auto_fishing');
+  }
+
   private async runFishingFarmCycle(
     kind: 'initial' | 'periodic',
     client: GameClient,
@@ -1865,6 +1912,7 @@ export class AvatarSession {
       this.pushLog('[nông trại] Bỏ qua chu kỳ kèm Auto Fishing: cấu hình không hợp lệ: Auto Farm chưa khởi động.');
       return 'skipped';
     }
+    if (this.fishingFarmCycleToken) return 'cancelled';
 
     this.fishingFarmPhase = kind === 'initial' ? 'initial-farm' : 'periodic-farm';
     if (kind === 'periodic') {
@@ -1873,18 +1921,33 @@ export class AvatarSession {
     this.pushLog('[nông trại] Bắt đầu chu kỳ kèm Auto Fishing...');
 
     const child = new AbortController();
-    let parentAborted: boolean = parentSignal.aborted;
+    const cycleToken = Symbol('fishing-farm-cycle');
     const onParentAbort = (): void => {
-      parentAborted = true;
       child.abort();
     };
     parentSignal.addEventListener('abort', onParentAbort, { once: true });
-    if (parentAborted) child.abort();
+    if (parentSignal.aborted) child.abort();
+    this.fishingFarmCycleToken = cycleToken;
     this.fishingFarmAbortController = child;
 
     let hardTimeout: NodeJS.Timeout | undefined;
     let cleanupGraceTimer: NodeJS.Timeout | undefined;
     try {
+      const isCurrentCycle = (
+        allowAbortedChild = false,
+        allowNonFishingMode = false,
+      ): boolean => this.isCurrentFishingFarmCycle(
+        client,
+        generation,
+        epoch,
+        child,
+        cycleToken,
+        parentSignal,
+        allowAbortedChild,
+        allowNonFishingMode,
+      );
+      if (!isCurrentCycle()) return 'cancelled';
+
       let cyclePromise: Promise<AutoFarmState>;
       try {
         cyclePromise = auto.runSingleCycle(
@@ -1909,6 +1972,7 @@ export class AvatarSession {
       const result = await Promise.race([settledCycle, timeoutPromise]);
 
       if (result === timeoutMarker) {
+        if (!isCurrentCycle()) return 'cancelled';
         child.abort();
         let stopPromise: Promise<void>;
         try {
@@ -1928,30 +1992,30 @@ export class AvatarSession {
           cleanupGraceTimer.unref?.();
         });
         const quiesced = await Promise.race([stopSettled, gracePromise]);
-        if (parentAborted || parentSignal.aborted) return 'cancelled';
         if (quiesced) {
+          if (!isCurrentCycle(true)) return 'cancelled';
           this.pushLog(
             `[nông trại] Chu kỳ farm quá thời gian ${FISHING_FARM_TIMEOUT_MS / 1000}s; `
               + 'đã dừng an toàn, sẽ quay lại câu cá.',
           );
-          return 'completed';
+          return isCurrentCycle(true) ? 'completed' : 'cancelled';
         }
-        this.restartAfterStuckFishingFarm(
+        if (!isCurrentCycle(true, true)) return 'cancelled';
+        const recovered = this.restartAfterStuckFishingFarm(
           `chu kỳ farm quá ${FISHING_FARM_TIMEOUT_MS / 1000}s và không dừng trong `
             + `${FISHING_FARM_CLEANUP_GRACE_MS / 1000}s`,
+          client,
+          generation,
+          epoch,
+          child,
+          cycleToken,
+          parentSignal,
         );
-        return 'reconnect';
+        return recovered ? 'reconnect' : 'cancelled';
       }
 
       if (result.kind === 'error') {
-        if (parentAborted || parentSignal.aborted || child.signal.aborted) {
-          try {
-            await auto.stop();
-          } catch {
-            /* dừng đã được yêu cầu; không để lỗi phụ chặn cleanup */
-          }
-          return 'cancelled';
-        }
+        if (!isCurrentCycle()) return 'cancelled';
         const message = result.error instanceof Error ? result.error.message : String(result.error);
         this.pushLog(
           `[nông trại] Bỏ qua chu kỳ kèm Auto Fishing: cấu hình không hợp lệ: ${message}.`,
@@ -1961,19 +2025,20 @@ export class AvatarSession {
         } catch {
           /* lỗi khởi động đã được báo; tiếp tục Auto Fishing */
         }
-        return 'skipped';
+        return isCurrentCycle() ? 'skipped' : 'cancelled';
       }
 
+      if (!isCurrentCycle()) return 'cancelled';
       try {
         await auto.stop();
       } catch {
         /* runSingleCycle đã hoàn tất; không để lỗi dừng farm chặn câu cá */
       }
-      if (parentAborted || parentSignal.aborted) return 'cancelled';
+      if (!isCurrentCycle()) return 'cancelled';
       if (result.state.lastError) {
         this.pushLog(`[nông trại] Chu kỳ hoàn tất kèm cảnh báo: ${result.state.lastError}`);
       }
-      return 'completed';
+      return isCurrentCycle() ? 'completed' : 'cancelled';
     } finally {
       if (hardTimeout) this.clearTimeoutFn(hardTimeout);
       if (cleanupGraceTimer) this.clearTimeoutFn(cleanupGraceTimer);
@@ -1981,18 +2046,50 @@ export class AvatarSession {
       if (this.fishingFarmAbortController === child) {
         this.fishingFarmAbortController = undefined;
       }
+      if (this.fishingFarmCycleToken === cycleToken) {
+        this.fishingFarmCycleToken = undefined;
+      }
     }
   }
 
-  private restartAfterStuckFishingFarm(reason: string): void {
+  private restartAfterStuckFishingFarm(
+    reason: string,
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    child: AbortController,
+    cycleToken: symbol,
+    parentSignal: AbortSignal,
+  ): boolean {
+    if (
+      !this.isCurrentFishingFarmCycle(
+        client,
+        generation,
+        epoch,
+        child,
+        cycleToken,
+        parentSignal,
+        true,
+        true,
+      )
+      || this.desiredMode === 'off'
+    ) return false;
+    const desiredMode: AutomationMode = this.desiredMode;
     this.pushLog(`[nông trại] ${reason}; đóng phiên cũ để tránh race packet và kết nối lại...`);
+    if (!this.isCurrentFishingFarmCycle(client, generation, epoch, child, cycleToken, parentSignal, true, true)) {
+      return false;
+    }
     this.activeMode = 'off';
+    if (!this.isCurrentFishingFarmCycle(client, generation, epoch, child, cycleToken, parentSignal, true, true)) {
+      return false;
+    }
     this.teardown();
     this.emitAutomation();
     this.emit('status', 'idle');
-    if (this.wanted && !this.permanentlyFailed && this.desiredMode === 'auto_fishing') {
+    if (this.wanted && !this.permanentlyFailed && this.desiredMode === desiredMode) {
       this.scheduleRetry(this.connectionEpoch);
     }
+    return true;
   }
 
   private startFishingLoop(client: GameClient, generation: number, epoch: number): void {
@@ -2006,7 +2103,12 @@ export class AvatarSession {
       try {
         await this.runFishingLoop(client, generation, epoch, abort.signal);
       } catch (err) {
-        if (!abort.signal.aborted && this.isAutomationGenerationCurrent(generation)) {
+        if (
+          !abort.signal.aborted
+          && this.fishingAbortController === abort
+          && this.isAutomationGenerationCurrent(generation)
+          && this.isCurrent(client, epoch)
+        ) {
           this.pushLog(`[câu cá] lỗi vòng lặp: ${(err as Error).message}`);
         }
       } finally {
@@ -2930,17 +3032,23 @@ export class AvatarSession {
       break outerLoop;
     } // end outerLoop
     } finally {
-      if (this.isCurrent(client, epoch) && client.status === 'online') {
+      const ownsFishingLoop = this.fishingAbortController?.signal === signal
+        && !signal.aborted
+        && this.isAutomationGenerationCurrent(generation)
+        && this.isCurrent(client, epoch);
+      if (ownsFishingLoop && client.status === 'online') {
         try {
           client.cauCaXong();
         } catch {
           /* bỏ qua */
         }
       }
-      if (this.fishingRuntime.status !== 'rejected') {
-        this.fishingRuntime.status = 'idle';
+      if (ownsFishingLoop) {
+        if (this.fishingRuntime.status !== 'rejected') {
+          this.fishingRuntime.status = 'idle';
+        }
+        this.emitAutomation();
       }
-      this.emitAutomation();
     }
   }
 
