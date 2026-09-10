@@ -174,20 +174,45 @@ const MIN_LOGIN_RETRY_MS = 10_000;
 export const PARK_ALREADY_IN_AREA_DIALOG = 'Bạn đã ở trong khu vực muốn chuyển đến';
 
 /**
- * Kiểm tra xem một dialog từ server có phải là thông báo phần thưởng / sự kiện hay không.
+ * Kiểm tra xem một dialog từ server có phải là thông báo phần thưởng / sự kiện / hoạt động hay không.
  */
 export function isRewardDialog(text: string): boolean {
   const normalized = text.trim().toLowerCase();
-  if (normalized.includes('chúc mừng')) return true;
+
+  // Nếu chứa từ khóa phủ định hoặc lỗi -> chắc chắn không phải nhận thưởng
   if (
-    normalized.includes('nhận được')
-    && !normalized.includes('không thể')
-    && !normalized.includes('không được')
-    && !normalized.includes('thất bại')
+    normalized.includes('không thể')
+    || normalized.includes('không được')
+    || normalized.includes('thất bại')
+    || normalized.includes('chưa thể')
+  ) {
+    return false;
+  }
+
+  // 1. Chúc mừng
+  if (normalized.includes('chúc mừng')) return true;
+
+  // 2. Động từ nhận/thu hoạch vật phẩm
+  if (
+    normalized.includes('thu hoạch được')
+    || normalized.includes('nhận được')
+    || normalized.includes('nhặt được')
+    || normalized.includes('kiếm được')
   ) {
     return true;
   }
+
+  // 3. Có từ khóa phần thưởng
   if (normalized.includes('phần thưởng')) return true;
+
+  // 4. Nhận từ hoạt động (ví dụ: "từ hoạt động câu cá", "từ hoạt động...")
+  if (normalized.includes('từ hoạt động')) return true;
+
+  // 5. Mẫu đếm giới hạn sự kiện trong ngày (ví dụ: "Số lượng 1/40", "Số lượng 1/50")
+  if (/số lượng\s*\d+\s*\/\s*\d+/i.test(normalized)) {
+    return true;
+  }
+
   return false;
 }
 
