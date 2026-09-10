@@ -50,7 +50,7 @@ export function AssetsPanel({
   items: ItemInfo[];
 }) {
   return (
-    <>
+    <div className="assets-panel-stack">
       <FarmSection farm={farm} trees={trees} />
       <KhoSection
         inventory={inventory}
@@ -60,7 +60,7 @@ export function AssetsPanel({
         animals={animals}
       />
       <AnimalSection farm={farm} catalog={animals} />
-    </>
+    </div>
   );
 }
 

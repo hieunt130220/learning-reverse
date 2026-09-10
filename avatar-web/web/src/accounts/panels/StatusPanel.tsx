@@ -180,25 +180,25 @@ export function StatusPanel({
         {snap?.playerId !== undefined && <span className="hint">id nhân vật: {snap.playerId}</span>}
         {snap?.money !== undefined && <span className="chip">{snap.money} xu</span>}
       </div>
-      <div className="row" role="group" aria-label="Chọn chế độ tự động">
-        <label className="inline">
-          <input
-            type="checkbox"
-            checked={selectedMode === 'auto_farm'}
-            disabled={controlsLocked}
-            onChange={() => setSelectedMode('auto_farm')}
-          />
+      <div className="row automation-mode-selector" role="group" aria-label="Chọn chế độ tự động">
+        <button
+          type="button"
+          className={`automation-mode-button${selectedMode === 'auto_farm' ? ' active' : ''}`}
+          aria-pressed={selectedMode === 'auto_farm'}
+          disabled={controlsLocked}
+          onClick={() => setSelectedMode('auto_farm')}
+        >
           Auto Farm
-        </label>
-        <label className="inline">
-          <input
-            type="checkbox"
-            checked={selectedMode === 'auto_fishing'}
-            disabled={controlsLocked}
-            onChange={() => setSelectedMode('auto_fishing')}
-          />
+        </button>
+        <button
+          type="button"
+          className={`automation-mode-button${selectedMode === 'auto_fishing' ? ' active' : ''}`}
+          aria-pressed={selectedMode === 'auto_fishing'}
+          disabled={controlsLocked}
+          onClick={() => setSelectedMode('auto_fishing')}
+        >
           Auto Fishing
-        </label>
+        </button>
       </div>
       <div className="row">
         <button

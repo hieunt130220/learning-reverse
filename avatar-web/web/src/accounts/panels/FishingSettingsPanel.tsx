@@ -243,33 +243,17 @@ export function FishingSettingsPanel({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {/* 1. Vé câu */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                cursor: isFishing ? 'not-allowed' : 'pointer',
-                fontSize: '0.85rem',
-                fontWeight: 500,
-              }}
-            >
+          <div className="fishing-ticket-control">
+            <label className={`fishing-ticket-label${isFishing ? ' disabled' : ''}`}>
               <input
                 type="checkbox"
                 checked={autoBuyTicket}
                 onChange={(e) => setAutoBuyTicket(e.target.checked)}
                 disabled={isFishing}
-                style={{ cursor: isFishing ? 'not-allowed' : 'pointer' }}
               />
               <span>Tự động mua vé câu theo hồ</span>
             </label>
-            <div
-              style={{
-                fontSize: '0.8rem',
-                color: selectedMap === 16 ? '#e3b341' : 'var(--muted)',
-                marginLeft: '1.4rem',
-              }}
-            >
+            <div className={`fishing-ticket-hint${selectedMap === 16 ? ' warning' : ''}`}>
               {getTicketHint(selectedMap)}
             </div>
           </div>
