@@ -11,6 +11,8 @@ import { AutoFindNpc, type AutoFindNpcOptions } from '../autoFindNpc.js';
 import {
   GameClient,
   PARK_ALREADY_IN_AREA_DIALOG,
+  isRewardDialog,
+  isInformationalDialog,
   type CaptchaEvent,
   type ClientStatus,
   type DeviceProfile,
@@ -1805,12 +1807,8 @@ export class AvatarSession {
 
         const dialogRejectionPromise = new Promise<never>((_, reject) => {
           const onDialog = (reason: string) => {
-            // Bỏ qua dialog "đã ở đúng khu" và dialog nhiệm vụ (cmd -40 cũng
-            // dùng để đẩy tiến trình nhiệm vụ, không phải từ chối join).
-            if (
-              reason.trim() === PARK_ALREADY_IN_AREA_DIALOG
-              || parseQuestDialogText(reason) !== null
-            ) {
+            // Bỏ qua dialog "đã ở đúng khu", dialog nhiệm vụ, và dialog thông tin/phần thưởng
+            if (isInformationalDialog(reason)) {
               return;
             }
             reject(new Error(`server từ chối vào map: ${reason}`));
@@ -2378,11 +2376,11 @@ export class AvatarSession {
             resolve(res);
           };
           const onDialog = (reason: string) => {
-            // Bỏ qua các dialog thông tin không liên quan đến lỗi câu cá
-            if (
-              reason.trim() === PARK_ALREADY_IN_AREA_DIALOG
-              || parseQuestDialogText(reason) !== null
-            ) {
+            // Bỏ qua các dialog thông tin/phần thưởng không liên quan đến lỗi câu cá
+            if (isInformationalDialog(reason)) {
+              if (isRewardDialog(reason)) {
+                this.pushLog(`[câu cá] nhận phần thưởng: ${reason}`);
+              }
               return;
             }
             if (settled) return;
@@ -2525,11 +2523,13 @@ export class AvatarSession {
             resolve(ev.idFish >= 0);
           };
           const onCastDialog = (reason: string) => {
-            // Bỏ qua quest dialogs và "đã ở khu vực"
-            if (
-              reason.trim() === PARK_ALREADY_IN_AREA_DIALOG
-              || parseQuestDialogText(reason) !== null
-            ) return;
+            // Bỏ qua quest dialogs, dialog "đã ở khu vực", và dialog nhận thưởng/thông tin
+            if (isInformationalDialog(reason)) {
+              if (isRewardDialog(reason)) {
+                this.pushLog(`[câu cá] nhận phần thưởng: ${reason}`);
+              }
+              return;
+            }
             if (settled) return;
             settled = true;
             cleanup();
