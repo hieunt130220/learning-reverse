@@ -2202,6 +2202,7 @@ export class AvatarSession {
   }
 
   private startFishingLoop(client: GameClient, generation: number, epoch: number): void {
+    this.cancelFishingFarmSchedule();
     if (this.fishingAbortController) {
       this.fishingAbortController.abort();
     }
@@ -2222,6 +2223,7 @@ export class AvatarSession {
         }
       } finally {
         if (this.fishingAbortController === abort) {
+          this.cancelFishingFarmSchedule();
           this.fishingAbortController = undefined;
         }
       }
@@ -2731,12 +2733,12 @@ export class AvatarSession {
     return false;
   }
 
-  private async runFishingLoop(
+  private async prepareFishingAtPark(
     client: GameClient,
     generation: number,
     epoch: number,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const config = this.fishingConfig.config;
     const map = config.map; // 14: Khu cá rô mặc định
     const area = config.area; // 0
@@ -2751,192 +2753,294 @@ export class AvatarSession {
     client.enterParkContext();
     await this.delayCancellable(800, signal);
 
-    if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+    if (
+      signal.aborted
+      || !this.isCurrent(client, epoch)
+      || !this.isAutomationGenerationCurrent(generation)
+      || this.desiredMode !== 'auto_fishing'
+    ) return false;
 
     // Gửi TX90 (board list request) — probe xác nhận server cần bước này trước joinPark
     this.pushLog(`[câu cá] gửi TX90 board-list request cho map ${map}`);
     const rx90Promise = new Promise<void>((resolve) => {
       let settled = false;
-      const timer = setTimeout(() => {
+      let timer: NodeJS.Timeout | undefined;
+      const cleanup = (): void => {
+        if (timer) clearTimeout(timer);
+        client.session.removeListener('message', onMsg);
+        signal.removeEventListener('abort', onAbort);
+      };
+      const finish = (): void => {
         if (settled) return;
         settled = true;
-        client.session.removeListener('message', onMsg);
-        resolve(); // timeout nhẹ: tiếp tục kể cả khi không nhận được RX90
-      }, 3000);
-      const onMsg = (msg: { command: number }): void => {
-        if (msg.command !== 90) return;
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        client.session.removeListener('message', onMsg);
+        cleanup();
         resolve();
       };
+      const onAbort = (): void => finish();
+      const onMsg = (msg: { command: number }): void => {
+        if (msg.command !== 90) return;
+        finish();
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
       client.session.on('message', onMsg);
+      timer = setTimeout(finish, 3000);
     });
     client.sendRaw(90, [{ t: 'i8', v: String(map) }]);
     await rx90Promise;
     this.pushLog(`[câu cá] nhận RX90 — di chuyển vào map ${map} (khu ${area})…`);
 
-    if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+    if (
+      signal.aborted
+      || !this.isCurrent(client, epoch)
+      || !this.isAutomationGenerationCurrent(generation)
+      || this.desiredMode !== 'auto_fishing'
+    ) return false;
 
     try {
       await this.joinParkWithRetry(client, map, area, signal, epoch);
     } catch (err) {
-      if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+      if (
+        signal.aborted
+        || !this.isCurrent(client, epoch)
+        || !this.isAutomationGenerationCurrent(generation)
+        || this.desiredMode !== 'auto_fishing'
+      ) return false;
       const msg = (err as Error).message;
       this.fishingRuntime.status = 'rejected';
       this.fishingRuntime.lastError = msg;
       this.pushLog(`[câu cá] vào map thất bại: ${msg}`);
       this.emitAutomation();
-      return;
+      return false;
     }
 
-    if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+    if (
+      signal.aborted
+      || !this.isCurrent(client, epoch)
+      || !this.isAutomationGenerationCurrent(generation)
+      || this.desiredMode !== 'auto_fishing'
+    ) return false;
     this.pushLog(`[câu cá] đã vào khu vực câu cá map ${map} — handler=${client.currentHandlerContext}`);
     // Chờ 3000ms để server đồng bộ hoàn toàn trạng thái thế giới và nhân vật trước khi gọi startFishing.
     // Probe live xác nhận server cần ~3s sau RX80 để sẵn sàng nhận TX45; 2000ms gây timeout RX45.
     await this.delayCancellable(3000, signal);
 
-    if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+    if (
+      signal.aborted
+      || !this.isCurrent(client, epoch)
+      || !this.isAutomationGenerationCurrent(generation)
+      || this.desiredMode !== 'auto_fishing'
+    ) return false;
     this.pushLog(`[câu cá] gửi TX45 startFishing — handler=${client.currentHandlerContext}`);
 
-    try {
-      outerLoop: while (true) {
-        if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+    let consecutiveFailures = 0;
+    let lastMissingType: 'ticket' | 'rod' | 'bait' | null = null;
 
-        let consecutiveFailures = 0;
-        let lastMissingType: 'ticket' | 'rod' | 'bait' | null = null;
+    // ── Vòng lặp chờ startFishing thành công ──
+    while (true) {
+      if (
+        signal.aborted
+        || !this.isCurrent(client, epoch)
+        || !this.isAutomationGenerationCurrent(generation)
+        || this.desiredMode !== 'auto_fishing'
+      ) return false;
 
-        // ── Vòng lặp chờ startFishing thành công ──
-        while (true) {
-          if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+      this.fishingRuntime.status = 'starting';
+      this.emitAutomation();
 
-        this.fishingRuntime.status = 'starting';
-        this.emitAutomation();
-
-        const rx45Promise = new Promise<{ iss: boolean; error?: string }>((resolve) => {
-          let settled = false;
-          let timer: NodeJS.Timeout | undefined;
-          const cleanup = () => {
-            client.removeListener('fishing-start-result', onStartResult);
-            client.removeListener('dialog', onDialog);
-            signal.removeEventListener('abort', onAbort);
-            if (timer) clearTimeout(timer);
-          };
-          const onStartResult = (res: { iss: boolean; error?: string }) => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            resolve(res);
-          };
-          const onDialog = (reason: string) => {
-            // Bỏ qua các dialog thông tin/phần thưởng không liên quan đến lỗi câu cá
-            if (isInformationalDialog(reason)) {
-              if (isRewardDialog(reason)) {
-                this.pushLog(`[câu cá] nhận phần thưởng: ${reason}`);
-              }
-              return;
+      const rx45Promise = new Promise<{ iss: boolean; error?: string }>((resolve) => {
+        let settled = false;
+        let timer: NodeJS.Timeout | undefined;
+        const cleanup = () => {
+          client.removeListener('fishing-start-result', onStartResult);
+          client.removeListener('dialog', onDialog);
+          signal.removeEventListener('abort', onAbort);
+          if (timer) clearTimeout(timer);
+        };
+        const onStartResult = (res: { iss: boolean; error?: string }) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(res);
+        };
+        const onDialog = (reason: string) => {
+          // Bỏ qua các dialog thông tin/phần thưởng không liên quan đến lỗi câu cá
+          if (isInformationalDialog(reason)) {
+            if (isRewardDialog(reason)) {
+              this.pushLog(`[câu cá] nhận phần thưởng: ${reason}`);
             }
-            if (settled) return;
-            settled = true;
-            cleanup();
-            resolve({ iss: false, error: reason });
-          };
-          const onAbort = () => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            resolve({ iss: false, error: 'bị hủy' });
-          };
-          client.on('fishing-start-result', onStartResult);
-          client.on('dialog', onDialog);
-          signal.addEventListener('abort', onAbort, { once: true });
-          timer = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            resolve({ iss: false, error: 'hết giờ chờ bắt đầu câu' });
-          }, 8000);
-        });
-
-        client.startFishing();
-        const startResult = await rx45Promise;
-
-        if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
-
-        if (!startResult.iss) {
-          const reason = startResult.error ?? 'server từ chối bắt đầu câu';
-          const errText = reason.toLowerCase();
-          this.pushLog(`[câu cá] Server từ chối bắt đầu câu: ${reason}`);
-
-          if (errText.includes('rương') && (errText.includes('đầy') || errText.includes('không thể câu'))) {
-            const sold = await this.executeSellFish(client, epoch, signal);
-            if (!sold) {
-              this.fishingRuntime.status = 'rejected';
-              this.fishingRuntime.lastError = reason;
-              this.pushLog(`[câu cá] Dừng câu: ${reason}`);
-              this.emitAutomation();
-              return;
-            }
-            continue outerLoop;
+            return;
           }
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve({ iss: false, error: reason });
+        };
+        const onAbort = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve({ iss: false, error: 'bị hủy' });
+        };
+        client.on('fishing-start-result', onStartResult);
+        client.on('dialog', onDialog);
+        signal.addEventListener('abort', onAbort, { once: true });
+        timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve({ iss: false, error: 'hết giờ chờ bắt đầu câu' });
+        }, 8000);
+      });
 
-          let missingType: 'ticket' | 'rod' | 'bait' | null = null;
-          if (errText.includes('vé') || errText.includes('bến tàu')) {
-            missingType = 'ticket';
-          } else if (errText.includes('mồi')) {
-            missingType = 'bait';
-          } else if (
-            errText.includes('cần câu')
-            || errText.includes('sử dụng cần')
-            || errText.includes('phải có cần')
-            || errText.includes('cần tre')
-            || errText.includes('cần sắt')
-          ) {
-            missingType = 'rod';
+      client.startFishing();
+      const startResult = await rx45Promise;
+
+      if (
+        signal.aborted
+        || !this.isCurrent(client, epoch)
+        || !this.isAutomationGenerationCurrent(generation)
+        || this.desiredMode !== 'auto_fishing'
+      ) return false;
+
+      if (!startResult.iss) {
+        const reason = startResult.error ?? 'server từ chối bắt đầu câu';
+        const errText = reason.toLowerCase();
+        this.pushLog(`[câu cá] Server từ chối bắt đầu câu: ${reason}`);
+
+        if (errText.includes('rương') && (errText.includes('đầy') || errText.includes('không thể câu'))) {
+          const sold = await this.executeSellFish(client, epoch, signal);
+          if (!sold) {
+            this.fishingRuntime.status = 'rejected';
+            this.fishingRuntime.lastError = reason;
+            this.pushLog(`[câu cá] Dừng câu: ${reason}`);
+            this.emitAutomation();
+            return false;
           }
-
-          if (missingType) {
-            if (missingType !== lastMissingType) {
-              lastMissingType = missingType;
-              consecutiveFailures = 0;
-            }
-
-            // Nếu đã mua loại này 1 lần rồi mà server vẫn từ chối cùng lý do:
-            // Dừng ngay lập tức để tránh vòng lặp mua tiếp làm đầy rương và tốn tiền
-            if (consecutiveFailures >= 1) {
-              this.fishingRuntime.status = 'rejected';
-              this.fishingRuntime.lastError = `Đã mua ${missingType} nhưng server vẫn từ chối: ${reason}`;
-              this.pushLog(`[câu cá] Dừng câu: ${this.fishingRuntime.lastError}`);
-              this.emitAutomation();
-              return;
-            }
-
-            const bought = await this.executeParkPurchase(client, epoch, signal, missingType);
-            if (bought) {
-              consecutiveFailures++;
-              continue;
-            } else {
-              this.fishingRuntime.status = 'rejected';
-              if (!this.fishingRuntime.lastError) {
-                this.fishingRuntime.lastError = reason;
-              }
-              this.emitAutomation();
-              return;
-            }
-          }
-
-          this.fishingRuntime.status = 'rejected';
-          this.fishingRuntime.lastError = reason;
-          this.emitAutomation();
-          return;
+          continue;
         }
 
-        break; // thoát start loop, vào cast loop
+        let missingType: 'ticket' | 'rod' | 'bait' | null = null;
+        if (errText.includes('vé') || errText.includes('bến tàu')) {
+          missingType = 'ticket';
+        } else if (errText.includes('mồi')) {
+          missingType = 'bait';
+        } else if (
+          errText.includes('cần câu')
+          || errText.includes('sử dụng cần')
+          || errText.includes('phải có cần')
+          || errText.includes('cần tre')
+          || errText.includes('cần sắt')
+        ) {
+          missingType = 'rod';
+        }
+
+        if (missingType) {
+          if (missingType !== lastMissingType) {
+            lastMissingType = missingType;
+            consecutiveFailures = 0;
+          }
+
+          // Nếu đã mua loại này 1 lần rồi mà server vẫn từ chối cùng lý do:
+          // Dừng ngay lập tức để tránh vòng lặp mua tiếp làm đầy rương và tốn tiền
+          if (consecutiveFailures >= 1) {
+            this.fishingRuntime.status = 'rejected';
+            this.fishingRuntime.lastError = `Đã mua ${missingType} nhưng server vẫn từ chối: ${reason}`;
+            this.pushLog(`[câu cá] Dừng câu: ${this.fishingRuntime.lastError}`);
+            this.emitAutomation();
+            return false;
+          }
+
+          const bought = await this.executeParkPurchase(client, epoch, signal, missingType);
+          if (bought) {
+            consecutiveFailures++;
+            continue;
+          } else {
+            this.fishingRuntime.status = 'rejected';
+            if (!this.fishingRuntime.lastError) {
+              this.fishingRuntime.lastError = reason;
+            }
+            this.emitAutomation();
+            return false;
+          }
+        }
+
+        this.fishingRuntime.status = 'rejected';
+        this.fishingRuntime.lastError = reason;
+        this.emitAutomation();
+        return false;
       }
 
-      this.fishingRuntime.lastError = null;
+      break; // startResult.iss is true!
+    }
 
+    this.fishingRuntime.lastError = null;
+    return true;
+  }
+
+  private async serviceDueFishingFarm(
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    signal: AbortSignal,
+  ): Promise<'continue-fishing' | 'stop'> {
+    if (!this.fishingFarmDue) return 'continue-fishing';
+    this.fishingChallengeGeneration += 1;
+    this.fishingFarmDue = false;
+
+    const outcome = await this.runFishingFarmCycle(
+      'periodic',
+      client,
+      generation,
+      epoch,
+      signal,
+    );
+    if (outcome === 'cancelled' || outcome === 'reconnect') return 'stop';
+    if (
+      signal.aborted
+      || !this.isCurrent(client, epoch)
+      || !this.isAutomationGenerationCurrent(generation)
+      || this.desiredMode !== 'auto_fishing'
+    ) {
+      return 'stop';
+    }
+
+    this.pushLog('[câu cá] Đã xong farm, quay lại khu câu cá...');
+    this.fishingFarmPhase = 'returning-to-park';
+    const ok = await this.prepareFishingAtPark(client, generation, epoch, signal);
+    if (!ok) return 'stop';
+    this.fishingFarmPhase = 'fishing';
+    this.scheduleFishingFarm(generation, epoch);
+    return 'continue-fishing';
+  }
+
+  private async runFishingLoop(
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    signal: AbortSignal,
+  ): Promise<void> {
+    try {
+      const initialFarm = await this.runFishingFarmCycle(
+        'initial',
+        client,
+        generation,
+        epoch,
+        signal,
+      );
+      if (initialFarm === 'cancelled' || initialFarm === 'reconnect') return;
+      if (
+        signal.aborted
+        || !this.isCurrent(client, epoch)
+        || !this.isAutomationGenerationCurrent(generation)
+        || this.desiredMode !== 'auto_fishing'
+      ) return;
+
+      this.fishingFarmPhase = 'moving-to-park';
+      if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
+      this.fishingFarmPhase = 'fishing';
+      this.scheduleFishingFarm(generation, epoch);
+
+      const config = this.fishingConfig.config;
       let catchesSinceBreak = 0;
       let nextBreakThreshold = randomBetween(
         FISHING_HUMAN_TIMING.MICRO_BREAK_INTERVAL_MIN_CATCHES,
@@ -2951,6 +3055,11 @@ export class AvatarSession {
         && this.desiredMode === 'auto_fishing'
         && client.status === 'online'
       ) {
+        if (this.fishingFarmDue) {
+          const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
+          if (action === 'stop') return;
+        }
+
         this.fishingRuntime.status = 'casting';
         this.pushLog('[câu cá] đang quăng cần…');
         this.emitAutomation();
@@ -3021,7 +3130,13 @@ export class AvatarSession {
               this.emitAutomation();
               return;
             }
-            continue outerLoop;
+            if (this.fishingFarmDue) {
+              const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
+              if (action === 'stop') return;
+              continue;
+            }
+            if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
+            continue;
           }
 
           let castMissingType: 'ticket' | 'rod' | 'bait' | null = null;
@@ -3042,10 +3157,16 @@ export class AvatarSession {
             const bought = await this.executeParkPurchase(client, epoch, signal, castMissingType);
             if (!bought) return;
             // Sau khi mua, gửi cauCaXong để kết thúc session câu cũ
-            // rồi bắt đầu lại từ startFishing qua outerLoop
+            // rồi bắt đầu lại từ startFishing qua prepareFishingAtPark
             try { client.cauCaXong(); } catch { /* bỏ qua */ }
             await this.delayCancellable(1000, signal);
-            continue outerLoop;
+            if (this.fishingFarmDue) {
+              const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
+              if (action === 'stop') return;
+              continue;
+            }
+            if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
+            continue;
           }
           // Dialog không nhận diện được — dừng câu
           this.fishingRuntime.status = 'rejected';
@@ -3054,14 +3175,25 @@ export class AvatarSession {
           return;
         }
 
-        if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
+        if (
+          signal.aborted
+          || !this.isCurrent(client, epoch)
+          || !this.isAutomationGenerationCurrent(generation)
+          || this.desiredMode !== 'auto_fishing'
+        ) break;
 
         // Xử lý khi không bắt được cá (hết 35s không cắn câu hoặc giật hụt/sổng cá)
         if (catchResult === false) {
           this.pushLog('[câu cá] không bắt được cá lượt này — reset phiên câu và thử lại…');
           try { client.cauCaXong(); } catch { /* bỏ qua */ }
           await this.delayCancellable(1000, signal);
-          continue outerLoop;
+          if (this.fishingFarmDue) {
+            const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
+            if (action === 'stop') return;
+            continue;
+          }
+          if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
+          continue;
         }
 
         // Chờ mô phỏng animation kéo cá lên và người chơi xem phần thưởng cá
@@ -3070,7 +3202,12 @@ export class AvatarSession {
           FISHING_HUMAN_TIMING.POST_CATCH_MAX_MS,
         );
         await this.delayCancellable(postCatchDelay, signal);
-        if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
+        if (
+          signal.aborted
+          || !this.isCurrent(client, epoch)
+          || !this.isAutomationGenerationCurrent(generation)
+          || this.desiredMode !== 'auto_fishing'
+        ) break;
 
         // Bắt buộc gửi TX 44 (doCauCaXong) để server chốt kết quả và chuyển cá vào giỏ
         const donePromise = new Promise<void>((resolve) => {
@@ -3107,7 +3244,18 @@ export class AvatarSession {
         client.cauCaXong();
         await donePromise;
 
-        if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
+        if (
+          signal.aborted
+          || !this.isCurrent(client, epoch)
+          || !this.isAutomationGenerationCurrent(generation)
+          || this.desiredMode !== 'auto_fishing'
+        ) break;
+
+        if (this.fishingFarmDue) {
+          const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
+          if (action === 'stop') return;
+          continue;
+        }
 
         catchesSinceBreak++;
         if (catchesSinceBreak >= nextBreakThreshold) {
@@ -3118,15 +3266,32 @@ export class AvatarSession {
           this.pushLog(`[câu cá] nghỉ tay ${(breakMs / 1000).toFixed(1)}s mô phỏng người chơi…`);
           this.fishingRuntime.status = 'resting';
           this.emitAutomation();
-          await this.delayCancellable(breakMs, signal);
+          await this.waitForFishingRestOrFarmDue(breakMs, signal);
           catchesSinceBreak = 0;
           nextBreakThreshold = randomBetween(
             FISHING_HUMAN_TIMING.MICRO_BREAK_INTERVAL_MIN_CATCHES,
             FISHING_HUMAN_TIMING.MICRO_BREAK_INTERVAL_MAX_CATCHES,
           );
+          if (
+            signal.aborted
+            || !this.isCurrent(client, epoch)
+            || !this.isAutomationGenerationCurrent(generation)
+            || this.desiredMode !== 'auto_fishing'
+          ) break;
+
+          if (this.fishingFarmDue) {
+            const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
+            if (action === 'stop') return;
+            continue;
+          }
         }
 
-        if (signal.aborted || this.desiredMode !== 'auto_fishing') break;
+        if (
+          signal.aborted
+          || !this.isCurrent(client, epoch)
+          || !this.isAutomationGenerationCurrent(generation)
+          || this.desiredMode !== 'auto_fishing'
+        ) break;
 
         // Nghỉ giữa các lượt câu trước khi quăng cần lượt mới (kèm jitter ngẫu nhiên)
         this.fishingRuntime.status = 'resting';
@@ -3135,17 +3300,26 @@ export class AvatarSession {
           FISHING_HUMAN_TIMING.CAST_JITTER_MIN_MS,
           FISHING_HUMAN_TIMING.CAST_JITTER_MAX_MS,
         );
-        await this.delayCancellable(config.castDelayMs + restJitter, signal);
+        await this.waitForFishingRestOrFarmDue(config.castDelayMs + restJitter, signal);
+
+        if (
+          signal.aborted
+          || !this.isCurrent(client, epoch)
+          || !this.isAutomationGenerationCurrent(generation)
+          || this.desiredMode !== 'auto_fishing'
+        ) break;
+
+        if (this.fishingFarmDue) {
+          const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
+          if (action === 'stop') return;
+          continue;
+        }
       }
-      // Cast loop kết thúc bình thường (abort/stop) — thoát outerLoop
-      break outerLoop;
-    } // end outerLoop
     } finally {
-      const ownsFishingLoop = this.fishingAbortController?.signal === signal
-        && !signal.aborted
+      const ownsFishingLoop = (this.fishingAbortController?.signal === signal || signal.aborted)
         && this.isAutomationGenerationCurrent(generation)
         && this.isCurrent(client, epoch);
-      if (ownsFishingLoop && client.status === 'online') {
+      if (client.status === 'online' && this.isCurrent(client, epoch)) {
         try {
           client.cauCaXong();
         } catch {
@@ -3157,6 +3331,9 @@ export class AvatarSession {
           this.fishingRuntime.status = 'idle';
         }
         this.emitAutomation();
+      }
+      if (this.fishingAbortController?.signal === signal || signal.aborted) {
+        this.fishingFarmPhase = 'idle';
       }
     }
   }
