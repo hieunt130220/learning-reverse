@@ -74,8 +74,23 @@ export function isFishingAutoTx43Enabled(env: NodeJS.ProcessEnv = process.env): 
 export const RETRY_BASE_MS = 10_000;
 export const RETRY_MAX_MS = 5 * 60 * 1000;
 const AUTOMATION_INITIAL_OUTCOME_TIMEOUT_MS = 10_000;
+const FISHING_FARM_INTERVAL_MS = 1_800_000;
+const FISHING_FARM_TIMEOUT_MS = 120_000;
+const FISHING_FARM_CLEANUP_GRACE_MS = 10_000;
 const LOG_BUFFER = 500;
 const TRAFFIC_BUFFER = 100;
+
+type FishingFarmPhase =
+  | 'idle'
+  | 'initial-farm'
+  | 'moving-to-park'
+  | 'fishing'
+  | 'farm-due'
+  | 'periodic-farm'
+  | 'returning-to-park'
+  | 'stopping';
+
+type FishingFarmCycleOutcome = 'completed' | 'skipped' | 'cancelled' | 'reconnect';
 
 export class AutomationInitializationError extends Error {
   constructor(
@@ -269,6 +284,11 @@ export class AvatarSession {
   private findNpcRuntime: AutoFindNpcState = idleFindNpcRuntime('');
   private fishingRuntime: FishingRuntimeState = idleFishingRuntime();
   private fishingAbortController?: AbortController;
+  private fishingFarmPhase: FishingFarmPhase = 'idle';
+  private fishingFarmTimer?: NodeJS.Timeout;
+  private fishingFarmDue = false;
+  private fishingFarmAbortController?: AbortController;
+  private fishingFarmWake?: () => void;
   private automationTransition: Promise<AutomationStartOutcome> = Promise.resolve('active');
   private pendingAutomationTransitions = 0;
   private pendingFindNpcTransitions = 0;
@@ -407,6 +427,7 @@ export class AvatarSession {
     this.cancelRetry();
     this.cancelAutoCycleTimer();
     this.cancelAutoSyncKickoff();
+    this.cancelFishingFarmSchedule();
     this.teardown();
     this.activeMode = 'off';
     this.transitionState = 'stable';
@@ -1362,6 +1383,7 @@ export class AvatarSession {
 
   private async stopActiveAutomation(generation: number): Promise<boolean> {
     this.cancelAutoCycleTimer();
+    this.cancelFishingFarmSchedule();
     await this.auto?.stop();
     const finder = this.findNpc;
     this.findNpc = undefined;
@@ -1644,6 +1666,7 @@ export class AvatarSession {
     this.transitionState = 'stable';
     this.cancelRetry();
     this.cancelAutoCycleTimer();
+    this.cancelFishingFarmSchedule();
     void this.auto?.stop();
     const finder = this.findNpc;
     this.findNpc = undefined;
@@ -1659,6 +1682,12 @@ export class AvatarSession {
   }
 
   private onDisconnected(epoch: number): void {
+    this.fishingChallengeGeneration += 1;
+    this.cancelFishingFarmSchedule();
+    if (this.fishingAbortController) {
+      this.fishingAbortController.abort();
+      this.fishingAbortController = undefined;
+    }
     this.cancelAutoSyncKickoff();
     this.detachShop('Phiên game đã ngắt kết nối');
     void this.auto?.stop();
@@ -1724,6 +1753,7 @@ export class AvatarSession {
 
   private teardown(): void {
     this.fishingChallengeGeneration += 1;
+    this.cancelFishingFarmSchedule();
     this.invalidateAutomationTransitions();
     this.cancelAutoSyncKickoff();
     this.detachShop('Phiên game đã teardown');
@@ -1749,6 +1779,219 @@ export class AvatarSession {
       client.logout();
     } catch {
       /* bỏ qua */
+    }
+  }
+
+  private scheduleFishingFarm(generation: number, epoch: number): void {
+    if (this.fishingFarmTimer) this.clearTimeoutFn(this.fishingFarmTimer);
+    this.fishingFarmDue = false;
+    this.fishingFarmTimer = this.setTimeoutFn(() => {
+      this.fishingFarmTimer = undefined;
+      if (
+        !this.isAutomationGenerationCurrent(generation)
+        || epoch !== this.connectionEpoch
+        || this.desiredMode !== 'auto_fishing'
+        || this.fishingAbortController?.signal.aborted !== false
+      ) return;
+      this.fishingFarmDue = true;
+      this.fishingFarmPhase = 'farm-due';
+      const wake = this.fishingFarmWake;
+      this.fishingFarmWake = undefined;
+      wake?.();
+    }, FISHING_FARM_INTERVAL_MS);
+    this.fishingFarmTimer.unref?.();
+  }
+
+  private cancelFishingFarmSchedule(): void {
+    if (this.fishingFarmTimer) this.clearTimeoutFn(this.fishingFarmTimer);
+    this.fishingFarmTimer = undefined;
+    this.fishingFarmDue = false;
+    const wake = this.fishingFarmWake;
+    this.fishingFarmWake = undefined;
+    wake?.();
+    this.fishingFarmAbortController?.abort();
+    this.fishingFarmAbortController = undefined;
+    this.fishingFarmPhase = 'idle';
+  }
+
+  private waitForFishingRestOrFarmDue(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve) => {
+      const previousWake = this.fishingFarmWake;
+      this.fishingFarmWake = undefined;
+      previousWake?.();
+      if (signal.aborted || this.fishingFarmDue) {
+        resolve();
+        return;
+      }
+      let timer: NodeJS.Timeout | undefined;
+      let settled = false;
+      const cleanup = (): void => {
+        if (timer) this.clearTimeoutFn(timer);
+        signal.removeEventListener('abort', onAbort);
+        if (this.fishingFarmWake === onWake) this.fishingFarmWake = undefined;
+      };
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      const onAbort = (): void => finish();
+      const onWake = (): void => finish();
+      this.fishingFarmWake = onWake;
+      signal.addEventListener('abort', onAbort, { once: true });
+      timer = this.setTimeoutFn(finish, ms);
+    });
+  }
+
+  private async runFishingFarmCycle(
+    kind: 'initial' | 'periodic',
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    parentSignal: AbortSignal,
+  ): Promise<FishingFarmCycleOutcome> {
+    const config = { ...this.lastAutoConfig };
+    if (Object.keys(config).length === 0) {
+      this.pushLog('[nông trại] Bỏ qua chu kỳ kèm Auto Fishing: chưa có cấu hình Auto Farm đã lưu.');
+      return 'skipped';
+    }
+    if (parentSignal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') {
+      return 'cancelled';
+    }
+
+    const auto = this.auto;
+    if (!auto) {
+      this.pushLog('[nông trại] Bỏ qua chu kỳ kèm Auto Fishing: cấu hình không hợp lệ: Auto Farm chưa khởi động.');
+      return 'skipped';
+    }
+
+    this.fishingFarmPhase = kind === 'initial' ? 'initial-farm' : 'periodic-farm';
+    if (kind === 'periodic') {
+      this.pushLog('[câu cá] Tạm dừng để chạy chu kỳ nông trại định kỳ...');
+    }
+    this.pushLog('[nông trại] Bắt đầu chu kỳ kèm Auto Fishing...');
+
+    const child = new AbortController();
+    let parentAborted: boolean = parentSignal.aborted;
+    const onParentAbort = (): void => {
+      parentAborted = true;
+      child.abort();
+    };
+    parentSignal.addEventListener('abort', onParentAbort, { once: true });
+    if (parentAborted) child.abort();
+    this.fishingFarmAbortController = child;
+
+    let hardTimeout: NodeJS.Timeout | undefined;
+    let cleanupGraceTimer: NodeJS.Timeout | undefined;
+    try {
+      let cyclePromise: Promise<AutoFarmState>;
+      try {
+        cyclePromise = auto.runSingleCycle(
+          { ...config, startDelayMs: 0, logoutAfterCycle: false },
+          { signal: child.signal },
+        );
+      } catch (error) {
+        cyclePromise = Promise.reject(error);
+      }
+
+      // Attach the rejection handler immediately. The cycle may continue after
+      // the hard-timeout race has already selected its marker.
+      const settledCycle = cyclePromise.then(
+        (state) => ({ kind: 'completed' as const, state }),
+        (error: unknown) => ({ kind: 'error' as const, error }),
+      );
+      const timeoutMarker = Symbol('fishing-farm-timeout');
+      const timeoutPromise = new Promise<typeof timeoutMarker>((resolve) => {
+        hardTimeout = this.setTimeoutFn(() => resolve(timeoutMarker), FISHING_FARM_TIMEOUT_MS);
+        hardTimeout.unref?.();
+      });
+      const result = await Promise.race([settledCycle, timeoutPromise]);
+
+      if (result === timeoutMarker) {
+        child.abort();
+        let stopPromise: Promise<void>;
+        try {
+          stopPromise = auto.stop();
+        } catch (error) {
+          stopPromise = Promise.reject(error);
+        }
+        const stopSettled = stopPromise.then(
+          () => true,
+          () => true,
+        );
+        const gracePromise = new Promise<boolean>((resolve) => {
+          cleanupGraceTimer = this.setTimeoutFn(
+            () => resolve(false),
+            FISHING_FARM_CLEANUP_GRACE_MS,
+          );
+          cleanupGraceTimer.unref?.();
+        });
+        const quiesced = await Promise.race([stopSettled, gracePromise]);
+        if (parentAborted || parentSignal.aborted) return 'cancelled';
+        if (quiesced) {
+          this.pushLog(
+            `[nông trại] Chu kỳ farm quá thời gian ${FISHING_FARM_TIMEOUT_MS / 1000}s; `
+              + 'đã dừng an toàn, sẽ quay lại câu cá.',
+          );
+          return 'completed';
+        }
+        this.restartAfterStuckFishingFarm(
+          `chu kỳ farm quá ${FISHING_FARM_TIMEOUT_MS / 1000}s và không dừng trong `
+            + `${FISHING_FARM_CLEANUP_GRACE_MS / 1000}s`,
+        );
+        return 'reconnect';
+      }
+
+      if (result.kind === 'error') {
+        if (parentAborted || parentSignal.aborted || child.signal.aborted) {
+          try {
+            await auto.stop();
+          } catch {
+            /* dừng đã được yêu cầu; không để lỗi phụ chặn cleanup */
+          }
+          return 'cancelled';
+        }
+        const message = result.error instanceof Error ? result.error.message : String(result.error);
+        this.pushLog(
+          `[nông trại] Bỏ qua chu kỳ kèm Auto Fishing: cấu hình không hợp lệ: ${message}.`,
+        );
+        try {
+          await auto.stop();
+        } catch {
+          /* lỗi khởi động đã được báo; tiếp tục Auto Fishing */
+        }
+        return 'skipped';
+      }
+
+      try {
+        await auto.stop();
+      } catch {
+        /* runSingleCycle đã hoàn tất; không để lỗi dừng farm chặn câu cá */
+      }
+      if (parentAborted || parentSignal.aborted) return 'cancelled';
+      if (result.state.lastError) {
+        this.pushLog(`[nông trại] Chu kỳ hoàn tất kèm cảnh báo: ${result.state.lastError}`);
+      }
+      return 'completed';
+    } finally {
+      if (hardTimeout) this.clearTimeoutFn(hardTimeout);
+      if (cleanupGraceTimer) this.clearTimeoutFn(cleanupGraceTimer);
+      parentSignal.removeEventListener('abort', onParentAbort);
+      if (this.fishingFarmAbortController === child) {
+        this.fishingFarmAbortController = undefined;
+      }
+    }
+  }
+
+  private restartAfterStuckFishingFarm(reason: string): void {
+    this.pushLog(`[nông trại] ${reason}; đóng phiên cũ để tránh race packet và kết nối lại...`);
+    this.activeMode = 'off';
+    this.teardown();
+    this.emitAutomation();
+    this.emit('status', 'idle');
+    if (this.wanted && !this.permanentlyFailed && this.desiredMode === 'auto_fishing') {
+      this.scheduleRetry(this.connectionEpoch);
     }
   }
 
