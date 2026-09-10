@@ -367,7 +367,14 @@ export class AutoFarm extends EventEmitter {
         action();
       };
       const onComplete = (state: AutoFarmState): void => {
-        finish(() => resolve(state));
+        // `EventEmitter.emit()` invokes this listener synchronously, before
+        // `finishCycle()` can inspect `continuous` and arm its next timer.
+        // Requesting stop here invalidates the generation immediately; the
+        // await below still lets the active cycle quiesce before resolving.
+        void this.stop().then(
+          () => finish(() => resolve(state)),
+          (error: unknown) => finish(() => reject(error)),
+        );
       };
       const onAbort = (): void => {
         void this.stop().then(
