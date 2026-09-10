@@ -92,6 +92,16 @@ type FishingFarmPhase =
 
 type FishingFarmCycleOutcome = 'completed' | 'skipped' | 'cancelled' | 'reconnect';
 
+interface FishingFarmCycleOwnership {
+  id: symbol;
+  client: GameClient;
+  epoch: number;
+  generation: number;
+  auto: AutoFarm;
+  child: AbortController;
+  parent?: AbortController;
+}
+
 export class AutomationInitializationError extends Error {
   constructor(
     readonly code: 'find-npc-name-required' | 'catalog-unverified' | 'find-npc-init-failed',
@@ -289,7 +299,11 @@ export class AvatarSession {
   private fishingFarmScheduleToken?: symbol;
   private fishingFarmDue = false;
   private fishingFarmAbortController?: AbortController;
-  private fishingFarmCycleToken?: symbol;
+  private fishingFarmCycleToken?: FishingFarmCycleOwnership;
+  private fishingFarmCycleRelease?: {
+    ownership: FishingFarmCycleOwnership;
+    resolve: () => void;
+  };
   private fishingFarmWake?: () => void;
   private automationTransition: Promise<AutomationStartOutcome> = Promise.resolve('active');
   private pendingAutomationTransitions = 0;
@@ -1088,8 +1102,15 @@ export class AvatarSession {
     this.auto!.on('log', (line: string) => {
       if (this.isCurrent(client, epoch)) this.pushLog(line);
     });
-    this.auto!.on('cycle-complete', () => {
-      if (this.fishingFarmCycleToken) return;
+    const wiredAuto = this.auto!;
+    wiredAuto.on('cycle-complete', () => {
+      const ownership = this.fishingFarmCycleToken;
+      if (
+        ownership
+        && ownership.client === client
+        && ownership.epoch === epoch
+        && ownership.auto === wiredAuto
+      ) return;
       if (this.isCurrent(client, epoch)) this.onAutoCycleComplete(epoch);
     });
     this.macros!.on('state', (s: MacroState) => {
@@ -1386,13 +1407,59 @@ export class AvatarSession {
 
   private async stopActiveAutomation(generation: number): Promise<boolean> {
     this.cancelAutoCycleTimer();
+    const fishingController = this.fishingAbortController;
+    const farmOwnership = this.fishingFarmCycleToken;
+    const farmAuto = farmOwnership?.auto;
+    const ownsCurrentFishingFarm = farmOwnership !== undefined
+      && farmOwnership.generation === generation
+      && this.isCurrentFishingFarmOwnership(farmOwnership);
+    if (ownsCurrentFishingFarm) farmOwnership.child.abort();
     this.cancelFishingFarmSchedule();
-    await this.auto?.stop();
+    if (ownsCurrentFishingFarm && farmAuto) {
+      let stopPromise: Promise<void>;
+      try {
+        stopPromise = Promise.resolve(farmAuto.stop());
+      } catch (error) {
+        stopPromise = Promise.reject(error);
+      }
+      const stopSettled = stopPromise.then(
+        () => true,
+        () => true,
+      );
+      const cycleRelease = this.waitForFishingFarmCycleRelease(farmOwnership);
+      let cleanupGraceTimer: NodeJS.Timeout | undefined;
+      const gracePromise = new Promise<boolean>((resolve) => {
+        cleanupGraceTimer = this.setTimeoutFn(
+          () => resolve(false),
+          FISHING_FARM_CLEANUP_GRACE_MS,
+        );
+        cleanupGraceTimer.unref?.();
+      });
+      const quiesced = await Promise.race([
+        Promise.all([stopSettled, cycleRelease]).then(() => true),
+        gracePromise,
+      ]);
+      if (cleanupGraceTimer) this.clearTimeoutFn(cleanupGraceTimer);
+      if (!quiesced) {
+        const recovered = this.restartAfterStuckFishingFarm(
+          `farm không dừng trong ${FISHING_FARM_CLEANUP_GRACE_MS / 1000}s khi chuyển mode`,
+          farmOwnership,
+        );
+        if (recovered) return false;
+        if (this.fishingAbortController === fishingController) {
+          this.fishingAbortController?.abort();
+          this.fishingAbortController = undefined;
+        }
+        return false;
+      }
+    } else {
+      await this.auto?.stop();
+    }
     const finder = this.findNpc;
     this.findNpc = undefined;
     if (finder) await finder.stop();
-    if (this.fishingAbortController) {
-      this.fishingAbortController.abort();
+    if (this.fishingAbortController === fishingController) {
+      this.fishingAbortController?.abort();
       this.fishingAbortController = undefined;
     }
     if (this.activeMode === 'auto_fishing') {
@@ -1591,8 +1658,14 @@ export class AvatarSession {
   }
 
   private onAutoCycleComplete(epoch: number): void {
+    const ownership = this.fishingFarmCycleToken;
     if (
-      this.fishingFarmCycleToken
+      (
+        ownership
+        && ownership.client === this.client
+        && ownership.epoch === epoch
+        && ownership.auto === this.auto
+      )
       || epoch !== this.connectionEpoch
       || this.desiredMode !== 'auto_farm'
       || this.status !== 'online'
@@ -1876,12 +1949,17 @@ export class AvatarSession {
     generation: number,
     epoch: number,
     child: AbortController,
-    token: symbol,
+    ownership: FishingFarmCycleOwnership,
     parentSignal: AbortSignal,
     allowAbortedChild = false,
     allowNonFishingMode = false,
   ): boolean {
-    return this.fishingFarmCycleToken === token
+    return this.fishingFarmCycleToken === ownership
+      && ownership.client === client
+      && ownership.epoch === epoch
+      && ownership.generation === generation
+      && ownership.auto === this.auto
+      && ownership.child === child
       && this.fishingFarmAbortController === child
       && (allowAbortedChild || !child.signal.aborted)
       && !parentSignal.aborted
@@ -1889,6 +1967,27 @@ export class AvatarSession {
       && this.isCurrent(client, epoch)
       && client.status === 'online'
       && (allowNonFishingMode ? this.desiredMode !== 'off' : this.desiredMode === 'auto_fishing');
+  }
+
+  private isCurrentFishingFarmOwnership(ownership: FishingFarmCycleOwnership): boolean {
+    return this.fishingFarmCycleToken === ownership
+      && ownership.client === this.client
+      && ownership.epoch === this.connectionEpoch
+      && ownership.generation === this.automationGeneration
+      && ownership.auto === this.auto
+      && this.isCurrent(ownership.client, ownership.epoch)
+      && ownership.client.status === 'online'
+      && (ownership.parent === undefined || this.fishingAbortController === ownership.parent)
+      && ownership.parent?.signal.aborted !== true;
+  }
+
+  private waitForFishingFarmCycleRelease(ownership: FishingFarmCycleOwnership): Promise<void> {
+    if (this.fishingFarmCycleToken !== ownership) return Promise.resolve();
+    return new Promise((resolve) => {
+      const previous = this.fishingFarmCycleRelease;
+      this.fishingFarmCycleRelease = { ownership, resolve };
+      previous?.resolve();
+    });
   }
 
   private async runFishingFarmCycle(
@@ -1912,7 +2011,22 @@ export class AvatarSession {
       this.pushLog('[nông trại] Bỏ qua chu kỳ kèm Auto Fishing: cấu hình không hợp lệ: Auto Farm chưa khởi động.');
       return 'skipped';
     }
-    if (this.fishingFarmCycleToken) return 'cancelled';
+    const existingOwnership = this.fishingFarmCycleToken;
+    if (
+      existingOwnership
+      && existingOwnership.client === client
+      && existingOwnership.epoch === epoch
+      && existingOwnership.generation === generation
+      && existingOwnership.auto === auto
+      && this.isAutomationGenerationCurrent(generation)
+      && this.isCurrent(client, epoch)
+      && this.auto === auto
+    ) return 'cancelled';
+    if (existingOwnership && this.fishingFarmCycleRelease?.ownership === existingOwnership) {
+      const release = this.fishingFarmCycleRelease;
+      this.fishingFarmCycleRelease = undefined;
+      release.resolve();
+    }
 
     this.fishingFarmPhase = kind === 'initial' ? 'initial-farm' : 'periodic-farm';
     if (kind === 'periodic') {
@@ -1921,13 +2035,21 @@ export class AvatarSession {
     this.pushLog('[nông trại] Bắt đầu chu kỳ kèm Auto Fishing...');
 
     const child = new AbortController();
-    const cycleToken = Symbol('fishing-farm-cycle');
+    const ownership: FishingFarmCycleOwnership = {
+      id: Symbol('fishing-farm-cycle'),
+      client,
+      epoch,
+      generation,
+      auto,
+      child,
+      parent: this.fishingAbortController,
+    };
     const onParentAbort = (): void => {
       child.abort();
     };
     parentSignal.addEventListener('abort', onParentAbort, { once: true });
     if (parentSignal.aborted) child.abort();
-    this.fishingFarmCycleToken = cycleToken;
+    this.fishingFarmCycleToken = ownership;
     this.fishingFarmAbortController = child;
 
     let hardTimeout: NodeJS.Timeout | undefined;
@@ -1941,7 +2063,7 @@ export class AvatarSession {
         generation,
         epoch,
         child,
-        cycleToken,
+        ownership,
         parentSignal,
         allowAbortedChild,
         allowNonFishingMode,
@@ -1976,7 +2098,7 @@ export class AvatarSession {
         child.abort();
         let stopPromise: Promise<void>;
         try {
-          stopPromise = auto.stop();
+          stopPromise = Promise.resolve(auto.stop());
         } catch (error) {
           stopPromise = Promise.reject(error);
         }
@@ -2004,12 +2126,7 @@ export class AvatarSession {
         const recovered = this.restartAfterStuckFishingFarm(
           `chu kỳ farm quá ${FISHING_FARM_TIMEOUT_MS / 1000}s và không dừng trong `
             + `${FISHING_FARM_CLEANUP_GRACE_MS / 1000}s`,
-          client,
-          generation,
-          epoch,
-          child,
-          cycleToken,
-          parentSignal,
+          ownership,
         );
         return recovered ? 'reconnect' : 'cancelled';
       }
@@ -2046,41 +2163,33 @@ export class AvatarSession {
       if (this.fishingFarmAbortController === child) {
         this.fishingFarmAbortController = undefined;
       }
-      if (this.fishingFarmCycleToken === cycleToken) {
+      if (this.fishingFarmCycleToken === ownership) {
         this.fishingFarmCycleToken = undefined;
+      }
+      if (this.fishingFarmCycleRelease?.ownership === ownership) {
+        const release = this.fishingFarmCycleRelease;
+        this.fishingFarmCycleRelease = undefined;
+        release.resolve();
       }
     }
   }
 
   private restartAfterStuckFishingFarm(
     reason: string,
-    client: GameClient,
-    generation: number,
-    epoch: number,
-    child: AbortController,
-    cycleToken: symbol,
-    parentSignal: AbortSignal,
+    ownership: FishingFarmCycleOwnership,
   ): boolean {
+    const isOff = (): boolean => this.desiredMode === 'off';
     if (
-      !this.isCurrentFishingFarmCycle(
-        client,
-        generation,
-        epoch,
-        child,
-        cycleToken,
-        parentSignal,
-        true,
-        true,
-      )
-      || this.desiredMode === 'off'
+      !this.isCurrentFishingFarmOwnership(ownership)
+      || isOff()
     ) return false;
     const desiredMode: AutomationMode = this.desiredMode;
     this.pushLog(`[nông trại] ${reason}; đóng phiên cũ để tránh race packet và kết nối lại...`);
-    if (!this.isCurrentFishingFarmCycle(client, generation, epoch, child, cycleToken, parentSignal, true, true)) {
+    if (!this.isCurrentFishingFarmOwnership(ownership) || isOff()) {
       return false;
     }
     this.activeMode = 'off';
-    if (!this.isCurrentFishingFarmCycle(client, generation, epoch, child, cycleToken, parentSignal, true, true)) {
+    if (!this.isCurrentFishingFarmOwnership(ownership) || isOff()) {
       return false;
     }
     this.teardown();
