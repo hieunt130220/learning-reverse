@@ -117,14 +117,15 @@ function LoadedOperations({
   const isMobile = useMediaQuery('(max-width: 679px)');
   const [activePanel, setActivePanel] = useState<PanelId>('status');
   const [automationMutationBusy, setAutomationMutationBusy] = useState(false);
-  const [automationSupported, setAutomationSupported] = useState<boolean | undefined>();
   const [fetchedAutomation, setFetchedAutomation] = useState<AutomationSnapshot | undefined>();
+  const automationRefreshGeneration = useRef(0);
   const panelsRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const visible = (id: PanelId) => !isMobile || activePanel === id;
 
   useEffect(() => {
     if (snapshot?.automation) {
+      automationRefreshGeneration.current += 1;
       setFetchedAutomation(snapshot.automation);
     }
   }, [snapshot?.automation]);
@@ -132,10 +133,11 @@ function LoadedOperations({
   const automation = fetchedAutomation ?? snapshot?.automation;
 
   const refreshAutomation = useCallback(async () => {
+    const generation = ++automationRefreshGeneration.current;
     try {
       const snap = await apiGet<AutomationSnapshot>(`/api/accounts/${account.id}/automation`);
+      if (automationRefreshGeneration.current !== generation) return;
       setFetchedAutomation(snap);
-      setAutomationSupported(true);
     } catch {
       // Bỏ qua lỗi mạng khi load tự động ngầm
     }
@@ -146,14 +148,18 @@ function LoadedOperations({
   }, [refreshAutomation]);
 
   const handleAutomationChange = useCallback((loaded: AutomationSnapshot) => {
+    automationRefreshGeneration.current += 1;
     setFetchedAutomation(loaded);
-    setAutomationSupported(true);
   }, []);
 
   const handleAutomationCapabilityChange = useCallback((supported: boolean, loaded?: AutomationSnapshot) => {
-    setAutomationSupported(supported);
-    if (loaded) setFetchedAutomation(loaded);
-    else if (!supported) setFetchedAutomation(undefined);
+    if (loaded) {
+      automationRefreshGeneration.current += 1;
+      setFetchedAutomation(loaded);
+    } else if (!supported) {
+      automationRefreshGeneration.current += 1;
+      setFetchedAutomation(undefined);
+    }
   }, []);
   const selectPanel = (id: PanelId) => {
     setActivePanel(id);
@@ -198,12 +204,12 @@ function LoadedOperations({
             accountId={account.id}
             snap={snapshot}
             automation={automation}
-            automationSupported={snapshot?.automation ? true : automationSupported}
             gameUser={account.gameUser}
             onChanged={() => {
               void reload();
               void refreshAutomation();
             }}
+            onAutomationChange={handleAutomationChange}
             automationMutationBusy={automationMutationBusy}
             onAutomationMutationBusyChange={setAutomationMutationBusy}
           />
@@ -227,7 +233,6 @@ function LoadedOperations({
             account={account}
             automation={automation}
             quests={snapshot?.quests ?? null}
-            onAutomationChange={handleAutomationChange}
             onChanged={() => {
               void reload();
               void refreshAutomation();

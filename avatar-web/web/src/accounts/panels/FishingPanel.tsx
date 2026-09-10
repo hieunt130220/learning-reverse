@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { apiPost, ApiError } from '../../api.js';
+import { apiPost } from '../../api.js';
 import {
   type AccountWithRuntime,
   type AutomationSnapshot,
@@ -12,7 +12,6 @@ interface FishingPanelProps {
   account?: AccountWithRuntime;
   automation?: AutomationSnapshot;
   quests?: QuestOverviewState | null;
-  onAutomationChange?(snapshot: AutomationSnapshot): void;
   onChanged?(): void;
   onSelectSettingsTab?(): void;
 }
@@ -39,12 +38,12 @@ export function formatFishName(id: number | null | undefined, name?: string | nu
   return mapped ? `${mapped} (ID ${id})` : `Cá ID ${id}`;
 }
 
-function formatFishingStatus(
-  isFishingDesired: boolean,
+export function formatFishingStatus(
+  isFishing: boolean,
   status?: FishingRuntimeState['status'],
   accountStatus?: string,
 ): string {
-  if (!isFishingDesired && (!status || status === 'idle')) {
+  if (!isFishing && (!status || status === 'idle')) {
     return 'Đang tắt';
   }
   switch (status) {
@@ -68,11 +67,10 @@ function formatFishingStatus(
       return 'Đang nghỉ giữa vòng quăng cần';
     case 'idle':
     default:
-      if (isFishingDesired) {
-        if (accountStatus !== 'online') {
-          return 'Đang chờ kết nối game…';
-        }
-        return 'Đang chuẩn bị vào hồ…';
+      if (isFishing) {
+        return accountStatus === 'online'
+          ? 'Đang chuẩn bị vào hồ…'
+          : 'Đang chờ kết nối game…';
       }
       return 'Đang tắt';
   }
@@ -82,7 +80,6 @@ export function FishingPanel({
   account,
   automation,
   quests,
-  onAutomationChange,
   onChanged,
   onSelectSettingsTab,
 }: FishingPanelProps) {
@@ -92,7 +89,6 @@ export function FishingPanel({
   const isFishing = isFishingDesired || isFishingActive;
   const isSwitching = automation?.transitionState === 'switching';
 
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [refreshingQuest, setRefreshingQuest] = useState(false);
 
@@ -119,38 +115,9 @@ export function FishingPanel({
 
   const fishingState = automation?.fishingRuntime;
 
-  const handleToggle = async () => {
-    if (!accountId || loading || isSwitching) return;
-    setLoading(true);
-    setError('');
-
-    try {
-      if (isFishing) {
-        const snap = await apiPost<AutomationSnapshot>(`/api/accounts/${accountId}/automation/stop`, {});
-        if (snap) onAutomationChange?.(snap);
-      } else {
-        const snap = await apiPost<AutomationSnapshot>(`/api/accounts/${accountId}/automation/start`, {
-          mode: 'auto_fishing',
-        });
-        if (snap) onAutomationChange?.(snap);
-      }
-      onChanged?.();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        const bodySnap = (err.body as { snapshot?: AutomationSnapshot })?.snapshot;
-        if (bodySnap) onAutomationChange?.(bodySnap);
-        onChanged?.();
-      } else {
-        setError((err as Error).message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.5rem 0' }}>
-      {/* ─── Header & Action Button ─── */}
+      {/* ─── Header & Status ─── */}
       <div
         style={{
           display: 'flex',
@@ -165,27 +132,10 @@ export function FishingPanel({
         <div>
           <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>Vận Hành Câu Cá Tự Động</h3>
           <p className="hint" style={{ margin: '0.2rem 0 0 0' }}>
-            Trạng thái: <strong>{formatFishingStatus(isFishingDesired, fishingState?.status, account?.runtime?.status)}</strong>
+            Trạng thái: <strong>{formatFishingStatus(isFishing, fishingState?.status, account?.runtime?.status)}</strong>
             {isSwitching && ' · Đang chuyển chế độ…'}
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={handleToggle}
-          disabled={loading || isSwitching || !accountId}
-          style={{
-            padding: '0.5rem 1.25rem',
-            fontWeight: 600,
-            cursor: loading || isSwitching ? 'not-allowed' : 'pointer',
-            background: isFishing ? '#b83a3a' : 'var(--accent)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-          }}
-        >
-          {loading ? 'Đang xử lý…' : isFishing ? 'Dừng câu cá' : 'Bắt đầu câu cá'}
-        </button>
       </div>
 
       {error && <p className="err" style={{ margin: 0 }}>{error}</p>}
