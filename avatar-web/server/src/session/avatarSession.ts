@@ -449,6 +449,9 @@ export class AvatarSession {
     this.cancelAutoCycleTimer();
     this.cancelAutoSyncKickoff();
     this.cancelFishingFarmSchedule();
+    this.fishermanQuestAbort?.abort();
+    this.fishermanQuestAbort = undefined;
+    this.fishermanQuestRuntime = idleFishermanQuestRuntime();
     this.teardown();
     this.activeMode = 'off';
     this.transitionState = 'stable';
@@ -1523,7 +1526,22 @@ export class AvatarSession {
       }
       this.pushLog('[câu cá] đã dừng tự động câu cá.');
     }
+    if (this.fishermanQuestAbort) {
+      this.fishermanQuestAbort.abort();
+      this.fishermanQuestAbort = undefined;
+    }
+    if (this.activeMode === 'auto_fisherman_quest') {
+      if (this.client && this.client.status === 'online') {
+        try {
+          this.client.cauCaXong();
+        } catch {
+          /* bỏ qua */
+        }
+      }
+      this.pushLog('[thợ câu] đã dừng làm nhiệm vụ thợ câu.');
+    }
     this.fishingRuntime.status = 'idle';
+    this.fishermanQuestRuntime = idleFishermanQuestRuntime();
     if (!this.isAutomationGenerationCurrent(generation)) return false;
     this.activeMode = 'off';
     this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
