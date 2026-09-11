@@ -5,7 +5,7 @@ import { StatusBadge } from '../AccountStatus.js';
 import type { AutomationSnapshot, AutoConfigResponse, AutoConfigStateDto, SessionSnapshot } from '../../types.js';
 import { formatFishingStatus } from './FishingPanel.js';
 
-type StatusAutomationMode = 'auto_farm' | 'auto_fishing';
+type StatusAutomationMode = 'auto_farm' | 'auto_fishing' | 'auto_fisherman_quest';
 
 export function StatusPanel({
   accountId,
@@ -55,7 +55,7 @@ export function StatusPanel({
     const snapshotMode = automation?.desiredMode !== 'off'
       ? automation?.desiredMode
       : automation?.activeMode;
-    if (snapshotMode === 'auto_farm' || snapshotMode === 'auto_fishing') {
+    if (snapshotMode === 'auto_farm' || snapshotMode === 'auto_fishing' || snapshotMode === 'auto_fisherman_quest') {
       setSelectedMode(snapshotMode);
     }
   }, [automation?.desiredMode, automation?.activeMode]);
@@ -73,6 +73,19 @@ export function StatusPanel({
       return auto.running
         ? `auto farm đang chạy — vòng ${auto.cycle}`
         : 'auto farm đang chờ kết nối / vòng tiếp theo';
+    }
+    if (progressMode === 'auto_fisherman_quest') {
+      const q = automation.fishermanQuestRuntime;
+      const questPart = q?.questTitle
+        ? `${q.questTitle}${q.targetFishName ? ` — ${q.targetFishName} ${q.caught}/${q.needed}` : ''}`
+        : 'đang quét nhiệm vụ thợ câu…';
+      const fishPart = `câu cá: ${formatFishingStatus(
+        true,
+        automation.fishingRuntime?.status,
+        snap?.status,
+      )}`;
+      const errPart = q?.lastError ? ` · lỗi: ${q.lastError}` : '';
+      return `${questPart} · ${fishPart}${errPart}`;
     }
     return `automation ${progressMode} đang hoạt động — hãy dừng trước khi đổi mode`;
   })();
@@ -198,6 +211,15 @@ export function StatusPanel({
           onClick={() => setSelectedMode('auto_fishing')}
         >
           Auto Fishing
+        </button>
+        <button
+          type="button"
+          className={`automation-mode-button${selectedMode === 'auto_fisherman_quest' ? ' active' : ''}`}
+          aria-pressed={selectedMode === 'auto_fisherman_quest'}
+          disabled={controlsLocked}
+          onClick={() => setSelectedMode('auto_fisherman_quest')}
+        >
+          🎣 Làm nhiệm vụ thợ câu
         </button>
       </div>
       <div className="row">
