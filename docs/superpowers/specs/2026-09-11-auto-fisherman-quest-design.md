@@ -92,7 +92,7 @@ User chọn "🎣 Làm nhiệm vụ thợ câu" (StatusPanel)
 |------|---------|
 | `avatar-web/server/src/session/fishermanQuest.ts` | Pure logic, không import runtime (tránh chu kỳ phụ thuộc, giống `automationTypes.ts`): `normalizeFishName()`, `FISHERMAN_QUEST_FISH_MAP`, `resolveFishQuestTarget()`, `pickNextFishTarget()`. |
 
-**File sửa (6):**
+**File sửa (6 nhóm / 8 files):**
 | File | Thay đổi |
 |------|----------|
 | `avatar-web/server/src/session/automationTypes.ts` | `AutomationMode` += `'auto_fisherman_quest'`; thêm `FishermanQuestPhase`, `FishermanQuestRuntimeState`, `idleFishermanQuestRuntime()`; `AutomationSnapshot` += `fishermanQuestRuntime?`. (`FISHERMAN_QUEST_FISH_MAP` sống trong `fishermanQuest.ts`, không ở đây.) |
