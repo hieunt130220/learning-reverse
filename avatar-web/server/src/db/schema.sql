@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS avatar_automation_state (
   account_id              INTEGER PRIMARY KEY
                           REFERENCES avatar_accounts(id) ON DELETE CASCADE,
   desired_mode            TEXT NOT NULL DEFAULT 'off'
-                          CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc', 'auto_fishing')),
+                          CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest')),
   find_npc_config_json    TEXT,
   fishing_config_json     TEXT,
   current_map             INTEGER,

@@ -2,6 +2,7 @@ import type { Db } from '../db/index.js';
 import {
   DEFAULT_FISHING_CONFIG,
   idleFindNpcRuntime,
+  idleFishermanQuestRuntime,
   idleFishingRuntime,
   type AutomationLocation,
   type AutomationMode,
@@ -307,7 +308,7 @@ export function listDesiredAutomation(db: Db): DesiredAutomationEntry[] {
       `SELECT account_id, desired_mode, find_npc_config_json, fishing_config_json,
               current_map, current_area, location_observed_at
          FROM avatar_automation_state
-        WHERE desired_mode IN ('auto_farm', 'find_npc', 'auto_fishing')
+        WHERE desired_mode IN ('auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest')
         ORDER BY account_id`,
     )
     .all();
@@ -335,6 +336,7 @@ export function offlineAutomationSnapshot(state: StoredAutomationState): Automat
     findNpcRuntime: idleFindNpcRuntime(state.findNpcConfig.config.npcName),
     fishingConfig: state.fishingConfig,
     fishingRuntime: idleFishingRuntime(),
+    fishermanQuestRuntime: idleFishermanQuestRuntime(),
     location: state.location,
   };
 }
