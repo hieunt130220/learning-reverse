@@ -1679,6 +1679,24 @@ export class AvatarSession {
       this.startFishingLoop(client, generation, epoch);
       return true;
     }
+    if (this.desiredMode === 'auto_fisherman_quest') {
+      if (
+        !this.isAutomationGenerationCurrent(generation)
+        || !this.isCurrent(client, epoch)
+        || client.status !== 'online'
+      ) return false;
+      this.ensureDailyAttendance(client, epoch);
+      await this.attendancePromise;
+      if (
+        !this.isAutomationGenerationCurrent(generation)
+        || !this.isCurrent(client, epoch)
+        || client.status !== 'online'
+      ) return false;
+      this.activeMode = 'auto_fisherman_quest';
+      this.fishermanQuestRuntime = idleFishermanQuestRuntime();
+      this.startFishermanQuestLoop(client, generation, epoch);
+      return true;
+    }
     if (this.desiredMode === 'find_npc') {
       if (!(await this.startFindNpc(client, generation, epoch))) return false;
       this.activeMode = 'find_npc';
@@ -2279,6 +2297,147 @@ export class AvatarSession {
         }
       }
     })();
+  }
+
+  private startFishermanQuestLoop(client: GameClient, generation: number, epoch: number): void {
+    this.fishermanQuestAbort?.abort();
+    const abort = new AbortController();
+    this.fishermanQuestAbort = abort;
+    void (async () => {
+      try {
+        await this.runFishermanQuestLoop(client, generation, epoch, abort.signal);
+      } catch (err) {
+        if (
+          !abort.signal.aborted
+          && this.fishermanQuestAbort === abort
+          && this.isAutomationGenerationCurrent(generation)
+          && this.isCurrent(client, epoch)
+        ) {
+          const message = (err as Error).message;
+          this.pushLog(`[thợ câu] lỗi vòng lặp: ${message}`);
+          this.updateFishermanQuest({ phase: 'stopped', lastError: message });
+          this.emitAutomation();
+        }
+      } finally {
+        if (this.fishermanQuestAbort === abort) this.fishermanQuestAbort = undefined;
+      }
+    })();
+  }
+
+  /**
+   * Vòng lặp quest Thợ Câu: SCAN → RESOLVE → FISH → SYNC → NEXT.
+   * Tái dùng startFishingLoop() nguyên vẹn; server là source of truth cho tiến độ.
+   */
+  private async runFishermanQuestLoop(
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const alive = (): boolean => !signal.aborted
+      && this.isAutomationGenerationCurrent(generation)
+      && this.isCurrent(client, epoch)
+      && client.status === 'online'
+      && this.desiredMode === 'auto_fisherman_quest';
+    while (alive()) {
+      // SCAN: quest hiện tại từ server.
+      this.updateFishermanQuest({ phase: 'scanning', lastError: null });
+      this.emitAutomation();
+      this.refreshProgressQuests();
+      await this.sleepAbortable(4000, signal);
+      if (!alive()) return;
+      const quest = client.fishermanQuestState;
+      const conditions = quest?.conditions ?? [];
+      if (!quest || conditions.length === 0) {
+        this.updateFishermanQuest({ questTitle: quest?.title ?? null });
+        this.pushLog('[thợ câu] chưa thấy nhiệm vụ thợ câu, thử quét lại sau 60s.');
+        this.emitAutomation();
+        await this.sleepAbortable(60_000, signal);
+        continue;
+      }
+      const next = pickNextFishTarget(conditions);
+      if (!next) {
+        this.pushLog(`[thợ câu] hoàn thành ${quest.title}! Quét nhiệm vụ mới…`);
+        this.updateFishermanQuest({ phase: 'completed-cycle', questTitle: quest.title });
+        this.emitAutomation();
+        await this.sleepAbortable(5000, signal);
+        continue;
+      }
+      // RESOLVE: condition → cá/map.
+      this.updateFishermanQuest({ phase: 'resolving', questTitle: quest.title });
+      this.emitAutomation();
+      const resolved = resolveFishQuestTarget(next.name);
+      if (!resolved.ok) {
+        const message = `Không nhận diện được cá "${resolved.unknownName}" trong quest "${quest.title}"`;
+        this.pushLog(`[thợ câu] ${message}, dừng an toàn.`);
+        this.updateFishermanQuest({
+          phase: 'stopped',
+          lastError: message,
+          targetFishName: next.name,
+          targetFishId: null,
+          targetMap: null,
+        });
+        this.emitAutomation();
+        return;
+      }
+      const needed = Math.max(0, next.total - next.current);
+      this.updateFishermanQuest({
+        phase: 'fishing',
+        targetFishName: next.name,
+        targetFishId: resolved.fishId,
+        targetMap: resolved.map,
+        needed,
+        caught: 0,
+      });
+      this.pushLog(`[thợ câu] mục tiêu: ${next.name} ${next.current}/${next.total} → map ${resolved.map}.`);
+      if (resolved.map === 16) this.pushLog('[thợ câu] map 16 dùng vé Lượng (2 Lượng/vé 460).');
+      this.emitAutomation();
+      // FISH: chỉ override map, giữ rod/bait/area/castDelay của user.
+      this.fishingConfig = {
+        ...this.fishingConfig,
+        config: { ...this.fishingConfig.config, map: resolved.map },
+      };
+      this.startFishingLoop(client, generation, epoch);
+      // Chờ xong mục tiêu: đủ caught local, hoặc server báo xong, hoặc quest đổi.
+      let lastSyncAt = this.now();
+      let syncedCaught = 0;
+      for (;;) {
+        await this.sleepAbortable(10_000, signal);
+        if (!alive()) return;
+        const runtime = this.fishermanQuestRuntime;
+        if (runtime.needed > 0 && runtime.caught >= runtime.needed) break;
+        const dueCount = runtime.caught - syncedCaught >= 5;
+        const dueTime = this.now() - lastSyncAt >= 180_000;
+        if (!dueCount && !dueTime) continue;
+        // SYNC: server là source of truth.
+        this.updateFishermanQuest({ phase: 'syncing' });
+        this.emitAutomation();
+        this.refreshProgressQuests();
+        await this.sleepAbortable(4000, signal);
+        if (!alive()) return;
+        lastSyncAt = this.now();
+        syncedCaught = this.fishermanQuestRuntime.caught;
+        const fresh = client.fishermanQuestState;
+        if (!fresh || fresh.title !== quest.title) break; // quest đổi → SCAN lại
+        const freshCond = fresh.conditions.find((c) => c.name === next.name);
+        if (!freshCond || freshCond.isDone || freshCond.current >= freshCond.total) {
+          this.pushLog(`[thợ câu] server báo xong "${next.name}" (local=${this.fishermanQuestRuntime.caught}).`);
+          break;
+        }
+        if (freshCond.current > next.current) {
+          this.pushLog(`[thợ câu] tiến độ server: ${freshCond.current}/${freshCond.total}.`);
+        }
+        this.updateFishermanQuest({ phase: 'fishing' });
+        this.emitAutomation();
+      }
+      // NEXT: dừng fishing loop mục tiêu cũ, vòng ngoài SCAN mục tiêu/quest tiếp theo.
+      this.updateFishermanQuest({ phase: 'switching-target' });
+      this.emitAutomation();
+      if (this.fishingAbortController) {
+        this.fishingAbortController.abort();
+        this.fishingAbortController = undefined;
+      }
+    }
   }
 
   /**
