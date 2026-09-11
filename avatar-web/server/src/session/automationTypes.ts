@@ -3,7 +3,7 @@
  * Module thuần type + helper — không import runtime gì để tránh chu kỳ phụ thuộc.
  */
 
-export type AutomationMode = 'off' | 'auto_farm' | 'find_npc' | 'auto_fishing';
+export type AutomationMode = 'off' | 'auto_farm' | 'find_npc' | 'auto_fishing' | 'auto_fisherman_quest';
 export type AutomationTransitionState = 'stable' | 'switching';
 
 export interface FishingConfig {
@@ -164,7 +164,37 @@ export interface AutomationSnapshot {
   findNpcRuntime: AutoFindNpcState;
   fishingConfig?: StoredFishingConfigState;
   fishingRuntime?: FishingRuntimeState;
+  fishermanQuestRuntime?: FishermanQuestRuntimeState;
   location: AutomationLocation | null;
+}
+
+export type FishermanQuestPhase =
+  | 'idle'
+  | 'scanning'
+  | 'resolving'
+  | 'fishing'
+  | 'syncing'
+  | 'switching-target'
+  | 'completed-cycle'
+  | 'stopped';
+
+export interface FishermanQuestFishMapping {
+  readonly fishId: number;
+  readonly map: number;
+  readonly ticketId: number;
+}
+
+export interface FishermanQuestRuntimeState {
+  phase: FishermanQuestPhase;
+  questTitle: string | null;
+  targetFishName: string | null;
+  targetFishId: number | null;
+  targetMap: number | null;
+  /** total - current của condition mục tiêu tại lúc RESOLVE. */
+  needed: number;
+  /** Số cá đúng targetFishId từ fishing-success-result kể từ khi vào mục tiêu. */
+  caught: number;
+  lastError: string | null;
 }
 
 /** Kết quả một lần switch do coordinator trả về cho tầng route. */
@@ -184,4 +214,17 @@ export type AutomationApiErrorCode =
 
 export function idleFindNpcRuntime(targetName: string): AutoFindNpcState {
   return { phase: 'idle', running: false, targetName, cursor: 0, total: 0, timeoutStreak: 0 };
+}
+
+export function idleFishermanQuestRuntime(): FishermanQuestRuntimeState {
+  return {
+    phase: 'idle',
+    questTitle: null,
+    targetFishName: null,
+    targetFishId: null,
+    targetMap: null,
+    needed: 0,
+    caught: 0,
+    lastError: null,
+  };
 }

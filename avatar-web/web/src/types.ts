@@ -335,7 +335,7 @@ export interface ShopRuntimeState {
   lastError?: { code: string; message: string };
 }
 
-export type AutomationMode = 'off' | 'auto_farm' | 'find_npc' | 'auto_fishing';
+export type AutomationMode = 'off' | 'auto_farm' | 'find_npc' | 'auto_fishing' | 'auto_fisherman_quest';
 
 export interface FishingConfig {
   readonly map: number;
@@ -438,6 +438,27 @@ export interface AutoFindNpcState {
   lastError?: string;
 }
 
+export type FishermanQuestPhase =
+  | 'idle'
+  | 'scanning'
+  | 'resolving'
+  | 'fishing'
+  | 'syncing'
+  | 'switching-target'
+  | 'completed-cycle'
+  | 'stopped';
+
+export interface FishermanQuestRuntimeState {
+  phase: FishermanQuestPhase;
+  questTitle: string | null;
+  targetFishName: string | null;
+  targetFishId: number | null;
+  targetMap: number | null;
+  needed: number;
+  caught: number;
+  lastError: string | null;
+}
+
 export interface AutomationSnapshot {
   desiredMode: AutomationMode;
   activeMode: AutomationMode;
@@ -446,6 +467,7 @@ export interface AutomationSnapshot {
   findNpcRuntime: AutoFindNpcState;
   fishingConfig?: StoredFishingConfigState;
   fishingRuntime?: FishingRuntimeState;
+  fishermanQuestRuntime?: FishermanQuestRuntimeState;
   location: AutomationLocation | null;
 }
 
