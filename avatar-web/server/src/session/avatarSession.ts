@@ -43,18 +43,21 @@ import {
   FISHING_TICKETS,
   getFishName,
   idleFindNpcRuntime,
+  idleFishermanQuestRuntime,
   idleFishingRuntime,
   type AutomationLocation,
   type AutomationMode,
   type AutomationSnapshot,
   type AutomationStartOutcome,
   type AutoFindNpcState,
+  type FishermanQuestRuntimeState,
   type FishingRuntimeState,
   type LoadedAutomationIntent,
   type NpcMapLocation,
   type StoredFishingConfigState,
 } from './automationTypes.js';
 import { defaultFishingConfig } from '../accounts/automationRepo.js';
+import { pickNextFishTarget, resolveFishQuestTarget } from './fishermanQuest.js';
 import {
   emptyRuntimeSnapshot,
   runtimeSnapshotPatchFromEvent,
@@ -293,6 +296,8 @@ export class AvatarSession {
   private findNpc?: AutoFindNpc;
   private findNpcRuntime: AutoFindNpcState = idleFindNpcRuntime('');
   private fishingRuntime: FishingRuntimeState = idleFishingRuntime();
+  private fishermanQuestAbort?: AbortController;
+  private fishermanQuestRuntime: FishermanQuestRuntimeState = idleFishermanQuestRuntime();
   private fishingAbortController?: AbortController;
   private fishingFarmPhase: FishingFarmPhase = 'idle';
   private fishingFarmTimer?: NodeJS.Timeout;
@@ -717,9 +722,16 @@ export class AvatarSession {
       || this.pendingFindNpcTransitions > 0;
   }
 
-  private fishingOwnsOrTargetsContext(): boolean {
+  /** auto_fishing hoặc auto_fisherman_quest (desired lẫn active): fishing loop đang/khả dĩ chạy. */
+  private isFishingMode(): boolean {
     return this.desiredMode === 'auto_fishing'
+      || this.desiredMode === 'auto_fisherman_quest'
       || this.activeMode === 'auto_fishing'
+      || this.activeMode === 'auto_fisherman_quest';
+  }
+
+  private fishingOwnsOrTargetsContext(): boolean {
+    return this.isFishingMode()
       || this.fishingAbortController !== undefined;
   }
 
@@ -749,6 +761,7 @@ export class AvatarSession {
       findNpcRuntime: this.findNpcRuntime,
       fishingConfig: this.fishingConfig,
       fishingRuntime: this.fishingRuntime,
+      fishermanQuestRuntime: this.fishermanQuestRuntime,
       location: this.automationLocation,
     };
   }
@@ -818,6 +831,29 @@ export class AvatarSession {
 
   private emitAutomation(): void {
     this.emit('automation', this.automationSnapshot());
+  }
+
+  private updateFishermanQuest(patch: Partial<FishermanQuestRuntimeState>): void {
+    this.fishermanQuestRuntime = { ...this.fishermanQuestRuntime, ...patch };
+  }
+
+  /** Sleep nhưng resolve sớm khi signal abort (dùng cho quest loop, không lẫn với waitForFishingRestOrFarmDue). */
+  private sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve) => {
+      if (signal.aborted) {
+        resolve();
+        return;
+      }
+      const timer = this.setTimeoutFn(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      const onAbort = (): void => {
+        this.clearTimeoutFn(timer);
+        resolve();
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
   }
 
   private pushLog(line: string): void {
@@ -1065,7 +1101,7 @@ export class AvatarSession {
     });
 
     client.on('fishing-challenge', (payload: CanCauPayload) => {
-      if (!this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+      if (!this.isCurrent(client, epoch) || !this.isFishingMode()) return;
       // CHỈ xử lý challenge thuộc về chính nhân vật của mình trong hồ!
       if (client.playerId === undefined || payload.idUser !== client.playerId) {
         return;
@@ -1074,7 +1110,7 @@ export class AvatarSession {
     });
 
     client.on('fishing-success-result', (ev: { idUser: number; idFish: number }) => {
-      if (!this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return;
+      if (!this.isCurrent(client, epoch) || !this.isFishingMode()) return;
       // CHỈ xử lý kết quả thuộc về chính nhân vật của mình trong hồ!
       if (client.playerId === undefined || ev.idUser !== client.playerId) {
         return;
@@ -1086,6 +1122,21 @@ export class AvatarSession {
         this.fishingRuntime.lastFishName = fishName;
         this.fishingRuntime.status = 'caught';
         this.pushLog(`[câu cá] bắt được ${fishName} (ID ${ev.idFish})! (Tổng: ${this.fishingRuntime.totalCatches})`);
+        const questRuntime = this.fishermanQuestRuntime;
+        if (
+          this.activeMode === 'auto_fisherman_quest'
+          && questRuntime.phase === 'fishing'
+          && questRuntime.targetFishId === ev.idFish
+        ) {
+          const caught = questRuntime.caught + 1;
+          this.fishermanQuestRuntime = { ...questRuntime, caught };
+          this.pushLog(`[thợ câu] tiến độ: ${questRuntime.targetFishName} ${caught}/${questRuntime.needed}.`);
+        } else if (
+          this.activeMode === 'auto_fisherman_quest'
+          && questRuntime.phase === 'fishing'
+        ) {
+          this.pushLog(`[câu cá] bắt được ${fishName} (không phải mục tiêu quest ${questRuntime.targetFishName}).`);
+        }
       } else {
         this.pushLog(`[câu cá] giật hụt hoặc sổng cá (mã ${ev.idFish})`);
         this.fishingRuntime.status = 'rejected';
