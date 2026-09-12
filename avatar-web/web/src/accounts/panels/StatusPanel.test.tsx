@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 import { makeSnapshot } from '../../test/fixtures.js';
+import type { AutomationSnapshot } from '../../types.js';
 import { StatusPanel } from './StatusPanel.js';
 
 const mocks = vi.hoisted(() => ({
@@ -15,7 +16,28 @@ vi.mock('../../api.js', () => ({
   apiPost: mocks.apiPost,
   apiGet: mocks.apiGet,
   apiPut: mocks.apiPut,
+  ApiError: class ApiError extends Error {
+    status: number;
+    body: unknown;
+    constructor(message: string, status = 500, body: unknown = undefined) {
+      super(message);
+      this.status = status;
+      this.body = body;
+    }
+  },
 }));
+
+function makeAutomation(overrides: Partial<AutomationSnapshot> = {}): AutomationSnapshot {
+  return {
+    desiredMode: 'off',
+    activeMode: 'off',
+    transitionState: 'stable',
+    findNpcConfig: { revision: 0, config: { npcName: '' } },
+    findNpcRuntime: { phase: 'idle', running: false, targetName: '', cursor: 0, total: 0, timeoutStreak: 0 },
+    location: null,
+    ...overrides,
+  };
+}
 
 const idleSnapshot = makeSnapshot({
   status: 'idle',
@@ -33,30 +55,30 @@ const onlineSnapshot = makeSnapshot({
 });
 
 beforeEach(() => {
-  mocks.apiPost.mockResolvedValue({});
+  vi.clearAllMocks();
+  mocks.apiPost.mockResolvedValue(makeAutomation());
   mocks.apiGet.mockResolvedValue({ revision: 0, config: { logoutAfterCycle: true } });
   mocks.apiPut.mockResolvedValue({ revision: 1, config: { logoutAfterCycle: true } });
 });
 
-test('hiển thị trạng thái và chỉ hiển thị các nút điều khiển auto', () => {
-  const onChanged = vi.fn();
+test('hiển thị trạng thái và các nút điều khiển auto', () => {
   render(
     <StatusPanel
       accountId={1}
       snap={onlineSnapshot}
       gameUser="user123"
-      onChanged={onChanged}
+      onChanged={vi.fn()}
+      automation={makeAutomation({ desiredMode: 'auto_farm', activeMode: 'auto_farm' })}
     />,
   );
 
   expect(screen.getByText('tài khoản game: user123')).toBeInTheDocument();
   expect(screen.getByText('id nhân vật: 123456')).toBeInTheDocument();
   expect(screen.getByText('500000 xu')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Kết nối' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Ngắt' })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Bật chăm farm' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Dừng tự động' })).toBeEnabled();
-  expect(screen.getByText(/auto đang chạy — vòng 15/)).toBeInTheDocument();
+  expect(screen.getByText('Nông trại')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Bắt đầu' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Dừng Auto' })).toBeEnabled();
+  expect(screen.getByText(/auto farm đang chạy — vòng 15/)).toBeInTheDocument();
 });
 
 test('đang chờ vòng kế tiếp thì vẫn giữ auto active và không cho bật lại', () => {
@@ -70,15 +92,16 @@ test('đang chờ vòng kế tiếp thì vẫn giữ auto active và không cho 
       })}
       gameUser="user123"
       onChanged={vi.fn()}
+      automation={makeAutomation({ desiredMode: 'auto_farm', activeMode: 'off' })}
     />,
   );
 
-  expect(screen.getByRole('button', { name: 'Bật chăm farm' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Dừng tự động' })).toBeEnabled();
-  expect(screen.getByText('auto đang chờ kết nối / vòng tiếp theo')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Bắt đầu' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Dừng Auto' })).toBeEnabled();
+  expect(screen.getByText('auto farm đang chờ kết nối / vòng tiếp theo')).toBeInTheDocument();
 });
 
-test('Bật auto gọi API auto/start và callback onChanged', async () => {
+test('Bắt đầu gọi API automation/start và callback onChanged', async () => {
   const onChanged = vi.fn();
   render(
     <StatusPanel
@@ -89,44 +112,29 @@ test('Bật auto gọi API auto/start và callback onChanged', async () => {
     />,
   );
 
-  const startBtn = screen.getByRole('button', { name: 'Bật chăm farm' });
+  const startBtn = screen.getByRole('button', { name: 'Bắt đầu' });
   expect(startBtn).toBeEnabled();
   await userEvent.click(startBtn);
 
   await waitFor(() => {
-    expect(mocks.apiPost).toHaveBeenCalledWith('/api/accounts/1/auto/start', {});
+    expect(mocks.apiPost).toHaveBeenCalledWith('/api/accounts/1/automation/start', { mode: 'auto_farm' });
     expect(onChanged).toHaveBeenCalled();
   });
 });
 
-test('Tắt auto gọi API auto/stop và callback onChanged', async () => {
+test('Dừng Auto gọi API automation/stop và callback onChanged', async () => {
   const onChanged = vi.fn();
   render(
     <StatusPanel
       accountId={1}
       snap={onlineSnapshot}
-      automationSupported
-      automation={{
-        desiredMode: 'auto_farm',
-        activeMode: 'auto_farm',
-        transitionState: 'stable',
-        findNpcConfig: { revision: 0, config: { npcName: '' } },
-        findNpcRuntime: {
-          phase: 'idle',
-          running: false,
-          targetName: '',
-          cursor: 0,
-          total: 0,
-          timeoutStreak: 0,
-        },
-        location: null,
-      }}
       gameUser="user123"
       onChanged={onChanged}
+      automation={makeAutomation({ desiredMode: 'auto_farm', activeMode: 'auto_farm' })}
     />,
   );
 
-  const stopBtn = screen.getByRole('button', { name: 'Dừng tự động' });
+  const stopBtn = screen.getByRole('button', { name: 'Dừng Auto' });
   expect(stopBtn).toBeEnabled();
   await userEvent.click(stopBtn);
 
@@ -147,6 +155,6 @@ test('hiển thị lỗi khi gọi bật auto thất bại', async () => {
     />,
   );
 
-  await userEvent.click(screen.getByRole('button', { name: 'Bật chăm farm' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Bắt đầu' }));
   expect(await screen.findByText('Máy chủ từ chối')).toBeInTheDocument();
 });

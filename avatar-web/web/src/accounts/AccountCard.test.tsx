@@ -77,7 +77,7 @@ test('hiển thị gạch ngang cho lượng khi cache chưa có luong và luong
     cachedMetrics: { xu: 189587, playerLevel: 33, farmLevel: 39, syncedAt: 123 },
   }));
 
-  expect(screen.getByText('—')).toBeInTheDocument();
+  expect(screen.getByText('Lượng').parentElement).toHaveTextContent('—');
   expect(screen.getByText('189.587')).toBeInTheDocument();
   expect(screen.getByText('NV 33 · Farm 39')).toBeInTheDocument();
 });
@@ -116,7 +116,7 @@ test('Xóa xác nhận, gọi DELETE và không mở drawer', async () => {
   expect(screen.getByTestId('location')).toHaveTextContent('/accounts');
 });
 
-test('automation off thì card hiển thị đang tắt dù desiredConnected còn true', () => {
+test('automation off thì card hiển thị mode chip Tắt dù desiredConnected còn true', () => {
   renderCard(makeAccount({
     runtime: makeSnapshot({
       status: 'online',
@@ -125,8 +125,9 @@ test('automation off thì card hiển thị đang tắt dù desiredConnected cò
       automation: makeAutomation(),
     }),
   }));
-  expect(screen.getByText('đang tắt')).toBeInTheDocument();
+  expect(screen.getByText('Tắt')).toBeInTheDocument();
   expect(screen.queryByText('đang chờ')).not.toBeInTheDocument();
+  expect(screen.queryByText('Nông trại')).not.toBeInTheDocument();
 });
 
 test('automation desired auto_farm chưa chạy vòng thì hiển thị đang chờ', () => {

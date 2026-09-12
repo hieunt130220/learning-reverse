@@ -1,4 +1,4 @@
-import type { ClientStatus } from '../types.js';
+import type { AutomationMode, ClientStatus } from '../types.js';
 
 export const statusLabel: Record<ClientStatus, string> = {
   idle: 'chưa kết nối',
@@ -11,4 +11,43 @@ export const statusLabel: Record<ClientStatus, string> = {
 
 export function StatusBadge({ status }: { status: ClientStatus }) {
   return <span className={`badge badge-${status}`}>{statusLabel[status]}</span>;
+}
+
+const MODE_LABEL: Record<AutomationMode, string> = {
+  off: 'Tắt',
+  auto_farm: 'Nông trại',
+  auto_fishing: 'Câu cá',
+  find_npc: 'Tìm NPC',
+};
+
+export function automationModeLabel(mode: AutomationMode): string {
+  return MODE_LABEL[mode];
+}
+
+export function ModeChip({
+  automation,
+  fallbackActive,
+}: {
+  automation?: { desiredMode: AutomationMode; activeMode: AutomationMode; transitionState: 'stable' | 'switching' };
+  fallbackActive?: boolean;
+}) {
+  if (automation?.transitionState === 'switching') {
+    return (
+      <span className="mode-chip mode-chip--switching">
+        chuyển {automationModeLabel(automation.activeMode)} → {automationModeLabel(automation.desiredMode)}
+      </span>
+    );
+  }
+  const mode = automation
+    ? automation.desiredMode !== 'off'
+      ? automation.desiredMode
+      : automation.activeMode
+    : fallbackActive
+      ? 'auto_farm'
+      : 'off';
+  if (mode === 'off') {
+    return <span className="mode-chip mode-chip--off">Tắt</span>;
+  }
+  const tone = mode === 'auto_fishing' ? 'fishing' : 'farm';
+  return <span className={`mode-chip mode-chip--${tone}`}>{automationModeLabel(mode)}</span>;
 }
