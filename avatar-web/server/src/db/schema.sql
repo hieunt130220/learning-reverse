@@ -140,3 +140,10 @@ CREATE TABLE IF NOT EXISTS avatar_daily_fishing_statistics (
 
 CREATE INDEX IF NOT EXISTS idx_avatar_daily_fishing_account_date
   ON avatar_daily_fishing_statistics(account_id, local_date);
+
+CREATE TABLE IF NOT EXISTS avatar_ml_fishing_statistics (
+  account_id INTEGER PRIMARY KEY REFERENCES avatar_accounts(id) ON DELETE CASCADE,
+  total_attempts INTEGER NOT NULL DEFAULT 0 CHECK (total_attempts >= 0),
+  success_catches INTEGER NOT NULL DEFAULT 0 CHECK (success_catches >= 0),
+  updated_at INTEGER NOT NULL
+);
