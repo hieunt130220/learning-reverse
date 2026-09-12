@@ -23,6 +23,7 @@ import { saveCaptchaDiagnostic, savePassiveCaptcha } from '../game/captchaPassiv
 import { type QuestOverviewState } from '../game/farmData.js';
 import { parseQuestDialogText } from '../game/progressQuests.js';
 import { MacroRunner, type Macro, type MacroState } from '../macro.js';
+import { emptyDailyFishingStatistics } from '../accounts/fishingStatisticsRepo.js';
 import type { AccountMetricsPatch, CachedAccountMetrics } from '../accounts/repo.js';
 import type { ShopRepository, ProduceSnapshot, ShopRuntimeState, ShopTransaction } from '../accounts/shopRepo.js';
 import type { ShopPolicy } from '../config.js';
@@ -49,6 +50,7 @@ import {
   type AutomationSnapshot,
   type AutomationStartOutcome,
   type AutoFindNpcState,
+  type DailyFishingStatistics,
   type FishingRuntimeState,
   type LoadedAutomationIntent,
   type NpcMapLocation,
@@ -185,6 +187,11 @@ export interface AvatarSessionOptions {
   onAutomationLocation: (location: NpcMapLocation | null) => void;
   onMetrics?: (patch: AccountMetricsPatch) => void;
   cachedMetrics?: CachedAccountMetrics;
+  initialDailyFishingStatistics?: DailyFishingStatistics;
+  onFishingCatch?: (
+    fishId: number,
+    caughtAt: number,
+  ) => DailyFishingStatistics;
   /** Snapshot nhiệm vụ/tài sản gần nhất để hiển thị khi chờ vòng auto kế tiếp. */
   cachedSnapshot?: CachedRuntimeSnapshot;
   /** Production luôn truyền đủ hai dependency; optional giữ tương thích cho harness cũ. */
@@ -293,6 +300,7 @@ export class AvatarSession {
   private findNpc?: AutoFindNpc;
   private findNpcRuntime: AutoFindNpcState = idleFindNpcRuntime('');
   private fishingRuntime: FishingRuntimeState = idleFishingRuntime();
+  private dailyFishingStatistics: DailyFishingStatistics;
   private fishingAbortController?: AbortController;
   private fishingFarmPhase: FishingFarmPhase = 'idle';
   private fishingFarmTimer?: NodeJS.Timeout;
@@ -340,6 +348,8 @@ export class AvatarSession {
     this.random = opts.random ?? Math.random;
     this.cachedMetrics = { ...opts.cachedMetrics };
     this.runtimeSnapshot = opts.cachedSnapshot ?? emptyRuntimeSnapshot();
+    this.dailyFishingStatistics = opts.initialDailyFishingStatistics
+      ?? emptyDailyFishingStatistics(this.now());
     if (opts.shopRepository && opts.shopPolicy) {
       this.shop = new ShopCoordinator({
         accountId: opts.accountId,
@@ -1081,11 +1091,25 @@ export class AvatarSession {
       }
       if (ev.idFish >= 0) {
         const fishName = getFishName(ev.idFish);
+        const caughtAt = this.now();
         this.fishingRuntime.totalCatches += 1;
         this.fishingRuntime.lastFishId = ev.idFish;
         this.fishingRuntime.lastFishName = fishName;
         this.fishingRuntime.status = 'caught';
-        this.pushLog(`[câu cá] bắt được ${fishName} (ID ${ev.idFish})! (Tổng: ${this.fishingRuntime.totalCatches})`);
+        try {
+          if (!this.opts.onFishingCatch) {
+            throw new Error('repository thống kê chưa được cấu hình');
+          }
+          this.dailyFishingStatistics = this.opts.onFishingCatch(ev.idFish, caughtAt);
+          this.fishingRuntime.lastError = null;
+          this.pushLog(
+            `[câu cá] bắt được ${fishName} (ID ${ev.idFish})! (Hôm nay: ${this.dailyFishingStatistics.totalCatches})`,
+          );
+        } catch (error) {
+          const message = `Đã bắt ${fishName} nhưng không ghi được thống kê: ${(error as Error).message}`;
+          this.fishingRuntime.lastError = message;
+          this.pushLog(`[câu cá] ${message}`);
+        }
       } else {
         this.pushLog(`[câu cá] giật hụt hoặc sổng cá (mã ${ev.idFish})`);
         this.fishingRuntime.status = 'rejected';
