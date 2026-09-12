@@ -7,6 +7,7 @@ import {
   setDesiredMode,
 } from '../accounts/automationRepo.js';
 import { FishingStatisticsRepository } from '../accounts/fishingStatisticsRepo.js';
+import { FishingMlStatisticsRepository } from '../accounts/fishingMlStatisticsRepo.js';
 import { ShopRepository, type ProduceSnapshot, type ShopRuntimeState } from '../accounts/shopRepo.js';
 import type { ShopPolicy } from '../config.js';
 import { updateFarmCells } from '../accounts/farmProfileRepo.js';
@@ -46,6 +47,7 @@ export interface SessionManagerDeps {
   shopPolicy?: ShopPolicy;
   findNpcCatalog?: readonly NpcMapLocation[];
   fishingStatisticsRepository?: FishingStatisticsRepository;
+  fishingMlStatisticsRepository?: FishingMlStatisticsRepository;
   createSession?(opts: AvatarSessionOptions): AvatarSession;
   setTimeoutFn?: typeof setTimeout;
 }
@@ -116,6 +118,7 @@ export class SessionManager {
   private readonly shopRepository: ShopRepository;
   private readonly shopPolicy: ShopPolicy;
   private readonly fishingStatisticsRepository: FishingStatisticsRepository;
+  private readonly fishingMlStatisticsRepository: FishingMlStatisticsRepository;
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.setTimeoutFn = deps.setTimeoutFn ?? setTimeout;
@@ -123,6 +126,8 @@ export class SessionManager {
     this.shopPolicy = deps.shopPolicy ?? DISABLED_SHOP_POLICY;
     this.fishingStatisticsRepository = deps.fishingStatisticsRepository
       ?? new FishingStatisticsRepository(deps.db);
+    this.fishingMlStatisticsRepository = deps.fishingMlStatisticsRepository
+      ?? new FishingMlStatisticsRepository(deps.db);
     this.shopRepository.recoverInterruptedTransactions();
   }
 
@@ -148,6 +153,7 @@ export class SessionManager {
       automation: {
         ...snapshot.automation,
         dailyFishingStatistics: this.fishingStatisticsRepository.readToday(accountId),
+        mlFishingStatistics: this.fishingMlStatisticsRepository.read(accountId),
       },
     };
   }
@@ -156,6 +162,7 @@ export class SessionManager {
     const persisted = readAutomationState(this.deps.db, accountId);
     const live = this.sessions.get(accountId)?.automationSnapshot();
     const dailyFishingStatistics = this.fishingStatisticsRepository.readToday(accountId);
+    const mlFishingStatistics = this.fishingMlStatisticsRepository.read(accountId);
     return {
       ...(live ?? offlineAutomationSnapshot(persisted)),
       ...(live ? {
@@ -163,6 +170,7 @@ export class SessionManager {
         fishingConfig: persisted.fishingConfig,
       } : {}),
       dailyFishingStatistics,
+      mlFishingStatistics,
     };
   }
 
@@ -273,6 +281,7 @@ export class SessionManager {
     }
     const userId = account.userId;
     const initialDailyFishingStatistics = this.fishingStatisticsRepository.readToday(accountId);
+    const initialMlFishingStatistics = this.fishingMlStatisticsRepository.read(accountId);
 
     const opts: AvatarSessionOptions = {
       accountId,
@@ -282,8 +291,12 @@ export class SessionManager {
       cachedMetrics: account.cachedMetrics,
       cachedSnapshot: readRuntimeSnapshotCache(db, accountId),
       initialDailyFishingStatistics,
+      initialMlFishingStatistics,
       onFishingCatch: (fishId, caughtAt) => (
         this.fishingStatisticsRepository.recordCatch(accountId, fishId, caughtAt)
+      ),
+      onMlFishingResult: (isSuccess, updatedAt) => (
+        this.fishingMlStatisticsRepository.recordResult(accountId, isSuccess, updatedAt)
       ),
       onMetrics: (patch) => updateCachedMetrics(db, accountId, patch),
       onAutomationLocation: (location) => saveFindNpcLocation(db, accountId, location),
