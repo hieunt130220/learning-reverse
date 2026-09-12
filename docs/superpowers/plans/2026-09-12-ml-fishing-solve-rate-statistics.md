@@ -31,7 +31,7 @@
 - Consumes: Bảng `avatar_accounts(id)`.
 - Produces: Bảng `avatar_ml_fishing_statistics` với các cột `account_id`, `total_attempts`, `success_catches`, `updated_at`.
 
-- [ ] **Step 1: Khai báo DDL bảng `avatar_ml_fishing_statistics` trong `schema.sql`**
+- [x] **Step 1: Khai báo DDL bảng `avatar_ml_fishing_statistics` trong `schema.sql`**
 
 Thêm định nghĩa bảng vào cuối `avatar-web/server/src/db/schema.sql`:
 
@@ -44,12 +44,12 @@ CREATE TABLE IF NOT EXISTS avatar_ml_fishing_statistics (
 );
 ```
 
-- [ ] **Step 2: Kiểm tra cú pháp SQL và verify schema**
+- [x] **Step 2: Kiểm tra cú pháp SQL và verify schema**
 
 Run: `node -e "const fs = require('fs'); const sql = fs.readFileSync('avatar-web/server/src/db/schema.sql', 'utf8'); console.log(sql.includes('avatar_ml_fishing_statistics'));"`
 Expected: `true`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add avatar-web/server/src/db/schema.sql
@@ -70,7 +70,7 @@ git commit -m "feat(fishing): add ml fishing statistics schema"
   - `read(accountId: number): MlFishingStatistics`
   - `emptyMlFishingStatistics(): MlFishingStatistics`
 
-- [ ] **Step 1: Viết `fishingMlStatisticsRepo.ts`**
+- [x] **Step 1: Viết `fishingMlStatisticsRepo.ts`**
 
 Tạo file `avatar-web/server/src/accounts/fishingMlStatisticsRepo.ts`:
 
@@ -150,12 +150,12 @@ export class FishingMlStatisticsRepository {
 }
 ```
 
-- [ ] **Step 2: Typecheck server để xác nhận repository hợp lệ**
+- [x] **Step 2: Typecheck server để xác nhận repository hợp lệ**
 
 Run: `npx tsc -p avatar-web/server/tsconfig.json --noEmit`
 Expected: Biên dịch sạch hoặc chỉ thiếu DTO `MlFishingStatistics` (sẽ hoàn tất ở Task 3).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add avatar-web/server/src/accounts/fishingMlStatisticsRepo.ts
@@ -173,7 +173,7 @@ git commit -m "feat(fishing): add ml fishing statistics repository"
 - Consumes: Không.
 - Produces: Export `interface MlFishingStatistics` và optional property `mlFishingStatistics?: MlFishingStatistics;` trên `AutomationSnapshot`.
 
-- [ ] **Step 1: Khai báo `MlFishingStatistics` và mở rộng `AutomationSnapshot`**
+- [x] **Step 1: Khai báo `MlFishingStatistics` và mở rộng `AutomationSnapshot`**
 
 Trong `avatar-web/server/src/session/automationTypes.ts`, thêm định nghĩa `MlFishingStatistics`:
 
@@ -203,12 +203,12 @@ export interface AutomationSnapshot {
 }
 ```
 
-- [ ] **Step 2: Typecheck server**
+- [x] **Step 2: Typecheck server**
 
 Run: `npx tsc -p avatar-web/server/tsconfig.json --noEmit`
 Expected: PASS không lỗi.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add avatar-web/server/src/session/automationTypes.ts
@@ -226,7 +226,7 @@ git commit -m "feat(fishing): add ml fishing statistics contract"
 - Consumes: `MlFishingStatistics` từ `automationTypes.js`.
 - Produces: `AvatarSessionOptions.initialMlFishingStatistics`, `AvatarSessionOptions.onMlFishingResult`, theo dõi `currentFishingChallengeSource` và emit `mlFishingStatistics` trong `automationSnapshot`.
 
-- [ ] **Step 1: Thêm options và fields vào `AvatarSession`**
+- [x] **Step 1: Thêm options và fields vào `AvatarSession`**
 
 Trong `avatar-web/server/src/session/avatarSession.ts`:
 1. Import `MlFishingStatistics` từ `./automationTypes.js` và `emptyMlFishingStatistics` từ `../accounts/fishingMlStatisticsRepo.js`.
@@ -266,7 +266,7 @@ Trong `avatar-web/server/src/session/avatarSession.ts`:
    mlFishingStatistics: this.mlFishingStatistics,
    ```
 
-- [ ] **Step 2: Gắn cờ khi gửi TX 43 và xử lý kết quả ở các nhánh kết thúc lượt câu**
+- [x] **Step 2: Gắn cờ khi gửi TX 43 và xử lý kết quả ở các nhánh kết thúc lượt câu**
 
 1. Trong `handleFishingChallenge` (ngay trước `client.finishFishing(decision.answer)`):
    ```ts
@@ -287,12 +287,12 @@ Trong `avatar-web/server/src/session/avatarSession.ts`:
    this.recordMlResult(false);
    ```
 
-- [ ] **Step 3: Typecheck server**
+- [x] **Step 3: Typecheck server**
 
 Run: `npx tsc -p avatar-web/server/tsconfig.json --noEmit`
 Expected: PASS không lỗi.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add avatar-web/server/src/session/avatarSession.ts
@@ -310,7 +310,7 @@ git commit -m "feat(fishing): track and record ml fishing challenge outcomes in 
 - Consumes: `FishingMlStatisticsRepository` từ `../accounts/fishingMlStatisticsRepo.js`.
 - Produces: Quản lý instance repository, inject callback vào session và overlay `mlFishingStatistics` lên `AutomationSnapshot`.
 
-- [ ] **Step 1: Khởi tạo repository và truyền callback trong `manager.ts`**
+- [x] **Step 1: Khởi tạo repository và truyền callback trong `manager.ts`**
 
 Trong `avatar-web/server/src/session/manager.ts`:
 1. Import `FishingMlStatisticsRepository` từ `../accounts/fishingMlStatisticsRepo.js`.
@@ -348,12 +348,12 @@ Trong `avatar-web/server/src/session/manager.ts`:
      };
      ```
 
-- [ ] **Step 2: Typecheck server**
+- [x] **Step 2: Typecheck server**
 
 Run: `npx tsc -p avatar-web/server/tsconfig.json --noEmit`
 Expected: PASS không lỗi.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add avatar-web/server/src/session/manager.ts
@@ -371,7 +371,7 @@ git commit -m "feat(fishing): serve persisted ml fishing statistics in session m
 - Consumes: `AutomationSnapshot` từ web runtime.
 - Produces: Render metric card "Tỉ lệ giải ML đúng" trong tab Câu cá.
 
-- [ ] **Step 1: Khai báo DTO và helper narrowing cục bộ**
+- [x] **Step 1: Khai báo DTO và helper narrowing cục bộ**
 
 Trong `avatar-web/web/src/accounts/panels/FishingPanel.tsx`:
 1. Thêm interface cục bộ:
@@ -399,7 +399,7 @@ Trong `avatar-web/web/src/accounts/panels/FishingPanel.tsx`:
    const mlFishingStatistics = getMlFishingStatistics(automation);
    ```
 
-- [ ] **Step 2: Thêm thẻ metric vào Live Metrics & Status grid**
+- [x] **Step 2: Thêm thẻ metric vào Live Metrics & Status grid**
 
 Trong lưới thẻ trạng thái (sau thẻ `Map / Khu vực`):
 ```tsx
@@ -418,12 +418,12 @@ Trong lưới thẻ trạng thái (sau thẻ `Map / Khu vực`):
         </div>
 ```
 
-- [ ] **Step 3: Build web client để verify syntax và JSX**
+- [x] **Step 3: Build web client để verify syntax và JSX**
 
 Run: `npm run build -w avatar-web/web`
 Expected: Build web thành công (Vite build sạch, không lỗi type).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add avatar-web/web/src/accounts/panels/FishingPanel.tsx
@@ -436,17 +436,17 @@ git commit -m "feat(fishing): display ml fishing solve rate statistics"
 
 **Files:** Không tạo mới.
 
-- [ ] **Step 1: Kiểm tra ranh giới cấm (Forbidden Boundaries)**
+- [x] **Step 1: Kiểm tra ranh giới cấm (Forbidden Boundaries)**
 
 Run: `git diff --name-only main | grep -E "types.ts|avatar-web/web/src/types.ts"`
 Expected: Không có output (không file nào thuộc ranh giới cấm bị chạm tới).
 
-- [ ] **Step 2: Build toàn bộ project**
+- [x] **Step 2: Build toàn bộ project**
 
 Run: `npm run build -w avatar-web/server && npm run build -w avatar-web/web`
 Expected: Cả server và web đều build thành công không có lỗi.
 
-- [ ] **Step 3: GitNexus graph check**
+- [x] **Step 3: GitNexus graph check**
 
 Run: `git diff --check`
 Expected: Không có lỗi whitespace hay conflict markers.
