@@ -41,6 +41,24 @@ function getDailyFishingStatistics(
     ?.dailyFishingStatistics;
 }
 
+interface MlFishingStatistics {
+  totalAttempts: number;
+  successCatches: number;
+  accuracy: number;
+  updatedAt: number | null;
+}
+
+type AutomationWithMlStatistics = AutomationSnapshot & {
+  mlFishingStatistics?: MlFishingStatistics;
+};
+
+function getMlFishingStatistics(
+  automation: AutomationSnapshot | undefined,
+): MlFishingStatistics | undefined {
+  return (automation as AutomationWithMlStatistics | undefined)
+    ?.mlFishingStatistics;
+}
+
 const VIETNAM_DATE = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Ho_Chi_Minh',
   year: 'numeric',
@@ -131,6 +149,7 @@ export function FishingPanel({
   onSelectSettingsTab,
 }: FishingPanelProps) {
   const dailyFishingStatistics = getDailyFishingStatistics(automation);
+  const mlFishingStatistics = getMlFishingStatistics(automation);
   const accountId = account?.id;
   const isFishingDesired = automation?.desiredMode === 'auto_fishing';
   const isFishingActive = automation?.activeMode === 'auto_fishing';
@@ -421,6 +440,20 @@ export function FishingPanel({
           <div className="hint" style={{ fontSize: '0.8rem' }}>Map / Khu vực</div>
           <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#f0f6fc', marginTop: '0.4rem' }}>
             Map {fishingState?.currentMap ?? automation?.fishingConfig?.config?.map ?? 14} / Khu {fishingState?.currentArea ?? automation?.fishingConfig?.config?.area ?? 0}
+          </div>
+        </div>
+
+        <div style={{ padding: '0.75rem', background: '#12161d', borderRadius: '6px', border: '1px solid var(--line)' }}>
+          <div className="hint" style={{ fontSize: '0.8rem' }}>Tỉ lệ giải ML đúng</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#58a6ff', marginTop: '0.2rem' }}>
+            {mlFishingStatistics && mlFishingStatistics.totalAttempts > 0
+              ? `${(mlFishingStatistics.accuracy * 100).toFixed(1)}%`
+              : '—'}
+          </div>
+          <div className="hint" style={{ fontSize: '0.75rem', marginTop: '0.15rem' }}>
+            {mlFishingStatistics && mlFishingStatistics.totalAttempts > 0
+              ? `${mlFishingStatistics.successCatches}/${mlFishingStatistics.totalAttempts} lượt`
+              : 'Chưa có lượt giải'}
           </div>
         </div>
       </div>
