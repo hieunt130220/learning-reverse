@@ -2758,7 +2758,7 @@ export class AvatarSession {
     return false;
   }
 
-  private async prepareFishingAtPark(
+  private async enterFishingPark(
     client: GameClient,
     generation: number,
     epoch: number,
@@ -2855,6 +2855,22 @@ export class AvatarSession {
       || !this.isAutomationGenerationCurrent(generation)
       || this.desiredMode !== 'auto_fishing'
     ) return false;
+
+    return true;
+  }
+
+  private async startFishingSession(
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    // Nếu nhân vật chưa ở trong Park context (handler 9), tự động vào map trước
+    if (client.currentHandlerContext !== 9) {
+      const entered = await this.enterFishingPark(client, generation, epoch, signal);
+      if (!entered) return false;
+    }
+
     this.pushLog(`[câu cá] gửi TX45 startFishing — handler=${client.currentHandlerContext}`);
 
     let consecutiveFailures = 0;
@@ -3000,6 +3016,17 @@ export class AvatarSession {
 
     this.fishingRuntime.lastError = null;
     return true;
+  }
+
+  private async prepareFishingAtPark(
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const entered = await this.enterFishingPark(client, generation, epoch, signal);
+    if (!entered) return false;
+    return this.startFishingSession(client, generation, epoch, signal);
   }
 
   private async serviceDueFishingFarm(
@@ -3160,7 +3187,7 @@ export class AvatarSession {
               if (action === 'stop') return;
               continue;
             }
-            if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
+            if (!(await this.startFishingSession(client, generation, epoch, signal))) return;
             continue;
           }
 
@@ -3182,7 +3209,7 @@ export class AvatarSession {
             const bought = await this.executeParkPurchase(client, epoch, signal, castMissingType);
             if (!bought) return;
             // Sau khi mua, gửi cauCaXong để kết thúc session câu cũ
-            // rồi bắt đầu lại từ startFishing qua prepareFishingAtPark
+            // rồi bắt đầu lại từ startFishing qua startFishingSession
             try { client.cauCaXong(); } catch { /* bỏ qua */ }
             await this.delayCancellable(1000, signal);
             if (this.fishingFarmDue) {
@@ -3190,7 +3217,7 @@ export class AvatarSession {
               if (action === 'stop') return;
               continue;
             }
-            if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
+            if (!(await this.startFishingSession(client, generation, epoch, signal))) return;
             continue;
           }
           // Dialog không nhận diện được — dừng câu
@@ -3217,7 +3244,7 @@ export class AvatarSession {
             if (action === 'stop') return;
             continue;
           }
-          if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
+          if (!(await this.startFishingSession(client, generation, epoch, signal))) return;
           continue;
         }
 
