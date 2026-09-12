@@ -13,6 +13,7 @@ import {
   PARK_ALREADY_IN_AREA_DIALOG,
   isRewardDialog,
   isInformationalDialog,
+  isMissingFishingTicketDialog,
   type CaptchaEvent,
   type ClientStatus,
   type DeviceProfile,
@@ -2977,8 +2978,9 @@ export class AvatarSession {
         }
 
         let missingType: 'ticket' | 'rod' | 'bait' | null = null;
-        if (errText.includes('vé') || errText.includes('bến tàu')) {
+        if (isMissingFishingTicketDialog(errText)) {
           missingType = 'ticket';
+          this.pushLog(`[câu cá] Server từ chối vì thiếu vé câu: "${reason}"`);
         } else if (errText.includes('mồi')) {
           missingType = 'bait';
         } else if (
@@ -3231,10 +3233,8 @@ export class AvatarSession {
             continue;
           }
 
-          let castMissingType: 'ticket' | 'rod' | 'bait' | null = null;
-          if (castErrText.includes('vé') || castErrText.includes('bến tàu')) {
-            castMissingType = 'ticket';
-          } else if (castErrText.includes('mồi')) {
+          let castMissingType: 'rod' | 'bait' | null = null;
+          if (castErrText.includes('mồi')) {
             castMissingType = 'bait';
           } else if (
             castErrText.includes('cần câu')
@@ -3244,6 +3244,19 @@ export class AvatarSession {
             || castErrText.includes('cần sắt')
           ) {
             castMissingType = 'rod';
+          } else if (isMissingFishingTicketDialog(castErrText)) {
+            // Vé câu hết hạn trong lúc câu cá: kết thúc phiên câu hiện tại
+            // và để startFishingSession ở chu kỳ sau xử lý mua vé đúng quy trình handshake
+            this.pushLog(`[câu cá] Vé câu đã hết hạn: "${catchResult}" — kết thúc lượt để mua lại vé…`);
+            try { client.cauCaXong(); } catch { /* bỏ qua */ }
+            await this.delayCancellable(1000, signal);
+            if (this.fishingFarmDue) {
+              const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
+              if (action === 'stop') return;
+              continue;
+            }
+            if (!(await this.startFishingSession(client, generation, epoch, signal))) return;
+            continue;
           }
           if (castMissingType) {
             const bought = await this.executeParkPurchase(client, epoch, signal, castMissingType);
