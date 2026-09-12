@@ -2892,6 +2892,8 @@ export class AvatarSession {
 
     let consecutiveFailures = 0;
     let lastMissingType: 'ticket' | 'rod' | 'bait' | null = null;
+    let timeoutRetries = 0;
+    const MAX_TIMEOUT_RETRIES = 2;
 
     // ── Vòng lặp chờ startFishing thành công ──
     while (true) {
@@ -2964,6 +2966,23 @@ export class AvatarSession {
         const reason = startResult.error ?? 'server từ chối bắt đầu câu';
         const errText = reason.toLowerCase();
         this.pushLog(`[câu cá] Server từ chối bắt đầu câu: ${reason}`);
+
+        if (errText.includes('hết giờ chờ bắt đầu câu')) {
+          if (timeoutRetries < MAX_TIMEOUT_RETRIES) {
+            timeoutRetries++;
+            this.pushLog(`[câu cá] Hết giờ chờ bắt đầu câu (lần ${timeoutRetries}/${MAX_TIMEOUT_RETRIES}) — reset phiên câu và thử lại…`);
+            try {
+              client.cauCaXong();
+            } catch {
+              /* bỏ qua */
+            }
+            await this.delayCancellable(1500 * timeoutRetries, signal);
+            if (timeoutRetries >= 2) {
+              await this.enterFishingPark(client, generation, epoch, signal);
+            }
+            continue;
+          }
+        }
 
         if (errText.includes('rương') && (errText.includes('đầy') || errText.includes('không thể câu'))) {
           const sold = await this.executeSellFish(client, epoch, signal);
