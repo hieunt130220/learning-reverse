@@ -34,6 +34,7 @@ import type {
 import { FIND_NPC_DISABLED } from './featureFlags.js';
 import { runtimeSnapshotPatchFromEvent } from './runtimeCache.js';
 import { ShopCoordinator } from './shopCoordinator.js';
+import type { CanCauPayload, InferenceResult } from '../fishing/autoDecision.js';
 
 /** Giãn cách giữa các lần đăng nhập lúc khởi động. */
 export const BOOTSTRAP_STAGGER_MS = 5_000;
@@ -48,6 +49,7 @@ export interface SessionManagerDeps {
   findNpcCatalog?: readonly NpcMapLocation[];
   fishingStatisticsRepository?: FishingStatisticsRepository;
   fishingMlStatisticsRepository?: FishingMlStatisticsRepository;
+  onFishingInference?: (accountId: number, payload: CanCauPayload, result: InferenceResult) => void;
   createSession?(opts: AvatarSessionOptions): AvatarSession;
   setTimeoutFn?: typeof setTimeout;
 }
@@ -297,6 +299,9 @@ export class SessionManager {
       ),
       onMlFishingResult: (isSuccess, updatedAt) => (
         this.fishingMlStatisticsRepository.recordResult(accountId, isSuccess, updatedAt)
+      ),
+      onFishingInference: (payload, result) => (
+        this.deps.onFishingInference?.(accountId, payload, result)
       ),
       onMetrics: (patch) => updateCachedMetrics(db, accountId, patch),
       onAutomationLocation: (location) => saveFindNpcLocation(db, accountId, location),

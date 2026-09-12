@@ -69,6 +69,7 @@ import {
   buildAnswerDomain,
   makeAutoDecision,
   type CanCauPayload,
+  type InferenceResult,
 } from '../fishing/autoDecision.js';
 import { ProductionInferenceClient } from '../fishing/productionInference.js';
 
@@ -200,6 +201,7 @@ export interface AvatarSessionOptions {
     isSuccess: boolean,
     updatedAt: number,
   ) => MlFishingStatistics;
+  onFishingInference?: (payload: CanCauPayload, result: InferenceResult) => void;
   /** Snapshot nhiệm vụ/tài sản gần nhất để hiển thị khi chờ vòng auto kế tiếp. */
   cachedSnapshot?: CachedRuntimeSnapshot;
   /** Production luôn truyền đủ hai dependency; optional giữ tương thích cho harness cũ. */
@@ -3557,7 +3559,16 @@ export class AvatarSession {
       timeoutMs: Number(process.env.FISHING_INFERENCE_TIMEOUT_MS) || 5000,
     });
 
-    void makeAutoDecision(payload, domain, (p) => inferenceClient.match(p))
+    const infer = async (challenge: CanCauPayload): Promise<InferenceResult> => {
+      const result = await inferenceClient.match(challenge);
+      try {
+        this.opts.onFishingInference?.(challenge, result);
+      } catch (error) {
+        this.pushLog(`[câu cá] lỗi capture review: ${(error as Error).message}`);
+      }
+      return result;
+    };
+    void makeAutoDecision(payload, domain, infer)
       .then(async (decision) => {
         if (decision.status !== 'answer') {
           this.pushLog('fishing: không xác định được đáp án hợp lệ');
