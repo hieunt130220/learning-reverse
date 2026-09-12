@@ -3119,6 +3119,8 @@ export class AvatarSession {
         this.pushLog('[câu cá] đang quăng cần…');
         this.emitAutomation();
 
+        // Lượt câu mới bắt đầu — solver của lượt câu trước (nếu còn ngủ) hết hiệu lực
+        this.cancelPendingFishingChallenge();
         client.quanCau();
 
         // Chờ cá cắn câu và câu thành công (hoặc timeout 35s)
@@ -3185,6 +3187,26 @@ export class AvatarSession {
               this.emitAutomation();
               return;
             }
+            if (this.fishingFarmDue) {
+              const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
+              if (action === 'stop') return;
+              continue;
+            }
+            if (!(await this.startFishingSession(client, generation, epoch, signal))) return;
+            continue;
+          }
+
+          // Dialog cá chạy mất / sổng cá / trật rồi — server tự chốt lượt hỏng,
+          // chỉ cần reset phiên và quăng cần tiếp, KHÔNG dừng auto.
+          if (
+            castErrText.includes('chạy mất')
+            || castErrText.includes('sổng cá')
+            || castErrText.includes('trật rồi')
+          ) {
+            this.pushLog(`[câu cá] ${catchResult} — bỏ qua, quăng cần tiếp…`);
+            this.cancelPendingFishingChallenge();
+            try { client.cauCaXong(); } catch { /* bỏ qua */ }
+            await this.delayCancellable(1000, signal);
             if (this.fishingFarmDue) {
               const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
               if (action === 'stop') return;
