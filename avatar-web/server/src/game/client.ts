@@ -659,6 +659,10 @@ export class GameClient extends EventEmitter {
     this.emit('log', 'J2ME: gửi LOGIN_ACC (-2) version ' + this.identity.version);
   }
 
+  clearParkSnapshot(): void {
+    this.latestParkSnapshot = undefined;
+  }
+
   /**
    * Vào nông trại.
    * - Lần đầu tiên trong phiên: xin handler farm bằng `GET_HANDLER (-1) + i8 10`.
@@ -668,6 +672,7 @@ export class GameClient extends EventEmitter {
    *   (server coi việc xin lại handler khi đang ở trong farm là bất thường và đóng TCP socket).
    */
   enterFarm(idFarm?: number): void {
+    this.latestParkSnapshot = undefined;
     if (this.currentHandlerContext !== HANDLER_FARM) {
       this.currentHandlerContext = HANDLER_FARM;
       const m = Message.create(-1);
