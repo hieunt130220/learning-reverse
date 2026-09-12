@@ -1090,6 +1090,8 @@ export class AvatarSession {
       if (client.playerId === undefined || ev.idUser !== client.playerId) {
         return;
       }
+      // RX 43 chốt lượt câu (dù bắt được hay sổng) — solver của lượt này không còn hiệu lực
+      this.cancelPendingFishingChallenge();
       if (ev.idFish >= 0) {
         const fishName = getFishName(ev.idFish);
         const caughtAt = this.now();
@@ -1112,9 +1114,10 @@ export class AvatarSession {
           this.pushLog(`[câu cá] ${message}`);
         }
       } else {
-        this.pushLog(`[câu cá] giật hụt hoặc sổng cá (mã ${ev.idFish})`);
-        this.fishingRuntime.status = 'rejected';
-        this.fishingRuntime.lastError = `Giật hụt / sổng cá (${ev.idFish})`;
+        // Lượt trượt bình thường — không phải lỗi fatal. Vòng lặp runFishingLoop
+        // tự reset qua catchResult === false hoặc nhánh dialog sổng cá;
+        // không set status='rejected', không set lastError.
+        this.pushLog(`[câu cá] giật hụt hoặc sổng cá (mã ${ev.idFish}) — lượt này không bắt được cá`);
       }
       this.emitAutomation();
     });
@@ -3404,6 +3407,15 @@ export class AvatarSession {
         resolve();
       }, ms);
     });
+  }
+
+  /**
+   * Hủy hiệu lực mọi pending fishing challenge solver: bump generation để
+   * Pre-Send Gate trong handleFishingChallenge chặn TX 43 khi lượt câu đã
+   * kết thúc (RX 43 thành công/thất bại, dialog sổng cá, hoặc quăng cần mới).
+   */
+  private cancelPendingFishingChallenge(): void {
+    this.fishingChallengeGeneration += 1;
   }
 
   private handleFishingChallenge(
