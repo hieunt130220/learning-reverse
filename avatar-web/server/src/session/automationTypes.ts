@@ -170,6 +170,13 @@ export interface DailyFishingStatistics {
   updatedAt: number | null;
 }
 
+export interface MlFishingStatistics {
+  totalAttempts: number;
+  successCatches: number;
+  accuracy: number;
+  updatedAt: number | null;
+}
+
 export interface AutomationSnapshot {
   desiredMode: AutomationMode;
   activeMode: AutomationMode;
@@ -179,6 +186,7 @@ export interface AutomationSnapshot {
   fishingConfig?: StoredFishingConfigState;
   fishingRuntime?: FishingRuntimeState;
   dailyFishingStatistics?: DailyFishingStatistics;
+  mlFishingStatistics?: MlFishingStatistics;
   location: AutomationLocation | null;
 }
 
