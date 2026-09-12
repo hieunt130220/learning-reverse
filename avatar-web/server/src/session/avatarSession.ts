@@ -3057,6 +3057,14 @@ export class AvatarSession {
     this.fishingChallengeGeneration += 1;
     this.fishingFarmDue = false;
 
+    this.pushLog('[câu cá] Tạm dừng câu cá, đứng dậy để làm nông trại định kỳ…');
+    try {
+      client.cauCaXong();
+    } catch {
+      /* bỏ qua */
+    }
+    await this.delayCancellable(800, signal);
+
     const outcome = await this.runFishingFarmCycle(
       'periodic',
       client,
@@ -3076,7 +3084,21 @@ export class AvatarSession {
 
     this.pushLog('[câu cá] Đã xong farm, quay lại khu câu cá...');
     this.fishingFarmPhase = 'returning-to-park';
-    const ok = await this.prepareFishingAtPark(client, generation, epoch, signal);
+    client.clearParkSnapshot();
+    let ok = await this.prepareFishingAtPark(client, generation, epoch, signal);
+    if (!ok) {
+      if (
+        signal.aborted
+        || !this.isCurrent(client, epoch)
+        || !this.isAutomationGenerationCurrent(generation)
+        || this.desiredMode !== 'auto_fishing'
+      ) {
+        return 'stop';
+      }
+      this.pushLog('[câu cá] Lần đầu vào lại khu câu cá sau farm chưa sẵn sàng — thử lại lần 2…');
+      await this.delayCancellable(2000, signal);
+      ok = await this.prepareFishingAtPark(client, generation, epoch, signal);
+    }
     if (!ok) return 'stop';
     this.fishingFarmPhase = 'fishing';
     this.scheduleFishingFarm(generation, epoch);
