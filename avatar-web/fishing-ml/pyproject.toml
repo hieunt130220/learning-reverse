@@ -7,7 +7,7 @@ name = "fishing-ml"
 version = "0.1.0"
 description = "Offline dataset, labeling, and training pipeline for Avatar fishing image matching (Giai đoạn A)."
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.10,<3.13"
 license = { text = "Proprietary — reverse-engineering research" }
 dependencies = [
     "numpy>=2.0,<3",

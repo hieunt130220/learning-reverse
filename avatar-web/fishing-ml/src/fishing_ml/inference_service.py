@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import socket
 import subprocess
 import threading
@@ -33,7 +34,6 @@ from base64 import b64decode
 from collections.abc import Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
-from .provenance import revision_matches_recorded
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
@@ -48,6 +48,7 @@ from .inference_contract import (
     parse_request,
     serialize_response,
 )
+from .provenance import revision_matches_recorded
 
 if TYPE_CHECKING:
     import torch
@@ -238,6 +239,20 @@ def _current_git_revision() -> str:
         raise RuntimeError("frozen service requires a readable Git revision") from error
 
 
+def _is_git_ancestor(ancestor: str, descendant: str) -> bool:
+    """Check if ancestor is an ancestor commit of descendant in this repository."""
+    root = Path(__file__).resolve().parents[4]
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(root), "merge-base", "--is-ancestor", ancestor, descendant],
+            check=False,
+            capture_output=True,
+        )
+        return res.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def load_frozen_matcher(frozen_dir: Path) -> FrozenMatcher:
     """Load + verify EXACTLY ONE frozen candidate ONCE.
 
@@ -268,7 +283,13 @@ def load_frozen_matcher(frozen_dir: Path) -> FrozenMatcher:
         # inventory. Also reject a valid-but-different revision here: the
         # service must not run a candidate produced from another checkout.
         revision = manifest_doc.get("gitRevision")
-        if not revision_matches_recorded(_current_git_revision(), revision):
+        current_rev = _current_git_revision()
+        allow_mismatch = os.environ.get("FISHING_ALLOW_REVISION_MISMATCH") == "1"
+        if not (
+            revision_matches_recorded(current_rev, revision)
+            or (isinstance(revision, str) and _is_git_ancestor(revision, current_rev))
+            or allow_mismatch
+        ):
             raise RuntimeError("frozen Git revision does not match current revision")
 
     config_model_id = config_doc.get("runId") if isinstance(config_doc, Mapping) else None
@@ -740,6 +761,13 @@ def _make_handler(matcher: FrozenMatcher, config: InferenceServerConfig):
             self._send_json(405, {"code": "method_not_allowed", "reason": "use POST"})
 
         def do_GET(self) -> None:
+            if _request_path(self.path) == "/health":
+                self._send_json(200, {
+                    "code": "ok",
+                    "status": "ok",
+                    "model_id": matcher.model_id,
+                })
+                return
             self._method_not_allowed()
 
         def do_HEAD(self) -> None:

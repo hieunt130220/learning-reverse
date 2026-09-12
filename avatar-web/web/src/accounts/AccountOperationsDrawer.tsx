@@ -1,23 +1,26 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
+import { apiGet } from '../api.js';
 import type { AccountWithRuntime, AutomationSnapshot } from '../types.js';
 import { useMediaQuery } from '../useMediaQuery.js';
 import { useAccounts } from './AccountsProvider.js';
 import { useAccountRuntime } from './useAccountRuntime.js';
 import { useDialogFocus } from './useDialogFocus.js';
 import { AssetsPanel } from './panels/AssetsPanel.js';
-import { AutoFarmPanel } from './panels/AutoFarmPanel.js';
 import { CookingPanel } from './panels/CookingPanel.js';
 import { FindNpcPanel } from './panels/FindNpcPanel.js';
+import { FishingPanel } from './panels/FishingPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
 import { QuestsPanel } from './panels/QuestsPanel.js';
+import { SettingsPanel } from './panels/SettingsPanel.js';
 import { ShopPanel } from './panels/ShopPanel.js';
 import { StatusPanel } from './panels/StatusPanel.js';
 
 const PANEL_TABS = [
   ['status', 'Trạng thái'],
-  ['autofarm', 'Tự động'],
+  ['settings', 'Cài đặt'],
+  ['fishing', 'Câu cá'],
   ['find_npc', 'Tìm NPC'],
   ['quests', 'Nhiệm vụ'],
   ['cooking', 'Nấu ăn'],
@@ -43,13 +46,16 @@ export function AccountOperationsDrawer() {
     : undefined;
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const [dirtySources, setDirtySources] = useState({ farm: false, findNpc: false });
-  const anyDirty = dirtySources.farm || dirtySources.findNpc;
+  const [dirtySources, setDirtySources] = useState({ farm: false, findNpc: false, fishing: false });
+  const anyDirty = dirtySources.farm || dirtySources.findNpc || dirtySources.fishing;
   const setFarmDirty = useCallback((dirty: boolean) => {
     setDirtySources((current) => current.farm === dirty ? current : { ...current, farm: dirty });
   }, []);
   const setFindNpcDirty = useCallback((dirty: boolean) => {
     setDirtySources((current) => current.findNpc === dirty ? current : { ...current, findNpc: dirty });
+  }, []);
+  const setFishingDirty = useCallback((dirty: boolean) => {
+    setDirtySources((current) => current.fishing === dirty ? current : { ...current, fishing: dirty });
   }, []);
   const canLeave = () => !anyDirty || window.confirm('Có thay đổi chưa lưu. Bỏ thay đổi?');
   const close = () => {
@@ -67,11 +73,6 @@ export function AccountOperationsDrawer() {
     return () => window.removeEventListener('beforeunload', blockUnload);
   }, [anyDirty]);
 
-  const openDebug = (event: MouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
-    if (canLeave()) navigate(`/accounts/${accountId}/debug`);
-  };
-
   return (
     <div className="dialog-backdrop dialog-backdrop--drawer" onMouseDown={(event) => {
       if (event.target === event.currentTarget) close();
@@ -87,8 +88,8 @@ export function AccountOperationsDrawer() {
             account={account}
             reload={reload}
             onPlanDirtyChange={setFarmDirty}
+            onFishingDirtyChange={setFishingDirty}
             onFindNpcDirtyChange={setFindNpcDirty}
-            onOpenDebug={openDebug}
           />
         ) : (
           <div className="drawer-empty"><p className="err">không có tài khoản này</p><Link to="/accounts">Về dashboard</Link></div>
@@ -103,29 +104,62 @@ function LoadedOperations({
   account,
   reload,
   onPlanDirtyChange,
+  onFishingDirtyChange,
   onFindNpcDirtyChange,
-  onOpenDebug,
 }: {
   account: AccountWithRuntime;
   reload(): Promise<void>;
   onPlanDirtyChange(dirty: boolean): void;
+  onFishingDirtyChange(dirty: boolean): void;
   onFindNpcDirtyChange(dirty: boolean): void;
-  onOpenDebug(event: MouseEvent<HTMLAnchorElement>): void;
 }) {
   const snapshot = useAccountRuntime(account.id, account.runtime);
   const isMobile = useMediaQuery('(max-width: 679px)');
   const [activePanel, setActivePanel] = useState<PanelId>('status');
   const [automationMutationBusy, setAutomationMutationBusy] = useState(false);
-  const [automationSupported, setAutomationSupported] = useState<boolean | undefined>();
   const [fetchedAutomation, setFetchedAutomation] = useState<AutomationSnapshot | undefined>();
+  const automationRefreshGeneration = useRef(0);
   const panelsRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const visible = (id: PanelId) => !isMobile || activePanel === id;
-  const automation = snapshot?.automation ?? fetchedAutomation;
+
+  useEffect(() => {
+    if (snapshot?.automation) {
+      automationRefreshGeneration.current += 1;
+      setFetchedAutomation(snapshot.automation);
+    }
+  }, [snapshot?.automation]);
+
+  const automation = fetchedAutomation ?? snapshot?.automation;
+
+  const refreshAutomation = useCallback(async () => {
+    const generation = ++automationRefreshGeneration.current;
+    try {
+      const snap = await apiGet<AutomationSnapshot>(`/api/accounts/${account.id}/automation`);
+      if (automationRefreshGeneration.current !== generation) return;
+      setFetchedAutomation(snap);
+    } catch {
+      // Bỏ qua lỗi mạng khi load tự động ngầm
+    }
+  }, [account.id]);
+
+  useEffect(() => {
+    void refreshAutomation();
+  }, [refreshAutomation]);
+
+  const handleAutomationChange = useCallback((loaded: AutomationSnapshot) => {
+    automationRefreshGeneration.current += 1;
+    setFetchedAutomation(loaded);
+  }, []);
+
   const handleAutomationCapabilityChange = useCallback((supported: boolean, loaded?: AutomationSnapshot) => {
-    setAutomationSupported(supported);
-    if (loaded) setFetchedAutomation(loaded);
-    else if (!supported) setFetchedAutomation(undefined);
+    if (loaded) {
+      automationRefreshGeneration.current += 1;
+      setFetchedAutomation(loaded);
+    } else if (!supported) {
+      automationRefreshGeneration.current += 1;
+      setFetchedAutomation(undefined);
+    }
   }, []);
   const selectPanel = (id: PanelId) => {
     setActivePanel(id);
@@ -170,23 +204,40 @@ function LoadedOperations({
             accountId={account.id}
             snap={snapshot}
             automation={automation}
-            automationSupported={snapshot?.automation ? true : automationSupported}
             gameUser={account.gameUser}
-            onChanged={() => void reload()}
+            onChanged={() => {
+              void reload();
+              void refreshAutomation();
+            }}
+            onAutomationChange={handleAutomationChange}
             automationMutationBusy={automationMutationBusy}
             onAutomationMutationBusyChange={setAutomationMutationBusy}
           />
         </div>
-        <div id="drawer-panel-autofarm" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-autofarm' : undefined} hidden={!visible('autofarm')}>
-          <AutoFarmPanel
-            accountId={account.id}
-            foods={snapshot?.foods}
-            trees={snapshot?.trees}
-            animals={snapshot?.animals}
-            items={snapshot?.items}
-            shop={snapshot?.shop}
-            produce={snapshot?.produce}
+        <div id="drawer-panel-settings" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-settings' : undefined} hidden={!visible('settings')}>
+          <SettingsPanel
+            account={account}
+            snapshot={snapshot}
+            automation={automation}
             onPlanDirtyChange={onPlanDirtyChange}
+            onFishingDirtyChange={onFishingDirtyChange}
+            onAutomationChange={handleAutomationChange}
+            onChanged={() => {
+              void reload();
+              void refreshAutomation();
+            }}
+          />
+        </div>
+        <div id="drawer-panel-fishing" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-fishing' : undefined} hidden={!visible('fishing')}>
+          <FishingPanel
+            account={account}
+            automation={automation}
+            quests={snapshot?.quests ?? null}
+            onChanged={() => {
+              void reload();
+              void refreshAutomation();
+            }}
+            onSelectSettingsTab={() => selectPanel('settings')}
           />
         </div>
         {!FIND_NPC_TAB_HIDDEN && (
@@ -237,9 +288,6 @@ function LoadedOperations({
         <div id="drawer-panel-logs" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-logs' : undefined} hidden={!visible('logs')}>
           <LogPanel logs={snapshot?.logs ?? []} />
         </div>
-        <Link className="btn-link drawer-debug-link" to={`/accounts/${account.id}/debug`} onClick={onOpenDebug}>
-          Debug chuyên sâu →
-        </Link>
       </div>
     </div>
   );

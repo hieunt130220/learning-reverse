@@ -153,8 +153,7 @@ test.each([
     const backdrop = screen.getByRole('dialog', { name: 'Vận hành Farm chính' }).parentElement!;
     fireEvent.mouseDown(backdrop);
   }],
-  ['link Debug', async () => userEvent.click(screen.getByRole('link', { name: /Debug chuyên sâu/i }))],
-] as const)('%s dùng cùng dirty guard và thực hiện đúng đích sau khi chấp nhận', async (kind, leave) => {
+] as const)('%s dùng cùng dirty guard và thực hiện đúng đích sau khi chấp nhận', async (_kind, leave) => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
   renderRoute('/accounts/1');
   await makePlanDirty();
@@ -164,8 +163,7 @@ test.each([
   expect(confirm).toHaveBeenLastCalledWith('Có thay đổi chưa lưu. Bỏ thay đổi?');
 
   await leave();
-  const expected = kind === 'link Debug' ? '/accounts/1/debug' : '/accounts';
-  await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(expected));
+  await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/accounts'));
 });
 
 test('plan bẩn chặn beforeunload và save thành công gỡ chặn', async () => {
@@ -191,7 +189,13 @@ test('mobile drawer dùng tab và giữ panel mounted khi chuyển mục', async
   }));
   renderRoute('/accounts/1');
   expect(await screen.findByRole('tab', { name: 'Trạng thái' })).toHaveAttribute('aria-selected', 'true');
-  await userEvent.click(screen.getByRole('tab', { name: 'Tự động' }));
-  expect(screen.getByRole('tab', { name: 'Tự động' })).toHaveAttribute('aria-selected', 'true');
+  await userEvent.click(screen.getByRole('tab', { name: 'Cài đặt' }));
+  expect(screen.getByRole('tab', { name: 'Cài đặt' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('tab', { name: /Nông trại/i })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByText(/Kế hoạch cây theo ô/i)).toBeInTheDocument();
+
+  // Test chuyển sub-tab sang Câu cá
+  await userEvent.click(screen.getByRole('tab', { name: '🎣 Câu cá' }));
+  expect(screen.getByRole('tab', { name: '🎣 Câu cá' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByText(/Cấu hình hồ câu/i)).toBeInTheDocument();
 });

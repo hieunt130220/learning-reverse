@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { apiDelete } from '../api.js';
 import type { AccountWithRuntime } from '../types.js';
-import { StatusBadge } from './AccountStatus.js';
+import { ModeChip, StatusBadge } from './AccountStatus.js';
 
 export interface AccountCardProps {
   account: AccountWithRuntime;
@@ -65,13 +65,25 @@ export function AccountCard({ account, reload }: AccountCardProps) {
       <button className="account-card-main" type="button" onClick={open} aria-label={`Mở ${account.label}`}>
         <span className="account-card-heading">
           <span><b>{account.label}</b><small>{account.gameUser}</small></span>
-          <StatusBadge status={runtime?.status ?? 'idle'} />
+          <span className="account-card-status">
+            <StatusBadge status={runtime?.status ?? 'idle'} />
+            <ModeChip automation={automation} fallbackActive={autoActive && !automation} />
+          </span>
         </span>
         <span className="account-card-stats">
           <span><small>Xu</small><b>{formatMetric(xu)}</b></span>
           <span><small>Lượng</small><b>{formatLuong()}</b></span>
           <span><small>Level</small><b>NV {playerLevel ?? '—'} · Farm {farmLevel ?? '—'}</b></span>
-          <span><small>Tự động</small><b>{runtime?.auto.running ? `vòng ${runtime.auto.cycle}` : autoActive ? 'đang chờ' : 'đang tắt'}</b></span>
+          <span>
+            <small>Chu kỳ</small>
+            <b>
+              {runtime?.auto.running
+                ? `vòng ${runtime.auto.cycle}${runtime.auto.lastRun ? ` · ${new Date(runtime.auto.lastRun).toLocaleTimeString()}` : ''}`
+                : autoActive
+                  ? 'đang chờ'
+                  : '—'}
+            </b>
+          </span>
         </span>
         {runtimeNotice && <span className="account-card-notice">{runtimeNotice}</span>}
       </button>

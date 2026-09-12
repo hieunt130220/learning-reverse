@@ -1,0 +1,1 @@
+{"augmentationProfile":"photometric_plus_geom","channels":[32,64,96,128],"checkpointMetric":"dev_top1_accuracy","device":"cpu","embeddingDim":128,"epochs":80,"hardNegativeMargin":0.1,"hardNegativeRatio":0.0,"learningRate":0.001,"reproducibilityTolerance":0.002,"schemaVersion":2,"seed":20260827,"temperature":0.05,"weightDecay":0.0001,"workers":0}

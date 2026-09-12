@@ -52,6 +52,48 @@ rồi vòng lặp `writeByte(index[i])`.
 `index` = chuỗi phím mini-game gom trong `FishingScr.listKeySend`; `FishingScr.arrIndex` dùng
 `0xFF` làm sentinel "chưa đặt" (`checkSendArrIndex` @0x5DC4A0 trả false nếu còn 0xFF).
 Chỗ gọi duy nhất truyền `isF = 1` (hằng số) ⇒ thực tế client luôn gửi `true`.
+Độ dài mảng gửi = `queryCount` (số ảnh `arrImgNew` của RX79); slot chưa bấm được `update()`
+tự điền bằng key 0 qua cú gọi `setIndex(0, 0)` lặp mỗi frame (xem guard bên dưới).
+
+#### Ánh xạ referenceIndex → byte trên dây (✓ verified 2026-09-07, live Frida)
+
+**Kết luận: TX43 answer byte = chính vị trí tham chiếu 0-based trong mảng `arrImg` của RX79
+(identity mapping).** Không có bảng tra trung gian, không có offset. Byte `0x00` ở vị trí thứ
+`j` nghĩa là query `j` được trả lời bằng reference ảnh số 0; slot không bấm giữ `0xFF` trong
+`arrIndex` và bị loại khỏi mảng gửi đi (độ dài `n` = số query, mỗi phần tử đã có giá trị).
+
+Chuỗi bằng chứng động (PID 4358, AVD `avatar-protocol-api30`, log `/tmp/fishing_phaseA2.log`):
+
+| Capture | timeDelay | queryCount | `setIndex` key bấm theo thứ tự | TX43 `answerBytes` |
+|---|---|---|---|---|
+| C1 15:51:07→15:51:16 | 20000 | 6 | 0,1,2,3,4,5 | `00 01 02 03 04 05` |
+| C2 15:58:15→15:58:23 | 20000 | 6 | 0,1,4,3,2,5 | `00 01 04 03 02 05` |
+| C3 16:09:45→16:09:56 | 20000 | 9 | 4,4,4,4,4,4,4,3 | `04 04 04 04 04 04 04 03 00` |
+| C4 16:17:15→16:17:31 | 20000 | 7 | 3,4,5,4,3,3,3 | `03 04 05 04 03 03 03` |
+
+Mỗi capture là một challenge riêng (`onCaCanCau idUser 1005161` → `doFinishFishing` → `TX cmd 43`,
+không có RX79 thứ hai chen giữa). Byte ghi trên dây khớp **chính xác và theo đúng thứ tự** với
+`key` mà `FishingScr.setIndex(int key, bool isClick)` nhận được từ các cú chạm thật:
+
+- C1 phủ vị trí 0..5, C2 phủ lại 0..5 theo hoán vị khác ⇒ **mọi vị trí tham chiếu được hỗ trợ
+  (0..5) có ≥2 quan sát độc lập, đồng thuận**.
+- C3/C4 chứng minh key không bị biến đổi khi lặp lại (4 xuất hiện 7 lần → byte 4 ở 7 slot) và
+  khi không phải giá trị tăng dần.
+- C3 có 9 query nhưng chỉ 8 cú bấm; slot cuối ra `00` = reference 0. Trong cửa sổ C3 không có
+  cú chạm trượt nào (không thấy backtrace nhánh `numKeyPress` trượt @0x5DC484, cũng không thấy
+  click key 0) ⇒ slot 9 được `update()` điền key 0, không phải do chạm trượt.
+
+Bằng chứng tĩnh tương ứng (`libil2cpp.so` arm64):
+
+| RVA | Hành vi |
+|---|---|
+| `onCaCanCau` 0x5DDD68 | Duyệt `arrImg` theo đúng thứ tự wire, `listKey.add(img, i)` tại 0x5DE4A4 (`w2 = w27 = i`) ⇒ phần tử thứ `i` của `listKey` mang key `i`. |
+| `numKeyPress` 0x5DBFF0 | Hit-test vùng chạm với `listKey` (0x5DC3C8 `bl 0x659938`), khớp thì `setIndex(listKey[index].key, false)` tại 0x5DC3DC; không khớp thì `setIndex(0, false)` tại 0x5DC480. |
+| `setIndex` 0x5DBA60 | `listKeySend.add(element)` (0x5DBBF8–0x5DBC10), rồi dựng lại `arrIndex[j] = (sbyte)listKeySend[j].key` (0x5DBCB8–0x5DBD00). |
+| `checkSendArrIndex` 0x5DC4A0 | Chỉ chặn gửi khi còn `0xFF`; không ánh xạ lại giá trị nào. |
+| `doFinishFishing` 0x71BC4C | Ghi thẳng `arrIndex` ra dây, không biến đổi. |
+
+⇒ Không còn suy đoán nào: `referenceIndex` của matcher Phase 2 **chính là** byte TX43 cần gửi.
 
 ## RX — layout body (✓ xác minh tại RVA)
 | cmd | Tên | Body | Callback (chữ ký metadata) |

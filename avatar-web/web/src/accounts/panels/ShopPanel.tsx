@@ -62,6 +62,10 @@ const STATUS_LABELS: Record<ShopTransaction['status'], string> = {
   unknown: 'Chưa xác định',
 };
 
+const SHOP_PRODUCE_NAME_OVERRIDES: Readonly<Record<number, string>> = {
+  200: 'Ngô',
+};
+
 function formatTime(value: number | undefined): string {
   return value ? new Date(value).toLocaleString('vi-VN') : '—';
 }
@@ -96,7 +100,6 @@ export function ShopPanel({
   const [error, setError] = useState<UiError | null>(null);
   const [history, setHistory] = useState<ShopTransaction[] | null>(null);
   const [draft, setDraft] = useState<ListingDraft | null>(null);
-  const [unlockType, setUnlockType] = useState('0');
   const [marketView, setMarketView] = useState<'catalog' | 'listings'>('catalog');
   const inFlightOperation = useRef<symbol | null>(null);
 
@@ -124,7 +127,11 @@ export function ShopPanel({
     return names;
   }, [animals, foods, items, trees]);
 
-  const itemName = (itemId: number) => nameById.get(itemId) ?? `#${itemId}`;
+  const itemName = (itemId: number) => (
+    SHOP_PRODUCE_NAME_OVERRIDES[itemId]
+    ?? nameById.get(itemId)
+    ?? `#${itemId}`
+  );
   const shopPath = (suffix: string) => `/api/accounts/${accountId}/shop/${suffix}`;
   const capabilities = shop?.capabilities;
   const active = shop?.activeTransaction !== null && shop?.activeTransaction !== undefined;
@@ -305,23 +312,6 @@ export function ShopPanel({
     });
   }
 
-  async function unlockSlot() {
-    if (!shop?.own) return;
-    const type = Number(unlockType);
-    if (!Number.isInteger(type) || type < 0 || type > 127) {
-      setError({ code: 'INVALID_SHOP_REQUEST', message: 'Loại mở slot phải từ 0 đến 127' });
-      return;
-    }
-    if (!window.confirm(
-      'Mở slot có thể làm thay đổi số dư. Chỉ tiếp tục khi loại và chi phí đã được xác minh live?',
-    )) return;
-    await submitWrite(`/api/accounts/${accountId}/shop/slots/unlock`, {
-      idempotencyKey: crypto.randomUUID(),
-      type,
-      expectedShopRevision: shop.own.revision,
-    });
-  }
-
   async function paidRefresh() {
     if (!shop?.market) return;
     if (!window.confirm(
@@ -464,17 +454,6 @@ export function ShopPanel({
               </table>
             </div>
           ) : <p className="hint">Chưa đồng bộ sạp của tôi.</p>}
-          {shop?.own?.data.canOpenSlot && (
-            <div className="shop-paid-action">
-              <label>Loại mở slot <input value={unlockType} onChange={(event) => setUnlockType(event.target.value)} inputMode="numeric" /></label>
-              <button
-                type="button"
-                disabled={!baseWriteReady || capabilities?.slotUnlockEnabled !== true}
-                onClick={() => void unlockSlot()}
-              >Mở slot</button>
-              <span className="hint">Chỉ bật khi backend đã xác minh loại/chi phí live.</span>
-            </div>
-          )}
           {eligibleProduce.length === 0 && produce && (
             <p className="hint">Không có nông sản nào đồng thời còn hàng và có price rule.</p>
           )}

@@ -1,12 +1,16 @@
 import type { Db } from '../db/index.js';
 import {
+  DEFAULT_FISHING_CONFIG,
   idleFindNpcRuntime,
+  idleFishingRuntime,
   type AutomationLocation,
   type AutomationMode,
   type AutomationSnapshot,
   type FindNpcConfig,
+  type FishingConfig,
   type LoadedAutomationIntent,
   type StoredFindNpcConfigState,
+  type StoredFishingConfigState,
 } from '../session/automationTypes.js';
 
 export class FindNpcConfigError extends Error {
@@ -21,6 +25,7 @@ interface AutomationRow {
   account_id: number;
   desired_mode: AutomationMode;
   find_npc_config_json: string | null;
+  fishing_config_json: string | null;
   current_map: number | null;
   current_area: number | null;
   location_observed_at: number | null;
@@ -70,6 +75,60 @@ function storedFindNpcConfig(raw: string | null): StoredFindNpcConfigState {
   return defaultFindNpcConfig();
 }
 
+export function defaultFishingConfig(): StoredFishingConfigState {
+  return {
+    revision: 0,
+    config: { ...DEFAULT_FISHING_CONFIG },
+  };
+}
+
+export function parseFishingConfig(input: unknown): FishingConfig {
+  if (typeof input !== 'object' || input === null) {
+    throw new Error('Cấu hình câu cá phải là một object');
+  }
+  const obj = input as Record<string, unknown>;
+  const map = typeof obj.map === 'number' && [14, 15, 16, 27].includes(obj.map) ? obj.map : 14;
+  const area = typeof obj.area === 'number' && obj.area >= 0 && obj.area <= 15 ? Math.floor(obj.area) : 0;
+  const castDelayMs = typeof obj.castDelayMs === 'number' && obj.castDelayMs >= 1000 && obj.castDelayMs <= 10000
+    ? Math.floor(obj.castDelayMs) : 3000;
+  const autoBuyTicket = typeof obj.autoBuyTicket === 'boolean' ? obj.autoBuyTicket : true;
+  const rodType = typeof obj.rodType === 'number' && [0, 442, 445, 446].includes(obj.rodType) ? obj.rodType : 442;
+  const baitType = typeof obj.baitType === 'number' && [0, 443, 447, 448].includes(obj.baitType) ? obj.baitType : 448;
+  const baitQuantity = typeof obj.baitQuantity === 'number' && obj.baitQuantity >= 1 && obj.baitQuantity <= 200
+    ? Math.floor(obj.baitQuantity) : 50;
+
+  return {
+    map,
+    area,
+    castDelayMs,
+    autoBuyTicket,
+    rodType,
+    baitType,
+    baitQuantity,
+  };
+}
+
+function storedFishingConfig(raw: string | null): StoredFishingConfigState {
+  if (!raw) return defaultFishingConfig();
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      typeof parsed === 'object' && parsed !== null
+      && (parsed as Record<string, unknown>).version === 1
+      && typeof (parsed as Record<string, unknown>).revision === 'number'
+    ) {
+      const envelope = parsed as { version: 1; revision: number; config: unknown };
+      return {
+        revision: envelope.revision,
+        config: parseFishingConfig(envelope.config),
+      };
+    }
+  } catch {
+    /* JSON hỏng -> mặc định */
+  }
+  return defaultFishingConfig();
+}
+
 function rowToState(row: AutomationRow) {
   const location: AutomationLocation | null =
     row.current_map !== null && row.current_area !== null && row.location_observed_at !== null
@@ -78,6 +137,7 @@ function rowToState(row: AutomationRow) {
   return {
     desiredMode: row.desired_mode,
     findNpcConfig: storedFindNpcConfig(row.find_npc_config_json),
+    fishingConfig: storedFishingConfig(row.fishing_config_json),
     location,
   };
 }
@@ -88,12 +148,17 @@ export type StoredAutomationState = ReturnType<typeof rowToState>;
 export function readAutomationState(db: Db, accountId: number): StoredAutomationState {
   const row = db
     .prepare<[number], AutomationRow>(
-      `SELECT desired_mode, find_npc_config_json, current_map, current_area, location_observed_at
+      `SELECT desired_mode, find_npc_config_json, fishing_config_json, current_map, current_area, location_observed_at
          FROM avatar_automation_state WHERE account_id = ?`,
     )
     .get(accountId);
   if (!row) {
-    return { desiredMode: 'off', findNpcConfig: defaultFindNpcConfig(), location: null };
+    return {
+      desiredMode: 'off',
+      findNpcConfig: defaultFindNpcConfig(),
+      fishingConfig: defaultFishingConfig(),
+      location: null,
+    };
   }
   return rowToState(row);
 }
@@ -160,6 +225,54 @@ export function saveFindNpcConfig(
   })();
 }
 
+export type SaveFishingConfigResult =
+  | { status: 'saved'; state: StoredFishingConfigState }
+  | { status: 'conflict'; current: StoredFishingConfigState }
+  | { status: 'missing' };
+
+export function saveFishingConfig(
+  db: Db,
+  accountId: number,
+  expectedRevision: number,
+  config: FishingConfig,
+  now = Date.now(),
+): SaveFishingConfigResult {
+  return db.transaction((): SaveFishingConfigResult => {
+    const owned = db
+      .prepare<[number], { user_id: number }>('SELECT user_id FROM avatar_accounts WHERE id = ?')
+      .get(accountId);
+    if (!owned) return { status: 'missing' };
+
+    const current = readAutomationState(db, accountId).fishingConfig;
+    if (current.revision === expectedRevision && current.revision === 0
+        && !db.prepare<[number], { account_id: number }>(
+          'SELECT account_id FROM avatar_automation_state WHERE account_id = ?',
+        ).get(accountId)) {
+      db.prepare(
+        `INSERT INTO avatar_automation_state (account_id, desired_mode, updated_at)
+           VALUES (?, 'off', ?)`,
+      ).run(accountId, now);
+    } else if (current.revision !== expectedRevision) {
+      return { status: 'conflict', current };
+    }
+
+    const nextRevision = current.revision + 1;
+    const json = JSON.stringify({
+      version: 1,
+      revision: nextRevision,
+      config,
+    });
+
+    db.prepare(
+      `UPDATE avatar_automation_state
+         SET fishing_config_json = ?, updated_at = ?
+       WHERE account_id = ?`,
+    ).run(json, now, accountId);
+
+    return { status: 'saved', state: { revision: nextRevision, config } };
+  })();
+}
+
 /** Ghi/xóa location nguyên tử: cả ba cột cùng giá trị hoặc cùng NULL. */
 export function saveFindNpcLocation(
   db: Db,
@@ -191,10 +304,10 @@ export interface DesiredAutomationEntry {
 export function listDesiredAutomation(db: Db): DesiredAutomationEntry[] {
   const rows = db
     .prepare<[], AutomationRow>(
-      `SELECT account_id, desired_mode, find_npc_config_json,
+      `SELECT account_id, desired_mode, find_npc_config_json, fishing_config_json,
               current_map, current_area, location_observed_at
          FROM avatar_automation_state
-        WHERE desired_mode IN ('auto_farm', 'find_npc')
+        WHERE desired_mode IN ('auto_farm', 'find_npc', 'auto_fishing')
         ORDER BY account_id`,
     )
     .all();
@@ -205,6 +318,7 @@ export function listDesiredAutomation(db: Db): DesiredAutomationEntry[] {
       intent: {
         desiredMode: state.desiredMode,
         findNpcConfig: state.findNpcConfig,
+        fishingConfig: state.fishingConfig,
         location: state.location,
       },
     };
@@ -219,6 +333,8 @@ export function offlineAutomationSnapshot(state: StoredAutomationState): Automat
     transitionState: 'stable',
     findNpcConfig: state.findNpcConfig,
     findNpcRuntime: idleFindNpcRuntime(state.findNpcConfig.config.npcName),
+    fishingConfig: state.fishingConfig,
+    fishingRuntime: idleFishingRuntime(),
     location: state.location,
   };
 }

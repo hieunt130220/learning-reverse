@@ -16,6 +16,14 @@ function readBytes(arr: Il2Cpp.Array<any> | any): number[] {
     return out;
 }
 
+function readSignedArray(arr: Il2Cpp.Array<any> | any): number[] {
+    const out: number[] = [];
+    try {
+        for (let i = 0; i < arr.length; i++) out.push(arr.get(i));
+    } catch (e) {}
+    return out;
+}
+
 function hex(b: number[], max = 256): string {
     const n = Math.min(b.length, max);
     let s = "";
@@ -477,6 +485,16 @@ Il2Cpp.perform(() => {
         };
         console.log("[+] hooked Session_ME.sendMessage (TX)");
     } catch (e) { console.log("[!] sendMessage:", e); }
+    // Some Avatar builds route ParkService packets through doSendMessage
+    // without entering sendMessage. Keep both managed entry points hooked so
+    // TX43 cannot be missed when the native RVA wrapper differs by build.
+    try {
+        Session.method("doSendMessage").implementation = function (m: any) {
+            dumpMessage("TX/doSendMessage", m);
+            return this.method("doSendMessage").invoke(m);
+        };
+        console.log("[+] hooked Session_ME.doSendMessage (TX fallback)");
+    } catch (e) { console.log("[!] doSendMessage:", e); }
 
     try {
         Session.method("onRecieveMsg").implementation = function (m: any) {
@@ -485,4 +503,46 @@ Il2Cpp.perform(() => {
         };
         console.log("[+] hooked Session_ME.onRecieveMsg (RX)");
     } catch (e) { console.log("[!] onRecieveMsg:", e); }
+
+    // Direct ParkService hook preserves the answer array before any Message
+    // cleanup/wrapper can hide it from the Session hooks.
+    try {
+        const Park = Il2Cpp.domain.assembly("Assembly-CSharp").image.class("ParkService");
+        Park.method("doFinishFishing").implementation = function (isF: any, answer: any) {
+            const values: number[] = [];
+            try {
+                for (let i = 0; i < answer.length; i++) values.push(answer.get(i));
+            } catch (e) {}
+            console.log(`[PARK_FINISH] isF=${isF} len=${values.length} bytes=${values.join(",")}`);
+            return this.method("doFinishFishing").invoke(isF, answer);
+        };
+        console.log("[+] hooked ParkService.doFinishFishing (answer source)");
+    } catch (e) { console.log("[!] ParkService.doFinishFishing:", e); }
+
+    // FishingScr input/challenge hooks provide the correlation that packet
+    // hooks alone cannot: which local challenge was active and which input
+    // callback produced the final answer array.
+    try {
+        const Fishing = Il2Cpp.domain.assembly("Assembly-CSharp").image.class("FishingScr");
+        Fishing.method("onCaCanCau").implementation = function (idUser: any, idFish: any, delay: any, refs: any, queries: any) {
+            let refCount = 0, queryCount = 0;
+            try { refCount = refs.length; } catch (e) {}
+            try { queryCount = queries.length; } catch (e) {}
+            console.log(`[FISH_CHALLENGE] idUser=${idUser} idFish=${idFish} delay=${delay} refCount=${refCount} queryCount=${queryCount}`);
+            const result = this.method("onCaCanCau").invoke(idUser, idFish, delay, refs, queries);
+            try {
+                console.log(`[FISH_STATE] arrIndex=[${readSignedArray(this.field("arrIndex").value).join(",")}]`);
+            } catch (e) {}
+            return result;
+        };
+        Fishing.method("keyPress").implementation = function (key: any) {
+            console.log(`[FISH_KEY_PRESS] key=${key}`);
+            return this.method("keyPress").invoke(key);
+        };
+        Fishing.method("setIndex").implementation = function (key: any, click: any) {
+            if (click || key !== 0) console.log(`[FISH_SET_INDEX] key=${key} click=${click}`);
+            return this.method("setIndex").invoke(key, click);
+        };
+        console.log("[+] hooked FishingScr challenge/keyPress/setIndex");
+    } catch (e) { console.log("[!] FishingScr hooks:", e); }
 });

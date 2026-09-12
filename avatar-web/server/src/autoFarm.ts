@@ -22,6 +22,7 @@ import {
   type DailyQuestState,
   type FoodRecipe,
 } from './game/farmData.js';
+import { isInformationalDialog } from './game/client.js';
 import type {
   AnimalInfo,
   FarmAnimal,
@@ -188,6 +189,7 @@ export interface AutoFarmClient {
   items: ItemInfo[];
   trees: TreeInfo[];
   animals: AnimalInfo[];
+  on(eventName: string | symbol, listener: (...args: any[]) => void): this;
   once(eventName: string | symbol, listener: (...args: any[]) => void): this;
   removeListener(eventName: string | symbol, listener: (...args: any[]) => void): this;
   /** Chờ gói phản hồi `cmd` của lệnh vừa gửi; true = có gói, false = hết giờ. */
@@ -216,6 +218,10 @@ export interface AutoFarmClient {
 
 import type { AutoSellCycleResult } from './session/shopCoordinator.js';
 
+export interface AutoFarmSingleCycleOptions {
+  signal?: AbortSignal;
+}
+
 export interface AutoFarmOptions {
   sleep?: (ms: number) => Promise<void>;
   catalogTimeout?: (signal: AbortSignal) => Promise<void>;
@@ -228,6 +234,10 @@ export interface AutoFarmOptions {
     shouldStop: () => boolean,
   ) => Promise<AutoSellCycleResult>;
 }
+
+const FARM_ENTRY_MAX_ATTEMPTS = 3;
+const FARM_ENTRY_COOLDOWN_MS = 2_200;
+const FARM_ENTRY_TIMEOUT_MS = 5_000;
 
 const ALWAYS_ON_CONFIG = {
   harvest: true,
@@ -337,6 +347,52 @@ export class AutoFarm extends EventEmitter {
     }
   }
 
+  async runSingleCycle(
+    cfg: Partial<AutoFarmConfig>,
+    options: AutoFarmSingleCycleOptions = {},
+  ): Promise<AutoFarmState> {
+    const { signal } = options;
+    if (signal?.aborted) throw new AutoFarmStoppedError();
+
+    return await new Promise<AutoFarmState>((resolve, reject) => {
+      let settled = false;
+      const cleanup = (): void => {
+        this.removeListener('cycle-complete', onComplete);
+        signal?.removeEventListener('abort', onAbort);
+      };
+      const finish = (action: () => void): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        action();
+      };
+      const onComplete = (state: AutoFarmState): void => {
+        // `EventEmitter.emit()` invokes this listener synchronously, before
+        // `finishCycle()` can inspect `continuous` and arm its next timer.
+        // Requesting stop here invalidates the generation immediately; the
+        // await below still lets the active cycle quiesce before resolving.
+        void this.stop().then(
+          () => finish(() => resolve(state)),
+          (error: unknown) => finish(() => reject(error)),
+        );
+      };
+      const onAbort = (): void => {
+        void this.stop().then(
+          () => finish(() => reject(new AutoFarmStoppedError())),
+          (error: unknown) => finish(() => reject(error)),
+        );
+      };
+
+      this.on('cycle-complete', onComplete);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      try {
+        this.start(cfg);
+      } catch (error) {
+        finish(() => reject(error));
+      }
+    });
+  }
+
   queueConfig(cfg: Partial<AutoFarmConfig>): void {
     // A live update may be a partial patch. Preserve the active tree/kitchen
     // plans and other settings instead of rebuilding from DEFAULTS and
@@ -435,6 +491,68 @@ export class AutoFarm extends EventEmitter {
     await fresh;
   }
 
+  private async enterFarmWithRetry(generation: number): Promise<FarmState> {
+    let lastError = 'không nhận được dữ liệu farm';
+    for (let attempt = 1; attempt <= FARM_ENTRY_MAX_ATTEMPTS; attempt += 1) {
+      this.assertCurrent(generation);
+      if (attempt > 1) {
+        await this.wait(FARM_ENTRY_COOLDOWN_MS * (attempt - 1));
+        this.assertCurrent(generation);
+      }
+
+      try {
+        const farm = await new Promise<FarmState>((resolve, reject) => {
+          let timer: NodeJS.Timeout | undefined;
+          let settled = false;
+          const cleanup = (): void => {
+            if (timer) clearTimeout(timer);
+            this.client.removeListener('farm', onFarm);
+            this.client.removeListener('dialog', onDialog);
+          };
+          const settle = (action: () => void): void => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            action();
+          };
+          const onFarm = (): void => {
+            const snapshot = this.client.farmState;
+            if (!snapshot) return;
+            settle(() => resolve(snapshot));
+          };
+          const onDialog = (reason: string): void => {
+            if (isInformationalDialog(reason)) return;
+            settle(() => reject(new Error(`server từ chối vào farm: ${reason}`)));
+          };
+
+          this.client.on('farm', onFarm);
+          this.client.on('dialog', onDialog);
+          timer = setTimeout(
+            () => settle(() => reject(new Error('hết giờ chờ dữ liệu farm'))),
+            FARM_ENTRY_TIMEOUT_MS,
+          );
+          try {
+            this.client.enterFarm();
+          } catch (error) {
+            settle(() => reject(error));
+          }
+        });
+        this.assertCurrent(generation);
+        return farm;
+      } catch (error) {
+        this.assertCurrent(generation);
+        lastError = error instanceof Error ? error.message : String(error);
+        if (attempt < FARM_ENTRY_MAX_ATTEMPTS) {
+          this.emit(
+            'log',
+            `[nông trại] vào farm bị chặn (${lastError}) — thử lại sau ${(FARM_ENTRY_COOLDOWN_MS * attempt / 1000).toFixed(1)}s…`,
+          );
+        }
+      }
+    }
+    throw new Error(`${lastError} (đã thử ${FARM_ENTRY_MAX_ATTEMPTS} lần)`);
+  }
+
   private async runCycle(generation: number): Promise<void> {
     if (this.pendingConfig) {
       this.activeConfig = this.pendingConfig;
@@ -465,20 +583,8 @@ export class AutoFarm extends EventEmitter {
 
     try {
       const guard = (): void => this.assertCurrent(generation);
-      // Xin lại dữ liệu farm rồi chờ gói 69 về.
-      const fresh = new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, 5000);
-        this.client.once('farm', () => {
-          clearTimeout(t);
-          resolve();
-        });
-      });
-      this.client.enterFarm();
-      await fresh;
+      const farm = await this.enterFarmWithRetry(generation);
       guard();
-
-      const farm = this.client.farmState;
-      if (!farm) throw new Error('không lấy được dữ liệu farm');
 
       // Kho PHẢI mới trước khi tính nhu cầu: nếu đọc kho rỗng (vd server vừa
       // khởi động lại, chưa có gói 70 nào) thì auto-buy sẽ tưởng đang có 0 và

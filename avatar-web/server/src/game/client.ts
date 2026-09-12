@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import crypto from 'node:crypto';
 
 import { Message } from '../proto/message.js';
+import { MyReader } from '../proto/reader.js';
 import { CMD_GET_KEY, Session } from '../proto/session.js';
 import {
   classifyFarmSlots,
@@ -28,6 +29,7 @@ import {
   type FarmAnimal,
   type ItemInfo,
   type TreeInfo,
+  type QuestOverviewState,
 } from './farmData.js';
 import {
   decodeProgressQuestPacket,
@@ -49,6 +51,7 @@ import {
   DailyAttendanceService,
   type DailyAttendanceResult,
 } from './dailyAttendance.js';
+import { decodeCanCau } from './fishingDecode.js';
 import { ParkService } from './parkService.js';
 import { cmdName } from './opcodes.js';
 import {
@@ -168,7 +171,80 @@ export interface TemporaryLoginRejection {
 }
 
 const MIN_LOGIN_RETRY_MS = 10_000;
-const PARK_ALREADY_IN_AREA_DIALOG = 'Bạn đã ở trong khu vực muốn chuyển đến';
+export const PARK_ALREADY_IN_AREA_DIALOG = 'Bạn đã ở trong khu vực muốn chuyển đến';
+
+/**
+ * Kiểm tra xem một dialog từ server có phải là thông báo phần thưởng / sự kiện / hoạt động hay không.
+ */
+export function isRewardDialog(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+
+  // Nếu chứa từ khóa phủ định hoặc lỗi -> chắc chắn không phải nhận thưởng
+  if (
+    normalized.includes('không thể')
+    || normalized.includes('không được')
+    || normalized.includes('thất bại')
+    || normalized.includes('chưa thể')
+  ) {
+    return false;
+  }
+
+  // 1. Chúc mừng
+  if (normalized.includes('chúc mừng')) return true;
+
+  // 2. Động từ nhận/thu hoạch vật phẩm
+  if (
+    normalized.includes('thu hoạch được')
+    || normalized.includes('nhận được')
+    || normalized.includes('nhặt được')
+    || normalized.includes('kiếm được')
+  ) {
+    return true;
+  }
+
+  // 3. Có từ khóa phần thưởng
+  if (normalized.includes('phần thưởng')) return true;
+
+  // 4. Nhận từ hoạt động (ví dụ: "từ hoạt động câu cá", "từ hoạt động...")
+  if (normalized.includes('từ hoạt động')) return true;
+
+  // 5. Mẫu đếm giới hạn sự kiện trong ngày (ví dụ: "Số lượng 1/40", "Số lượng 1/50")
+  if (/số lượng\s*\d+\s*\/\s*\d+/i.test(normalized)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Kiểm tra xem một dialog từ server có phải là thông báo thông tin chung cần bỏ qua
+ * (không phải lỗi từ chối thao tác câu cá, di chuyển, hay vào map).
+ */
+export function isInformationalDialog(reason: string): boolean {
+  const trimmed = reason.trim();
+  if (!trimmed) return true;
+
+  // 1. Dialog "đã ở trong khu vực này rồi"
+  if (trimmed === PARK_ALREADY_IN_AREA_DIALOG) return true;
+
+  // 2. Dialog cập nhật tiến trình nhiệm vụ (Tân Thủ, Nhà Nông, Thợ Câu)
+  if (parseQuestDialogText(reason) !== null) return true;
+
+  // 3. Hộp thoại thông báo nhận thưởng sự kiện / chúc mừng
+  if (isRewardDialog(trimmed)) return true;
+
+  // 4. Hộp thoại broadcast thông báo hệ thống / bảo trì định kỳ
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith('thông báo:')
+    || lower.startsWith('hệ thống:')
+    || lower.startsWith('server:')
+  ) {
+    return true;
+  }
+
+  return false;
+}
 
 export function parseTemporaryLoginRejection(text: string): TemporaryLoginRejection | null {
   const isThrottle = /đang đăng nhập|đăng nhập quá nhanh|đăng nhập lại sau\s+\d+\s*s|quá tải/i.test(text);
@@ -251,6 +327,8 @@ export class GameClient extends EventEmitter {
   beginnerQuestState: ProgressQuestChain | null = DEFAULT_BEGINNER_QUEST_STATE;
   /** Trạng thái nhiệm vụ nhà nông (cmd 104 / dialog NPC). */
   farmerQuestState: ProgressQuestChain | null = DEFAULT_FARMER_QUEST_STATE;
+  /** Trạng thái nhiệm vụ thợ câu (cmd 104 / dialog NPC). */
+  fishermanQuestState: ProgressQuestChain | null = null;
   /** Danh sách nhiệm vụ NPC (cmd -81, "Xem danh sách nhiệm vụ") — dữ liệu phụ trợ. */
   questCatalog: QuestCatalogEntry[] = [];
   /** Danh sách mapping giải mã tiến trình nhiệm vụ. */
@@ -434,6 +512,7 @@ export class GameClient extends EventEmitter {
 
   logout(): void {
     this.currentHandlerContext = 'unknown';
+    this.isRefreshingProgress = false;
     this.stopKeepAlive();
     this.stopSilenceWatchdog();
     this.session.close();
@@ -451,7 +530,13 @@ export class GameClient extends EventEmitter {
     this.keepAliveTimer = setInterval(() => {
       if (this.status !== 'online') return this.stopKeepAlive();
       try {
-        this.farm.getInventory();
+        if (this.currentHandlerContext === HANDLER_PARK) {
+          // Ngữ cảnh Park: CMD -94 (Global) luôn có phản hồi, CMD 70 (Farm) bị ParkHandler bỏ qua
+          this.requestYourInfo();
+        } else {
+          // Ngữ cảnh Farm / Main: CMD 70 (getInventory)
+          this.farm.getInventory();
+        }
       } catch {
         this.stopKeepAlive();
       }
@@ -588,6 +673,34 @@ export class GameClient extends EventEmitter {
     this.park.doJoinPark(map, area);
   }
 
+  startFishing(): void {
+    this.park.doStartFishing();
+  }
+
+  quanCau(): void {
+    this.park.doQuanCau();
+  }
+
+  finishFishing(answer: readonly number[]): void {
+    this.park.doFinishFishing(answer);
+  }
+
+  cauCaXong(): void {
+    this.park.doCauCaXong();
+  }
+
+  parkBuyItem(id: number, typeMoney: number): void {
+    this.park.doParkBuyItem(id, typeMoney);
+  }
+
+  buyItemStack(id: number, num: number, typeMoney: number): void {
+    this.park.doBuyItemStack(id, num, typeMoney);
+  }
+
+  chatPark(text: string, style = 0): void {
+    this.park.chat(text, style);
+  }
+
   /**
    * Chờ RX80 mới; nếu server báo đã ở đúng Park room/board thì dùng lại
    * snapshot RX80 gần nhất của chính connection đó, tránh timeout giả.
@@ -613,18 +726,38 @@ export class GameClient extends EventEmitter {
       };
       const onSameArea = (reason: string): void => {
         if (!expected || reason.trim() !== PARK_ALREADY_IN_AREA_DIALOG) return;
+        cleanup();
         const cached = this.latestParkSnapshot;
         if (
-          !cached
-          || cached.roomId !== expected.map
-          || cached.boardId !== expected.area
-        ) return;
-        cleanup();
-        this.emit(
-          'log',
-          `Park snapshot cache: server xác nhận đã ở map ${expected.map} khu ${expected.area}`,
-        );
-        resolve(cloneParkSnapshot(cached));
+          cached
+          && cached.roomId === expected.map
+          && cached.boardId === expected.area
+        ) {
+          this.emit(
+            'log',
+            `Park snapshot cache: server xác nhận đã ở map ${expected.map} khu ${expected.area}`,
+          );
+          resolve(cloneParkSnapshot(cached));
+        } else {
+          // Server xác nhận nhân vật đã ở đúng map/khu, tạo snapshot tối thiểu
+          const synSnap: EnterWorldSnapshot = {
+            playerId: this.playerId ?? 0,
+            roomId: expected.map,
+            boardId: expected.area,
+            x: 0,
+            y: 0,
+            specials: [],
+            specialSectionEnd: 0,
+            totalBytes: 0,
+            trailingBytes: 0,
+          };
+          this.latestParkSnapshot = synSnap;
+          this.emit(
+            'log',
+            `Server xác nhận nhân vật đã ở map ${expected.map} khu ${expected.area} (chấp nhận dialog)`,
+          );
+          resolve(synSnap);
+        }
       };
       const onAbort = (): void => {
         cleanup();
@@ -644,7 +777,10 @@ export class GameClient extends EventEmitter {
       };
       timer = setTimeout(() => {
         cleanup();
-        reject(new Error('hết giờ chờ gói enter-world (-34)'));
+        const msg = expected
+          ? `hết giờ chờ vào map ${expected.map} khu ${expected.area} (RX80)`
+          : 'hết giờ chờ gói enter-world (-34)';
+        reject(new Error(msg));
       }, timeoutMs);
       this.once('world-snapshot', onSnapshot);
       this.once('world-snapshot-error', onSnapshotError);
@@ -793,7 +929,20 @@ export class GameClient extends EventEmitter {
     return changed;
   }
 
+  getQuestOverview(): QuestOverviewState {
+    return {
+      daily: this.dailyQuestState,
+      beginner: this.beginnerQuestState,
+      farmer: this.farmerQuestState,
+      fisherman: this.fishermanQuestState,
+      upgradeRequirements: this.farmUpgradeRequirements,
+      source: this.beginnerQuestState || this.farmerQuestState || this.fishermanQuestState || this.dailyQuestState ? 'live' : 'none',
+      updatedAt: Date.now(),
+    };
+  }
+
   private lastProgressRefreshAt = 0;
+  private isRefreshingProgress = false;
 
   /** Làm mới chuỗi nhiệm vụ tiến trình (Tân Thủ và Nhà Nông) từ game qua Cmd 104 & NPC Lái buôn. */
   async refreshProgressQuests(force = false): Promise<void> {
@@ -801,10 +950,14 @@ export class GameClient extends EventEmitter {
       this.emit('log', `không thể làm mới nhiệm vụ: client ${this.status}`);
       return;
     }
-    const now = Date.now();
-    if (!force && now - this.lastProgressRefreshAt < 2000) {
+    if (this.isRefreshingProgress) {
       return;
     }
+    const now = Date.now();
+    if (!force && now - this.lastProgressRefreshAt < 5000) {
+      return;
+    }
+    this.isRefreshingProgress = true;
     this.lastProgressRefreshAt = now;
     try {
       this.emit('log', 'gửi yêu cầu lấy nhiệm vụ tiến trình & tương tác NPC Lái buôn...');
@@ -830,8 +983,14 @@ export class GameClient extends EventEmitter {
       await new Promise((resolve) => setTimeout(resolve, 450));
       this.farm.doMenuOption(19, 0, 0); // "Xem nhiệm vụ hiện tại" (Tân Thủ) → cmd -62
       await new Promise((resolve) => setTimeout(resolve, 500));
+      this.farm.communicate(90);
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      this.farm.doMenuOption(38, 0, 0); // "Xem nhiệm vụ hiện tại" (Thợ Câu) → cmd -62
+      await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (err) {
       this.emit('log', `làm mới nhiệm vụ tiến trình lỗi: ${(err as Error).message}`);
+    } finally {
+      this.isRefreshingProgress = false;
     }
   }
 
@@ -946,11 +1105,17 @@ export class GameClient extends EventEmitter {
           if (questState) {
             if (questState.kind === 'beginner') {
               this.beginnerQuestState = questState;
+            } else if (questState.kind === 'fisherman') {
+              this.fishermanQuestState = questState;
             } else if (questState.kind === 'farmer') {
               this.farmerQuestState = questState;
             }
             this.syncProgressQuests();
-            const q = questState.kind === 'beginner' ? this.beginnerQuestState : this.farmerQuestState;
+            const q = questState.kind === 'beginner'
+              ? this.beginnerQuestState
+              : questState.kind === 'fisherman'
+                ? this.fishermanQuestState
+                : this.farmerQuestState;
             if (q) {
               this.emit(
                 'log',
@@ -961,6 +1126,53 @@ export class GameClient extends EventEmitter {
           }
         } catch {
           /* bỏ qua */
+        }
+        break;
+      }
+      case -43: // BUY_ITEM_STACK — phản hồi mua vật phẩm xếp chồng (RVA 0x96125C)
+      case -92: // AVATAR_BUY_ITEM — phản hồi mua vật phẩm tại shop NPC / vé câu cá / mồi / cần câu (RVA 0x5EC29C)
+      case -24: // PARK_BUY_ITEM — fallback cũ J2ME
+      case -8: { // Dự phòng trường hợp server gửi -8
+        try {
+          const r = msg.reader!;
+          const itemId = r.readShort();
+          let price = 0;
+          let typeMoney = 1;
+          if (itemId !== -1 && r.available() >= 5) {
+            price = r.readInt();
+            typeMoney = r.readByte();
+          } else if (itemId !== -1 && r.available() >= 4) {
+            price = r.readInt();
+          }
+          let message = '';
+          if (r.available() >= 2) {
+            try {
+              message = r.readUTF();
+            } catch {
+              /* không có utf message */
+            }
+          }
+          const xu = r.available() >= 4 ? r.readInt() : (this.money ?? 0);
+          let luong = this.luong ?? 0;
+          let luongKhoa = this.luongKhoa ?? 0;
+          if (r.available() >= 4) {
+            luong = r.readInt();
+          }
+          if (r.available() >= 4) {
+            luongKhoa = r.readInt();
+          }
+          this.money = xu;
+          this.luong = luong;
+          this.luongKhoa = luongKhoa;
+          this.emit('metrics', { xu, luong, luongKhoa });
+          if (itemId !== -1) {
+            this.emit('log', `mua vật phẩm #${itemId} thành công${message ? `: ${message}` : ` (giá ${price}, xu=${xu}, lượng=${luong})`}`);
+          } else {
+            this.emit('log', `mua vật phẩm #${itemId} thất bại${message ? `: ${message}` : ''}`);
+          }
+          this.emit('park-buy-item', { itemId, price, typeMoney, message, xu, luong, luongKhoa });
+        } catch (err) {
+          this.emit('log', `decode phản hồi mua vật phẩm (${msg.command}) lỗi: ${(err as Error).message}`);
         }
         break;
       }
@@ -979,11 +1191,17 @@ export class GameClient extends EventEmitter {
         if (questState) {
           if (questState.kind === 'beginner') {
             this.beginnerQuestState = questState;
+          } else if (questState.kind === 'fisherman') {
+            this.fishermanQuestState = questState;
           } else if (questState.kind === 'farmer') {
             this.farmerQuestState = questState;
           }
           this.syncProgressQuests();
-          const q = questState.kind === 'beginner' ? this.beginnerQuestState : this.farmerQuestState;
+          const q = questState.kind === 'beginner'
+            ? this.beginnerQuestState
+            : questState.kind === 'fisherman'
+              ? this.fishermanQuestState
+              : this.farmerQuestState;
           if (q) {
             this.emit(
               'log',
@@ -1001,11 +1219,17 @@ export class GameClient extends EventEmitter {
           if (questState) {
             if (questState.kind === 'beginner') {
               this.beginnerQuestState = questState;
+            } else if (questState.kind === 'fisherman') {
+              this.fishermanQuestState = questState;
             } else if (questState.kind === 'farmer') {
               this.farmerQuestState = questState;
             }
             this.syncProgressQuests();
-            const q = questState.kind === 'beginner' ? this.beginnerQuestState : this.farmerQuestState;
+            const q = questState.kind === 'beginner'
+              ? this.beginnerQuestState
+              : questState.kind === 'fisherman'
+                ? this.fishermanQuestState
+                : this.farmerQuestState;
             if (q) {
               this.emit(
                 'log',
@@ -1024,16 +1248,19 @@ export class GameClient extends EventEmitter {
           const parts = decodeQuestDialogStrings(msg.getData());
           const text = parts.find((s) => /nhiệm vụ hiện tại/i.test(s));
           if (!text) {
-            this.emit(
-              'log',
-              `cmd -62 không chứa nội dung quest: ${parts.map((p) => p.slice(0, 30)).join(' | ')}`,
-            );
+            const meaningful = parts.map((p) => p.trim()).filter(Boolean);
+            const joined = meaningful.join(' | ').trim();
+            if (joined.length > 0) {
+              this.emit('log', `thông báo (-62): ${joined}`);
+            }
             break;
           }
           const questState = parseQuestDialogText(text);
           if (questState) {
             if (questState.kind === 'beginner') {
               this.beginnerQuestState = questState;
+            } else if (questState.kind === 'fisherman') {
+              this.fishermanQuestState = questState;
             } else {
               this.farmerQuestState = questState;
             }
@@ -1407,6 +1634,80 @@ export class GameClient extends EventEmitter {
           this.emit('log', `giải mã farm lỗi: ${(err as Error).message}`);
         }
         break;
+      case 45: {
+        // START_CAU_CA (RX45): bool iss, [utf error if iss=false]
+        try {
+          const r = new MyReader(msg.getData());
+          const iss = r.readBoolean();
+          const error = iss ? undefined : r.readUTF();
+          this.emit('log', `[câu cá] phản hồi bắt đầu câu (RX45): iss=${iss}${error ? ` (lỗi: ${error})` : ''}`);
+          this.emit('fishing-start-result', { iss, error });
+        } catch {
+          this.emit('fishing-start-result', { iss: false, error: 'RX45 decode error' });
+        }
+        break;
+      }
+      case 41: {
+        // QUANG_CAU (RX41): i32 idUser
+        try {
+          const r = new MyReader(msg.getData());
+          const idUser = r.readInt();
+          this.emit('fishing-quan-cau', { idUser });
+        } catch {
+          // ignore
+        }
+        break;
+      }
+      case 43: {
+        // CAU_THANH_CONG (RX43): i32 idUser, i16 idFish
+        try {
+          const r = new MyReader(msg.getData());
+          const idUser = r.readInt();
+          const idFish = r.readShort();
+          this.emit('fishing-success-result', { idUser, idFish });
+        } catch {
+          this.emit('log', 'RX43 CAU_THANH_CONG decode thất bại');
+        }
+        break;
+      }
+      case 44: {
+        // CAU_CA_XONG (RX44): i32 idUser
+        try {
+          const r = new MyReader(msg.getData());
+          const idUser = r.readInt();
+          this.emit('fishing-done', { idUser });
+        } catch {
+          // ignore
+        }
+        break;
+      }
+      case 79: {
+        // CAN_CAU (RX79) — cá cắn câu + ảnh mini-game
+        try {
+          const payload = decodeCanCau(msg.getData());
+          this.emit('fishing-challenge', payload);
+        } catch {
+          this.emit('log', 'RX79 CAN_CAU decode thất bại');
+        }
+        break;
+      }
+      case 85: {
+        // PARK_CHAT (RX85): i32 idUser, utf text, [i8 style]
+        try {
+          const r = new MyReader(msg.getData());
+          const idUser = r.readInt();
+          const text = r.readUTF();
+          let style = 0;
+          if (r.available() >= 1) {
+            style = r.readByte();
+          }
+          this.emit('log', `[chat park] ${idUser}: ${text}`);
+          this.emit('park-chat', { idUser, text, style });
+        } catch (err) {
+          this.emit('log', `decode park-chat (85) lỗi: ${(err as Error).message}`);
+        }
+        break;
+      }
       case -60: {
         const body = msg.getData();
         const rawHex = body.toString('hex');

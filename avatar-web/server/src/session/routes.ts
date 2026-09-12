@@ -3,8 +3,10 @@ import { Router, type Response } from 'express';
 import { normalizeAutoConfig, type AutoConfigProfile } from '../accounts/autoConfig.js';
 import {
   normalizeFindNpcConfig,
+  parseFishingConfig,
   readAutomationState,
   saveFindNpcConfig,
+  saveFishingConfig,
   setDesiredMode,
 } from '../accounts/automationRepo.js';
 import { DEFAULT_SEED_CATALOG } from '../accounts/defaultSeedCatalog.js';
@@ -192,7 +194,11 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
   });
 
   router.get('/:id/automation', owned, (req, res) => {
-    res.json(sessions.automationSnapshot(accountId(req)));
+    try {
+      res.json(sessions.automationSnapshot(accountId(req)));
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
   });
 
   router.put('/:id/automation/find-npc/config', owned, (req, res) => {
@@ -236,10 +242,55 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     res.json({ ...saved.state, application: 'next-start' });
   });
 
+  router.put('/:id/automation/fishing/config', owned, (req, res) => {
+    if (
+      !exactObject(req.body, ['expectedRevision', 'config'])
+      || !Number.isInteger(req.body.expectedRevision)
+      || (req.body.expectedRevision as number) < 0
+    ) {
+      automationError(res, 400, 'invalid-fishing-config', 'payload cấu hình câu cá không hợp lệ');
+      return;
+    }
+    let config;
+    try {
+      config = parseFishingConfig(req.body.config);
+    } catch (err) {
+      automationError(res, 400, 'invalid-fishing-config', (err as Error).message);
+      return;
+    }
+
+    let saved;
+    try {
+      saved = saveFishingConfig(
+        db,
+        accountId(req),
+        req.body.expectedRevision as number,
+        config,
+      );
+    } catch {
+      automationError(res, 500, 'automation-save-failed', 'không lưu được cấu hình câu cá');
+      return;
+    }
+    if (saved.status === 'missing') {
+      res.status(404).json({ error: 'không có tài khoản này' });
+      return;
+    }
+    if (saved.status === 'conflict') {
+      automationError(res, 409, 'revision-conflict', 'revision cấu hình đã thay đổi', {
+        current: saved.current,
+      });
+      return;
+    }
+
+    // Cập nhật cấu hình ngay cho session đang chạy nếu có
+    sessions.updateFishingConfig(accountId(req), saved.state);
+    res.json({ ...saved.state, application: 'immediate' });
+  });
+
   router.post('/:id/automation/start', owned, async (req, res) => {
     if (
       !exactObject(req.body, ['mode'])
-      || (req.body.mode !== 'auto_farm' && req.body.mode !== 'find_npc')
+      || (req.body.mode !== 'auto_farm' && req.body.mode !== 'find_npc' && req.body.mode !== 'auto_fishing')
     ) {
       automationError(res, 400, 'invalid-automation-mode', 'mode automation không hợp lệ');
       return;
@@ -284,6 +335,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
           const intent: LoadedAutomationIntent = {
             desiredMode: mode,
             findNpcConfig: stored.findNpcConfig,
+            fishingConfig: stored.fishingConfig,
             location: stored.location,
           };
           const outcome = await sessions.switchAutomationMode(id, intent);

@@ -157,7 +157,7 @@ export interface DailyQuestState {
   updatedAt: number;
 }
 
-export type ProgressQuestKind = 'beginner' | 'farmer';
+export type ProgressQuestKind = 'beginner' | 'farmer' | 'fisherman';
 
 export interface ProgressQuestCondition {
   name: string;
@@ -202,7 +202,9 @@ export interface QuestOverviewState {
   daily: DailyQuestState | null;
   beginner: ProgressQuestChain | null;
   farmer: ProgressQuestChain | null;
+  fisherman?: ProgressQuestChain | null;
   upgradeRequirements?: FarmUpgradeRequirements | null;
+  source?: 'live' | 'cached' | 'none';
   updatedAt: number;
 }
 
@@ -333,7 +335,76 @@ export interface ShopRuntimeState {
   lastError?: { code: string; message: string };
 }
 
-export type AutomationMode = 'off' | 'auto_farm' | 'find_npc';
+export type AutomationMode = 'off' | 'auto_farm' | 'find_npc' | 'auto_fishing';
+
+export interface FishingConfig {
+  readonly map: number;
+  readonly area: number;
+  readonly castDelayMs: number;
+
+  // Cấu hình tự động mua
+  readonly autoBuyTicket: boolean;
+  readonly rodType: number;
+  readonly baitType: number;
+  readonly baitQuantity: number;
+}
+
+export const DEFAULT_FISHING_CONFIG: FishingConfig = Object.freeze({
+  map: 14,
+  area: 0,
+  castDelayMs: 3000,
+  autoBuyTicket: true,
+  rodType: 442,      // Cần câu tre (10.000 xu)
+  baitType: 448,     // Trứng kiến (30 xu)
+  baitQuantity: 50,  // Mua 50 mồi mỗi lần
+});
+
+export interface StoredFishingConfigState {
+  revision: number;
+  config: FishingConfig;
+}
+
+export const FISHING_TICKETS: Readonly<Record<number, { id: number; name: string; cost: string; typeMoney: number }>> = Object.freeze({
+  14: { id: 458, name: 'Vé câu cá rô', cost: '1.000 xu (hạn 3 ngày)', typeMoney: 1 },
+  15: { id: 459, name: 'Vé câu cá lóc', cost: '10.000 xu (hạn 5 ngày)', typeMoney: 1 },
+  16: { id: 460, name: 'Vé câu cá mập', cost: '2 Lượng (hạn 2 ngày)', typeMoney: 2 },
+});
+
+export const FISHING_RODS: readonly { id: number; name: string; cost: string; typeMoney: number }[] = Object.freeze([
+  { id: 0, name: 'Không tự mua', cost: '', typeMoney: 0 },
+  { id: 442, name: 'Cần câu tre', cost: '10.000 xu (hạn 7 ngày)', typeMoney: 1 },
+  { id: 445, name: 'Cần câu sắt', cost: '25 Lượng', typeMoney: 2 },
+  { id: 446, name: 'Cần câu VIP', cost: 'Lượng', typeMoney: 2 },
+]);
+
+export const FISHING_BAITS: readonly { id: number; name: string; cost: string; typeMoney: number }[] = Object.freeze([
+  { id: 0, name: 'Không tự mua', cost: '', typeMoney: 0 },
+  { id: 443, name: 'Mồi cơm', cost: '5 xu / mồi', typeMoney: 1 },
+  { id: 447, name: 'Mồi trùng', cost: '20 xu / mồi', typeMoney: 1 },
+  { id: 448, name: 'Trứng kiến', cost: '30 xu / mồi', typeMoney: 1 },
+]);
+
+export type FishingStatus =
+  | 'idle'
+  | 'moving'
+  | 'buying'
+  | 'selling'
+  | 'starting'
+  | 'casting'
+  | 'hooked'
+  | 'caught'
+  | 'rejected'
+  | 'resting';
+
+export interface FishingRuntimeState {
+  status: FishingStatus;
+  totalCatches: number;
+  lastFishId: number | null;
+  lastFishName?: string | null;
+  lastError: string | null;
+  currentMap: number;
+  currentArea: number;
+}
 
 export interface AutomationLocation {
   map: number;
@@ -373,6 +444,8 @@ export interface AutomationSnapshot {
   transitionState: 'stable' | 'switching';
   findNpcConfig: StoredFindNpcConfigState;
   findNpcRuntime: AutoFindNpcState;
+  fishingConfig?: StoredFishingConfigState;
+  fishingRuntime?: FishingRuntimeState;
   location: AutomationLocation | null;
 }
 
