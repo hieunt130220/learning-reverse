@@ -24,6 +24,7 @@ import { type QuestOverviewState } from '../game/farmData.js';
 import { parseQuestDialogText } from '../game/progressQuests.js';
 import { MacroRunner, type Macro, type MacroState } from '../macro.js';
 import { emptyDailyFishingStatistics } from '../accounts/fishingStatisticsRepo.js';
+import { emptyMlFishingStatistics } from '../accounts/fishingMlStatisticsRepo.js';
 import type { AccountMetricsPatch, CachedAccountMetrics } from '../accounts/repo.js';
 import type { ShopRepository, ProduceSnapshot, ShopRuntimeState, ShopTransaction } from '../accounts/shopRepo.js';
 import type { ShopPolicy } from '../config.js';
@@ -53,6 +54,7 @@ import {
   type DailyFishingStatistics,
   type FishingRuntimeState,
   type LoadedAutomationIntent,
+  type MlFishingStatistics,
   type NpcMapLocation,
   type StoredFishingConfigState,
 } from './automationTypes.js';
@@ -192,6 +194,11 @@ export interface AvatarSessionOptions {
     fishId: number,
     caughtAt: number,
   ) => DailyFishingStatistics;
+  initialMlFishingStatistics?: MlFishingStatistics;
+  onMlFishingResult?: (
+    isSuccess: boolean,
+    updatedAt: number,
+  ) => MlFishingStatistics;
   /** Snapshot nhiệm vụ/tài sản gần nhất để hiển thị khi chờ vòng auto kế tiếp. */
   cachedSnapshot?: CachedRuntimeSnapshot;
   /** Production luôn truyền đủ hai dependency; optional giữ tương thích cho harness cũ. */
@@ -301,6 +308,8 @@ export class AvatarSession {
   private findNpcRuntime: AutoFindNpcState = idleFindNpcRuntime('');
   private fishingRuntime: FishingRuntimeState = idleFishingRuntime();
   private dailyFishingStatistics: DailyFishingStatistics;
+  private mlFishingStatistics: MlFishingStatistics;
+  private currentFishingChallengeSource?: 'ml' | 'random';
   private fishingAbortController?: AbortController;
   private fishingFarmPhase: FishingFarmPhase = 'idle';
   private fishingFarmTimer?: NodeJS.Timeout;
@@ -350,6 +359,8 @@ export class AvatarSession {
     this.runtimeSnapshot = opts.cachedSnapshot ?? emptyRuntimeSnapshot();
     this.dailyFishingStatistics = opts.initialDailyFishingStatistics
       ?? emptyDailyFishingStatistics(this.now());
+    this.mlFishingStatistics = opts.initialMlFishingStatistics
+      ?? emptyMlFishingStatistics();
     if (opts.shopRepository && opts.shopPolicy) {
       this.shop = new ShopCoordinator({
         accountId: opts.accountId,
@@ -760,6 +771,7 @@ export class AvatarSession {
       fishingConfig: this.fishingConfig,
       fishingRuntime: this.fishingRuntime,
       dailyFishingStatistics: this.dailyFishingStatistics,
+      mlFishingStatistics: this.mlFishingStatistics,
       location: this.automationLocation,
     };
   }
@@ -1092,6 +1104,7 @@ export class AvatarSession {
       }
       // RX 43 chốt lượt câu (dù bắt được hay sổng) — solver của lượt này không còn hiệu lực
       this.cancelPendingFishingChallenge();
+      this.recordMlResult(ev.idFish >= 0);
       if (ev.idFish >= 0) {
         const fishName = getFishName(ev.idFish);
         const caughtAt = this.now();
@@ -3120,6 +3133,7 @@ export class AvatarSession {
         this.emitAutomation();
 
         // Lượt câu mới bắt đầu — solver của lượt câu trước (nếu còn ngủ) hết hiệu lực
+        this.recordMlResult(false);
         this.cancelPendingFishingChallenge();
         client.quanCau();
 
@@ -3203,6 +3217,7 @@ export class AvatarSession {
             || castErrText.includes('sổng cá')
             || castErrText.includes('trật rồi')
           ) {
+            this.recordMlResult(false);
             this.pushLog(`[câu cá] ${catchResult} — bỏ qua, quăng cần tiếp…`);
             this.cancelPendingFishingChallenge();
             try { client.cauCaXong(); } catch { /* bỏ qua */ }
@@ -3440,6 +3455,21 @@ export class AvatarSession {
     this.fishingChallengeGeneration += 1;
   }
 
+  private recordMlResult(isSuccess: boolean): void {
+    if (this.currentFishingChallengeSource !== 'ml') {
+      this.currentFishingChallengeSource = undefined;
+      return;
+    }
+    this.currentFishingChallengeSource = undefined;
+    try {
+      if (this.opts.onMlFishingResult) {
+        this.mlFishingStatistics = this.opts.onMlFishingResult(isSuccess, this.now());
+      }
+    } catch (err) {
+      this.pushLog(`[câu cá] lỗi ghi nhận thống kê ML: ${(err as Error).message}`);
+    }
+  }
+
   private handleFishingChallenge(
     client: GameClient,
     epoch: number,
@@ -3523,11 +3553,13 @@ export class AvatarSession {
 
         // Mark consumed immediately before synchronous send
         this.consumedFishingChallenges.add(challengeGen);
+        this.currentFishingChallengeSource = decision.source;
 
         try {
           client.finishFishing(decision.answer);
           this.pushLog(`fishing: đã gửi TX43 (${decision.source}) sau ${(totalSolvingDelay / 1000).toFixed(2)}s`);
         } catch (sendErr) {
+          this.currentFishingChallengeSource = undefined;
           this.pushLog(`fishing: gửi TX43 lỗi: ${(sendErr as Error).message}`);
         }
       })
