@@ -127,3 +127,16 @@ SELECT id,
 FROM avatar_accounts
 WHERE 1
 ON CONFLICT(account_id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS avatar_daily_fishing_statistics (
+  account_id INTEGER NOT NULL REFERENCES avatar_accounts(id) ON DELETE CASCADE,
+  local_date TEXT NOT NULL,
+  fish_id INTEGER NOT NULL CHECK (fish_id >= 0),
+  catch_count INTEGER NOT NULL CHECK (catch_count >= 1),
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (account_id, local_date, fish_id),
+  CHECK (local_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')
+);
+
+CREATE INDEX IF NOT EXISTS idx_avatar_daily_fishing_account_date
+  ON avatar_daily_fishing_statistics(account_id, local_date);
