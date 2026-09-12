@@ -27,7 +27,7 @@
 - Consumes: Không có (xử lý chuỗi string)
 - Produces: `isMissingFishingTicketDialog(reason: string): boolean`
 
-- [ ] **Step 1: Bổ sung và export hàm `isMissingFishingTicketDialog` trong `client.ts`**
+- [x] **Step 1: Bổ sung và export hàm `isMissingFishingTicketDialog` trong `client.ts`**
   Tại [avatar-web/server/src/game/client.ts](avatar-web/server/src/game/client.ts), sau hàm `isInformationalDialog` (~dòng 248), thêm:
   ```typescript
   /**
@@ -50,11 +50,11 @@
   }
   ```
 
-- [ ] **Step 2: Kiểm tra biên dịch TypeScript**
+- [x] **Step 2: Kiểm tra biên dịch TypeScript**
   Run: `npm run build -w avatar-web/server`
   Expected: Build thành công không có lỗi type.
 
-- [ ] **Step 3: Kiểm tra GitNexus & Commit**
+- [x] **Step 3: Kiểm tra GitNexus & Commit**
   Run GitNexus detect changes và commit:
   ```bash
   git add avatar-web/server/src/game/client.ts
@@ -72,7 +72,7 @@
 - Consumes: `isMissingFishingTicketDialog` từ `./game/client.js`
 - Produces: Logic xử lý mua vé câu chuẩn xác trong `startFishingSession` và loại bỏ false positive mua vé trong `runFishingLoop`.
 
-- [ ] **Step 1: Import `isMissingFishingTicketDialog` vào `avatarSession.ts`**
+- [x] **Step 1: Import `isMissingFishingTicketDialog` vào `avatarSession.ts`**
   Tại đầu file `avatar-web/server/src/session/avatarSession.ts` (~dòng 15), cập nhật import từ `./game/client.js`:
   ```typescript
   import {
@@ -84,7 +84,7 @@
   } from '../game/client.js';
   ```
 
-- [ ] **Step 2: Cập nhật `startFishingSession` để sử dụng `isMissingFishingTicketDialog`**
+- [x] **Step 2: Cập nhật `startFishingSession` để sử dụng `isMissingFishingTicketDialog`**
   Tại `avatarSession.ts` (~dòng 2979-2993), thay thế đoạn code xác định `missingType`:
   ```typescript
   let missingType: 'ticket' | 'rod' | 'bait' | null = null;
@@ -104,7 +104,7 @@
   }
   ```
 
-- [ ] **Step 3: Cập nhật `runFishingLoop` loại bỏ nhánh mua vé đột ngột giữa chừng**
+- [x] **Step 3: Cập nhật `runFishingLoop` loại bỏ nhánh mua vé đột ngột giữa chừng**
   Tại `avatarSession.ts` (~dòng 3234-3262), sửa khối kiểm tra dialog lỗi khi quăng cần:
   ```typescript
   let castMissingType: 'rod' | 'bait' | null = null;
@@ -145,11 +145,11 @@
   }
   ```
 
-- [ ] **Step 4: Kiểm tra biên dịch TypeScript**
+- [x] **Step 4: Kiểm tra biên dịch TypeScript**
   Run: `npm run build -w avatar-web/server`
   Expected: Build thành công không có lỗi type.
 
-- [ ] **Step 5: Kiểm tra GitNexus & Commit**
+- [x] **Step 5: Kiểm tra GitNexus & Commit**
   Run GitNexus detect changes và commit:
   ```bash
   git add avatar-web/server/src/session/avatarSession.ts
