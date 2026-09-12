@@ -449,9 +449,9 @@ git commit -m "feat(fishing): add live review capture controls"
 - Consumes: completed server, builder and frontend from Tasks 1–4.
 - Produces: checked plan, verified local workflow and documented commands/results.
 
-- [ ] **Step 1: Configure a local capture root**
+- [x] **Step 1: Configure a local capture root**
 
-Pending until the feature branch is integrated into the active local checkout; the ignored `.env` there must point to its own absolute `avatar-web/server/data/fishing-review-captures` directory.
+Configured the ignored local `.env` with the absolute `avatar-web/server/data/fishing-review-captures` directory after merging into the active checkout. The watch server restarted successfully with the new environment.
 
 Set this absolute path in `avatar-web/server/.env` without changing production configuration:
 
