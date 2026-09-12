@@ -7,6 +7,7 @@ import {
   type FishingRuntimeState,
   type QuestOverviewState,
 } from '../../types.js';
+import { LiveReviewCaptureCard } from './LiveReviewCaptureCard.js';
 
 interface FishingPanelProps {
   account?: AccountWithRuntime;
@@ -485,6 +486,8 @@ export function FishingPanel({
           <p className="hint" style={{ margin: 0 }}>Chưa bắt được cá nào trong ngày.</p>
         )}
       </section>
+
+      {accountId && <LiveReviewCaptureCard accountId={accountId} isOnline={account?.runtime?.status === 'online'} />}
 
       {/* ─── Navigation hint sang Cài đặt ─── */}
       <div
