@@ -25,6 +25,7 @@ export interface Config {
   isProduction: boolean;
   dbPath: string;
   fishingRx79CaptureRoot: string | null;
+  fishingLiveReviewCaptureRoot: string | null;
   shopPolicy: ShopPolicy;
 }
 
@@ -84,6 +85,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (normalizedFishingRx79CaptureRoot && !path.isAbsolute(normalizedFishingRx79CaptureRoot)) {
     throw new Error('FISHING_RX79_CAPTURE_ROOT phải là đường dẫn tuyệt đối');
   }
+  const rawLiveReviewRoot = env.FISHING_LIVE_REVIEW_CAPTURE_ROOT;
+  if (isProduction && rawLiveReviewRoot !== undefined) {
+    throw new Error('FISHING_LIVE_REVIEW_CAPTURE_ROOT bị cấm trong production');
+  }
+  const normalizedLiveReviewRoot = rawLiveReviewRoot?.trim();
+  if (normalizedLiveReviewRoot && !path.isAbsolute(normalizedLiveReviewRoot)) {
+    throw new Error('FISHING_LIVE_REVIEW_CAPTURE_ROOT phải là đường dẫn tuyệt đối');
+  }
 
   return {
     port: Number(env.PORT ?? 8787),
@@ -94,6 +103,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dbPath: env.DB_PATH ?? DEFAULT_DB_PATH,
     fishingRx79CaptureRoot: normalizedFishingRx79CaptureRoot
       ? path.resolve(normalizedFishingRx79CaptureRoot)
+      : null,
+    fishingLiveReviewCaptureRoot: normalizedLiveReviewRoot
+      ? path.resolve(normalizedLiveReviewRoot)
       : null,
     shopPolicy: {
       readEnabled: envFlag(env.SHOP_READ_ENABLED),
