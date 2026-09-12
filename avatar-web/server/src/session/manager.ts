@@ -6,6 +6,7 @@ import {
   saveFindNpcLocation,
   setDesiredMode,
 } from '../accounts/automationRepo.js';
+import { FishingStatisticsRepository } from '../accounts/fishingStatisticsRepo.js';
 import { ShopRepository, type ProduceSnapshot, type ShopRuntimeState } from '../accounts/shopRepo.js';
 import type { ShopPolicy } from '../config.js';
 import { updateFarmCells } from '../accounts/farmProfileRepo.js';
@@ -44,6 +45,7 @@ export interface SessionManagerDeps {
   shopRepository?: ShopRepository;
   shopPolicy?: ShopPolicy;
   findNpcCatalog?: readonly NpcMapLocation[];
+  fishingStatisticsRepository?: FishingStatisticsRepository;
   createSession?(opts: AvatarSessionOptions): AvatarSession;
   setTimeoutFn?: typeof setTimeout;
 }
@@ -113,11 +115,14 @@ export class SessionManager {
   private readonly setTimeoutFn: typeof setTimeout;
   private readonly shopRepository: ShopRepository;
   private readonly shopPolicy: ShopPolicy;
+  private readonly fishingStatisticsRepository: FishingStatisticsRepository;
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.setTimeoutFn = deps.setTimeoutFn ?? setTimeout;
     this.shopRepository = deps.shopRepository ?? new ShopRepository(deps.db);
     this.shopPolicy = deps.shopPolicy ?? DISABLED_SHOP_POLICY;
+    this.fishingStatisticsRepository = deps.fishingStatisticsRepository
+      ?? new FishingStatisticsRepository(deps.db);
     this.shopRepository.recoverInterruptedTransactions();
   }
 
@@ -136,18 +141,28 @@ export class SessionManager {
   }
 
   snapshot(accountId: number): AvatarSessionSnapshot | null {
-    return this.sessions.get(accountId)?.snapshot() ?? null;
+    const snapshot = this.sessions.get(accountId)?.snapshot();
+    if (!snapshot) return null;
+    return {
+      ...snapshot,
+      automation: {
+        ...snapshot.automation,
+        dailyFishingStatistics: this.fishingStatisticsRepository.readToday(accountId),
+      },
+    };
   }
 
   automationSnapshot(accountId: number): AutomationSnapshot {
     const persisted = readAutomationState(this.deps.db, accountId);
     const live = this.sessions.get(accountId)?.automationSnapshot();
-    if (!live) return offlineAutomationSnapshot(persisted);
-
+    const dailyFishingStatistics = this.fishingStatisticsRepository.readToday(accountId);
     return {
-      ...live,
-      findNpcConfig: persisted.findNpcConfig,
-      fishingConfig: persisted.fishingConfig,
+      ...(live ?? offlineAutomationSnapshot(persisted)),
+      ...(live ? {
+        findNpcConfig: persisted.findNpcConfig,
+        fishingConfig: persisted.fishingConfig,
+      } : {}),
+      dailyFishingStatistics,
     };
   }
 
@@ -257,6 +272,7 @@ export class SessionManager {
       throw new Error(`đã đạt tối đa ${maxSessions} phiên cùng lúc`);
     }
     const userId = account.userId;
+    const initialDailyFishingStatistics = this.fishingStatisticsRepository.readToday(accountId);
 
     const opts: AvatarSessionOptions = {
       accountId,
@@ -265,6 +281,10 @@ export class SessionManager {
       findNpcCatalog: this.deps.findNpcCatalog ?? [],
       cachedMetrics: account.cachedMetrics,
       cachedSnapshot: readRuntimeSnapshotCache(db, accountId),
+      initialDailyFishingStatistics,
+      onFishingCatch: (fishId, caughtAt) => (
+        this.fishingStatisticsRepository.recordCatch(accountId, fishId, caughtAt)
+      ),
       onMetrics: (patch) => updateCachedMetrics(db, accountId, patch),
       onAutomationLocation: (location) => saveFindNpcLocation(db, accountId, location),
       onAutomationFailure: () => {

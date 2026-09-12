@@ -759,6 +759,7 @@ export class AvatarSession {
       findNpcRuntime: this.findNpcRuntime,
       fishingConfig: this.fishingConfig,
       fishingRuntime: this.fishingRuntime,
+      dailyFishingStatistics: this.dailyFishingStatistics,
       location: this.automationLocation,
     };
   }
