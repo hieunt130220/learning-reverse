@@ -48,6 +48,7 @@ from .inference_contract import (
     parse_request,
     serialize_response,
 )
+from .provenance import revision_matches_recorded
 
 if TYPE_CHECKING:
     import torch
@@ -255,8 +256,8 @@ def _is_git_ancestor(ancestor: str, descendant: str) -> bool:
 def load_frozen_matcher(frozen_dir: Path) -> FrozenMatcher:
     """Load + verify EXACTLY ONE frozen candidate ONCE.
 
-    Calls ``evaluate._inputs``, which internally calls ``verify_freeze`` (hash +
-    manifest checks). Missing/tampered/nonmatching frozen directories raise
+    Calls ``evaluate._inputs``, which internally calls ``verify_frozen_bundle``
+    (schema-dispatched hash + manifest checks). Missing/tampered/nonmatching frozen directories raise
     ``ValueError``/``ManifestError`` from that path and propagate as a startup
     failure; this function does not catch-and-continue.
     """
@@ -278,16 +279,16 @@ def load_frozen_matcher(frozen_dir: Path) -> FrozenMatcher:
             raise ValueError("frozen manifest must be an object")
         manifest_doc = raw_manifest
 
-        # verify_freeze validates the manifest's revision format and file
+        # verify_frozen_bundle validates the manifest's revision format and file
         # inventory. Also reject a valid-but-different revision here: the
         # service must not run a candidate produced from another checkout.
         revision = manifest_doc.get("gitRevision")
         current_rev = _current_git_revision()
         allow_mismatch = os.environ.get("FISHING_ALLOW_REVISION_MISMATCH") == "1"
-        if not isinstance(revision, str) or (
-            revision != current_rev
-            and not _is_git_ancestor(revision, current_rev)
-            and not allow_mismatch
+        if not (
+            revision_matches_recorded(current_rev, revision)
+            or (isinstance(revision, str) and _is_git_ancestor(revision, current_rev))
+            or allow_mismatch
         ):
             raise RuntimeError("frozen Git revision does not match current revision")
 

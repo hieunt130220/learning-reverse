@@ -11,20 +11,23 @@ schemaVersion: 1
 # Provenance / intent of this gate document.
 meta:
   # True => thresholds below are agreed-upon placeholders, not derived from data.
-  preAgreedPlaceholders: true
+  preAgreedPlaceholders: false
   # Gate where these values are revisited with real data.
   revisitAt: "2A"
   # Safety invariant: Phase A final errors must never be used to set these.
   notTunedOnPhaseAFinal: true
+  approvedAt: "2026-09-05T04:33:21Z"
+  approvedBy: "hieunt"
+  evidence: "Codex task 01a06f4b-932b-71c0-861d-a4a5cbba1e2c — explicit user approval"
 
 # Coverage gates. The primary gate is zero wrong accepted; coverage gates are
 # secondary but still mandatory before shadow rollout (design §3.2 / §5).
 coverage:
   # Minimum share of queries the service accepts (acceptedCount / queryCount).
   # Conservative placeholder; a candidate below this is not ready for shadow.
-  minAcceptedRate: 0.85
+  minAcceptedRate: 0.60
   # Minimum batch-level exact-match rate (every query correct per batch).
-  minBatchExactMatch: 0.95
+  minBatchExactMatch: 0.90
   # Accuracy gate for the SHADOW-ELIGIBILITY decision (reported, secondary).
   minTop1Accuracy: 0.98
 

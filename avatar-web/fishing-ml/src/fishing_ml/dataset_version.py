@@ -1,4 +1,4 @@
-"""Phase-2 dataset namespace, strict dataset-version schema and provenance.
+r"""Phase-2 dataset namespace, strict dataset-version schema and provenance.
 
 Giai đoạn A (``schema.py`` / ``split.py``) owns the canonical RX79 capture
 schema, labels, splits and frozen candidates. This module adds a SEPARATE
@@ -19,7 +19,8 @@ import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from pathlib import Path, PurePosixPath
+from pathlib import Path
+from types import MappingProxyType
 from typing import Literal, Mapping
 
 from .schema import (
@@ -28,8 +29,11 @@ from .schema import (
     read_json,
 )
 
-# Phase 2 reuses the Phase A canonical schema version.
+# Historical Phase 2 reuses the Phase A canonical schema version.
 SCHEMA_VERSION = 1
+SCHEMA_VERSION_V2 = 2
+COVERAGE_RECOVERY_DATASET_ID = "phase2-coverage-recovery-v2-20260906-01"
+COVERAGE_RECOVERY_PARENT_DATASET_ID = "phase2-20260904-01"
 
 # Phase 2 dataset-version.json lives under this relative data root and must
 # never point at Phase A mutable roots (``data/`` directly, ``data/raw``,
@@ -37,7 +41,7 @@ SCHEMA_VERSION = 1
 PHASE2_DATA_ROOT = "data/phase2"
 
 # Exact top-level document keys for dataset-version.json.
-_VERSION_KEYS = frozenset(
+_VERSION_V1_KEYS = frozenset(
     {
         "schemaVersion",
         "datasetId",
@@ -46,9 +50,32 @@ _VERSION_KEYS = frozenset(
         "sourceBatches",
     }
 )
+_VERSION_V2_KEYS = frozenset(
+    {
+        "schemaVersion",
+        "datasetId",
+        "parentDatasetId",
+        "createdAt",
+        "sourceCommitment",
+        "lineage",
+        "splits",
+    }
+)
+_COMMITMENT_KEYS = frozenset({"count", "sha256"})
+_LINEAGE_KEYS = frozenset(
+    {
+        "parentDatasetVersionSha256",
+        "acquisitionPolicySha256",
+        "quarantineSha256",
+        "acquisitionSha256",
+        "allocationSha256",
+    }
+)
+_SPLIT_KEYS = frozenset({"train", "dev", "final"})
 
 # Phase A safe-id rule (mirrors split.py ``_SAFE_ID`` plus ``.``/``..`` rejection).
 _SAFE_ID = re.compile(r"^[^/\\\s]+$")
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +86,7 @@ class DatasetVersion:
     ``__post_init__``; duplicate batch ids are rejected at construction time.
     """
 
-    schema_version: int
+    schema_version: Literal[1]
     dataset_id: str
     parent_dataset_id: str | None
     created_at: str
@@ -69,6 +96,44 @@ class DatasetVersion:
         normalized = _normalize_source_batches(list(self.source_batches))
         if normalized != self.source_batches:
             object.__setattr__(self, "source_batches", normalized)
+
+
+DatasetVersionV1 = DatasetVersion
+
+
+@dataclass(frozen=True, slots=True)
+class SourceCommitment:
+    count: int
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class SplitCommitment:
+    count: int
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class Lineage:
+    parent_dataset_version_sha256: str
+    acquisition_policy_sha256: str
+    quarantine_sha256: str
+    acquisition_sha256: str
+    allocation_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetVersionV2:
+    schema_version: Literal[2]
+    dataset_id: str
+    parent_dataset_id: str
+    created_at: str
+    source_commitment: SourceCommitment
+    lineage: Lineage
+    splits: Mapping[str, SplitCommitment]
+
+
+DatasetVersionDocument = DatasetVersionV1 | DatasetVersionV2
 
 
 def _parse_utc_iso(value: object) -> str:
@@ -119,54 +184,165 @@ def _normalize_source_batches(raw: object) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def parse_dataset_version(data: object) -> DatasetVersion:
-    """Strictly parse a raw JSON object into a :class:`DatasetVersion`."""
-    if not isinstance(data, dict):
-        raise ManifestError("dataset version must be a JSON object")
-    present = set(data.keys())
-    if present != _VERSION_KEYS:
-        missing = _VERSION_KEYS - present
-        unknown = present - _VERSION_KEYS
+def _exact_mapping(
+    value: object,
+    expected_keys: frozenset[str],
+    field: str,
+) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ManifestError(f"{field} must be an object")
+    present = set(value)
+    if present != expected_keys:
+        missing = expected_keys - present
+        unknown = present - expected_keys
         parts: list[str] = []
         if missing:
             parts.append(f"missing {sorted(missing)}")
         if unknown:
             parts.append(f"unknown {sorted(unknown)}")
-        raise ManifestError("; ".join(parts))
+        raise ManifestError(f"{field}: " + "; ".join(parts))
+    return value
 
-    schema_version = data["schemaVersion"]
-    if not isinstance(schema_version, int) or isinstance(schema_version, bool):
-        raise ManifestError("schemaVersion must be an int")
-    if schema_version != SCHEMA_VERSION:
-        raise ManifestError(
-            f"unsupported schemaVersion {schema_version} (expected {SCHEMA_VERSION})"
-        )
 
-    dataset_id = _check_safe_id(data["datasetId"], "datasetId")
+def _sha256(value: object, field: str) -> str:
+    if not isinstance(value, str) or not _HEX64.fullmatch(value):
+        raise ManifestError(f"{field} must be a lowercase SHA-256")
+    return value
 
-    parent = data["parentDatasetId"]
-    if parent is not None:
-        parent = _check_safe_id(parent, "parentDatasetId")
 
-    created_at = _parse_utc_iso(data["createdAt"])
-    source_batches = _normalize_source_batches(data["sourceBatches"])
+def _count(value: object, field: str, expected: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value != expected:
+        raise ManifestError(f"{field} must equal {expected}")
+    return value
 
-    return DatasetVersion(
-        schema_version=schema_version,
-        dataset_id=dataset_id,
-        parent_dataset_id=parent,
-        created_at=created_at,
-        source_batches=source_batches,
+
+def _commitment(value: object, field: str, expected_count: int) -> SplitCommitment:
+    document = _exact_mapping(value, _COMMITMENT_KEYS, field)
+    return SplitCommitment(
+        count=_count(document["count"], f"{field}.count", expected_count),
+        sha256=_sha256(document["sha256"], f"{field}.sha256"),
     )
 
 
-def load_dataset_version(path: Path) -> DatasetVersion:
+def _parse_v1(data: Mapping[str, object]) -> DatasetVersionV1:
+    document = _exact_mapping(data, _VERSION_V1_KEYS, "dataset version schema v1")
+    dataset_id = _check_safe_id(document["datasetId"], "datasetId")
+    parent = document["parentDatasetId"]
+    if parent is not None:
+        parent = _check_safe_id(parent, "parentDatasetId")
+    return DatasetVersionV1(
+        schema_version=1,
+        dataset_id=dataset_id,
+        parent_dataset_id=parent,
+        created_at=_parse_utc_iso(document["createdAt"]),
+        source_batches=_normalize_source_batches(document["sourceBatches"]),
+    )
+
+
+def _parse_v2(data: Mapping[str, object]) -> DatasetVersionV2:
+    document = _exact_mapping(data, _VERSION_V2_KEYS, "dataset version schema v2")
+    dataset_id = _check_safe_id(document["datasetId"], "datasetId")
+    parent_dataset_id = _check_safe_id(document["parentDatasetId"], "parentDatasetId")
+    if dataset_id != COVERAGE_RECOVERY_DATASET_ID:
+        raise ManifestError(f"datasetId must equal {COVERAGE_RECOVERY_DATASET_ID}")
+    if parent_dataset_id != COVERAGE_RECOVERY_PARENT_DATASET_ID:
+        raise ManifestError(
+            f"parentDatasetId must equal {COVERAGE_RECOVERY_PARENT_DATASET_ID}"
+        )
+
+    source_document = _exact_mapping(
+        document["sourceCommitment"], _COMMITMENT_KEYS, "sourceCommitment"
+    )
+    source_commitment = SourceCommitment(
+        count=_count(source_document["count"], "sourceCommitment.count", 260),
+        sha256=_sha256(source_document["sha256"], "sourceCommitment.sha256"),
+    )
+    lineage_document = _exact_mapping(document["lineage"], _LINEAGE_KEYS, "lineage")
+    lineage = Lineage(
+        parent_dataset_version_sha256=_sha256(
+            lineage_document["parentDatasetVersionSha256"],
+            "lineage.parentDatasetVersionSha256",
+        ),
+        acquisition_policy_sha256=_sha256(
+            lineage_document["acquisitionPolicySha256"],
+            "lineage.acquisitionPolicySha256",
+        ),
+        quarantine_sha256=_sha256(
+            lineage_document["quarantineSha256"], "lineage.quarantineSha256"
+        ),
+        acquisition_sha256=_sha256(
+            lineage_document["acquisitionSha256"], "lineage.acquisitionSha256"
+        ),
+        allocation_sha256=_sha256(
+            lineage_document["allocationSha256"], "lineage.allocationSha256"
+        ),
+    )
+    split_documents = _exact_mapping(document["splits"], _SPLIT_KEYS, "splits")
+    splits = MappingProxyType(
+        {
+            "train": _commitment(split_documents["train"], "splits.train", 185),
+            "dev": _commitment(split_documents["dev"], "splits.dev", 45),
+            "final": _commitment(split_documents["final"], "splits.final", 30),
+        }
+    )
+    return DatasetVersionV2(
+        schema_version=2,
+        dataset_id=dataset_id,
+        parent_dataset_id=parent_dataset_id,
+        created_at=_parse_utc_iso(document["createdAt"]),
+        source_commitment=source_commitment,
+        lineage=lineage,
+        splits=splits,
+    )
+
+
+def parse_dataset_version(data: object) -> DatasetVersionDocument:
+    """Strictly parse schema v1 or v2 using only the integer schema tag."""
+    if not isinstance(data, Mapping):
+        raise ManifestError("dataset version must be a JSON object")
+
+    schema_version = data.get("schemaVersion")
+    if not isinstance(schema_version, int) or isinstance(schema_version, bool):
+        raise ManifestError("schemaVersion must be an int")
+    if schema_version == SCHEMA_VERSION:
+        return _parse_v1(data)
+    if schema_version == SCHEMA_VERSION_V2:
+        return _parse_v2(data)
+    raise ManifestError(f"unsupported schemaVersion {schema_version}")
+
+
+def load_dataset_version(path: Path) -> DatasetVersionDocument:
     """Load and strictly validate a Phase-2 dataset-version document from ``path``."""
     return parse_dataset_version(read_json(path))
 
 
-def dataset_version_to_json(version: DatasetVersion) -> dict[str, object]:
-    """Serialize a :class:`DatasetVersion` back to the canonical document."""
+def dataset_version_to_json(version: DatasetVersionDocument) -> dict[str, object]:
+    """Serialize schema v1 or v2 back to its canonical document."""
+    if isinstance(version, DatasetVersionV2):
+        return {
+            "schemaVersion": version.schema_version,
+            "datasetId": version.dataset_id,
+            "parentDatasetId": version.parent_dataset_id,
+            "createdAt": version.created_at,
+            "sourceCommitment": {
+                "count": version.source_commitment.count,
+                "sha256": version.source_commitment.sha256,
+            },
+            "lineage": {
+                "parentDatasetVersionSha256": version.lineage.parent_dataset_version_sha256,
+                "acquisitionPolicySha256": version.lineage.acquisition_policy_sha256,
+                "quarantineSha256": version.lineage.quarantine_sha256,
+                "acquisitionSha256": version.lineage.acquisition_sha256,
+                "allocationSha256": version.lineage.allocation_sha256,
+            },
+            "splits": {
+                name: {
+                    "count": version.splits[name].count,
+                    "sha256": version.splits[name].sha256,
+                }
+                for name in ("train", "dev", "final")
+            },
+        }
     return {
         "schemaVersion": version.schema_version,
         "datasetId": version.dataset_id,
@@ -176,7 +352,7 @@ def dataset_version_to_json(version: DatasetVersion) -> dict[str, object]:
     }
 
 
-def write_dataset_version(path: Path, version: DatasetVersion) -> None:
+def write_dataset_version(path: Path, version: DatasetVersionDocument) -> None:
     """Write ``version`` as deterministic UTF-8 JSON via ``atomic_write_json``."""
     atomic_write_json(Path(path), dataset_version_to_json(version))
 
@@ -212,15 +388,21 @@ def resolve_phase2_dir(base: Path, name: str) -> Path:
     return candidate_abs
 
 
-def _main_verify(path: Path) -> DatasetVersion:
+def _main_verify(path: Path) -> DatasetVersionDocument:
     version = load_dataset_version(path)
+    source_summary = (
+        f"sourceCommitmentCount={version.source_commitment.count} "
+        f"sourceCommitmentSha256={version.source_commitment.sha256}"
+        if isinstance(version, DatasetVersionV2)
+        else f"sourceBatches={list(version.source_batches)}"
+    )
     print(
         "dataset-version: valid "
         f"datasetId={version.dataset_id} "
         f"schemaVersion={version.schema_version} "
         f"parentDatasetId={version.parent_dataset_id} "
         f"createdAt={version.created_at} "
-        f"sourceBatches={list(version.source_batches)}"
+        f"{source_summary}"
     )
     return version
 

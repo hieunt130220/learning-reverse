@@ -10,6 +10,7 @@ import json
 import os
 import platform
 import random
+import re
 import shutil
 import subprocess
 import tempfile
@@ -28,9 +29,13 @@ from .dataset import (
     load_dev_episodes,
     load_training_episodes,
 )
+from .dataset_version import DatasetVersionV2, load_dataset_version
 from .metrics import Prediction, summarize_predictions
 from .model import FishingEncoder, cosine_similarity_matrix, episode_logits, episode_loss
-from .schema import atomic_write_json
+from .phase2_cycle import CycleDataRoots, WorkingMembership, commit_ids
+from .schema import atomic_write_json, sha256_file
+
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
 def set_reproducible_seed(seed: int) -> list[str]:
@@ -235,6 +240,66 @@ def _config_json(config: TrainingConfig) -> dict[str, object]:
     return config_to_document(config)
 
 
+def _membership_commitment(batch_ids: tuple[str, ...], split: str):
+    if tuple(sorted(batch_ids)) != batch_ids or len(set(batch_ids)) != len(batch_ids):
+        raise ValueError(f"working membership {split} ids must be sorted and unique")
+    try:
+        return commit_ids(batch_ids)
+    except ValueError as error:
+        raise ValueError(f"invalid working membership {split} ids: {error}") from error
+
+
+def _cycle_training_provenance(
+    splits_root: Path,
+    working_membership: WorkingMembership,
+    experiment_manifest_sha256: str | None,
+) -> dict[str, object]:
+    if not isinstance(experiment_manifest_sha256, str) or not _HEX64.fullmatch(
+        experiment_manifest_sha256
+    ):
+        raise ValueError("cycle training requires a lowercase experiment manifest SHA-256")
+
+    train_commitment = _membership_commitment(working_membership.train_ids, "train")
+    dev_commitment = _membership_commitment(working_membership.dev_ids, "dev")
+    _membership_commitment(working_membership.acquired_dev_ids, "acquired dev")
+    if set(working_membership.train_ids).intersection(working_membership.dev_ids):
+        raise ValueError("working membership train/dev overlap")
+    if not set(working_membership.acquired_dev_ids).issubset(working_membership.dev_ids):
+        raise ValueError("working membership acquired dev ids are not a subset of dev")
+
+    dataset_version_path = Path(splits_root).parent / "dataset-version.json"
+    if dataset_version_path.is_symlink() or not dataset_version_path.is_file():
+        raise ValueError(f"cycle dataset version must be a regular file: {dataset_version_path}")
+    dataset_version = load_dataset_version(dataset_version_path)
+    if not isinstance(dataset_version, DatasetVersionV2):
+        raise ValueError("cycle training requires dataset-version schema v2")
+    if dataset_version.dataset_id != working_membership.dataset_id:
+        raise ValueError("working membership dataset id does not match dataset version")
+    if (
+        dataset_version.source_commitment.count != working_membership.source_commitment.count
+        or dataset_version.source_commitment.sha256 != working_membership.source_commitment.sha256
+    ):
+        raise ValueError("working membership source commitment does not match dataset version")
+    for split, commitment in (("train", train_commitment), ("dev", dev_commitment)):
+        expected = dataset_version.splits[split]
+        if expected.count != commitment.count or expected.sha256 != commitment.sha256:
+            raise ValueError(f"working membership {split} commitment does not match dataset version")
+
+    return {
+        "datasetId": dataset_version.dataset_id,
+        "datasetVersionSha256": sha256_file(dataset_version_path),
+        "sourceCommitment": {
+            "count": working_membership.source_commitment.count,
+            "sha256": working_membership.source_commitment.sha256,
+        },
+        "splits": {
+            "train": {"count": train_commitment.count, "sha256": train_commitment.sha256},
+            "dev": {"count": dev_commitment.count, "sha256": dev_commitment.sha256},
+        },
+        "experimentManifestSha256": experiment_manifest_sha256,
+    }
+
+
 def _prediction_json(row: Prediction) -> dict[str, object]:
     return {
         "batchId": row.batch_id, "newIndex": row.new_index,
@@ -251,6 +316,10 @@ def run_training(
     duplicate_reviews: Path,
     artifacts_root: Path,
     run_id: str,
+    *,
+    working_membership: WorkingMembership | None = None,
+    experiment_manifest_sha256: str | None = None,
+    cycle_data_roots: CycleDataRoots | None = None,
 ) -> Path:
     """Train on train, select on dev, and atomically publish the run contract."""
     if not run_id or run_id in {".", ".."} or Path(run_id).name != run_id:
@@ -265,10 +334,24 @@ def run_training(
         git_revision = _git_revision()
         staging_dir = Path(tempfile.mkdtemp(prefix=f".{run_id}.staging-", dir=artifacts_root))
         config = load_training_config(Path(config_path))
+        cycle_provenance: dict[str, object] | None = None
+        if working_membership is None:
+            if config.schema_version == 3:
+                raise ValueError("schema-v3 training requires explicit working membership")
+            if experiment_manifest_sha256 is not None:
+                raise ValueError("experiment manifest digest requires explicit working membership")
+        else:
+            if config.schema_version != 3:
+                raise ValueError("explicit working membership requires training config schema v3")
+            cycle_provenance = _cycle_training_provenance(
+                Path(splits_root), working_membership, experiment_manifest_sha256
+            )
         limitations = set_reproducible_seed(config.seed)
         stats = compute_train_normalization(
             Path(raw_root), Path(labels_root), Path(splits_root),
             duplicate_reviews=Path(duplicate_reviews),
+            membership=working_membership,
+            cycle_data_roots=cycle_data_roots,
         )
         # Load both permitted partitions before optimization so boundary errors fail early.
         first_train_episodes = load_training_episodes(
@@ -277,9 +360,14 @@ def run_training(
             augmentation_profile=config.augmentation_profile,
             epoch=1,
             global_seed=config.seed,
+            membership=working_membership,
+            cycle_data_roots=cycle_data_roots,
         )
         dev_episodes = load_dev_episodes(
-            raw_root, labels_root, splits_root, stats, duplicate_reviews=duplicate_reviews
+            raw_root, labels_root, splits_root, stats,
+            duplicate_reviews=duplicate_reviews,
+            membership=working_membership,
+            cycle_data_roots=cycle_data_roots,
         )
         device = _device(config.device)
         model = FishingEncoder(config.embedding_dim, config.channels).to(device)
@@ -296,6 +384,8 @@ def run_training(
                 augmentation_profile=config.augmentation_profile,
                 epoch=epoch,
                 global_seed=config.seed,
+                membership=working_membership,
+                cycle_data_roots=cycle_data_roots,
             )
             train_loss = train_epoch(
                 model, train_episodes, optimizer,
@@ -338,7 +428,7 @@ def run_training(
             raise RuntimeError(
                 f"Git revision changed during training: {git_revision} -> {ending_git_revision}"
             )
-        atomic_write_json(staging_dir / "environment.json", {
+        environment: dict[str, object] = {
             "schemaVersion": 1, "pythonVersion": platform.python_version(),
             "pytorchVersion": torch.__version__, "numpyVersion": np.__version__,
             "pillowVersion": importlib.metadata.version("Pillow"),
@@ -347,7 +437,11 @@ def run_training(
             "platform": platform.platform(), "device": str(device), "gitRevision": git_revision,
             "checkpointSha256": checkpoint_sha256, "deterministicAlgorithmsEnabled": torch.are_deterministic_algorithms_enabled(),
             "determinismLimitations": limitations,
-        })
+        }
+        if cycle_provenance is not None:
+            environment["schemaVersion"] = 2
+            environment["cycleProvenance"] = cycle_provenance
+        atomic_write_json(staging_dir / "environment.json", environment)
         # The sibling rename is the only publication point; existing runs are never replaced.
         _publish_directory_no_replace(staging_dir, run_dir)
         return run_dir
