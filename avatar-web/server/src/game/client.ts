@@ -246,6 +246,25 @@ export function isInformationalDialog(reason: string): boolean {
   return false;
 }
 
+/**
+ * Kiểm tra xem một dialog từ chối từ server có phải do nhân vật thiếu vé câu cá hay không.
+ * Sử dụng cụm từ ngữ cảnh chính xác để tránh bắt nhầm các thông báo nhận vé quay số,
+ * vé sự kiện, vé may mắn...
+ */
+export function isMissingFishingTicketDialog(reason: string): boolean {
+  const normalized = reason.trim().toLowerCase();
+  if (
+    normalized.includes('cần vé câu')
+    || normalized.includes('phải có vé')
+    || normalized.includes('vé câu cá')
+    || (normalized.includes('vé') && normalized.includes('khu vực này'))
+    || (normalized.includes('vé') && normalized.includes('bến tàu'))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function parseTemporaryLoginRejection(text: string): TemporaryLoginRejection | null {
   const isThrottle = /đang đăng nhập|đăng nhập quá nhanh|đăng nhập lại sau\s+\d+\s*s|quá tải/i.test(text);
   if (!isThrottle) return null;
