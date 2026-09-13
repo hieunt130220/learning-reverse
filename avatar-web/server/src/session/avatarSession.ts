@@ -264,6 +264,8 @@ export const FISHING_HUMAN_TIMING = {
   MICRO_BREAK_MAX_MS: 12000,
 } as const;
 
+const FISHING_INSTANT_ESCAPE_DELAY_MS = 500;
+
 /**
  * Cooldown tối thiểu giữa hai lệnh joinPark (cmd 80) liên tiếp.
  * Server anti-spam trả dialog "Chầm chậm thôi nào bạn hiền" và KHÔNG gửi
@@ -3553,6 +3555,47 @@ export class AvatarSession {
 
     const challengeGen = ++this.fishingChallengeGeneration;
     const autoGen = this.automationGeneration;
+
+    if (payload.timeDelayMs === FISHING_INSTANT_ESCAPE_DELAY_MS) {
+      const defaultAnswer = Object.freeze(
+        Array.from({ length: domain.queryCount }, () => 0),
+      );
+      const abortSignal = this.fishingAbortController?.signal ?? new AbortController().signal;
+
+      this.currentFishingChallengeSource = undefined;
+      this.pushLog(
+        `fishing: RX79 deadline ${payload.timeDelayMs}ms — bỏ qua ML, chờ gửi đáp án mặc định`,
+      );
+
+      void this.delayCancellable(payload.timeDelayMs, abortSignal)
+        .then(() => {
+          if (this.consumedFishingChallenges.has(challengeGen)) return;
+          if (this.fishingChallengeGeneration !== challengeGen) return;
+          if (this.automationGeneration !== autoGen) return;
+          if (this.connectionEpoch !== epoch) return;
+          if (this.client !== client) return;
+          if (!this.isCurrent(client, epoch)) return;
+          if (!this.wanted) return;
+          if (this.desiredMode !== 'auto_fishing') return;
+          if (client.status !== 'online') return;
+
+          if (!isFishingAutoTx43Enabled()) {
+            this.pushLog('fishing: TX43 mặc định bị chặn bởi FISHING_AUTO_TX43_ENABLED !== true');
+            return;
+          }
+
+          this.consumedFishingChallenges.add(challengeGen);
+          try {
+            client.finishFishing(defaultAnswer);
+            this.pushLog(
+              `fishing: đã gửi TX43 mặc định cho deadline ${payload.timeDelayMs}ms — không tính ML`,
+            );
+          } catch (sendErr) {
+            this.pushLog(`fishing: gửi TX43 mặc định lỗi: ${(sendErr as Error).message}`);
+          }
+        });
+      return;
+    }
 
     const inferenceClient = this.fishingInferenceClient ??= new ProductionInferenceClient({
       endpoint: process.env.FISHING_INFERENCE_URL || 'http://127.0.0.1:8080/infer',
