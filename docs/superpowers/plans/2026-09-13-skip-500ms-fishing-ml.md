@@ -155,7 +155,7 @@ Expected:
 - Nhánh có đúng một `finishFishing(defaultAnswer)` và không có gán source ML.
 - `git diff --check` exit 0.
 
-- [ ] **Step 6: Chạy detect-changes rồi commit production change**
+- [x] **Step 6: Chạy detect-changes rồi commit production change**
 
 Run:
 
@@ -187,7 +187,7 @@ Expected:
 - Consumes: nhánh `FISHING_INSTANT_ESCAPE_DELAY_MS` từ Task 1 và capture RX79 hiện có.
 - Produces: bằng chứng phân bố deadline được tái lập và nhánh 500ms không thể chạm inference theo control flow.
 
-- [ ] **Step 1: Xác nhận build artifact từ Task 1**
+- [x] **Step 1: Xác nhận build artifact từ Task 1**
 
 Run:
 
@@ -199,7 +199,7 @@ git show --stat --oneline HEAD
 
 Expected: exit 0; build artifact tồn tại và commit HEAD là `fix(fishing): skip ml for instant escape challenges`.
 
-- [ ] **Step 2: Tái lập phân bố deadline từ capture**
+- [x] **Step 2: Tái lập phân bố deadline từ capture**
 
 Run:
 
@@ -222,7 +222,7 @@ PY
 
 Expected: in `{500: 62, 20000: 38}` và assertion pass.
 
-- [ ] **Step 3: Kiểm tra control flow không chạm ML**
+- [x] **Step 3: Kiểm tra control flow không chạm ML**
 
 Run:
 
@@ -233,7 +233,7 @@ sed -n '3529,3665p' avatar-web/server/src/session/avatarSession.ts
 
 Expected: nhánh `timeDelayMs === 500` kết thúc bằng `return` trước cả ba điểm `fishingInferenceClient`, `onFishingInference` và `makeAutoDecision`; source được giữ `undefined`.
 
-- [ ] **Step 4: Kiểm tra working tree sau build**
+- [x] **Step 4: Kiểm tra working tree sau build**
 
 Run:
 
@@ -257,7 +257,7 @@ Expected: build không tạo file tracked ngoài dự kiến; không có whitesp
 - Consumes: server build của Task 2 và SQLite table `avatar_ml_fishing_statistics(account_id, total_attempts, success_catches, updated_at)`.
 - Produces: aggregate ML mới bắt đầu từ `0/0`; dữ liệu backup khôi phục được; log live chứng minh 500ms không gọi ML và 20000ms vẫn gọi ML.
 
-- [ ] **Step 1: Dừng process server local và ghi nhận số liệu trước reset**
+- [x] **Step 1: Dừng process server local và ghi nhận số liệu trước reset**
 
 Run sau khi dừng `avatar-web/server` đang chạy:
 
@@ -269,7 +269,7 @@ sqlite3 avatar-web/server/data/avatar-web.db \
 
 Expected: không còn process server ghi database; output ghi lại counter hiện có, gồm account 3 nếu row vẫn tồn tại.
 
-- [ ] **Step 2: Tạo backup có timestamp và kiểm tra integrity**
+- [x] **Step 2: Tạo backup có timestamp và kiểm tra integrity**
 
 Run:
 
@@ -284,7 +284,7 @@ echo "$backup_path"
 
 Expected: `PRAGMA integrity_check` in `ok`; output cuối là đường dẫn backup thực tế.
 
-- [ ] **Step 3: Chỉ reset aggregate ML và kiểm tra các bảng khác còn nguyên**
+- [x] **Step 3: Chỉ reset aggregate ML và kiểm tra các bảng khác còn nguyên**
 
 Run:
 
@@ -342,7 +342,9 @@ Cho Auto câu cá chạy ít nhất 20 RX79 và đối chiếu log:
 
 Expected: tất cả bốn điều kiện đúng. Nếu một điều kiện sai, dừng triển khai và giữ backup để phục hồi.
 
-- [ ] **Step 7: Hoàn tất plan tracking**
+> **Trạng thái live verification (2026-09-13):** Server local đã khởi động lại và Auto Fishing đang bật. Nhật ký xác nhận tài khoản vào map 14 nhưng RX45 bị từ chối vì chưa trang bị cần câu; thao tác tự mua Cần câu tre không nhận được phản hồi từ game server. Vì chưa phát sinh RX79, các Step 4–6 chưa thể xác minh live trong phiên triển khai này. Aggregate ML vẫn ở 0/0 và không có dữ liệu giả được ghi thêm.
+
+- [x] **Step 7: Hoàn tất plan tracking**
 
 Đánh dấu `- [x]` cho từng step đã hoàn thành trong file plan, chạy:
 
