@@ -156,6 +156,27 @@ export interface NpcMapLocation {
   area: number;
 }
 
+export interface DailyFishingSpeciesCount {
+  fishId: number;
+  fishName: string;
+  count: number;
+}
+
+export interface DailyFishingStatistics {
+  date: string;
+  timezone: 'Asia/Ho_Chi_Minh';
+  totalCatches: number;
+  bySpecies: DailyFishingSpeciesCount[];
+  updatedAt: number | null;
+}
+
+export interface MlFishingStatistics {
+  totalAttempts: number;
+  successCatches: number;
+  accuracy: number;
+  updatedAt: number | null;
+}
+
 export interface AutomationSnapshot {
   desiredMode: AutomationMode;
   activeMode: AutomationMode;
@@ -165,6 +186,8 @@ export interface AutomationSnapshot {
   fishingConfig?: StoredFishingConfigState;
   fishingRuntime?: FishingRuntimeState;
   fishermanQuestRuntime?: FishermanQuestRuntimeState;
+  dailyFishingStatistics?: DailyFishingStatistics;
+  mlFishingStatistics?: MlFishingStatistics;
   location: AutomationLocation | null;
 }
 

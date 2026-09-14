@@ -4,9 +4,19 @@ from __future__ import annotations
 import hashlib
 import math
 import random
-from typing import Sequence
+from types import MappingProxyType
+from typing import Mapping, Sequence
 
 import torch
+
+PROFILE_PARAMETERS: Mapping[str, tuple[float, float, int, float, float]] = MappingProxyType(
+    {
+        "photometric_mild": (0.04, 0.02, 0, 1.00, 1.00),
+        "photometric_plus_geom_mild": (0.04, 0.02, 1, 0.98, 1.02),
+        "photometric_plus_geom_standard": (0.08, 0.04, 3, 0.95, 1.05),
+        "photometric_plus_geom_strong": (0.12, 0.06, 4, 0.92, 1.08),
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Stable seed derivation
@@ -55,7 +65,7 @@ def apply_augmentation_profile(
     """Apply deterministic augmentation to an RGB tensor in [0,1].
 
     Args:
-        profile: one of "none", "photometric", "photometric_plus_geom"
+        profile: one legacy v2 profile or one finite coverage-recovery profile
         tensor: shape (3, H, W), values in [0, 1]
         context: canonical stable context bytes (see stable_seed_context)
     """
@@ -66,6 +76,24 @@ def apply_augmentation_profile(
     if profile == "photometric_plus_geom":
         tensor = _photometric(tensor, _transform_rng(context, "photometric"))
         return _geometric(tensor, _transform_rng(context, "geometric"))
+    parameters = PROFILE_PARAMETERS.get(profile)
+    if parameters is not None:
+        gain_delta, offset_delta, shift_pixels, scale_min, scale_max = parameters
+        tensor = _cycle_photometric(
+            tensor,
+            _transform_rng(context, "photometric"),
+            gain_delta=gain_delta,
+            offset_delta=offset_delta,
+        )
+        if shift_pixels == 0 and scale_min == scale_max == 1.0:
+            return tensor
+        return _cycle_geometric(
+            tensor,
+            _transform_rng(context, "geometric"),
+            shift_pixels=shift_pixels,
+            scale_min=scale_min,
+            scale_max=scale_max,
+        )
     raise ValueError(f"Unknown augmentation profile: {profile!r}")
 
 
@@ -84,6 +112,42 @@ def _geometric(tensor: torch.Tensor, rng: random.Random) -> torch.Tensor:
     h, w = tensor.shape[1], tensor.shape[2]
     theta = torch.tensor(
         [[[scale, 0, dx / (w / 2.0)], [0, scale, dy / (h / 2.0)]]],
+        dtype=tensor.dtype,
+    )
+    grid = torch.nn.functional.affine_grid(
+        theta, (1, *tensor.shape), align_corners=False
+    )
+    return torch.nn.functional.grid_sample(
+        tensor.unsqueeze(0), grid, mode="bilinear", padding_mode="border", align_corners=False
+    )[0].clamp(0.0, 1.0)
+
+
+def _cycle_photometric(
+    tensor: torch.Tensor,
+    rng: random.Random,
+    *,
+    gain_delta: float,
+    offset_delta: float,
+) -> torch.Tensor:
+    gain = 1.0 + rng.uniform(-gain_delta, gain_delta)
+    offset = rng.uniform(-offset_delta, offset_delta)
+    return (tensor * gain + offset).clamp(0.0, 1.0)
+
+
+def _cycle_geometric(
+    tensor: torch.Tensor,
+    rng: random.Random,
+    *,
+    shift_pixels: int,
+    scale_min: float,
+    scale_max: float,
+) -> torch.Tensor:
+    dx = rng.randint(-shift_pixels, shift_pixels)
+    dy = rng.randint(-shift_pixels, shift_pixels)
+    scale = rng.uniform(scale_min, scale_max)
+    height, width = tensor.shape[1], tensor.shape[2]
+    theta = torch.tensor(
+        [[[scale, 0, dx / (width / 2.0)], [0, scale, dy / (height / 2.0)]]],
         dtype=tensor.dtype,
     )
     grid = torch.nn.functional.affine_grid(

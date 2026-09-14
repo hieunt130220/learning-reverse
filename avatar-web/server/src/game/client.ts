@@ -246,6 +246,25 @@ export function isInformationalDialog(reason: string): boolean {
   return false;
 }
 
+/**
+ * Kiểm tra xem một dialog từ chối từ server có phải do nhân vật thiếu vé câu cá hay không.
+ * Sử dụng cụm từ ngữ cảnh chính xác để tránh bắt nhầm các thông báo nhận vé quay số,
+ * vé sự kiện, vé may mắn...
+ */
+export function isMissingFishingTicketDialog(reason: string): boolean {
+  const normalized = reason.trim().toLowerCase();
+  if (
+    normalized.includes('cần vé câu')
+    || normalized.includes('phải có vé')
+    || normalized.includes('vé câu cá')
+    || (normalized.includes('vé') && normalized.includes('khu vực này'))
+    || (normalized.includes('vé') && normalized.includes('bến tàu'))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function parseTemporaryLoginRejection(text: string): TemporaryLoginRejection | null {
   const isThrottle = /đang đăng nhập|đăng nhập quá nhanh|đăng nhập lại sau\s+\d+\s*s|quá tải/i.test(text);
   if (!isThrottle) return null;
@@ -640,6 +659,10 @@ export class GameClient extends EventEmitter {
     this.emit('log', 'J2ME: gửi LOGIN_ACC (-2) version ' + this.identity.version);
   }
 
+  clearParkSnapshot(): void {
+    this.latestParkSnapshot = undefined;
+  }
+
   /**
    * Vào nông trại.
    * - Lần đầu tiên trong phiên: xin handler farm bằng `GET_HANDLER (-1) + i8 10`.
@@ -649,6 +672,7 @@ export class GameClient extends EventEmitter {
    *   (server coi việc xin lại handler khi đang ở trong farm là bất thường và đóng TCP socket).
    */
   enterFarm(idFarm?: number): void {
+    this.latestParkSnapshot = undefined;
     if (this.currentHandlerContext !== HANDLER_FARM) {
       this.currentHandlerContext = HANDLER_FARM;
       const m = Message.create(-1);

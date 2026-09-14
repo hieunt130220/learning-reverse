@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 
 import { ApiError, apiGet, apiPost, apiPut } from '../../api.js';
-import { StatusBadge } from '../AccountStatus.js';
+import { ModeChip, StatusBadge } from '../AccountStatus.js';
+import { StatusBanner } from '../StatusBanner.js';
 import type { AutomationSnapshot, AutoConfigResponse, AutoConfigStateDto, SessionSnapshot } from '../../types.js';
 import { formatFishingStatus } from './FishingPanel.js';
 
@@ -189,6 +190,7 @@ export function StatusPanel({
       <h2>Trạng thái</h2>
       <div className="row">
         <StatusBadge status={snap?.status ?? 'idle'} />
+        <ModeChip automation={automation} fallbackActive={false} />
         <span className="hint">tài khoản game: {gameUser}</span>
         {snap?.playerId !== undefined && <span className="hint">id nhân vật: {snap.playerId}</span>}
         {snap?.money !== undefined && <span className="chip">{snap.money} xu</span>}
@@ -267,25 +269,27 @@ export function StatusPanel({
           Đăng xuất sau khi chạy xong 1 vòng (tự đăng nhập lại ở vòng kế)
         </label>
       </div>
-      {(autoErr || auto.lastError) && <p className="err">{autoErr || auto.lastError}</p>}
+      {(autoErr || auto.lastError) && (
+        <StatusBanner tone="error">{autoErr || auto.lastError}</StatusBanner>
+      )}
       {farmSync?.status === 'syncing' && (
-        <p className="hint">Đang tự động đồng bộ dữ liệu nông trại…</p>
+        <StatusBanner tone="info">Đang tự động đồng bộ dữ liệu nông trại…</StatusBanner>
       )}
       {farmSync?.status === 'success' && farmSync.completedAt && (
-        <p className="hint">
+        <StatusBanner tone="success">
           Đã đồng bộ nông trại lúc {new Date(farmSync.completedAt).toLocaleTimeString()}
-        </p>
+        </StatusBanner>
       )}
       {farmSync?.status === 'error' && (
-        <p className="err">Đồng bộ nông trại thất bại: {farmSync.error}</p>
+        <StatusBanner tone="error">Đồng bộ nông trại thất bại: {farmSync.error}</StatusBanner>
       )}
       {/* Đang đếm ngược để thử lại: cho người dùng biết server chưa bỏ cuộc. */}
       {snap?.nextRetryAt && (
-        <p className="hint">
+        <StatusBanner tone="warn">
           thử kết nối lại lần {snap.retries} lúc {new Date(snap.nextRetryAt).toLocaleTimeString()}
-        </p>
+        </StatusBanner>
       )}
-      {snap?.lastError && <p className="err">{snap.lastError}</p>}
+      {snap?.lastError && <StatusBanner tone="error">{snap.lastError}</StatusBanner>}
     </section>
   );
 }

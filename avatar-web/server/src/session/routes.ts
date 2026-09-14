@@ -194,7 +194,11 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
   });
 
   router.get('/:id/automation', owned, (req, res) => {
-    res.json(sessions.automationSnapshot(accountId(req)));
+    try {
+      res.json(sessions.automationSnapshot(accountId(req)));
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
   });
 
   router.put('/:id/automation/find-npc/config', owned, (req, res) => {

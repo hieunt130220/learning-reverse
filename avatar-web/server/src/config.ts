@@ -24,6 +24,8 @@ export interface Config {
   maxSessions: number;
   isProduction: boolean;
   dbPath: string;
+  fishingRx79CaptureRoot: string | null;
+  fishingLiveReviewCaptureRoot: string | null;
   shopPolicy: ShopPolicy;
 }
 
@@ -75,6 +77,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const inviteCode = env.INVITE_CODE?.trim();
   if (!inviteCode) throw new Error('thiếu INVITE_CODE — không có mã mời thì không ai đăng ký được');
   const isProduction = env.NODE_ENV === 'production';
+  const rawFishingRx79CaptureRoot = env.FISHING_RX79_CAPTURE_ROOT;
+  if (isProduction && rawFishingRx79CaptureRoot !== undefined) {
+    throw new Error('FISHING_RX79_CAPTURE_ROOT bị cấm trong production');
+  }
+  const normalizedFishingRx79CaptureRoot = rawFishingRx79CaptureRoot?.trim();
+  if (normalizedFishingRx79CaptureRoot && !path.isAbsolute(normalizedFishingRx79CaptureRoot)) {
+    throw new Error('FISHING_RX79_CAPTURE_ROOT phải là đường dẫn tuyệt đối');
+  }
+  const rawLiveReviewRoot = env.FISHING_LIVE_REVIEW_CAPTURE_ROOT;
+  if (isProduction && rawLiveReviewRoot !== undefined) {
+    throw new Error('FISHING_LIVE_REVIEW_CAPTURE_ROOT bị cấm trong production');
+  }
+  const normalizedLiveReviewRoot = rawLiveReviewRoot?.trim();
+  if (normalizedLiveReviewRoot && !path.isAbsolute(normalizedLiveReviewRoot)) {
+    throw new Error('FISHING_LIVE_REVIEW_CAPTURE_ROOT phải là đường dẫn tuyệt đối');
+  }
 
   return {
     port: Number(env.PORT ?? 8787),
@@ -83,6 +101,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     maxSessions: Number(env.MAX_SESSIONS ?? 20),
     isProduction,
     dbPath: env.DB_PATH ?? DEFAULT_DB_PATH,
+    fishingRx79CaptureRoot: normalizedFishingRx79CaptureRoot
+      ? path.resolve(normalizedFishingRx79CaptureRoot)
+      : null,
+    fishingLiveReviewCaptureRoot: normalizedLiveReviewRoot
+      ? path.resolve(normalizedLiveReviewRoot)
+      : null,
     shopPolicy: {
       readEnabled: envFlag(env.SHOP_READ_ENABLED),
       writeEnabled: envFlag(env.SHOP_WRITE_ENABLED),

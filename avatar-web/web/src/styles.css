@@ -1,12 +1,26 @@
 :root {
   --bg: #10131a;
+  --bg-raised: #0d1017;
+  --bg-deep: #0a0d12;
   --card: #171b24;
+  --card-muted: #161b22;
+  --card-inset: #111722;
   --line: #262c38;
+  --line-soft: #1e2430;
   --fg: #e5e9f0;
   --muted: #8b93a7;
   --accent: #6ea8fe;
+  --accent-dim: rgba(110, 168, 254, 0.1);
   --ok: #4ec9a0;
+  --ok-dim: rgba(78, 201, 160, 0.12);
+  --ok-line: #347d68;
+  --warn: #e3b341;
+  --warn-ink: #e4bb61;
+  --warn-dim: rgba(227, 179, 65, 0.08);
+  --warn-line: #665122;
   --err: #ff7b72;
+  --err-dim: rgba(255, 123, 114, 0.08);
+  --err-line: #8f4745;
 }
 
 * {
@@ -101,7 +115,7 @@ textarea {
   width: 100%;
   margin-top: 4px;
   padding: 7px 9px;
-  background: #0d1017;
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--fg);
@@ -129,6 +143,15 @@ button {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 button:disabled {
@@ -160,6 +183,11 @@ button.ghost {
   border-color: var(--accent);
   background: var(--accent);
   color: #0d1017;
+}
+
+.automation-mode-button:hover:not(:disabled):not(.active) {
+  color: var(--fg);
+  border-color: var(--accent);
 }
 
 .automation-mode-button:focus-visible {
@@ -241,16 +269,30 @@ button.ghost {
   font-size: 12px;
   border: 1px solid var(--line);
   color: var(--muted);
+  background: transparent;
+  white-space: nowrap;
 }
+
+.badge-idle { color: var(--muted); }
 
 .badge-online {
   color: var(--ok);
   border-color: var(--ok);
+  background: var(--ok-dim);
+}
+
+.badge-connecting,
+.badge-handshaking,
+.badge-logging-in {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-dim);
 }
 
 .badge-error {
   color: var(--err);
   border-color: var(--err);
+  background: var(--err-dim);
 }
 
 .log {
@@ -263,8 +305,27 @@ button.ghost {
 
 .log > div {
   padding: 3px 0;
-  border-bottom: 1px solid #1e2430;
+  border-bottom: 1px solid var(--line-soft);
   word-break: break-all;
+}
+
+.log-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.log-filter-bar input {
+  flex: 1 1 180px;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.log-filter-bar .hint {
+  margin: 0;
+  flex: 0 0 auto;
 }
 
 .ts {
@@ -307,7 +368,7 @@ button.ghost {
   justify-content: center;
   gap: 2px;
   padding: 2px;
-  background: #1d2430;
+  background: var(--card-inset);
   color: var(--muted);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -317,19 +378,19 @@ button.ghost {
 }
 
 .cell.empty {
-  background: #12161d;
+  background: var(--bg-deep);
   border-style: dashed;
 }
 
 .cell.ready {
-  background: #1b3a2c;
+  background: var(--ok-dim);
   border-color: var(--ok);
   color: var(--ok);
 }
 
 .cell.care {
-  border-color: #d9a441;
-  color: #d9a441;
+  border-color: var(--warn);
+  color: var(--warn);
 }
 
 .cell.sel {
@@ -348,7 +409,7 @@ button.ghost {
 .cell-detail {
   margin-top: 12px;
   padding: 10px;
-  background: #0d1017;
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: 6px;
   font-size: 13px;
@@ -356,11 +417,95 @@ button.ghost {
 
 .chip {
   padding: 2px 8px;
-  background: #0d1017;
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: 999px;
   font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* --- shared status banner --- */
+.status-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 12px;
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card-inset);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.status-banner-text {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.status-banner--info {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--fg);
+}
+
+.status-banner--success {
+  border-color: var(--ok-line);
+  background: var(--ok-dim);
+  color: var(--ok);
+}
+
+.status-banner--warn {
+  border-color: var(--warn-line);
+  background: var(--warn-dim);
+  color: var(--warn-ink);
+}
+
+.status-banner--error {
+  border-color: var(--err-line);
+  background: var(--err-dim);
+  color: var(--err);
+}
+
+.status-banner button.ghost {
+  flex: 0 0 auto;
+  color: inherit;
+  border-color: currentColor;
+}
+
+/* --- account mode chip --- */
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--bg-raised);
+  white-space: nowrap;
+}
+
+.mode-chip--farm,
+.mode-chip--fishing {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.mode-chip--switching {
+  color: var(--warn-ink);
+  border-color: var(--warn-line);
+  background: var(--warn-dim);
+}
+
+.mode-chip--off {
+  color: var(--muted);
 }
 
 /* --- trang đăng nhập / đăng ký --- */
@@ -392,9 +537,10 @@ button.ghost {
   align-items: center;
   padding: 4px 10px;
   border-radius: 4px;
-  border: 1px solid #2c3038;
+  border: 1px solid var(--line);
   text-decoration: none;
   font-size: 13px;
+  color: var(--fg);
 }
 
 /* --- dashboard card --- */
@@ -458,6 +604,14 @@ button.ghost {
 .account-card-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-card-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
 .account-card-heading > span:first-child,
@@ -603,10 +757,40 @@ button.ghost {
   background: rgba(255, 255, 255, 0.02);
 }
 
-.setting-section h3 {
+.setting-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   margin: 0 0 8px;
+}
+
+.setting-section-head h3 {
+  margin: 0;
   font-size: 14px;
   color: var(--accent);
+}
+
+.section-dirty-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warn-ink);
+  border: 1px solid var(--warn-line);
+  background: var(--warn-dim);
+}
+
+.tree-plan-save-row {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin-top: 14px;
+  padding: 10px 0 2px;
+  background: linear-gradient(to top, var(--card) 70%, rgba(23, 27, 36, 0));
 }
 
 .fishing-ticket-control {
@@ -669,10 +853,10 @@ button.ghost {
 
 .tree-plan-guidance {
   padding: 9px 10px;
-  border: 1px solid #665122;
+  border: 1px solid var(--warn-line);
   border-radius: 6px;
-  color: #e4bb61;
-  background: rgba(217, 164, 65, 0.08);
+  color: var(--warn-ink);
+  background: var(--warn-dim);
 }
 
 .tree-plan-toolbar { margin-top: 10px; }
@@ -690,7 +874,7 @@ button.ghost {
   max-width: 100%;
   padding: 6px 9px;
   border: 1px solid var(--line);
-  background: #111722;
+  background: var(--card-inset);
   color: var(--fg);
   font-weight: 500;
   white-space: normal;
@@ -713,7 +897,7 @@ button.ghost {
   padding: 6px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #111722;
+  background: var(--card-inset);
   color: var(--fg);
   font: inherit;
   font-size: 16px;
@@ -738,7 +922,7 @@ button.ghost {
   gap: 2px;
   padding: 5px 3px;
   border: 1px solid var(--line);
-  background: #111722;
+  background: var(--card-inset);
   color: var(--fg);
   font-size: 11px;
   font-weight: 400;
@@ -752,7 +936,7 @@ button.ghost {
 .tree-plan-cell strong { font-size: 12px; }
 .tree-plan-cell--default { border-style: dashed; color: var(--muted); }
 .tree-plan-cell--skip { border-color: #9c652f; color: #ffbc76; }
-.tree-plan-cell--seed { border-color: #347d68; color: var(--ok); }
+.tree-plan-cell--seed { border-color: var(--ok-line); color: var(--ok); }
 
 .tree-plan-cell--invalid {
   border-color: var(--err);
@@ -786,7 +970,7 @@ button.ghost {
   border: 1px solid var(--err);
   border-radius: 6px;
   color: var(--err);
-  background: rgba(255, 123, 114, 0.07);
+  background: var(--err-dim);
   font-size: 12px;
 }
 
@@ -808,7 +992,7 @@ button.ghost {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: #0d1117;
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 14px;
@@ -852,7 +1036,7 @@ button.ghost {
 .quests-tabs-nav {
   display: flex;
   gap: 6px;
-  background: #161b22;
+  background: var(--card-muted);
   padding: 4px;
   border-radius: 8px;
   border: 1px solid var(--line);
@@ -882,7 +1066,7 @@ button.ghost {
 
 .quests-tab-btn.active {
   background: #21262d;
-  color: #fff;
+  color: var(--fg);
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
@@ -895,8 +1079,8 @@ button.ghost {
 }
 
 .tab-badge--done {
-  background: rgba(63, 185, 80, 0.25);
-  color: #3fb950;
+  background: var(--ok-dim);
+  color: var(--ok);
   font-weight: 700;
 }
 
@@ -908,8 +1092,8 @@ button.ghost {
 }
 
 .tab-pill.pill-done {
-  background: rgba(63, 185, 80, 0.2);
-  color: #3fb950;
+  background: var(--ok-dim);
+  color: var(--ok);
 }
 
 .quests-tab-content {
@@ -924,7 +1108,7 @@ button.ghost {
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
-  background: #161b22;
+  background: var(--card-muted);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -945,7 +1129,7 @@ button.ghost {
 
 .score-text {
   font-size: 13px;
-  color: #e6edf3;
+  color: var(--fg);
 }
 
 .score-text strong {
@@ -982,21 +1166,21 @@ button.ghost {
   justify-content: center;
   gap: 2px;
   padding: 6px 2px;
-  background: #0d1117;
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: 6px;
   text-align: center;
 }
 
 .box-milestone-card--can-claim {
-  border-color: #e3b341;
-  background: rgba(227, 179, 65, 0.08);
+  border-color: var(--warn);
+  background: var(--warn-dim);
   box-shadow: 0 0 8px rgba(227, 179, 65, 0.2);
 }
 
 .box-milestone-card--claimed {
   opacity: 0.6;
-  border-color: #238636;
+  border-color: var(--ok-line);
 }
 
 .box-icon {
@@ -1017,8 +1201,8 @@ button.ghost {
 }
 
 .tag-claimed {
-  color: #3fb950;
-  background: rgba(63, 185, 80, 0.12);
+  color: var(--ok);
+  background: var(--ok-dim);
 }
 
 .tag-locked {
@@ -1066,15 +1250,15 @@ button.ghost {
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;
-  background: #238636;
-  color: #fff;
+  background: var(--ok-line);
+  color: var(--fg);
   border: none;
   border-radius: 4px;
   cursor: pointer;
 }
 
-.btn-claim-all:hover {
-  background: #2ea043;
+.btn-claim-all:hover:not(:disabled) {
+  filter: brightness(1.15);
 }
 
 .mission-item-card {
@@ -1082,14 +1266,14 @@ button.ghost {
   flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
-  background: #161b22;
+  background: var(--card-muted);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
 
 .mission-item-card--done {
-  border-color: rgba(63, 185, 80, 0.4);
-  background: rgba(63, 185, 80, 0.04);
+  border-color: var(--ok-line);
+  background: var(--ok-dim);
 }
 
 .mission-item-header {
@@ -1124,15 +1308,15 @@ button.ghost {
 }
 
 .badge-success {
-  color: #3fb950;
-  background: rgba(63, 185, 80, 0.15);
-  border: 1px solid rgba(63, 185, 80, 0.3);
+  color: var(--ok);
+  background: var(--ok-dim);
+  border: 1px solid var(--ok-line);
 }
 
 .badge-pending {
-  color: #d29922;
-  background: rgba(210, 153, 34, 0.12);
-  border: 1px solid rgba(210, 153, 34, 0.25);
+  color: var(--warn);
+  background: var(--warn-dim);
+  border: 1px solid var(--warn-line);
 }
 
 .mission-mini-bar {
@@ -1145,13 +1329,13 @@ button.ghost {
 
 .mission-mini-bar-fill {
   height: 100%;
-  background: #d29922;
+  background: var(--warn);
   border-radius: 2px;
   transition: width 0.2s ease;
 }
 
 .mission-mini-bar-fill.bar-done {
-  background: #3fb950;
+  background: var(--ok);
 }
 
 .daily-rewards-block {
@@ -1172,8 +1356,8 @@ button.ghost {
 
 .reward-pill {
   font-size: 11px;
-  color: #58a6ff;
-  background: rgba(88, 166, 255, 0.1);
+  color: var(--accent);
+  background: var(--accent-dim);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -1219,9 +1403,9 @@ button.ghost {
 .badge--step {
   font-size: 11px;
   padding: 1px 6px;
-  background: rgba(88, 166, 255, 0.15);
-  color: #58a6ff;
-  border: 1px solid rgba(88, 166, 255, 0.3);
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid var(--accent);
   border-radius: 8px;
 }
 
@@ -1249,14 +1433,14 @@ button.ghost {
   flex-direction: column;
   gap: 6px;
   padding: 10px 12px;
-  background: #161b22;
+  background: var(--card-muted);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
 
 .quest-card--done {
-  border-color: rgba(63, 185, 80, 0.35);
-  background: rgba(63, 185, 80, 0.04);
+  border-color: var(--ok-line);
+  background: var(--ok-dim);
 }
 
 .quest-card-top {
@@ -1300,7 +1484,7 @@ button.ghost {
 }
 
 .reward-tag {
-  color: #e3b341;
+  color: var(--warn-ink);
 }
 
 .quest-state-text {
@@ -1309,7 +1493,7 @@ button.ghost {
 }
 
 .quest-card--done .quest-state-text {
-  color: #3fb950;
+  color: var(--ok);
   font-weight: 600;
 }
 
@@ -1320,15 +1504,15 @@ button.ghost {
 }
 
 .toast-inline--success {
-  background: rgba(63, 185, 80, 0.15);
-  border: 1px solid rgba(63, 185, 80, 0.4);
-  color: #3fb950;
+  background: var(--ok-dim);
+  border: 1px solid var(--ok-line);
+  color: var(--ok);
 }
 
 .toast-inline--error {
-  background: rgba(248, 81, 73, 0.15);
-  border: 1px solid rgba(248, 81, 73, 0.4);
-  color: #f85149;
+  background: var(--err-dim);
+  border: 1px solid var(--err-line);
+  color: var(--err);
 }
 
 .quests-empty-state {
@@ -1346,8 +1530,8 @@ button.ghost {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
-  background: rgba(63, 185, 80, 0.08);
-  border: 1px solid rgba(63, 185, 80, 0.3);
+  background: var(--ok-dim);
+  border: 1px solid var(--ok-line);
   border-radius: 8px;
 }
 
@@ -1366,7 +1550,7 @@ button.ghost {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  color: #3fb950;
+  color: var(--ok);
 }
 
 .daily-completed-banner p {
@@ -1417,10 +1601,10 @@ button.ghost {
 .shop-unknown-warning {
   margin: 10px 0 0;
   padding: 8px 10px;
-  border: 1px solid #8c6f2f;
+  border: 1px solid var(--warn-line);
   border-radius: 6px;
-  color: #e4bb61;
-  background: rgba(217, 164, 65, 0.08);
+  color: var(--warn-ink);
+  background: var(--warn-dim);
   font-size: 12px;
 }
 
@@ -1444,7 +1628,7 @@ button.ghost {
 
 .shop-tabs button.active {
   border-color: var(--line);
-  background: #0d1017;
+  background: var(--bg-raised);
   color: var(--fg);
 }
 
@@ -1496,7 +1680,7 @@ button.ghost {
 
 .shop-table th {
   color: var(--muted);
-  background: #111722;
+  background: var(--card-inset);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1547,7 +1731,7 @@ button.ghost {
   padding: 10px 12px 10px 36px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #111722;
+  background: var(--card-inset);
 }
 
 .shop-transaction::before {
@@ -1574,19 +1758,19 @@ button.ghost {
 .shop-transaction-status { color: var(--muted); font-size: 12px; }
 
 .shop-status-succeeded,
-.shop-transaction.status-succeeded { border-color: #347d68; }
+.shop-transaction.status-succeeded { border-color: var(--ok-line); }
 .shop-status-succeeded::before,
 .shop-transaction.status-succeeded::before { color: var(--ok); content: '✓'; }
 
 .shop-status-failed,
-.shop-transaction.status-failed { border-color: #8f4745; }
+.shop-transaction.status-failed { border-color: var(--err-line); }
 .shop-status-failed::before,
 .shop-transaction.status-failed::before { color: var(--err); content: '×'; }
 
 .shop-status-unknown,
-.shop-transaction.status-unknown { border-color: #8c6f2f; }
+.shop-transaction.status-unknown { border-color: var(--warn-line); }
 .shop-status-unknown::before,
-.shop-transaction.status-unknown::before { color: #e4bb61; content: '?'; }
+.shop-transaction.status-unknown::before { color: var(--warn-ink); content: '?'; }
 
 .shop-modal-backdrop {
   position: fixed;
@@ -1636,7 +1820,7 @@ button.ghost {
   flex-wrap: wrap;
   gap: 12px;
   padding: 10px 12px;
-  background: #111722;
+  background: var(--card-inset);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -1675,7 +1859,7 @@ button.ghost {
   padding: 4px 8px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #0d1117;
+  background: var(--bg-raised);
   color: var(--fg);
   font: inherit;
   font-size: 16px;
@@ -1684,10 +1868,10 @@ button.ghost {
 
 .auto-sell-warning-notice {
   padding: 10px 12px;
-  border: 1px solid #665122;
+  border: 1px solid var(--warn-line);
   border-radius: 6px;
-  color: #e4bb61;
-  background: rgba(217, 164, 65, 0.08);
+  color: var(--warn-ink);
+  background: var(--warn-dim);
   font-size: 12px;
 }
 
@@ -1705,7 +1889,7 @@ button.ghost {
 }
 
 .auto-sell-rules-table th {
-  background: #111722;
+  background: var(--card-inset);
   color: var(--muted);
   font-weight: 600;
   padding: 8px 12px;
@@ -1751,7 +1935,7 @@ button.ghost {
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #111722;
+  background: var(--card-inset);
   color: var(--fg);
   font-size: 12px;
   cursor: pointer;
@@ -1778,7 +1962,7 @@ button.ghost {
   flex-direction: column;
   gap: 8px;
   padding: 12px;
-  background: #111722;
+  background: var(--card-inset);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -1802,7 +1986,7 @@ button.ghost {
   padding: 6px 10px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #0d1117;
+  background: var(--bg-raised);
   color: var(--fg);
   font: inherit;
   font-size: 16px;
@@ -1821,7 +2005,7 @@ button.ghost {
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #0d1117;
+  background: var(--bg-raised);
   color: var(--fg);
   font: inherit;
   font-size: 16px;
@@ -1832,7 +2016,7 @@ button.ghost {
   border: 1px solid var(--accent);
   border-radius: 4px;
   background: var(--accent);
-  color: #fff;
+  color: #0d1017;
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
@@ -1872,7 +2056,7 @@ button.ghost {
     margin-bottom: 8px;
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: #111722;
+    background: var(--card-inset);
     overflow: hidden;
   }
   .shop-table td,
@@ -1961,7 +2145,7 @@ button.ghost {
 .settings-tabs-nav {
   display: flex;
   gap: 6px;
-  background: #161b22;
+  background: var(--card-muted);
   padding: 4px;
   border-radius: 8px;
   border: 1px solid var(--line);
@@ -1992,7 +2176,7 @@ button.ghost {
 
 .settings-tab-btn.active {
   background: #21262d;
-  color: #fff;
+  color: var(--fg);
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }

@@ -24,6 +24,7 @@ from typing import Any
 
 from .inference_client import InferenceClient, InferenceClientError
 from .inference_contract import InferenceImage, InferenceRequest, InferenceResponse
+from .phase2_cycle import CycleDataRoots
 from .schema import (
     BatchManifest,
     EXPECTED_SIZE,
@@ -66,6 +67,8 @@ _INVALID_LABEL = "invalid_label"
 _UNSAFE_BATCH_DIR = "unsafe_batch_dir"
 _UNRESOLVED_LABEL = "unresolved_label"
 _INVALID_RESPONSE = "invalid_response"
+_MISSING_BATCH_DIR = "missing_batch_dir"
+_MAX_COMPONENT_BYTES = 255
 
 
 @dataclass(frozen=True, slots=True)
@@ -719,12 +722,47 @@ def _validated_checksums(model_checksums: tuple[str, ...] | None) -> tuple[str, 
     return tuple(sorted(set(model_checksums)))
 
 
+def _validated_batch_ids(batch_ids: tuple[str, ...] | None) -> tuple[str, ...] | None:
+    if batch_ids is None:
+        return None
+    if not isinstance(batch_ids, tuple) or len(batch_ids) != 260:
+        raise ValueError("batch_ids must contain exactly 260 sorted unique safe ids")
+    for value in batch_ids:
+        if not _is_safe_component(value) or any(
+            ord(character) < 0x20 or ord(character) == 0x7F
+            for character in value
+        ):
+            raise ValueError("batch_ids must contain exactly 260 sorted unique safe ids")
+        try:
+            encoded_value = value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError(
+                "batch_ids must contain exactly 260 sorted unique safe ids"
+            ) from None
+        if len(encoded_value) > _MAX_COMPONENT_BYTES:
+            raise ValueError("batch_ids must contain exactly 260 sorted unique safe ids")
+    if tuple(sorted(batch_ids)) != batch_ids or len(set(batch_ids)) != 260:
+        raise ValueError("batch_ids must contain exactly 260 sorted unique safe ids")
+    return batch_ids
+
+
+def _record_missing_explicit_batch(accumulator: _Accumulator) -> None:
+    accumulator.batch_count += 1
+    key = _rq_key(0, 0)
+    bucket = _rq_bucket(accumulator, key)
+    bucket.batches += 1
+    _record_error(accumulator, key, _MISSING_BATCH_DIR)
+    accumulator.unknown_batch_count += 1
+
+
 def replay_batches(
     batches_root: Path,
     client: InferenceClient,
     labels_root: Path | None = None,
     *,
     model_checksums: tuple[str, ...] | None = None,
+    batch_ids: tuple[str, ...] | None = None,
+    cycle_data_roots: CycleDataRoots | None = None,
 ) -> ReplayReport:
     """Replay sorted schema-v1 batch directories and isolate every batch failure.
 
@@ -735,26 +773,82 @@ def replay_batches(
     batches_root = Path(batches_root)
     labels_root = None if labels_root is None else Path(labels_root)
     checksums = _validated_checksums(model_checksums)
+    explicit_batch_ids = _validated_batch_ids(batch_ids)
     if not hasattr(client, "match") or not callable(client.match):
         raise TypeError("client must provide match(request)")
     accumulator = _Accumulator()
-    batches_descriptor: int | None = None
-    labels_descriptor: int | None = None
+    opened_descriptors: list[int] = []
+    descriptor_pairs: dict[tuple[Path, Path], tuple[int, int]] = {}
+    cycle_sources: dict[str, tuple[Path, Path]] | None = None
     try:
-        batches_descriptor = _open_directory(batches_root)
-        labels_descriptor = (
-            None if labels_root is None else _open_directory(labels_root)
-        )
+        if cycle_data_roots is None:
+            batches_descriptor = _open_directory(batches_root)
+            opened_descriptors.append(batches_descriptor)
+            labels_descriptor = (
+                None if labels_root is None else _open_directory(labels_root)
+            )
+            if labels_descriptor is not None:
+                opened_descriptors.append(labels_descriptor)
+        else:
+            if explicit_batch_ids is None or labels_root is None:
+                raise ValueError(
+                    "cycle replay requires explicit batch_ids and parent labels_root"
+                )
+            if (
+                batches_root.is_symlink()
+                or labels_root.is_symlink()
+                or batches_root.resolve(strict=True)
+                != cycle_data_roots.parent_raw_root
+                or labels_root.resolve(strict=True)
+                != cycle_data_roots.parent_labels_root
+            ):
+                raise ValueError(
+                    "cycle replay roots must equal the resolved parent roots"
+                )
+            for roots in (
+                (
+                    cycle_data_roots.parent_raw_root,
+                    cycle_data_roots.parent_labels_root,
+                ),
+                (
+                    cycle_data_roots.acquired_raw_root,
+                    cycle_data_roots.acquired_labels_root,
+                ),
+            ):
+                raw_descriptor = _open_directory(roots[0])
+                opened_descriptors.append(raw_descriptor)
+                label_descriptor = _open_directory(roots[1])
+                opened_descriptors.append(label_descriptor)
+                descriptor_pairs[roots] = (raw_descriptor, label_descriptor)
+            cycle_sources = {
+                batch_id: cycle_data_roots.roots_for(batch_id)
+                for batch_id in explicit_batch_ids
+            }
     except OSError:
-        if batches_descriptor is not None:
-            os.close(batches_descriptor)
+        for descriptor in reversed(opened_descriptors):
+            os.close(descriptor)
         raise ValueError("replay roots must be safe existing directories") from None
+    except BaseException:
+        for descriptor in reversed(opened_descriptors):
+            os.close(descriptor)
+        raise
     try:
         # Names come from the already-open root descriptor. Symlinked directories are
         # deliberately included so opening each batch no-follow can record a stable
         # per-batch containment failure instead of silently skipping them.
-        batch_names = sorted(os.listdir(batches_descriptor))
+        if cycle_sources is None:
+            batch_names = (
+                sorted(os.listdir(batches_descriptor))
+                if explicit_batch_ids is None
+                else explicit_batch_ids
+            )
+        else:
+            batch_names = explicit_batch_ids
         for batch_name in batch_names:
+            if cycle_sources is not None:
+                batches_descriptor, labels_descriptor = descriptor_pairs[
+                    cycle_sources[batch_name]
+                ]
             try:
                 entry_metadata = os.stat(
                     batch_name,
@@ -762,10 +856,14 @@ def replay_batches(
                     follow_symlinks=False,
                 )
             except OSError:
+                if explicit_batch_ids is not None:
+                    _record_missing_explicit_batch(accumulator)
                 continue
             is_directory = stat.S_ISDIR(entry_metadata.st_mode)
             is_symlink = stat.S_ISLNK(entry_metadata.st_mode)
             if not (is_directory or is_symlink):
+                if explicit_batch_ids is not None:
+                    _record_missing_explicit_batch(accumulator)
                 continue
 
             if not _is_safe_component(batch_name):
@@ -917,9 +1015,8 @@ def replay_batches(
             finally:
                 os.close(batch_descriptor)
     finally:
-        if labels_descriptor is not None:
-            os.close(labels_descriptor)
-        os.close(batches_descriptor)
+        for descriptor in reversed(opened_descriptors):
+            os.close(descriptor)
 
     return _freeze_report(accumulator, checksums)
 

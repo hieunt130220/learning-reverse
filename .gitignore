@@ -57,3 +57,4 @@ captcha-solver/data/*
 !captcha-solver/data/cached_teacher_php.bin
 !captcha-solver/checkpoints/crnn_ctc.pt
 .worktrees/
+.agent-bus/

@@ -21,6 +21,7 @@ import { BARN_ANIMAL_CATALOG, DEFAULT_BARN_ANIMAL_SLOTS, DEFAULT_POND_ANIMAL_SLO
 import { AnimalPlanEditor } from '../AnimalPlanEditor.js';
 import { AutoSellRulesEditor } from '../AutoSellRulesEditor.js';
 import { KitchenPlanEditor } from '../KitchenPlanEditor.js';
+import { StatusBanner } from '../StatusBanner.js';
 import { TreeCellPlanEditor } from '../TreeCellPlanEditor.js';
 
 const EMPTY_PROFILE: FarmProfileDto = {
@@ -228,6 +229,15 @@ export interface AutoFarmPanelProps {
   onPlanDirtyChange?(dirty: boolean): void;
 }
 
+function SectionHead({ title, dirty }: { title: string; dirty: boolean }) {
+  return (
+    <div className="setting-section-head">
+      <h3>{title}</h3>
+      {dirty && <span className="section-dirty-dot">chưa lưu</span>}
+    </div>
+  );
+}
+
 export function AutoFarmPanel({
   accountId,
   foods = [],
@@ -328,16 +338,17 @@ export function AutoFarmPanel({
   }, [accountId, hydrateForm]);
 
   // Chỉ so sánh các phần UI cho phép sửa: kế hoạch cây + vật nuôi (chuồng/hồ) + bếp nấu + tự động bán.
-  const dirty = useMemo(
-    () => planKey(draftPlan) !== planKey(storedState.config.treeCellPlan)
-      || animalPlanKey(draftBarnPlan) !== animalPlanKey(storedState.config.barnAnimalPlan)
-      || animalPlanKey(draftPondPlan) !== animalPlanKey(storedState.config.pondAnimalPlan)
-      || kitchenPlanKey(draftKitchenPlan) !== kitchenPlanKey(storedState.config.cookingSlotPlan)
-      || draftAutoSellProduce !== (storedState.config.autoSellProduce ?? false)
+  const sectionDirty = useMemo(() => {
+    const tree = planKey(draftPlan) !== planKey(storedState.config.treeCellPlan);
+    const barn = animalPlanKey(draftBarnPlan) !== animalPlanKey(storedState.config.barnAnimalPlan);
+    const pond = animalPlanKey(draftPondPlan) !== animalPlanKey(storedState.config.pondAnimalPlan);
+    const kitchen = kitchenPlanKey(draftKitchenPlan) !== kitchenPlanKey(storedState.config.cookingSlotPlan);
+    const sell = draftAutoSellProduce !== (storedState.config.autoSellProduce ?? false)
       || draftAutoSellIntervalMs !== (storedState.config.autoSellIntervalMs ?? 600_000)
-      || JSON.stringify(draftAutoSellRules) !== JSON.stringify(storedState.config.autoSellRules ?? []),
-    [draftPlan, draftBarnPlan, draftPondPlan, draftKitchenPlan, draftAutoSellProduce, draftAutoSellIntervalMs, draftAutoSellRules, storedState.config],
-  );
+      || JSON.stringify(draftAutoSellRules) !== JSON.stringify(storedState.config.autoSellRules ?? []);
+    return { tree, barn, pond, kitchen, sell, any: tree || barn || pond || kitchen || sell };
+  }, [draftPlan, draftBarnPlan, draftPondPlan, draftKitchenPlan, draftAutoSellProduce, draftAutoSellIntervalMs, draftAutoSellRules, storedState.config]);
+  const dirty = sectionDirty.any;
   const planDirtyRef = useRef(dirty);
   planDirtyRef.current = dirty;
 
@@ -478,7 +489,7 @@ export function AutoFarmPanel({
       </p>
 
       <div className="setting-section">
-        <h3>🌱 Cây trồng</h3>
+        <SectionHead title="🌱 Cây trồng" dirty={sectionDirty.tree} />
         <TreeCellPlanEditor
           profile={profile}
           entries={draftPlan}
@@ -493,7 +504,7 @@ export function AutoFarmPanel({
       </div>
 
       <div className="setting-section">
-        <h3>🐓 Vật nuôi chuồng (Gà, Vịt, Bò, Heo, Cừu, Trâu, Dê, Thỏ...)</h3>
+        <SectionHead title="🐓 Vật nuôi chuồng (Gà, Vịt, Bò, Heo, Cừu, Trâu, Dê, Thỏ...)" dirty={sectionDirty.barn} />
         <AnimalPlanEditor
           title="Kế hoạch vật nuôi chuồng theo slot"
           catalog={BARN_ANIMAL_CATALOG}
@@ -510,7 +521,7 @@ export function AutoFarmPanel({
       </div>
 
       <div className="setting-section">
-        <h3>🐟 Vật nuôi hồ (Cá chép, Rùa)</h3>
+        <SectionHead title="🐟 Vật nuôi hồ (Cá chép, Rùa)" dirty={sectionDirty.pond} />
         <AnimalPlanEditor
           title="Kế hoạch vật nuôi hồ theo slot"
           catalog={POND_ANIMAL_CATALOG}
@@ -527,7 +538,7 @@ export function AutoFarmPanel({
       </div>
 
       <div className="setting-section">
-        <h3>🍳 Bếp nấu ăn tự động</h3>
+        <SectionHead title="🍳 Bếp nấu ăn tự động" dirty={sectionDirty.kitchen} />
         <KitchenPlanEditor
           title="Kế hoạch món nấu theo ô bếp"
           entries={draftKitchenPlan}
@@ -543,7 +554,7 @@ export function AutoFarmPanel({
       </div>
 
       <div className="setting-section">
-        <h3>🧺 Tự động đưa nông sản lên sạp</h3>
+        <SectionHead title="🧺 Tự động đưa nông sản lên sạp" dirty={sectionDirty.sell} />
         <AutoSellRulesEditor
           autoSellProduce={draftAutoSellProduce}
           autoSellRules={draftAutoSellRules}
@@ -561,20 +572,26 @@ export function AutoFarmPanel({
         />
       </div>
 
+      {planNotice && <StatusBanner tone="success">{planNotice}</StatusBanner>}
+      {conflict && (
+        <StatusBanner
+          tone="warn"
+          action={<button type="button" className="ghost" onClick={loadConflict}>Tải bản máy chủ</button>}
+        >
+          Cấu hình trên máy chủ đã thay đổi. Draft local vẫn được giữ nguyên.
+        </StatusBanner>
+      )}
+      {planError && <StatusBanner tone="error">{planError}</StatusBanner>}
+      {configError && <StatusBanner tone="error">{configError}</StatusBanner>}
+      {profileError && <StatusBanner tone="error">{profileError}</StatusBanner>}
+      {profileLoading && <StatusBanner tone="info">đang tải farm profile…</StatusBanner>}
+
       <div className="row tree-plan-save-row">
         <button type="button" onClick={() => void savePlan()} disabled={!configReady || saving || !dirty}>
           {saving ? 'Đang lưu…' : 'Lưu kế hoạch'}
         </button>
-        {conflict && (
-          <button type="button" className="ghost" onClick={loadConflict}>Tải bản máy chủ</button>
-        )}
         {dirty && <span className="hint">có thay đổi chưa lưu</span>}
       </div>
-      {planNotice && <p className="hint">{planNotice}</p>}
-      {planError && <p className="err">{planError}</p>}
-      {configError && <p className="err">{configError}</p>}
-      {profileError && <p className="err">{profileError}</p>}
-      {profileLoading && <p className="hint">đang tải farm profile…</p>}
     </section>
   );
 }

@@ -70,10 +70,26 @@ def replay_report():
 
 
 class GateTests(unittest.TestCase):
-    def test_checked_in_policy_is_placeholder_and_not_tuned_on_final(self):
+    def test_checked_in_policy_is_approved_and_not_tuned_on_final(self):
         loaded = load_gate_policy(Path("config/phase2/gate.yaml"))
-        self.assertTrue(loaded.pre_agreed_placeholders)
+        self.assertFalse(loaded.pre_agreed_placeholders)
         self.assertTrue(loaded.not_tuned_on_phase_a_final)
+        self.assertEqual(loaded.approved_at, "2026-09-05T04:33:21Z")
+        self.assertEqual(loaded.approved_by, "hieunt")
+        self.assertEqual(
+            loaded.approval_evidence,
+            "Codex task 01a06f4b-932b-71c0-861d-a4a5cbba1e2c — explicit user approval",
+        )
+        self.assertEqual(loaded.min_accepted_rate, 0.60)
+        self.assertEqual(loaded.min_batch_exact_match, 0.90)
+        self.assertEqual(loaded.min_top1_accuracy, 0.98)
+        self.assertEqual(loaded.budget_ms, 50)
+        self.assertEqual(loaded.p95_ms, 100)
+        self.assertEqual(loaded.max_ms, 250)
+        self.assertEqual(loaded.max_errored_batch_rate, 0.01)
+        self.assertEqual(loaded.max_omitted_rate, 0.0)
+        self.assertTrue(loaded.require_single_model_identity)
+        self.assertTrue(loaded.require_zero_wrong_accepted)
 
     def test_final_uses_canonical_wrong_accepted_and_fail_beats_blocker(self):
         evidence = {"metrics": {

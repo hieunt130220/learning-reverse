@@ -13,6 +13,7 @@ import {
   PARK_ALREADY_IN_AREA_DIALOG,
   isRewardDialog,
   isInformationalDialog,
+  isMissingFishingTicketDialog,
   type CaptchaEvent,
   type ClientStatus,
   type DeviceProfile,
@@ -23,6 +24,8 @@ import { saveCaptchaDiagnostic, savePassiveCaptcha } from '../game/captchaPassiv
 import { type QuestOverviewState } from '../game/farmData.js';
 import { parseQuestDialogText } from '../game/progressQuests.js';
 import { MacroRunner, type Macro, type MacroState } from '../macro.js';
+import { emptyDailyFishingStatistics } from '../accounts/fishingStatisticsRepo.js';
+import { emptyMlFishingStatistics } from '../accounts/fishingMlStatisticsRepo.js';
 import type { AccountMetricsPatch, CachedAccountMetrics } from '../accounts/repo.js';
 import type { ShopRepository, ProduceSnapshot, ShopRuntimeState, ShopTransaction } from '../accounts/shopRepo.js';
 import type { ShopPolicy } from '../config.js';
@@ -50,9 +53,11 @@ import {
   type AutomationSnapshot,
   type AutomationStartOutcome,
   type AutoFindNpcState,
+  type DailyFishingStatistics,
   type FishermanQuestRuntimeState,
   type FishingRuntimeState,
   type LoadedAutomationIntent,
+  type MlFishingStatistics,
   type NpcMapLocation,
   type StoredFishingConfigState,
 } from './automationTypes.js';
@@ -67,6 +72,7 @@ import {
   buildAnswerDomain,
   makeAutoDecision,
   type CanCauPayload,
+  type InferenceResult,
 } from '../fishing/autoDecision.js';
 import { ProductionInferenceClient } from '../fishing/productionInference.js';
 
@@ -188,6 +194,17 @@ export interface AvatarSessionOptions {
   onAutomationLocation: (location: NpcMapLocation | null) => void;
   onMetrics?: (patch: AccountMetricsPatch) => void;
   cachedMetrics?: CachedAccountMetrics;
+  initialDailyFishingStatistics?: DailyFishingStatistics;
+  onFishingCatch?: (
+    fishId: number,
+    caughtAt: number,
+  ) => DailyFishingStatistics;
+  initialMlFishingStatistics?: MlFishingStatistics;
+  onMlFishingResult?: (
+    isSuccess: boolean,
+    updatedAt: number,
+  ) => MlFishingStatistics;
+  onFishingInference?: (payload: CanCauPayload, result: InferenceResult) => void;
   /** Snapshot nhiệm vụ/tài sản gần nhất để hiển thị khi chờ vòng auto kế tiếp. */
   cachedSnapshot?: CachedRuntimeSnapshot;
   /** Production luôn truyền đủ hai dependency; optional giữ tương thích cho harness cũ. */
@@ -250,6 +267,8 @@ export const FISHING_HUMAN_TIMING = {
   MICRO_BREAK_MAX_MS: 12000,
 } as const;
 
+const FISHING_INSTANT_ESCAPE_DELAY_MS = 500;
+
 /**
  * Cooldown tối thiểu giữa hai lệnh joinPark (cmd 80) liên tiếp.
  * Server anti-spam trả dialog "Chầm chậm thôi nào bạn hiền" và KHÔNG gửi
@@ -298,6 +317,9 @@ export class AvatarSession {
   private fishingRuntime: FishingRuntimeState = idleFishingRuntime();
   private fishermanQuestAbort?: AbortController;
   private fishermanQuestRuntime: FishermanQuestRuntimeState = idleFishermanQuestRuntime();
+  private dailyFishingStatistics: DailyFishingStatistics;
+  private mlFishingStatistics: MlFishingStatistics;
+  private currentFishingChallengeSource?: 'ml' | 'random';
   private fishingAbortController?: AbortController;
   private fishingFarmPhase: FishingFarmPhase = 'idle';
   private fishingFarmTimer?: NodeJS.Timeout;
@@ -345,6 +367,10 @@ export class AvatarSession {
     this.random = opts.random ?? Math.random;
     this.cachedMetrics = { ...opts.cachedMetrics };
     this.runtimeSnapshot = opts.cachedSnapshot ?? emptyRuntimeSnapshot();
+    this.dailyFishingStatistics = opts.initialDailyFishingStatistics
+      ?? emptyDailyFishingStatistics(this.now());
+    this.mlFishingStatistics = opts.initialMlFishingStatistics
+      ?? emptyMlFishingStatistics();
     if (opts.shopRepository && opts.shopPolicy) {
       this.shop = new ShopCoordinator({
         accountId: opts.accountId,
@@ -765,6 +791,8 @@ export class AvatarSession {
       fishingConfig: this.fishingConfig,
       fishingRuntime: this.fishingRuntime,
       fishermanQuestRuntime: this.fishermanQuestRuntime,
+      dailyFishingStatistics: this.dailyFishingStatistics,
+      mlFishingStatistics: this.mlFishingStatistics,
       location: this.automationLocation,
     };
   }
@@ -1118,13 +1146,30 @@ export class AvatarSession {
       if (client.playerId === undefined || ev.idUser !== client.playerId) {
         return;
       }
+      // RX 43 chốt lượt câu (dù bắt được hay sổng) — solver của lượt này không còn hiệu lực
+      this.cancelPendingFishingChallenge();
+      this.recordMlResult(ev.idFish >= 0);
       if (ev.idFish >= 0) {
         const fishName = getFishName(ev.idFish);
+        const caughtAt = this.now();
         this.fishingRuntime.totalCatches += 1;
         this.fishingRuntime.lastFishId = ev.idFish;
         this.fishingRuntime.lastFishName = fishName;
         this.fishingRuntime.status = 'caught';
-        this.pushLog(`[câu cá] bắt được ${fishName} (ID ${ev.idFish})! (Tổng: ${this.fishingRuntime.totalCatches})`);
+        try {
+          if (!this.opts.onFishingCatch) {
+            throw new Error('repository thống kê chưa được cấu hình');
+          }
+          this.dailyFishingStatistics = this.opts.onFishingCatch(ev.idFish, caughtAt);
+          this.fishingRuntime.lastError = null;
+          this.pushLog(
+            `[câu cá] bắt được ${fishName} (ID ${ev.idFish})! (Hôm nay: ${this.dailyFishingStatistics.totalCatches})`,
+          );
+        } catch (error) {
+          const message = `Đã bắt ${fishName} nhưng không ghi được thống kê: ${(error as Error).message}`;
+          this.fishingRuntime.lastError = message;
+          this.pushLog(`[câu cá] ${message}`);
+        }
         const questRuntime = this.fishermanQuestRuntime;
         if (
           this.activeMode === 'auto_fisherman_quest'
@@ -1141,9 +1186,10 @@ export class AvatarSession {
           this.pushLog(`[câu cá] bắt được ${fishName} (không phải mục tiêu quest ${questRuntime.targetFishName}).`);
         }
       } else {
-        this.pushLog(`[câu cá] giật hụt hoặc sổng cá (mã ${ev.idFish})`);
-        this.fishingRuntime.status = 'rejected';
-        this.fishingRuntime.lastError = `Giật hụt / sổng cá (${ev.idFish})`;
+        // Lượt trượt bình thường — không phải lỗi fatal. Vòng lặp runFishingLoop
+        // tự reset qua catchResult === false hoặc nhánh dialog sổng cá;
+        // không set status='rejected', không set lastError.
+        this.pushLog(`[câu cá] giật hụt hoặc sổng cá (mã ${ev.idFish}) — lượt này không bắt được cá`);
       }
       this.emitAutomation();
     });
@@ -2961,7 +3007,7 @@ export class AvatarSession {
     return false;
   }
 
-  private async prepareFishingAtPark(
+  private async enterFishingPark(
     client: GameClient,
     generation: number,
     epoch: number,
@@ -3058,10 +3104,28 @@ export class AvatarSession {
       || !this.isAutomationGenerationCurrent(generation)
       || this.desiredMode !== 'auto_fishing'
     ) return false;
+
+    return true;
+  }
+
+  private async startFishingSession(
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    // Nếu nhân vật chưa ở trong Park context (handler 9), tự động vào map trước
+    if (client.currentHandlerContext !== 9) {
+      const entered = await this.enterFishingPark(client, generation, epoch, signal);
+      if (!entered) return false;
+    }
+
     this.pushLog(`[câu cá] gửi TX45 startFishing — handler=${client.currentHandlerContext}`);
 
     let consecutiveFailures = 0;
     let lastMissingType: 'ticket' | 'rod' | 'bait' | null = null;
+    let timeoutRetries = 0;
+    const MAX_TIMEOUT_RETRIES = 2;
 
     // ── Vòng lặp chờ startFishing thành công ──
     while (true) {
@@ -3135,6 +3199,23 @@ export class AvatarSession {
         const errText = reason.toLowerCase();
         this.pushLog(`[câu cá] Server từ chối bắt đầu câu: ${reason}`);
 
+        if (errText.includes('hết giờ chờ bắt đầu câu')) {
+          if (timeoutRetries < MAX_TIMEOUT_RETRIES) {
+            timeoutRetries++;
+            this.pushLog(`[câu cá] Hết giờ chờ bắt đầu câu (lần ${timeoutRetries}/${MAX_TIMEOUT_RETRIES}) — reset phiên câu và thử lại…`);
+            try {
+              client.cauCaXong();
+            } catch {
+              /* bỏ qua */
+            }
+            await this.delayCancellable(1500 * timeoutRetries, signal);
+            if (timeoutRetries >= 2) {
+              await this.enterFishingPark(client, generation, epoch, signal);
+            }
+            continue;
+          }
+        }
+
         if (errText.includes('rương') && (errText.includes('đầy') || errText.includes('không thể câu'))) {
           const sold = await this.executeSellFish(client, epoch, signal);
           if (!sold) {
@@ -3148,8 +3229,9 @@ export class AvatarSession {
         }
 
         let missingType: 'ticket' | 'rod' | 'bait' | null = null;
-        if (errText.includes('vé') || errText.includes('bến tàu')) {
+        if (isMissingFishingTicketDialog(errText)) {
           missingType = 'ticket';
+          this.pushLog(`[câu cá] Server từ chối vì thiếu vé câu: "${reason}"`);
         } else if (errText.includes('mồi')) {
           missingType = 'bait';
         } else if (
@@ -3205,6 +3287,17 @@ export class AvatarSession {
     return true;
   }
 
+  private async prepareFishingAtPark(
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const entered = await this.enterFishingPark(client, generation, epoch, signal);
+    if (!entered) return false;
+    return this.startFishingSession(client, generation, epoch, signal);
+  }
+
   private async serviceDueFishingFarm(
     client: GameClient,
     generation: number,
@@ -3214,6 +3307,14 @@ export class AvatarSession {
     if (!this.fishingFarmDue) return 'continue-fishing';
     this.fishingChallengeGeneration += 1;
     this.fishingFarmDue = false;
+
+    this.pushLog('[câu cá] Tạm dừng câu cá, đứng dậy để làm nông trại định kỳ…');
+    try {
+      client.cauCaXong();
+    } catch {
+      /* bỏ qua */
+    }
+    await this.delayCancellable(800, signal);
 
     const outcome = await this.runFishingFarmCycle(
       'periodic',
@@ -3234,7 +3335,21 @@ export class AvatarSession {
 
     this.pushLog('[câu cá] Đã xong farm, quay lại khu câu cá...');
     this.fishingFarmPhase = 'returning-to-park';
-    const ok = await this.prepareFishingAtPark(client, generation, epoch, signal);
+    client.clearParkSnapshot();
+    let ok = await this.prepareFishingAtPark(client, generation, epoch, signal);
+    if (!ok) {
+      if (
+        signal.aborted
+        || !this.isCurrent(client, epoch)
+        || !this.isAutomationGenerationCurrent(generation)
+        || this.desiredMode !== 'auto_fishing'
+      ) {
+        return 'stop';
+      }
+      this.pushLog('[câu cá] Lần đầu vào lại khu câu cá sau farm chưa sẵn sàng — thử lại lần 2…');
+      await this.delayCancellable(2000, signal);
+      ok = await this.prepareFishingAtPark(client, generation, epoch, signal);
+    }
     if (!ok) return 'stop';
     this.fishingFarmPhase = 'fishing';
     this.scheduleFishingFarm(generation, epoch);
@@ -3292,6 +3407,9 @@ export class AvatarSession {
         this.pushLog('[câu cá] đang quăng cần…');
         this.emitAutomation();
 
+        // Lượt câu mới bắt đầu — solver của lượt câu trước (nếu còn ngủ) hết hiệu lực
+        this.recordMlResult(false);
+        this.cancelPendingFishingChallenge();
         client.quanCau();
 
         // Chờ cá cắn câu và câu thành công (hoặc timeout 35s)
@@ -3363,14 +3481,33 @@ export class AvatarSession {
               if (action === 'stop') return;
               continue;
             }
-            if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
+            if (!(await this.startFishingSession(client, generation, epoch, signal))) return;
             continue;
           }
 
-          let castMissingType: 'ticket' | 'rod' | 'bait' | null = null;
-          if (castErrText.includes('vé') || castErrText.includes('bến tàu')) {
-            castMissingType = 'ticket';
-          } else if (castErrText.includes('mồi')) {
+          // Dialog cá chạy mất / sổng cá / trật rồi — server tự chốt lượt hỏng,
+          // chỉ cần reset phiên và quăng cần tiếp, KHÔNG dừng auto.
+          if (
+            castErrText.includes('chạy mất')
+            || castErrText.includes('sổng cá')
+            || castErrText.includes('trật rồi')
+          ) {
+            this.recordMlResult(false);
+            this.pushLog(`[câu cá] ${catchResult} — bỏ qua, quăng cần tiếp…`);
+            this.cancelPendingFishingChallenge();
+            try { client.cauCaXong(); } catch { /* bỏ qua */ }
+            await this.delayCancellable(1000, signal);
+            if (this.fishingFarmDue) {
+              const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
+              if (action === 'stop') return;
+              continue;
+            }
+            if (!(await this.startFishingSession(client, generation, epoch, signal))) return;
+            continue;
+          }
+
+          let castMissingType: 'rod' | 'bait' | null = null;
+          if (castErrText.includes('mồi')) {
             castMissingType = 'bait';
           } else if (
             castErrText.includes('cần câu')
@@ -3380,12 +3517,10 @@ export class AvatarSession {
             || castErrText.includes('cần sắt')
           ) {
             castMissingType = 'rod';
-          }
-          if (castMissingType) {
-            const bought = await this.executeParkPurchase(client, epoch, signal, castMissingType);
-            if (!bought) return;
-            // Sau khi mua, gửi cauCaXong để kết thúc session câu cũ
-            // rồi bắt đầu lại từ startFishing qua prepareFishingAtPark
+          } else if (isMissingFishingTicketDialog(castErrText)) {
+            // Vé câu hết hạn trong lúc câu cá: kết thúc phiên câu hiện tại
+            // và để startFishingSession ở chu kỳ sau xử lý mua vé đúng quy trình handshake
+            this.pushLog(`[câu cá] Vé câu đã hết hạn: "${catchResult}" — kết thúc lượt để mua lại vé…`);
             try { client.cauCaXong(); } catch { /* bỏ qua */ }
             await this.delayCancellable(1000, signal);
             if (this.fishingFarmDue) {
@@ -3393,7 +3528,22 @@ export class AvatarSession {
               if (action === 'stop') return;
               continue;
             }
-            if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
+            if (!(await this.startFishingSession(client, generation, epoch, signal))) return;
+            continue;
+          }
+          if (castMissingType) {
+            const bought = await this.executeParkPurchase(client, epoch, signal, castMissingType);
+            if (!bought) return;
+            // Sau khi mua, gửi cauCaXong để kết thúc session câu cũ
+            // rồi bắt đầu lại từ startFishing qua startFishingSession
+            try { client.cauCaXong(); } catch { /* bỏ qua */ }
+            await this.delayCancellable(1000, signal);
+            if (this.fishingFarmDue) {
+              const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
+              if (action === 'stop') return;
+              continue;
+            }
+            if (!(await this.startFishingSession(client, generation, epoch, signal))) return;
             continue;
           }
           // Dialog không nhận diện được — dừng câu
@@ -3420,7 +3570,7 @@ export class AvatarSession {
             if (action === 'stop') return;
             continue;
           }
-          if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
+          if (!(await this.startFishingSession(client, generation, epoch, signal))) return;
           continue;
         }
 
@@ -3582,6 +3732,30 @@ export class AvatarSession {
     });
   }
 
+  /**
+   * Hủy hiệu lực mọi pending fishing challenge solver: bump generation để
+   * Pre-Send Gate trong handleFishingChallenge chặn TX 43 khi lượt câu đã
+   * kết thúc (RX 43 thành công/thất bại, dialog sổng cá, hoặc quăng cần mới).
+   */
+  private cancelPendingFishingChallenge(): void {
+    this.fishingChallengeGeneration += 1;
+  }
+
+  private recordMlResult(isSuccess: boolean): void {
+    if (this.currentFishingChallengeSource !== 'ml') {
+      this.currentFishingChallengeSource = undefined;
+      return;
+    }
+    this.currentFishingChallengeSource = undefined;
+    try {
+      if (this.opts.onMlFishingResult) {
+        this.mlFishingStatistics = this.opts.onMlFishingResult(isSuccess, this.now());
+      }
+    } catch (err) {
+      this.pushLog(`[câu cá] lỗi ghi nhận thống kê ML: ${(err as Error).message}`);
+    }
+  }
+
   private handleFishingChallenge(
     client: GameClient,
     epoch: number,
@@ -3610,12 +3784,62 @@ export class AvatarSession {
     const challengeGen = ++this.fishingChallengeGeneration;
     const autoGen = this.automationGeneration;
 
+    if (payload.timeDelayMs === FISHING_INSTANT_ESCAPE_DELAY_MS) {
+      const defaultAnswer = Object.freeze(
+        Array.from({ length: domain.queryCount }, () => 0),
+      );
+      const abortSignal = this.fishingAbortController?.signal ?? new AbortController().signal;
+
+      this.currentFishingChallengeSource = undefined;
+      this.pushLog(
+        `fishing: RX79 deadline ${payload.timeDelayMs}ms — bỏ qua ML, chờ gửi đáp án mặc định`,
+      );
+
+      void this.delayCancellable(payload.timeDelayMs, abortSignal)
+        .then(() => {
+          if (this.consumedFishingChallenges.has(challengeGen)) return;
+          if (this.fishingChallengeGeneration !== challengeGen) return;
+          if (this.automationGeneration !== autoGen) return;
+          if (this.connectionEpoch !== epoch) return;
+          if (this.client !== client) return;
+          if (!this.isCurrent(client, epoch)) return;
+          if (!this.wanted) return;
+          if (this.desiredMode !== 'auto_fishing') return;
+          if (client.status !== 'online') return;
+
+          if (!isFishingAutoTx43Enabled()) {
+            this.pushLog('fishing: TX43 mặc định bị chặn bởi FISHING_AUTO_TX43_ENABLED !== true');
+            return;
+          }
+
+          this.consumedFishingChallenges.add(challengeGen);
+          try {
+            client.finishFishing(defaultAnswer);
+            this.pushLog(
+              `fishing: đã gửi TX43 mặc định cho deadline ${payload.timeDelayMs}ms — không tính ML`,
+            );
+          } catch (sendErr) {
+            this.pushLog(`fishing: gửi TX43 mặc định lỗi: ${(sendErr as Error).message}`);
+          }
+        });
+      return;
+    }
+
     const inferenceClient = this.fishingInferenceClient ??= new ProductionInferenceClient({
       endpoint: process.env.FISHING_INFERENCE_URL || 'http://127.0.0.1:8080/infer',
       timeoutMs: Number(process.env.FISHING_INFERENCE_TIMEOUT_MS) || 5000,
     });
 
-    void makeAutoDecision(payload, domain, (p) => inferenceClient.match(p))
+    const infer = async (challenge: CanCauPayload): Promise<InferenceResult> => {
+      const result = await inferenceClient.match(challenge);
+      try {
+        this.opts.onFishingInference?.(challenge, result);
+      } catch (error) {
+        this.pushLog(`[câu cá] lỗi capture review: ${(error as Error).message}`);
+      }
+      return result;
+    };
+    void makeAutoDecision(payload, domain, infer)
       .then(async (decision) => {
         if (decision.status !== 'answer') {
           this.pushLog('fishing: không xác định được đáp án hợp lệ');
@@ -3665,11 +3889,13 @@ export class AvatarSession {
 
         // Mark consumed immediately before synchronous send
         this.consumedFishingChallenges.add(challengeGen);
+        this.currentFishingChallengeSource = decision.source;
 
         try {
           client.finishFishing(decision.answer);
           this.pushLog(`fishing: đã gửi TX43 (${decision.source}) sau ${(totalSolvingDelay / 1000).toFixed(2)}s`);
         } catch (sendErr) {
+          this.currentFishingChallengeSource = undefined;
           this.pushLog(`fishing: gửi TX43 lỗi: ${(sendErr as Error).message}`);
         }
       })

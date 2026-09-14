@@ -14,6 +14,10 @@ import { shopRouter } from './session/shopRoutes.js';
 import { attachWebSocket, type WsHub } from './ws.js';
 import { captchaRouter } from './game/captchaRoute.js';
 import { captchaSolverProxy } from './game/captchaSolverProxy.js';
+import { Rx79CaptureRegistry } from './fishing/rx79Capture.js';
+import { rx79CaptureRouter } from './fishing/rx79CaptureRoutes.js';
+import { LiveReviewCaptureRegistry } from './fishing/liveReviewCapture.js';
+import { liveReviewCaptureRouter } from './fishing/liveReviewCaptureRoutes.js';
 
 // Ném ngay nếu thiếu MASTER_KEY / INVITE_CODE — dừng còn hơn lặng lẽ chạy bằng
 // khoá mặc định rồi ghi cả DB bằng nó.
@@ -32,6 +36,12 @@ app.use(express.json());
 
 let hub: WsHub;
 const shopRepository = new ShopRepository(db);
+const rx79CaptureRegistry = config.fishingRx79CaptureRoot
+  ? new Rx79CaptureRegistry(config.fishingRx79CaptureRoot)
+  : null;
+const liveReviewRegistry = config.fishingLiveReviewCaptureRoot
+  ? new LiveReviewCaptureRegistry(config.fishingLiveReviewCaptureRoot)
+  : null;
 const sessions = new SessionManager({
   db,
   masterKey: config.masterKey,
@@ -39,6 +49,9 @@ const sessions = new SessionManager({
   shopRepository,
   shopPolicy: config.shopPolicy,
   findNpcCatalog: VERIFIED_NPC_MAP_CATALOG,
+  onFishingInference: (accountId, payload, result) => {
+    if (result.status === 'ok') liveReviewRegistry?.record(accountId, payload, result);
+  },
   broadcast: (userId, accountId, type, payload) => hub.broadcast(userId, accountId, type, payload),
 });
 
@@ -47,6 +60,18 @@ app.use(
   '/api/accounts',
   accountsRouter({ db, masterKey: config.masterKey, isProduction: config.isProduction, sessions }),
 );
+app.use('/api/accounts', rx79CaptureRouter({
+  db,
+  isProduction: config.isProduction,
+  sessions,
+  registry: rx79CaptureRegistry,
+}));
+app.use('/api/accounts', liveReviewCaptureRouter({
+  db,
+  isProduction: config.isProduction,
+  sessions,
+  registry: liveReviewRegistry,
+}));
 app.use('/api/accounts', shopRouter({
   db,
   isProduction: config.isProduction,
@@ -74,6 +99,8 @@ process.on('uncaughtException', (err) => {
 
 function shutdown(signal: string): void {
   console.log(`${signal} — đang dừng`);
+  rx79CaptureRegistry?.abortAll(`server shutdown: ${signal}`);
+  liveReviewRegistry?.abortAll(`server shutdown: ${signal}`);
   sessions.stopAll();
   hub.close();
   server.close(() => {
