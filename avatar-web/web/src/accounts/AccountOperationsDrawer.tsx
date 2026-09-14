@@ -50,10 +50,6 @@ const PANEL_TO_GROUP = new Map<PanelId, string>(
 
 const FIND_NPC_TAB_HIDDEN = true;
 
-const VISIBLE_TABS = PANEL_TABS.filter(
-  ([id]) => !(id === 'find_npc' && FIND_NPC_TAB_HIDDEN),
-) as Array<(typeof PANEL_TABS)[number]>;
-
 export function AccountOperationsDrawer() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -146,7 +142,14 @@ function LoadedOperations({
     !isMobile || (PANEL_TO_GROUP.get(id) ?? '') === activeGroup;
   const selectPanel = (id: PanelId) => {
     setActivePanel(id);
-    if (panelsRef.current) panelsRef.current.scrollTop = 0;
+    const firstPanel = groupPanels(PANEL_TO_GROUP.get(id) ?? '')[0];
+    if (id === firstPanel) {
+      if (panelsRef.current) panelsRef.current.scrollTop = 0;
+    } else {
+      requestAnimationFrame(() => {
+        document.getElementById(`drawer-panel-${id}`)?.scrollIntoView();
+      });
+    }
   };
   const selectGroup = (groupId: string) => {
     const first = groupPanels(groupId)[0];
@@ -224,7 +227,7 @@ function LoadedOperations({
         </nav>
       )}
       <div ref={panelsRef} className="drawer-panels">
-        <div id="drawer-panel-status" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-status' : undefined} hidden={!visible('status')}>
+        <div id="drawer-panel-status" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('status')}` : undefined} hidden={!visible('status')}>
           <StatusPanel
             accountId={account.id}
             snap={snapshot}
@@ -239,7 +242,7 @@ function LoadedOperations({
             onAutomationMutationBusyChange={setAutomationMutationBusy}
           />
         </div>
-        <div id="drawer-panel-settings" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-settings' : undefined} hidden={!visible('settings')}>
+        <div id="drawer-panel-settings" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('settings')}` : undefined} hidden={!visible('settings')}>
           <SettingsPanel
             account={account}
             snapshot={snapshot}
@@ -253,7 +256,7 @@ function LoadedOperations({
             }}
           />
         </div>
-        <div id="drawer-panel-fishing" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-fishing' : undefined} hidden={!visible('fishing')}>
+        <div id="drawer-panel-fishing" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('fishing')}` : undefined} hidden={!visible('fishing')}>
           <FishingPanel
             account={account}
             automation={automation}
@@ -266,7 +269,7 @@ function LoadedOperations({
           />
         </div>
         {!FIND_NPC_TAB_HIDDEN && (
-          <div id="drawer-panel-find_npc" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-find_npc' : undefined} hidden={!visible('find_npc')}>
+          <div id="drawer-panel-find_npc" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('find_npc')}` : undefined} hidden={!visible('find_npc')}>
             <FindNpcPanel
               accountId={account.id}
               automation={automation}
@@ -277,13 +280,13 @@ function LoadedOperations({
             />
           </div>
         )}
-        <div id="drawer-panel-quests" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-quests' : undefined} hidden={!visible('quests')}>
+        <div id="drawer-panel-quests" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('quests')}` : undefined} hidden={!visible('quests')}>
           <QuestsPanel
             accountId={account.id}
             quests={snapshot?.quests ?? null}
           />
         </div>
-        <div id="drawer-panel-cooking" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-cooking' : undefined} hidden={!visible('cooking')}>
+        <div id="drawer-panel-cooking" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('cooking')}` : undefined} hidden={!visible('cooking')}>
           <CookingPanel
             cooking={snapshot?.cooking}
             foods={snapshot?.foods}
@@ -294,10 +297,10 @@ function LoadedOperations({
             cookingMaterials={snapshot?.cookingMaterials ?? []}
           />
         </div>
-        <div id="drawer-panel-assets" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-assets' : undefined} hidden={!visible('assets')}>
+        <div id="drawer-panel-assets" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('assets')}` : undefined} hidden={!visible('assets')}>
           <AssetsPanel accountId={account.id} farm={snapshot?.farm ?? null} inventory={snapshot?.inventory ?? []} produce={snapshot?.farmProduce ?? []} trees={snapshot?.trees ?? []} animals={snapshot?.animals ?? []} items={snapshot?.items ?? []} />
         </div>
-        <div id="drawer-panel-shop" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-shop' : undefined} hidden={!visible('shop')}>
+        <div id="drawer-panel-shop" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('shop')}` : undefined} hidden={!visible('shop')}>
           <ShopPanel
             accountId={account.id}
             accountName={account.label}
@@ -310,7 +313,7 @@ function LoadedOperations({
             foods={snapshot?.foods ?? []}
           />
         </div>
-        <div id="drawer-panel-logs" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? 'drawer-tab-logs' : undefined} hidden={!visible('logs')}>
+        <div id="drawer-panel-logs" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('logs')}` : undefined} hidden={!visible('logs')}>
           <LogPanel logs={snapshot?.logs ?? []} />
         </div>
       </div>

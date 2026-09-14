@@ -202,5 +202,17 @@ test('mobile drawer dùng tab và giữ panel mounted khi chuyển mục', async
   // Test chuyển nhóm sang Câu cá
   await userEvent.click(within(drawerNav).getByRole('tab', { name: '🎣 Câu cá' }));
   expect(within(drawerNav).getByRole('tab', { name: '🎣 Câu cá' })).toHaveAttribute('aria-selected', 'true');
-  expect(screen.getByText(/Cấu hình hồ câu/i)).toBeInTheDocument();
+  expect(screen.getByText(/Vận Hành Câu Cá Tự Động/i)).toBeInTheDocument();
+
+  // Test ARIA labelling trên mobile tabpanel
+  const fishingSlot = document.getElementById('drawer-panel-fishing');
+  expect(fishingSlot).toHaveAttribute('role', 'tabpanel');
+  expect(fishingSlot).toHaveAttribute('aria-labelledby', 'drawer-tab-fishing');
+
+  // Test chuyển trực tiếp tới panel con không phải đầu nhóm (settings trong operations)
+  const settingsSlot = document.getElementById('drawer-panel-settings');
+  const scrollSpy = vi.spyOn(settingsSlot!, 'scrollIntoView');
+  await userEvent.click(screen.getByRole('button', { name: /Sang tab Cài đặt/i }));
+  expect(within(drawerNav).getByRole('tab', { name: 'Vận hành' })).toHaveAttribute('aria-selected', 'true');
+  await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
 });
