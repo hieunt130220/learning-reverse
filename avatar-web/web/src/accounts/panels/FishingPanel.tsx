@@ -209,58 +209,31 @@ export function FishingPanel({
   const fishingState = automation?.fishingRuntime;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.5rem 0' }}>
+    <div className="fishing-root">
       {/* ─── Header & Status ─── */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '0.75rem 1rem',
-          background: '#1d2430',
-          borderRadius: '8px',
-          border: '1px solid var(--line)',
-        }}
-      >
+      <div className="fishing-head">
         <div>
-          <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>Vận Hành Câu Cá Tự Động</h3>
-          <p className="hint" style={{ margin: '0.2rem 0 0 0' }}>
+          <h3>Vận Hành Câu Cá Tự Động</h3>
+          <p className="hint">
             Trạng thái: <strong>{formatFishingStatus(isFishing, fishingState?.status, account?.runtime?.status)}</strong>
             {isSwitching && ' · Đang chuyển chế độ…'}
           </p>
         </div>
       </div>
 
-      {error && <p className="err" style={{ margin: 0 }}>{error}</p>}
+      {error && <p className="err">{error}</p>}
       {fishingState?.lastError && (
-        <p className="err" style={{ margin: 0 }}>
+        <p className="err">
           Lỗi câu gần nhất: {fishingState.lastError}
         </p>
       )}
 
       {/* ─── Fisherman Quest Card ─── */}
-      <div
-        style={{
-          padding: '0.85rem 1rem',
-          background: '#12161d',
-          borderRadius: '8px',
-          border: '1px solid var(--line)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.65rem',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+      <div className="fishing-card">
+        <div className="fishing-card-head">
+          <div className="fishing-card-title">
             <span style={{ fontSize: '1.1rem' }}>🎣</span>
-            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>
+            <h4>
               {fishermanQuest?.title || 'Nhiệm Vụ Thợ Câu'}
             </h4>
             {fishermanQuest?.step !== null && fishermanQuest?.step !== undefined && (
@@ -268,18 +241,11 @@ export function FishingPanel({
             )}
             {fishermanQuest && (
               <span
-                style={{
-                  fontSize: '0.75rem',
-                  padding: '2px 8px',
-                  borderRadius: '10px',
-                  background: isAllConditionsDone
-                    ? 'rgba(63, 185, 80, 0.15)'
-                    : 'rgba(88, 166, 255, 0.12)',
-                  color: isAllConditionsDone ? '#3fb950' : '#58a6ff',
-                  border: isAllConditionsDone
-                    ? '1px solid rgba(63, 185, 80, 0.3)'
-                    : '1px solid rgba(88, 166, 255, 0.25)',
-                }}
+                className={`fishing-count-pill ${
+                  isAllConditionsDone
+                    ? 'fishing-count-pill--done'
+                    : 'fishing-count-pill--pending'
+                }`}
               >
                 {fishermanQuest.conditions.filter((c) => c.isDone).length}/
                 {fishermanQuest.conditions.length} điều kiện
@@ -289,18 +255,10 @@ export function FishingPanel({
 
           <button
             type="button"
-            className="ghost"
+            className="ghost fishing-refresh-btn"
             onClick={handleRefreshQuest}
             disabled={refreshingQuest || !accountId}
             title="Làm mới nhiệm vụ từ máy chủ game"
-            style={{
-              fontSize: '0.8rem',
-              padding: '2px 8px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              cursor: refreshingQuest ? 'not-allowed' : 'pointer',
-            }}
           >
             {refreshingQuest ? '⏳' : '🔄'} Làm mới
           </button>
@@ -308,28 +266,16 @@ export function FishingPanel({
 
         {fishermanQuest ? (
           fishermanQuest.source === 'completed' ? (
-            <div
-              style={{
-                padding: '0.5rem 0.75rem',
-                background: 'rgba(63, 185, 80, 0.1)',
-                borderRadius: '6px',
-                border: '1px solid rgba(63, 185, 80, 0.25)',
-                fontSize: '0.85rem',
-                color: '#3fb950',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-            >
+            <div className="fishing-done-banner">
               <span>🎉</span>
               <span>Đã hoàn thành toàn bộ chuỗi nhiệm vụ Thợ Câu!</span>
             </div>
           ) : fishermanQuest.conditions.length === 0 ? (
-            <p className="hint" style={{ margin: 0, fontSize: '0.85rem' }}>
+            <p className="hint">
               Không có điều kiện nhiệm vụ nào.
             </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="fishing-stack">
               {fishermanQuest.conditions.map((cond, idx) => {
                 const pct =
                   cond.total > 0
@@ -340,28 +286,12 @@ export function FishingPanel({
                 return (
                   <div
                     key={idx}
-                    style={{
-                      padding: '0.5rem 0.75rem',
-                      background: cond.isDone ? 'rgba(63, 185, 80, 0.04)' : '#161b22',
-                      borderRadius: '6px',
-                      border: cond.isDone
-                        ? '1px solid rgba(63, 185, 80, 0.3)'
-                        : '1px solid var(--line)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.35rem',
-                    }}
+                    className={`fishing-cond ${
+                      cond.isDone ? 'fishing-cond--done' : 'fishing-cond--pending'
+                    }`}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: '8px',
-                        fontSize: '0.85rem',
-                      }}
-                    >
-                      <span style={{ fontWeight: 500, color: 'var(--fg)' }}>
+                    <div className="fishing-cond-row">
+                      <span className="fishing-cond-name">
                         {cond.isDone ? '✅' : '🐟'} {cond.name}
                       </span>
                       <span
@@ -387,27 +317,15 @@ export function FishingPanel({
             </div>
           )
         ) : (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '0.25rem 0',
-            }}
-          >
-            <p className="hint" style={{ margin: 0, fontSize: '0.85rem' }}>
+          <div className="fishing-between">
+            <p className="hint">
               Chưa có dữ liệu nhiệm vụ Thợ Câu từ game.
             </p>
             <button
               type="button"
-              className="ghost"
+              className="ghost fishing-refresh-btn"
               onClick={handleRefreshQuest}
               disabled={refreshingQuest || !accountId}
-              style={{
-                fontSize: '0.8rem',
-                padding: '4px 10px',
-                cursor: refreshingQuest ? 'not-allowed' : 'pointer',
-              }}
             >
               {refreshingQuest ? '⏳ Đang tải…' : 'Tải nhiệm vụ Thợ Câu'}
             </button>
@@ -416,42 +334,36 @@ export function FishingPanel({
       </div>
 
       {/* ─── Live Metrics & Status ─── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-          gap: '0.75rem',
-        }}
-      >
-        <div style={{ padding: '0.75rem', background: '#12161d', borderRadius: '6px', border: '1px solid var(--line)' }}>
-          <div className="hint" style={{ fontSize: '0.8rem' }}>Tổng cá hôm nay</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--ok)', marginTop: '0.2rem' }}>
+      <div className="fishing-metrics">
+        <div className="fishing-metric">
+          <div className="hint">Tổng cá hôm nay</div>
+          <div className="fishing-metric-value fishing-metric-value--lg">
             {(dailyFishingStatistics?.totalCatches ?? 0).toLocaleString('vi-VN')}
           </div>
         </div>
 
-        <div style={{ padding: '0.75rem', background: '#12161d', borderRadius: '6px', border: '1px solid var(--line)' }}>
-          <div className="hint" style={{ fontSize: '0.8rem' }}>Cá vừa bắt được</div>
-          <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#d2a8ff', marginTop: '0.3rem' }}>
+        <div className="fishing-metric">
+          <div className="hint">Cá vừa bắt được</div>
+          <div className="fishing-metric-value fishing-metric-value--fish">
             {formatFishName(fishingState?.lastFishId, fishingState?.lastFishName)}
           </div>
         </div>
 
-        <div style={{ padding: '0.75rem', background: '#12161d', borderRadius: '6px', border: '1px solid var(--line)' }}>
-          <div className="hint" style={{ fontSize: '0.8rem' }}>Map / Khu vực</div>
-          <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#f0f6fc', marginTop: '0.4rem' }}>
+        <div className="fishing-metric">
+          <div className="hint">Map / Khu vực</div>
+          <div className="fishing-metric-value fishing-metric-value--map">
             Map {fishingState?.currentMap ?? automation?.fishingConfig?.config?.map ?? 14} / Khu {fishingState?.currentArea ?? automation?.fishingConfig?.config?.area ?? 0}
           </div>
         </div>
 
-        <div style={{ padding: '0.75rem', background: '#12161d', borderRadius: '6px', border: '1px solid var(--line)' }}>
-          <div className="hint" style={{ fontSize: '0.8rem' }}>Tỉ lệ giải ML đúng</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#58a6ff', marginTop: '0.2rem' }}>
+        <div className="fishing-metric">
+          <div className="hint">Tỉ lệ giải ML đúng</div>
+          <div className="fishing-metric-value fishing-metric-value--rate">
             {mlFishingStatistics && mlFishingStatistics.totalAttempts > 0
               ? `${(mlFishingStatistics.accuracy * 100).toFixed(1)}%`
               : '—'}
           </div>
-          <div className="hint" style={{ fontSize: '0.75rem', marginTop: '0.15rem' }}>
+          <div className="hint">
             {mlFishingStatistics && mlFishingStatistics.totalAttempts > 0
               ? `${mlFishingStatistics.successCatches}/${mlFishingStatistics.totalAttempts} lượt`
               : 'Chưa có lượt giải'}
@@ -459,23 +371,20 @@ export function FishingPanel({
         </div>
       </div>
 
-      <section aria-labelledby="daily-fishing-heading" style={{
-        padding: '0.85rem 1rem', background: '#12161d', borderRadius: '8px',
-        border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: '0.65rem',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-          <h4 id="daily-fishing-heading" style={{ margin: 0, fontSize: '0.95rem' }}>
+      <section aria-labelledby="daily-fishing-heading" className="fishing-card">
+        <div className="fishing-between fishing-card-title">
+          <h4 id="daily-fishing-heading">
             Cơ cấu cá hôm nay
           </h4>
-          <span className="hint" style={{ fontSize: '0.8rem' }}>
+          <span className="hint">
             {dailyFishingStatistics?.date ?? '—'} · Asia/Ho_Chi_Minh
           </span>
         </div>
         {dailyFishingStatistics && dailyFishingStatistics.bySpecies.length > 0 ? (
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '0.45rem' }}>
+          <ul className="fishing-list">
             {dailyFishingStatistics.bySpecies.map((species) => (
-              <li key={species.fishId} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                <span style={{ color: 'var(--fg)' }}>
+              <li key={species.fishId} className="fishing-list-row">
+                <span>
                   {species.fishName} <span className="hint">(ID {species.fishId})</span>
                 </span>
                 <strong>{species.count.toLocaleString('vi-VN')}</strong>
@@ -483,26 +392,15 @@ export function FishingPanel({
             ))}
           </ul>
         ) : (
-          <p className="hint" style={{ margin: 0 }}>Chưa bắt được cá nào trong ngày.</p>
+          <p className="hint">Chưa bắt được cá nào trong ngày.</p>
         )}
       </section>
 
       {accountId && <LiveReviewCaptureCard accountId={accountId} isOnline={account?.runtime?.status === 'online'} />}
 
       {/* ─── Navigation hint sang Cài đặt ─── */}
-      <div
-        style={{
-          padding: '0.75rem 1rem',
-          background: 'rgba(255, 255, 255, 0.02)',
-          borderRadius: '8px',
-          border: '1px solid var(--line)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '12px',
-        }}
-      >
-        <div style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+      <div className="setting-section fishing-between">
+        <div className="fishing-foot">
           ⚙️ Cần thay đổi khu vực hồ câu, chọn cần, loại mồi hoặc vé tự mua?
         </div>
         {onSelectSettingsTab && (
@@ -510,7 +408,6 @@ export function FishingPanel({
             type="button"
             className="ghost"
             onClick={onSelectSettingsTab}
-            style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}
           >
             Sang tab Cài đặt →
           </button>

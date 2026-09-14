@@ -1993,6 +1993,37 @@ button.ghost {
   display: none;
 }
 
+/* --- fishing panel (tách từ inline FishingPanel.tsx) --- */
+.fishing-root { display: flex; flex-direction: column; gap: 1rem; padding: 0.5rem 0; }
+.fishing-head { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: var(--card-muted); border-radius: var(--radius-md); border: 1px solid var(--line); }
+.fishing-head h3 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+.fishing-card { padding: 0.85rem 1rem; background: var(--bg-deep); border-radius: var(--radius-md); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 0.65rem; }
+.fishing-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.fishing-card-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fishing-card-title h4 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.fishing-count-pill { font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; }
+.fishing-count-pill--done { background: var(--ok-dim); color: var(--ok); border: 1px solid var(--ok-line); }
+.fishing-count-pill--pending { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent); }
+.fishing-cond { padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 0.35rem; }
+.fishing-cond--done { background: var(--ok-dim); border: 1px solid var(--ok-line); }
+.fishing-cond--pending { background: var(--card-muted); border: 1px solid var(--line); }
+.fishing-cond-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.85rem; }
+.fishing-cond-name { font-weight: 500; color: var(--fg); }
+.fishing-done-banner { padding: 0.5rem 0.75rem; background: var(--ok-dim); border-radius: var(--radius-sm); border: 1px solid var(--ok-line); font-size: 0.85rem; color: var(--ok); display: flex; align-items: center; gap: 6px; }
+.fishing-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem; }
+.fishing-metric { padding: 0.75rem; background: var(--bg-deep); border-radius: var(--radius-sm); border: 1px solid var(--line); }
+.fishing-metric-value { font-weight: 700; }
+.fishing-metric-value--lg { font-size: 1.4rem; color: var(--ok); margin-top: 0.2rem; }
+.fishing-metric-value--fish { font-size: 1.15rem; color: var(--log-op); margin-top: 0.3rem; }
+.fishing-metric-value--map { font-size: 1.1rem; font-weight: 600; color: var(--fg); margin-top: 0.4rem; }
+.fishing-metric-value--rate { font-size: 1.4rem; color: var(--accent); margin-top: 0.2rem; }
+.fishing-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.45rem; }
+.fishing-list-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.fishing-refresh-btn { font-size: 0.8rem; padding: 4px 10px; }
+.fishing-foot { font-size: 0.85rem; color: var(--muted); }
+.fishing-stack { display: flex; flex-direction: column; gap: 0.5rem; }
+.fishing-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+
 /* Media overrides (R1: dồn về cuối components.css theo thứ tự gốc) */
 
 @media (prefers-reduced-motion: reduce) {
