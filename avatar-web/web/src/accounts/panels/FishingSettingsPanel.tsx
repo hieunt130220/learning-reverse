@@ -162,30 +162,23 @@ export function FishingSettingsPanel({
   const isRodLuong = selectedRod?.typeMoney === 2;
 
   return (
-    <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <section className="card fishing-form">
       <h2>Cấu hình câu cá tự động</h2>
       <p className="hint">
         Cấu hình này điều khiển bot tự động di chuyển đến hồ chỉ định, mua cần/mồi/vé phù hợp và quăng cần câu.
       </p>
 
       {/* ─── Cấu hình hồ câu ─── */}
-      <div className="setting-section">
-        <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: 'var(--accent)' }}>Cấu hình hồ câu</h3>
+      <div className="setting-section fishing-form-section">
+        <h3>Cấu hình hồ câu</h3>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Khu vực câu:</label>
+        <div className="fishing-form-stack">
+          <div className="fishing-form-field">
+            <label className="fishing-form-label">Khu vực câu:</label>
             <select
               value={selectedMap}
               onChange={(e) => setSelectedMap(Number(e.target.value))}
               disabled={isFishing}
-              style={{
-                padding: '0.4rem 0.6rem',
-                background: '#1d2430',
-                color: '#fff',
-                border: '1px solid var(--line)',
-                borderRadius: '4px',
-              }}
             >
               {FISHING_MAPS.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -195,9 +188,9 @@ export function FishingSettingsPanel({
             </select>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Khu vực (Area 0-15):</label>
+          <div className="fishing-form-grid2">
+            <div className="fishing-form-field">
+              <label className="fishing-form-label">Khu vực (Area 0-15):</label>
               <input
                 type="number"
                 min={0}
@@ -205,18 +198,11 @@ export function FishingSettingsPanel({
                 value={area}
                 onChange={(e) => setArea(Number(e.target.value))}
                 disabled={isFishing}
-                style={{
-                  padding: '0.4rem 0.6rem',
-                  background: '#1d2430',
-                  color: '#fff',
-                  border: '1px solid var(--line)',
-                  borderRadius: '4px',
-                }}
               />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Delay giữa các lần quăng (ms):</label>
+            <div className="fishing-form-field">
+              <label className="fishing-form-label">Delay giữa các lần quăng (ms):</label>
               <input
                 type="number"
                 min={1000}
@@ -224,13 +210,6 @@ export function FishingSettingsPanel({
                 value={delayMs}
                 onChange={(e) => setDelayMs(Number(e.target.value))}
                 disabled={isFishing}
-                style={{
-                  padding: '0.4rem 0.6rem',
-                  background: '#1d2430',
-                  color: '#fff',
-                  border: '1px solid var(--line)',
-                  borderRadius: '4px',
-                }}
               />
             </div>
           </div>
@@ -238,10 +217,10 @@ export function FishingSettingsPanel({
       </div>
 
       {/* ─── Cấu hình mua vật phẩm tự động ─── */}
-      <div className="setting-section">
-        <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: 'var(--accent)' }}>Cấu hình mua vật phẩm tự động</h3>
+      <div className="setting-section fishing-form-section">
+        <h3>Cấu hình mua vật phẩm tự động</h3>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div className="fishing-form-stack">
           {/* 1. Vé câu */}
           <div className="fishing-ticket-control">
             <label className={`fishing-ticket-label${isFishing ? ' disabled' : ''}`}>
@@ -259,21 +238,11 @@ export function FishingSettingsPanel({
           </div>
 
           {/* 2. Cần câu */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Cần câu:</label>
+          <div className="fishing-form-field">
+            <div className="fishing-form-checkrow">
+              <label className="fishing-form-label">Cần câu:</label>
               {isRodLuong && (
-                <span
-                  style={{
-                    fontSize: '0.75rem',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    background: 'rgba(210, 153, 34, 0.15)',
-                    color: '#e3b341',
-                    border: '1px solid rgba(210, 153, 34, 0.4)',
-                    fontWeight: 500,
-                  }}
-                >
+                <span className="fishing-form-warn-badge">
                   ⚠️ Tiêu Lượng
                 </span>
               )}
@@ -282,13 +251,6 @@ export function FishingSettingsPanel({
               value={rodType}
               onChange={(e) => setRodType(Number(e.target.value))}
               disabled={isFishing}
-              style={{
-                padding: '0.4rem 0.6rem',
-                background: '#1d2430',
-                color: '#fff',
-                border: '1px solid var(--line)',
-                borderRadius: '4px',
-              }}
             >
               {FISHING_RODS.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -299,20 +261,13 @@ export function FishingSettingsPanel({
           </div>
 
           {/* 3. Mồi câu & Số lượng */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Mồi câu:</label>
+          <div className="fishing-form-grid2">
+            <div className="fishing-form-field">
+              <label className="fishing-form-label">Mồi câu:</label>
               <select
                 value={baitType}
                 onChange={(e) => setBaitType(Number(e.target.value))}
                 disabled={isFishing}
-                style={{
-                  padding: '0.4rem 0.6rem',
-                  background: '#1d2430',
-                  color: '#fff',
-                  border: '1px solid var(--line)',
-                  borderRadius: '4px',
-                }}
               >
                 {FISHING_BAITS.map((b) => (
                   <option key={b.id} value={b.id}>
@@ -322,8 +277,8 @@ export function FishingSettingsPanel({
               </select>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Số lượng mồi mua mỗi lần:</label>
+            <div className="fishing-form-field">
+              <label className="fishing-form-label">Số lượng mồi mua mỗi lần:</label>
               <input
                 type="number"
                 min={1}
@@ -332,13 +287,6 @@ export function FishingSettingsPanel({
                 onChange={(e) => setBaitQuantity(Number(e.target.value))}
                 onBlur={() => setBaitQuantity((prev) => Math.max(1, Math.min(200, Number(prev) || 50)))}
                 disabled={isFishing}
-                style={{
-                  padding: '0.4rem 0.6rem',
-                  background: '#1d2430',
-                  color: '#fff',
-                  border: '1px solid var(--line)',
-                  borderRadius: '4px',
-                }}
               />
             </div>
           </div>
@@ -346,7 +294,7 @@ export function FishingSettingsPanel({
       </div>
 
       {/* ─── Nút Lưu Cấu Hình ─── */}
-      <div className="row tree-plan-save-row" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+      <div className="row tree-plan-save-row fishing-form-save">
         <button
           type="button"
           onClick={() => void handleSaveConfig()}
@@ -358,7 +306,7 @@ export function FishingSettingsPanel({
           <span className="hint">(Có thay đổi chưa lưu)</span>
         )}
         {saveSuccess && (
-          <span style={{ color: 'var(--ok)', fontSize: '0.85rem', fontWeight: 500 }}>
+          <span className="fishing-form-saved">
             Đã lưu cấu hình thành công!
           </span>
         )}
@@ -368,7 +316,7 @@ export function FishingSettingsPanel({
       </div>
 
       {isFishing && (
-        <p className="hint" style={{ color: '#e3b341', margin: 0 }}>
+        <p className="hint fishing-form-warn">
           ⚠️ Đang trong trạng thái câu cá. Vui lòng dừng câu cá ở tab "Câu cá" trước khi lưu thay đổi cấu hình.
         </p>
       )}

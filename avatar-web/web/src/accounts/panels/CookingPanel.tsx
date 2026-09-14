@@ -107,7 +107,7 @@ export function CookingPanel({
 
   return (
     <section className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="cooking-head">
         <h2>Bếp nấu ăn</h2>
         <button type="button" className="ghost" onClick={() => setShowRecipes(!showRecipes)}>
           {showRecipes ? 'Ẩn công thức' : 'Xem công thức'}
@@ -122,29 +122,24 @@ export function CookingPanel({
       )}
 
       {/* Lưới các ô bếp — chỉ hiển thị trạng thái */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.5rem', margin: '0.75rem 0' }}>
+      <div className="cooking-slots">
         {slots.map((slot) => {
           const isEmpty = slot.idFood === -1;
           const isDone = slot.isDone || (!isEmpty && slot.remainTime <= 0);
           return (
             <div
               key={slot.slot}
-              style={{
-                border: '1px solid var(--color-border, #ccc)',
-                borderRadius: '6px',
-                padding: '0.5rem',
-                backgroundColor: isDone ? 'rgba(76, 175, 80, 0.1)' : isEmpty ? 'transparent' : 'rgba(33, 150, 243, 0.05)',
-              }}
+              className={`cooking-slot ${isDone ? 'cooking-slot--done' : isEmpty ? '' : 'cooking-slot--active'}`}
             >
-              <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>Ô #{slot.slot + 1}</div>
+              <div className="cooking-slot-name">Ô #{slot.slot + 1}</div>
               {isEmpty ? (
-                <div style={{ color: 'var(--color-muted, #888)', margin: '0.35rem 0' }}>Trống</div>
+                <div className="cooking-slot-empty">Trống</div>
               ) : (
                 <>
-                  <div style={{ fontSize: '0.9rem', margin: '0.2rem 0', fontWeight: 500 }}>
+                  <div className="cooking-slot-dish">
                     {recipeName(slot.idFood)}
                   </div>
-                  <div style={{ fontSize: '0.8rem', color: isDone ? 'green' : 'var(--color-muted, #666)' }}>
+                  <div className={`cooking-slot-state ${isDone ? 'cooking-slot-state--done' : 'cooking-slot-state--pending'}`}>
                     {formatSeconds(slot.remainTime)}
                   </div>
                 </>
@@ -156,9 +151,9 @@ export function CookingPanel({
 
       {/* Bảng công thức và nguyên liệu */}
       {showRecipes && (
-        <div style={{ marginTop: '1rem', borderTop: '1px solid var(--color-border, #eee)', paddingTop: '0.75rem' }}>
+        <div className="cooking-section">
           <h3>Bảng công thức món ăn</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+          <div className="cooking-recipe-list">
             {recipeCatalog.map((r) => {
               const materialsStatus = r.materials.map((m) => {
                 const countInBag = materialCountMap.get(m.itemId) ?? 0;
@@ -169,20 +164,15 @@ export function CookingPanel({
               return (
                 <div
                   key={r.id}
-                  style={{
-                    border: '1px solid var(--color-border, #ddd)',
-                    borderRadius: '4px',
-                    padding: '0.5rem',
-                    fontSize: '0.85rem',
-                  }}
+                  className="cooking-recipe-card"
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 500 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div className="cooking-recipe-head">
+                    <span className="cooking-recipe-chef">
                       {r.icon && (
                         <img
                           src={r.icon}
                           alt=""
-                          style={{ width: 28, height: 28, objectFit: 'contain' }}
+                          className="cooking-recipe-img"
                           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                         />
                       )}
@@ -190,17 +180,11 @@ export function CookingPanel({
                     </span>
                     <span className="hint">Lv.{r.level} · {r.cookTimeMinutes} phút</span>
                   </div>
-                  <div style={{ marginTop: '0.25rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <div className="cooking-recipe-mats">
                     {materialsStatus.map((m, idx) => (
                       <span
                         key={idx}
-                        style={{
-                          color: m.ok ? 'inherit' : 'red',
-                          fontSize: '0.8rem',
-                          background: m.ok ? 'rgba(0,0,0,0.03)' : 'rgba(255,0,0,0.08)',
-                          padding: '0.1rem 0.3rem',
-                          borderRadius: '3px',
-                        }}
+                        className={`cooking-mat ${m.ok ? 'cooking-mat--ok' : 'cooking-mat--err'}`}
                       >
                         {(() => {
                           const name = itemNames.get(m.itemId);
@@ -218,15 +202,16 @@ export function CookingPanel({
 
       {/* Nhiệm vụ mở ô bếp Master — chỉ hiển thị tiến độ */}
       {missions.length > 0 && (
-        <div style={{ marginTop: '1rem', borderTop: '1px solid var(--color-border, #eee)', paddingTop: '0.75rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="cooking-section">
+          <div className="cooking-materials-head">
             <h3>Nhiệm vụ mở ô Master</h3>
-            {cooking?.isUnlocked && <span style={{ color: 'green', fontWeight: 'bold' }}>Đã mở khóa</span>}
+            {cooking?.isUnlocked && <span className="cooking-unlock-tag">Đã mở khóa</span>}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.5rem' }}>
+          <div className="cooking-missions-list">
             {missions.map((m, idx) => (
-              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+              <div key={idx} className="cooking-material-row">
                 <span>{recipeName(m.idFood)}:</span>
+                {/* giữ inline: 2-state 1 lần dùng, tách class không đáng */}
                 <span style={{ color: m.isDone ? 'green' : 'inherit', fontWeight: m.isDone ? 'bold' : 'normal' }}>
                   {m.numCook} / {m.numNeed} {m.isDone ? '✓' : ''}
                 </span>

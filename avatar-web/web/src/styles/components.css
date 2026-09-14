@@ -2024,6 +2024,46 @@ button.ghost {
 .fishing-stack { display: flex; flex-direction: column; gap: 0.5rem; }
 .fishing-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 
+/* --- fishing settings form (tách từ inline FishingSettingsPanel.tsx) --- */
+.fishing-form { display: flex; flex-direction: column; gap: 1rem; }
+.fishing-form-section h3 { margin: 0 0 8px; font-size: 14px; color: var(--accent); }
+.fishing-form-stack { display: flex; flex-direction: column; gap: 0.75rem; }
+.fishing-form-field { display: flex; flex-direction: column; gap: 0.3rem; }
+.fishing-form-label { font-size: 0.85rem; color: var(--muted); }
+.fishing-form-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.fishing-form-checkrow { display: flex; align-items: center; gap: 8px; }
+.fishing-form-save { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.fishing-form-saved { color: var(--ok); font-size: 0.85rem; font-weight: 500; }
+.fishing-form-warn { color: var(--warn); margin: 0; }
+.fishing-form-warn-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; background: var(--warn-dim); color: var(--warn); border: 1px solid var(--warn-line); font-weight: 500; }
+
+/* --- cooking panel (tách từ inline CookingPanel.tsx) --- */
+.cooking-head { display: flex; justify-content: space-between; align-items: center; }
+.cooking-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.5rem; margin: 0.75rem 0; }
+.cooking-slot { border: 1px solid var(--line); border-radius: 6px; padding: 0.5rem; }
+.cooking-slot--done { background-color: var(--ok-dim); }
+.cooking-slot--active { background-color: var(--accent-dim); }
+.cooking-slot-name { font-weight: bold; font-size: 0.85rem; }
+.cooking-slot-empty { color: var(--muted); margin: 0.35rem 0; }
+.cooking-slot-dish { font-size: 0.9rem; margin: 0.2rem 0; font-weight: 500; }
+.cooking-slot-state { font-size: 0.8rem; }
+.cooking-slot-state--done { color: var(--ok); }
+.cooking-slot-state--pending { color: var(--muted); }
+.cooking-section { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 0.75rem; }
+.cooking-recipe-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
+.cooking-recipe-card { border: 1px solid var(--line); border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; }
+.cooking-recipe-head { display: flex; justify-content: space-between; align-items: center; font-weight: 500; }
+.cooking-recipe-chef { display: flex; align-items: center; gap: 0.5rem; }
+.cooking-recipe-img { width: 28px; height: 28px; object-fit: contain; }
+.cooking-recipe-mats { margin-top: 0.25rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.cooking-mat { font-size: 0.8rem; padding: 0.1rem 0.3rem; border-radius: 3px; }
+.cooking-mat--ok { color: inherit; background: rgba(0, 0, 0, 0.03); }
+.cooking-mat--err { color: var(--err); background: var(--err-dim); }
+.cooking-materials-head { display: flex; justify-content: space-between; align-items: center; }
+.cooking-missions-list { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
+.cooking-material-row { display: flex; justify-content: space-between; font-size: 0.85rem; }
+.cooking-unlock-tag { color: var(--ok); font-weight: bold; }
+
 /* Media overrides (R1: dồn về cuối components.css theo thứ tự gốc) */
 
 @media (prefers-reduced-motion: reduce) {
