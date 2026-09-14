@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -188,14 +188,19 @@ test('mobile drawer dùng tab và giữ panel mounted khi chuyển mục', async
     addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
   }));
   renderRoute('/accounts/1');
-  expect(await screen.findByRole('tab', { name: 'Trạng thái' })).toHaveAttribute('aria-selected', 'true');
-  await userEvent.click(screen.getByRole('tab', { name: 'Cài đặt' }));
-  expect(screen.getByRole('tab', { name: 'Cài đặt' })).toHaveAttribute('aria-selected', 'true');
-  expect(screen.getByRole('tab', { name: /Nông trại/i })).toHaveAttribute('aria-selected', 'true');
+  const drawerNav = await screen.findByRole('tablist', { name: 'Các mục vận hành' });
+  expect(within(drawerNav).getByRole('tab', { name: 'Vận hành' })).toHaveAttribute('aria-selected', 'true');
+  await userEvent.click(within(drawerNav).getByRole('tab', { name: 'Vận hành' }));
+  expect(within(drawerNav).getByRole('tab', { name: 'Vận hành' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByText(/Kế hoạch cây theo ô/i)).toBeInTheDocument();
 
-  // Test chuyển sub-tab sang Câu cá
-  await userEvent.click(screen.getByRole('tab', { name: '🎣 Câu cá' }));
-  expect(screen.getByRole('tab', { name: '🎣 Câu cá' })).toHaveAttribute('aria-selected', 'true');
+  // Test chuyển nhóm sang Nông trại
+  await userEvent.click(within(drawerNav).getByRole('tab', { name: /Nông trại/i }));
+  expect(within(drawerNav).getByRole('tab', { name: /Nông trại/i })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByText(/Nhiệm vụ Nông Trại/i)).toBeInTheDocument();
+
+  // Test chuyển nhóm sang Câu cá
+  await userEvent.click(within(drawerNav).getByRole('tab', { name: '🎣 Câu cá' }));
+  expect(within(drawerNav).getByRole('tab', { name: '🎣 Câu cá' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByText(/Cấu hình hồ câu/i)).toBeInTheDocument();
 });

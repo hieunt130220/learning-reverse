@@ -20,7 +20,7 @@ import { StatusPanel } from './panels/StatusPanel.js';
 const PANEL_TABS = [
   ['status', 'Trạng thái'],
   ['settings', 'Cài đặt'],
-  ['fishing', 'Câu cá'],
+  ['fishing', '🎣 Câu cá'],
   ['find_npc', 'Tìm NPC'],
   ['quests', 'Nhiệm vụ'],
   ['cooking', 'Nấu ăn'],
@@ -29,6 +29,24 @@ const PANEL_TABS = [
   ['logs', 'Log'],
 ] as const;
 type PanelId = (typeof PANEL_TABS)[number][0];
+
+export interface PanelGroup {
+  id: string;
+  label: string;
+  panels: PanelId[];
+}
+
+export const PANEL_GROUPS: PanelGroup[] = [
+  { id: 'operations', label: 'Vận hành', panels: ['status', 'settings'] },
+  { id: 'farm', label: 'Nông trại', panels: ['quests', 'cooking'] },
+  { id: 'fishing', label: '🎣 Câu cá', panels: ['fishing'] },
+  { id: 'assets', label: 'Tài sản', panels: ['assets', 'shop'] },
+  { id: 'logs', label: 'Log', panels: ['logs'] },
+];
+
+const PANEL_TO_GROUP = new Map<PanelId, string>(
+  PANEL_GROUPS.flatMap((g) => g.panels.map((p): [PanelId, string] => [p, g.id])),
+);
 
 const FIND_NPC_TAB_HIDDEN = true;
 
@@ -121,7 +139,19 @@ function LoadedOperations({
   const automationRefreshGeneration = useRef(0);
   const panelsRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const visible = (id: PanelId) => !isMobile || activePanel === id;
+  const activeGroup = PANEL_TO_GROUP.get(activePanel) ?? 'operations';
+  const groupPanels = (groupId: string): PanelId[] =>
+    PANEL_GROUPS.find((g) => g.id === groupId)?.panels ?? [];
+  const visible = (id: PanelId) =>
+    !isMobile || (PANEL_TO_GROUP.get(id) ?? '') === activeGroup;
+  const selectPanel = (id: PanelId) => {
+    setActivePanel(id);
+    if (panelsRef.current) panelsRef.current.scrollTop = 0;
+  };
+  const selectGroup = (groupId: string) => {
+    const first = groupPanels(groupId)[0];
+    if (first) selectPanel(first);
+  };
 
   useEffect(() => {
     if (snapshot?.automation) {
@@ -161,17 +191,12 @@ function LoadedOperations({
       setFetchedAutomation(undefined);
     }
   }, []);
-  const selectPanel = (id: PanelId) => {
-    setActivePanel(id);
-    if (panelsRef.current) panelsRef.current.scrollTop = 0;
-  };
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
     const offset = event.key === 'ArrowRight' ? 1 : -1;
-    const nextIndex = (index + offset + VISIBLE_TABS.length) % VISIBLE_TABS.length;
-    const [nextPanel] = VISIBLE_TABS[nextIndex];
-    selectPanel(nextPanel);
+    const nextIndex = (index + offset + PANEL_GROUPS.length) % PANEL_GROUPS.length;
+    selectGroup(PANEL_GROUPS[nextIndex].id);
     tabRefs.current[nextIndex]?.focus();
   };
 
@@ -179,21 +204,21 @@ function LoadedOperations({
     <div className="drawer-operations">
       {isMobile && (
         <nav className="drawer-tabbar" role="tablist" aria-label="Các mục vận hành">
-          {VISIBLE_TABS.map(([id, label], index) => (
+          {PANEL_GROUPS.map((group, index) => (
             <button
-              key={id}
+              key={group.id}
               ref={(element) => { tabRefs.current[index] = element; }}
-              id={`drawer-tab-${id}`}
+              id={`drawer-tab-${group.id}`}
               type="button"
               role="tab"
-              aria-controls={`drawer-panel-${id}`}
-              aria-selected={activePanel === id}
-              tabIndex={activePanel === id ? 0 : -1}
-              className={activePanel === id ? 'active' : ''}
-              onClick={() => selectPanel(id)}
+              aria-controls={group.panels.map((p) => `drawer-panel-${p}`).join(' ')}
+              aria-selected={activeGroup === group.id}
+              tabIndex={activeGroup === group.id ? 0 : -1}
+              className={activeGroup === group.id ? 'active' : ''}
+              onClick={() => selectGroup(group.id)}
               onKeyDown={(event) => handleTabKeyDown(event, index)}
             >
-              {label}
+              {group.label}
             </button>
           ))}
         </nav>
