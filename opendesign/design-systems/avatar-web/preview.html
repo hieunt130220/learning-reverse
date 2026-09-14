@@ -1,0 +1,153 @@
+<title>Avatar Web Design System</title>
+<link rel="stylesheet" href="tokens/colors_and_type.css">
+<style>
+  body { margin: 0; background: var(--surface-page); color: var(--text-primary); font: var(--body); padding: 20px; }
+  .wrap { max-width: 960px; margin: 0 auto; display: grid; gap: 16px; }
+  h1 { font: var(--h1); margin: 0; }
+  h2 { font: var(--h2); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin: 0 0 12px; }
+  .card { background: var(--surface-card); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 16px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  button { padding: 7px 14px; background: var(--accent); color: #0d1017; border: 0; border-radius: var(--radius-sm); font: inherit; font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--text-primary); border: 1px solid var(--border-default); font-weight: 400; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tab { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-default); font-weight: 400; padding: 5px 10px; }
+  .tab.active { background: var(--accent); color: #0d1017; border-color: var(--accent); }
+  .seg { display: flex; gap: 6px; background: var(--surface-muted); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border-default); }
+  .seg button { flex: 1; background: transparent; color: var(--text-secondary); border: 0; border-radius: var(--radius-sm); font-weight: 500; }
+  .seg button.active { background: var(--tab-active); color: var(--text-primary); font-weight: 600; }
+  .badge { padding: 3px 10px; border-radius: var(--radius-pill); font-size: 12px; border: 1px solid var(--border-default); color: var(--text-secondary); background: transparent; white-space: nowrap; }
+  .badge-online { color: var(--ok); border-color: var(--ok); background: var(--ok-dim); }
+  .badge-busy { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+  .badge-error { color: var(--err); border-color: var(--err); background: var(--err-dim); }
+  .badge-star { color: var(--gold); border-color: var(--gold); background: var(--warn-dim); font-weight: 600; }
+  .status-banner { display: flex; gap: 8px; padding: 9px 11px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-inset); font-size: 13px; }
+  .status-banner--info { border-color: var(--accent); background: var(--accent-dim); }
+  .status-banner--success { border-color: var(--ok-line); background: var(--ok-dim); color: var(--ok); }
+  .status-banner--warn { border-color: var(--warn-line); background: var(--warn-dim); color: var(--warn-ink); }
+  .status-banner--error { border-color: var(--err-line); background: var(--err-dim); color: var(--err); }
+  .mode-chip { display: inline-flex; padding: 3px 10px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 600; border: 1px solid var(--border-default); color: var(--text-secondary); background: var(--bg-raised); }
+  .mode-chip--farm { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+  .mode-chip--switching { color: var(--warn-ink); border-color: var(--warn-line); background: var(--warn-dim); }
+  table.shop { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.shop th { background: var(--surface-inset); color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; padding: 9px 10px; text-align: left; }
+  table.shop td { padding: 9px 10px; border-bottom: 1px solid var(--border-default); }
+  .tree-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+  .tree-cell { min-height: 66px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-default); background: var(--surface-inset); border-radius: var(--radius-sm); font-size: 11px; }
+  .tree-cell--default { border-style: dashed; color: var(--text-secondary); }
+  .tree-cell--skip { border-color: var(--skip); color: var(--skip); }
+  .tree-cell--seed { border-color: var(--ok-line); color: var(--ok); }
+  .meter { width: 100%; height: 8px; background: var(--tab-active); border-radius: 4px; overflow: hidden; }
+  .meter > div { height: 100%; width: 62%; background: var(--gold); border-radius: 4px; }
+  .mission { padding: 8px 10px; background: var(--surface-muted); border: 1px solid var(--border-default); border-radius: var(--radius-sm); font-size: 12px; }
+  .mission--done { border-color: var(--ok-line); background: var(--ok-dim); }
+  .reward-pill { font-size: 11px; color: var(--accent); background: var(--accent-dim); padding: 2px 6px; border-radius: 4px; }
+  .tx { padding: 10px 12px 10px 36px; border: 1px solid var(--ok-line); border-radius: var(--radius-md); background: var(--surface-inset); font-size: 13px; }
+  .log { max-height: 160px; overflow: auto; font: var(--code); background: var(--surface-sunken); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 8px 10px; }
+  .log .tx-dir { color: var(--accent); font-weight: 700; }
+  .log .rx-dir { color: var(--ok); font-weight: 700; }
+  .log .op { color: var(--log-op); }
+  .log .hex { color: var(--text-secondary); padding-left: 12px; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+  .sw { border: 1px solid var(--border-default); border-radius: var(--radius-sm); overflow: hidden; font-size: 11px; }
+  .sw div:first-child { height: 40px; }
+  .sw div:last-child { padding: 4px 8px; color: var(--text-secondary); font-family: var(--font-mono); }
+</style>
+<div class="wrap">
+  <div>
+    <h1>Avatar Web Design System</h1>
+    <p style="color: var(--text-secondary); font-size: 13px;">Dark-only ops console. Tokens: <span style="font-family: var(--font-mono);">tokens/colors_and_type.css</span></p>
+  </div>
+  <section class="card">
+    <h2>Color tokens</h2>
+    <div class="swatches">
+      <div class="sw"><div style="background: var(--bg);"></div><div>--bg</div></div>
+      <div class="sw"><div style="background: var(--card);"></div><div>--card</div></div>
+      <div class="sw"><div style="background: var(--card-inset);"></div><div>--card-inset</div></div>
+      <div class="sw"><div style="background: var(--accent);"></div><div>--accent</div></div>
+      <div class="sw"><div style="background: var(--ok);"></div><div>--ok</div></div>
+      <div class="sw"><div style="background: var(--warn);"></div><div>--warn</div></div>
+      <div class="sw"><div style="background: var(--err);"></div><div>--err</div></div>
+      <div class="sw"><div style="background: var(--gold);"></div><div>--gold</div></div>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Buttons / Tabs</h2>
+    <div class="row">
+      <button type="button">Primary</button>
+      <button type="button" class="ghost">Ghost</button>
+      <button type="button" disabled>Disabled</button>
+    </div>
+    <div class="tabs" style="margin-top: 12px;">
+      <button type="button" class="tab active">Status</button>
+      <button type="button" class="tab">Farm</button>
+      <button type="button" class="tab">Shop</button>
+    </div>
+    <div class="seg" style="margin-top: 12px;">
+      <button type="button" class="active">Auto farm</button>
+      <button type="button">Fishing</button>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Badges / Mode chips</h2>
+    <div class="row">
+      <span class="badge">idle</span>
+      <span class="badge badge-online">online</span>
+      <span class="badge badge-busy">handshaking</span>
+      <span class="badge badge-error">error</span>
+      <span class="badge badge-star">★ 128</span>
+    </div>
+    <div class="row" style="margin-top: 8px;">
+      <span class="mode-chip mode-chip--farm">farm</span>
+      <span class="mode-chip mode-chip--switching">switching</span>
+      <span class="mode-chip">off</span>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Status banners</h2>
+    <div style="display: grid; gap: 8px;">
+      <div class="status-banner status-banner--info">Info: catalog đã sẵn sàng từ system defaults.</div>
+      <div class="status-banner status-banner--success">Success: vòng auto farm hoàn tất.</div>
+      <div class="status-banner status-banner--warn">Warn: ô 12 cần chăm sóc trước khi thu hoạch.</div>
+      <div class="status-banner status-banner--error">Error: mất kết nối game, đang thử lại…</div>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Table</h2>
+    <table class="shop">
+      <thead><tr><th>Vật phẩm</th><th>Giá</th><th>Tồn</th></tr></thead>
+      <tbody>
+        <tr><td>Phân bón siêu cấp</td><td>10 xu</td><td>42</td></tr>
+        <tr><td>Thuốc bổ</td><td>25 xu</td><td>7</td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>Tree-plan grid</h2>
+    <div class="tree-grid">
+      <div class="tree-cell tree-cell--seed">Cà chua</div>
+      <div class="tree-cell tree-cell--skip">Bỏ qua</div>
+      <div class="tree-cell tree-cell--default">Mặc định</div>
+      <div class="tree-cell">Lúa</div>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Quests: daily meter + mission</h2>
+    <div class="meter"><div></div></div>
+    <div style="display: grid; gap: 8px; margin-top: 8px;">
+      <div class="mission mission--done">Thu hoạch 10 Cà chua <span class="reward-pill">+50 xu</span></div>
+      <div class="mission">Chăm sóc 5 ô đang cần <span class="reward-pill">+30 xu</span></div>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Shop transaction</h2>
+    <div class="tx">Bán 20 Cà chua — thành công · +400 xu</div>
+  </section>
+  <section class="card">
+    <h2>Log viewer</h2>
+    <div class="log">
+      <div><span class="tx-dir">TX</span> <span class="op">GET_TREE_INFO</span><span class="hex">4c 00 …</span></div>
+      <div><span class="rx-dir">RX</span> <span class="op">FARM_DATA</span><span class="hex">45 02 …</span></div>
+    </div>
+  </section>
+</div>
