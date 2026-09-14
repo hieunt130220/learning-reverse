@@ -2000,6 +2000,7 @@ button.ghost {
 .fishing-card { padding: 0.85rem 1rem; background: var(--bg-deep); border-radius: var(--radius-md); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 0.65rem; }
 .fishing-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .fishing-card-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fishing-card-title > span:first-child { font-size: 1.1rem; }
 .fishing-card-title h4 { margin: 0; font-size: 0.95rem; font-weight: 600; }
 .fishing-count-pill { font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; }
 .fishing-count-pill--done { background: var(--ok-dim); color: var(--ok); border: 1px solid var(--ok-line); }
@@ -2063,6 +2064,26 @@ button.ghost {
 .cooking-missions-list { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
 .cooking-material-row { display: flex; justify-content: space-between; font-size: 0.85rem; }
 .cooking-unlock-tag { color: var(--ok); font-weight: bold; }
+
+/* --- misc one-off (tách từ inline lẻ) --- */
+.misc-loading { padding: 24px; }
+.misc-nomargin { margin: 0; }
+.misc-status-row { margin-top: 0.25rem; }
+.misc-check-label { font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; }
+.misc-check-input { width: auto; margin: 0; }
+.misc-settings-stack { display: flex; flex-direction: column; gap: 12px; }
+.misc-captcha-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.misc-captcha-file { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.misc-captcha-img { max-width: 100%; border: 1px solid var(--line); image-rendering: pixelated; }
+.misc-th-action { width: 90px; text-align: center; }
+.misc-palette-keepgap { margin-top: 10px; }
+
+/* --- live review card --- */
+.review-card { padding: 0.85rem 1rem; background: var(--bg-deep); border: 1px solid var(--line); border-radius: var(--radius-md); display: grid; gap: 0.65rem; }
+.review-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+.review-progress-row { display: flex; justify-content: space-between; font-size: 0.85rem; }
+.review-progress { width: 100%; }
+.review-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* Media overrides (R1: dồn về cuối components.css theo thứ tự gốc) */
 

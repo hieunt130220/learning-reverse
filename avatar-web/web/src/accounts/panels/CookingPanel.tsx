@@ -212,7 +212,7 @@ export function CookingPanel({
               <div key={idx} className="cooking-material-row">
                 <span>{recipeName(m.idFood)}:</span>
                 {/* giữ inline: 2-state 1 lần dùng, tách class không đáng */}
-                <span style={{ color: m.isDone ? 'green' : 'inherit', fontWeight: m.isDone ? 'bold' : 'normal' }}>
+                <span style={{ color: m.isDone ? 'var(--ok)' : 'inherit', fontWeight: m.isDone ? 'bold' : 'normal' }}>
                   {m.numCook} / {m.numNeed} {m.isDone ? '✓' : ''}
                 </span>
               </div>

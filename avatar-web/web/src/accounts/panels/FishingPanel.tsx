@@ -232,7 +232,7 @@ export function FishingPanel({
       <div className="fishing-card">
         <div className="fishing-card-head">
           <div className="fishing-card-title">
-            <span style={{ fontSize: '1.1rem' }}>🎣</span>
+            <span>🎣</span>
             <h4>
               {fishermanQuest?.title || 'Nhiệm Vụ Thợ Câu'}
             </h4>

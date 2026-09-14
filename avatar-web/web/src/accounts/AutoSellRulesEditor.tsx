@@ -146,7 +146,7 @@ export function AutoSellRulesEditor({
                   <th>Nông sản</th>
                   <th>Số lượng một lô</th>
                   <th>Giá bán</th>
-                  <th style={{ width: '90px', textAlign: 'center' }}>Hành động</th>
+                  <th className="misc-th-action">Hành động</th>
                 </tr>
               </thead>
               <tbody>

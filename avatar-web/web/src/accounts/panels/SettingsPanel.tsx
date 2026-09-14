@@ -32,7 +32,7 @@ export function SettingsPanel({
   const isFishing = isFishingDesired || isFishingActive;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div className="misc-settings-stack">
       <nav className="settings-tabs-nav" role="tablist" aria-label="Cài đặt tự động">
         <button
           type="button"

@@ -14,7 +14,7 @@ export function AccountDebugPage() {
     ? accounts.find((item) => item.id === accountId)
     : undefined;
 
-  if (loading) return <p className="hint" style={{ padding: 24 }}>đang tải…</p>;
+  if (loading) return <p className="hint misc-loading">đang tải…</p>;
   if (!account) {
     return (
       <div className="app">

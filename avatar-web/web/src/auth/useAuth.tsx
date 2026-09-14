@@ -66,7 +66,7 @@ export function useAuth(): AuthValue {
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const location = useLocation();
-  if (loading) return <p className="hint" style={{ padding: 24 }}>đang tải…</p>;
+  if (loading) return <p className="hint misc-loading">đang tải…</p>;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   return <>{children}</>;
 }

@@ -114,7 +114,7 @@ export function AnimalPlanEditor({
     <details className="tree-plan-editor" open={defaultOpen ? true : undefined}>
       <summary className="tree-plan-heading">{title}</summary>
 
-      <div className="tree-plan-palette" aria-label="Chọn loài để tô" style={{ marginTop: 10 }}>
+      <div className="tree-plan-palette misc-palette-keepgap" aria-label="Chọn loài để tô">
         <select aria-label="Chọn loài để tô" value={paint.kind === 'breed' ? `breed:${paint.speciesId}` : paint.kind} disabled={disabled} onChange={(event) => {
           const value = event.target.value;
           setPaint(value === 'default' ? { kind: 'default' } : value === 'skip' ? { kind: 'skip' } : { kind: 'breed', speciesId: Number(value.slice(6)) });

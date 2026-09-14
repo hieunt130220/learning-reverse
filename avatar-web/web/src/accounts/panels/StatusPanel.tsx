@@ -248,23 +248,14 @@ export function StatusPanel({
             : ''}
         </span>
       </div>
-      <div className="row" style={{ marginTop: '0.25rem' }}>
-        <label
-          className="inline"
-          style={{
-            fontSize: '0.85rem',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-          }}
-        >
+      <div className="row misc-status-row">
+        <label className="inline misc-check-label">
           <input
             type="checkbox"
             checked={logoutAfterCycle}
             disabled={savingOpt || loadingOpt}
             onChange={(e) => void toggleLogoutAfterCycle(e.target.checked)}
-            style={{ width: 'auto', margin: 0 }}
+            className="misc-check-input"
           />
           Đăng xuất sau khi chạy xong 1 vòng (tự đăng nhập lại ở vòng kế)
         </label>

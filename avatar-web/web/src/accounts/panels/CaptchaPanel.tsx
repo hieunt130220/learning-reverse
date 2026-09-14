@@ -55,14 +55,14 @@ export function CaptchaPanel({ accountId }: { accountId: number }) {
         <code>server/captcha-dataset/</code>. Nhấn tải để lưu về máy.
       </p>
       {lastCaptcha && (
-        <div className="flash" style={{ marginBottom: 8 }}>
+        <div className="flash">
           Mới: {lastCaptcha.fileName} ({lastCaptcha.format ?? 'bin'}) {lastCaptcha.prompt ? `· "${lastCaptcha.prompt}"` : ''}{' '}
           <a href={`/api/captcha/dataset/${lastCaptcha.fileName}`} download>
             Tải
           </a>
         </div>
       )}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+      <div className="misc-captcha-row">
         <button className="ghost" onClick={() => void fetchList()}>
           Làm mới
         </button>
@@ -73,15 +73,15 @@ export function CaptchaPanel({ accountId }: { accountId: number }) {
       {files.length === 0 ? (
         <p className="hint">chưa có file</p>
       ) : (
-        <div className="log" style={{ maxHeight: 300, overflow: 'auto' }}>
+        <div className="log">
           {files.slice(0, 20).map((f) => (
-            <div key={f.fileName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #eee' }}>
+            <div key={f.fileName} className="misc-captcha-file">
               <span title={f.mtime ?? ''}>
                 {f.fileName} <span className="hint">({(f.size / 1024).toFixed(1)} KB)</span>
               </span>
               <span>
                 {f.fileName.endsWith('.png') || f.fileName.endsWith('.jpg') ? (
-                  <a href={`/api/captcha/dataset/${f.fileName}`} target="_blank" rel="noreferrer" style={{ marginRight: 8 }}>
+                  <a href={`/api/captcha/dataset/${f.fileName}`} target="_blank" rel="noreferrer">
                     Xem
                   </a>
                 ) : null}
@@ -94,12 +94,12 @@ export function CaptchaPanel({ accountId }: { accountId: number }) {
         </div>
       )}
       {files.length > 0 && files[0].fileName.endsWith('.png') && (
-        <div style={{ marginTop: 12 }}>
+        <div>
           <p className="hint">Xem trước mới nhất:</p>
           <img
             src={`/api/captcha/dataset/${files[0].fileName}`}
             alt="captcha preview"
-            style={{ maxWidth: '100%', border: '1px solid #ccc', imageRendering: 'pixelated' }}
+            className="misc-captcha-img"
           />
         </div>
       )}
