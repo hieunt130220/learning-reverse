@@ -224,8 +224,16 @@ export function isInformationalDialog(reason: string): boolean {
   const trimmed = reason.trim();
   if (!trimmed) return true;
 
+  const lower = trimmed.toLowerCase();
+
   // 1. Dialog "đã ở trong khu vực này rồi"
-  if (trimmed === PARK_ALREADY_IN_AREA_DIALOG) return true;
+  if (
+    trimmed === PARK_ALREADY_IN_AREA_DIALOG
+    || lower.includes('đã ở trong khu vực')
+    || lower.includes('đã ở khu vực')
+  ) {
+    return true;
+  }
 
   // 2. Dialog cập nhật tiến trình nhiệm vụ (Tân Thủ, Nhà Nông, Thợ Câu)
   if (parseQuestDialogText(reason) !== null) return true;
@@ -233,8 +241,19 @@ export function isInformationalDialog(reason: string): boolean {
   // 3. Hộp thoại thông báo nhận thưởng sự kiện / chúc mừng
   if (isRewardDialog(trimmed)) return true;
 
-  // 4. Hộp thoại broadcast thông báo hệ thống / bảo trì định kỳ
-  const lower = trimmed.toLowerCase();
+  // 4. Hộp thoại chào mừng / giới thiệu khi vào map (vd: Map 27 Bến tàu)
+  if (
+    lower.includes('khu vực câu cá đặc biệt')
+    || lower.includes('khu câu cá đặc biệt')
+    || lower.includes('câu các loại cá ở bến tàu')
+  ) {
+    return true;
+  }
+
+  // 5. Cảnh báo spam / thao tác quá nhanh
+  if (lower.includes('chầm chậm thôi')) return true;
+
+  // 6. Hộp thoại broadcast thông báo hệ thống / bảo trì định kỳ
   if (
     lower.startsWith('thông báo:')
     || lower.startsWith('hệ thống:')
@@ -377,6 +396,10 @@ export class GameClient extends EventEmitter {
   currentHandlerContext: 8 | 9 | 10 | 'unknown' = 'unknown';
   /** RX80 Park gần nhất; không lấy snapshot login -34 làm cache Park. */
   private latestParkSnapshot?: EnterWorldSnapshot;
+
+  get currentParkSnapshot(): EnterWorldSnapshot | undefined {
+    return this.latestParkSnapshot;
+  }
   private keepAliveTimer?: NodeJS.Timeout;
   /** Đóng socket khi server không gửi gói nào trong `silenceTimeoutMs`. */
   private silenceTimer?: NodeJS.Timeout;
@@ -749,7 +772,11 @@ export class GameClient extends EventEmitter {
         );
       };
       const onSameArea = (reason: string): void => {
-        if (!expected || reason.trim() !== PARK_ALREADY_IN_AREA_DIALOG) return;
+        const norm = reason.trim().toLowerCase();
+        const isSameArea = norm === PARK_ALREADY_IN_AREA_DIALOG.toLowerCase()
+          || norm.includes('đã ở trong khu vực')
+          || norm.includes('đã ở khu vực');
+        if (!expected || !isSameArea) return;
         cleanup();
         const cached = this.latestParkSnapshot;
         if (

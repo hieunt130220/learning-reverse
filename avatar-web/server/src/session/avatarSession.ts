@@ -2526,6 +2526,18 @@ export class AvatarSession {
         throw new Error('bị hủy');
       }
 
+      // Nếu nhân vật đã ở sẵn đúng map và khu vực mong muốn trong Park context, không cần join lại
+      const currentSnap = client.currentParkSnapshot;
+      if (
+        client.currentHandlerContext === 9
+        && currentSnap
+        && currentSnap.roomId === map
+        && currentSnap.boardId === area
+      ) {
+        this.pushLog(`[câu cá] nhân vật đã ở sẵn map ${map} khu ${area}`);
+        return;
+      }
+
       // Cooldown giữa các lệnh joinPark: server anti-spam chặn join dồn (~2s).
       await this.delayCancellable(PARK_JOIN_COOLDOWN_MS, signal);
       if (signal.aborted || !this.isCurrent(client, epoch)) {
@@ -2539,6 +2551,7 @@ export class AvatarSession {
           const onDialog = (reason: string) => {
             // Bỏ qua dialog "đã ở đúng khu", dialog nhiệm vụ, và dialog thông tin/phần thưởng
             if (isInformationalDialog(reason)) {
+              this.pushLog(`[câu cá] bỏ qua dialog thông tin khi vào map: ${reason.trim()}`);
               return;
             }
             reject(new Error(`server từ chối vào map: ${reason}`));

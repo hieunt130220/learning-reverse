@@ -23,7 +23,7 @@ export const FISHING_MAPS = [
   { id: 14, name: 'Khu cá rô (Map 14 - Mặc định)' },
   { id: 15, name: 'Khu cá lóc (Map 15)' },
   { id: 16, name: 'Khu cá mập (Map 16)' },
-  { id: 27, name: 'Bến tàu / Đảo Hawai (Map 27)' },
+  { id: 27, name: 'Bến tàu / Đảo Hawai (Map 27 - Yêu cầu Lv 10+)' },
 ];
 
 function getTicketHint(mapId: number): string {
@@ -35,7 +35,7 @@ function getTicketHint(mapId: number): string {
     case 16:
       return 'Tự mua Vé cá mập (2 Lượng) ⚠️ Tiêu Lượng';
     case 27:
-      return 'Tự mua Vé câu bến tàu (12.000 xu)';
+      return 'Tự mua Vé câu bến tàu (12.000 xu) - Cần cấp độ câu cá ≥ 10';
     default:
       return FISHING_TICKETS[mapId]
         ? `Tự mua ${FISHING_TICKETS[mapId].name}`
