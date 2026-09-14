@@ -35,7 +35,7 @@ function getTicketHint(mapId: number): string {
     case 16:
       return 'Tự mua Vé cá mập (2 Lượng) ⚠️ Tiêu Lượng';
     case 27:
-      return 'Bến tàu cần vé sự kiện riêng, NPC không bán';
+      return 'Tự mua Vé câu bến tàu (12.000 xu)';
     default:
       return FISHING_TICKETS[mapId]
         ? `Tự mua ${FISHING_TICKETS[mapId].name}`
