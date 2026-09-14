@@ -1,6 +1,8 @@
 import type { Db } from '../db/index.js';
 import {
   DEFAULT_FISHING_CONFIG,
+  FISHING_BAITS,
+  FISHING_RODS,
   idleFindNpcRuntime,
   idleFishermanQuestRuntime,
   idleFishingRuntime,
@@ -83,6 +85,9 @@ export function defaultFishingConfig(): StoredFishingConfigState {
   };
 }
 
+const VALID_ROD_IDS = new Set(FISHING_RODS.map((r) => r.id));
+const VALID_BAIT_IDS = new Set(FISHING_BAITS.map((b) => b.id));
+
 export function parseFishingConfig(input: unknown): FishingConfig {
   if (typeof input !== 'object' || input === null) {
     throw new Error('Cấu hình câu cá phải là một object');
@@ -93,8 +98,8 @@ export function parseFishingConfig(input: unknown): FishingConfig {
   const castDelayMs = typeof obj.castDelayMs === 'number' && obj.castDelayMs >= 1000 && obj.castDelayMs <= 10000
     ? Math.floor(obj.castDelayMs) : 3000;
   const autoBuyTicket = typeof obj.autoBuyTicket === 'boolean' ? obj.autoBuyTicket : true;
-  const rodType = typeof obj.rodType === 'number' && [0, 442, 445, 446].includes(obj.rodType) ? obj.rodType : 442;
-  const baitType = typeof obj.baitType === 'number' && [0, 443, 447, 448].includes(obj.baitType) ? obj.baitType : 448;
+  const rodType = typeof obj.rodType === 'number' && VALID_ROD_IDS.has(obj.rodType) ? obj.rodType : 442;
+  const baitType = typeof obj.baitType === 'number' && VALID_BAIT_IDS.has(obj.baitType) ? obj.baitType : 448;
   const baitQuantity = typeof obj.baitQuantity === 'number' && obj.baitQuantity >= 1 && obj.baitQuantity <= 200
     ? Math.floor(obj.baitQuantity) : 50;
 
