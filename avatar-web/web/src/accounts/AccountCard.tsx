@@ -71,7 +71,7 @@ export function AccountCard({ account, reload }: AccountCardProps) {
           </span>
         </span>
         <span className="account-card-stats">
-          <span><small>Xu</small><b>{formatMetric(xu)}</b></span>
+          <span className="account-card-stat--primary"><small>Xu</small><b>{formatMetric(xu)}</b></span>
           <span><small>Lượng</small><b>{formatLuong()}</b></span>
           <span><small>Level</small><b>NV {playerLevel ?? '—'} · Farm {farmLevel ?? '—'}</b></span>
           <span>

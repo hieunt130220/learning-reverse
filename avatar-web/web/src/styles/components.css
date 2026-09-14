@@ -46,7 +46,7 @@ textarea {
 }
 
 button {
-  padding: 7px 14px;
+  padding: 9px 14px;
   background: var(--accent);
   color: #0d1017;
   border: 0;
@@ -532,6 +532,8 @@ button.ghost {
 .account-card-stats small { color: var(--muted); font-weight: 400; }
 .account-card-stats { margin-top: 18px; }
 .account-card-stats > span:last-child { text-align: right; }
+.account-card-stat--primary b { font-size: 20px; font-weight: 700; }
+.account-card-stats > span:not(.account-card-stat--primary) b { font-size: 13px; font-weight: 600; }
 
 .account-card-notice,
 .account-card-error {
@@ -1125,12 +1127,6 @@ button.ghost {
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  animation: pulse-glow 1.5s infinite alternate;
-}
-
-@keyframes pulse-glow {
-  from { transform: scale(0.95); filter: brightness(1); }
-  to { transform: scale(1.05); filter: brightness(1.2); }
 }
 
 /* Daily Missions List */
