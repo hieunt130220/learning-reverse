@@ -1,0 +1,98 @@
+/* ==========================================================================
+   Avatar Web — Design Tokens
+   Extracted verbatim from avatar-web/web/src/styles.css (:root, lines 1-24).
+   Dark-only system. Do not invent new hues — map strays to the tidy adds.
+   ========================================================================== */
+
+:root {
+  /* --- Raw: surfaces --- */
+  --bg: #10131a;
+  --bg-raised: #0d1017;
+  --bg-deep: #0a0d12;
+  --card: #171b24;
+  --card-muted: #161b22;
+  --card-inset: #111722;
+
+  /* --- Raw: lines --- */
+  --line: #262c38;
+  --line-soft: #1e2430;
+
+  /* --- Raw: text --- */
+  --fg: #e5e9f0;
+  --muted: #8b93a7;
+
+  /* --- Raw: accent (info / primary action) --- */
+  --accent: #6ea8fe;
+  --accent-dim: rgba(110, 168, 254, 0.1);
+
+  /* --- Raw: success --- */
+  --ok: #4ec9a0;
+  --ok-dim: rgba(78, 201, 160, 0.12);
+  --ok-line: #347d68;
+
+  /* --- Raw: warning --- */
+  --warn: #e3b341;
+  --warn-ink: #e4bb61;
+  --warn-dim: rgba(227, 179, 65, 0.08);
+  --warn-line: #665122;
+
+  /* --- Raw: error --- */
+  --err: #ff7b72;
+  --err-dim: rgba(255, 123, 114, 0.08);
+  --err-line: #8f4745;
+
+  /* --- Tidy additions (were hardcoded in tsx/css, now tokenized) --- */
+  --gold: #ffd700;          /* quest stars, daily meter, reward pills */
+  --gold-deep: #ff9f1c;     /* gradient end of daily meter / claim buttons */
+  --tab-active: #21262d;    /* active segmented-tab surface */
+  --log-op: #d2a8ff;        /* log opcode names */
+  --skip: #ffbc76;          /* tree-plan "skip" cell state */
+
+  /* --- Radii --- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+
+  /* --- Type --- */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --text-base: 14px;
+  --text-h1: 20px;
+  --text-h2: 14px;
+  --text-label: 13px;
+  --text-small: 12px;
+  --text-caption: 11px;
+  --text-log: 12px;
+
+  /* --- Motion --- */
+  --dur-fast: 160ms;
+  --dur-med: 200ms;
+  --dur-slow: 300ms;
+  --ease-out: ease-out;
+
+  /* --- Semantic: surfaces --- */
+  --surface-page: var(--bg);
+  --surface-card: var(--card);
+  --surface-muted: var(--card-muted);
+  --surface-inset: var(--card-inset);
+  --surface-sunken: var(--bg-deep);
+  --border-default: var(--line);
+  --border-subtle: var(--line-soft);
+
+  /* --- Semantic: text --- */
+  --text-primary: var(--fg);
+  --text-secondary: var(--muted);
+
+  /* --- Semantic: type roles --- */
+  --h1: 700 var(--text-h1)/1.4 var(--font-sans);
+  --h2: 600 var(--text-h2)/1.4 var(--font-sans);
+  --body: 400 var(--text-base)/1.5 var(--font-sans);
+  --label: 400 var(--text-label)/1.5 var(--font-sans);
+  --small: 400 var(--text-small)/1.4 var(--font-sans);
+  --caption: 600 var(--text-caption)/1.4 var(--font-sans);
+  --code: 400 var(--text-log)/1.5 var(--font-mono);
+
+  color-scheme: dark;
+}
