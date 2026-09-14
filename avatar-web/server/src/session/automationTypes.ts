@@ -37,12 +37,15 @@ export const FISHING_TICKETS: Readonly<Record<number, { id: number; name: string
   14: { id: 458, name: 'Vé câu cá rô', cost: '1.000 xu (hạn 3 ngày)', typeMoney: 1 },
   15: { id: 459, name: 'Vé câu cá lóc', cost: '10.000 xu (hạn 5 ngày)', typeMoney: 1 },
   16: { id: 460, name: 'Vé câu cá mập', cost: '2 Lượng (hạn 2 ngày)', typeMoney: 2 },
+  27: { id: 4876, name: 'Vé câu bến tàu', cost: '12.000 xu (hạn 3 ngày)', typeMoney: 1 },
 });
 
 export const FISHING_RODS: readonly { id: number; name: string; cost: string; typeMoney: number }[] = Object.freeze([
   { id: 0, name: 'Không tự mua', cost: '', typeMoney: 0 },
   { id: 442, name: 'Cần câu tre', cost: '10.000 xu (hạn 7 ngày)', typeMoney: 1 },
+  { id: 4874, name: 'Cần câu Lục Sĩ', cost: '20.000 xu', typeMoney: 1 },
   { id: 445, name: 'Cần câu sắt', cost: '25 Lượng', typeMoney: 2 },
+  { id: 4879, name: 'Cần câu Chuyên Gia', cost: '120 Lượng', typeMoney: 2 },
   { id: 446, name: 'Cần câu VIP', cost: 'Lượng', typeMoney: 2 },
 ]);
 
@@ -51,6 +54,7 @@ export const FISHING_BAITS: readonly { id: number; name: string; cost: string; t
   { id: 443, name: 'Mồi cơm', cost: '5 xu / mồi', typeMoney: 1 },
   { id: 447, name: 'Mồi trùng', cost: '20 xu / mồi', typeMoney: 1 },
   { id: 448, name: 'Trứng kiến', cost: '30 xu / mồi', typeMoney: 1 },
+  { id: 4875, name: 'Mồi câu cá trâm', cost: '50 xu / mồi', typeMoney: 1 },
 ]);
 
 export type FishingStatus =

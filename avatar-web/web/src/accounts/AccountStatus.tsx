@@ -18,6 +18,7 @@ const MODE_LABEL: Record<AutomationMode, string> = {
   auto_farm: 'Nông trại',
   auto_fishing: 'Câu cá',
   find_npc: 'Tìm NPC',
+  auto_fisherman_quest: 'Nhiệm vụ thợ câu',
 };
 
 export function automationModeLabel(mode: AutomationMode): string {
@@ -48,6 +49,6 @@ export function ModeChip({
   if (mode === 'off') {
     return <span className="mode-chip mode-chip--off">Tắt</span>;
   }
-  const tone = mode === 'auto_fishing' ? 'fishing' : 'farm';
+  const tone = mode === 'auto_fishing' || mode === 'auto_fisherman_quest' ? 'fishing' : 'farm';
   return <span className={`mode-chip mode-chip--${tone}`}>{automationModeLabel(mode)}</span>;
 }
