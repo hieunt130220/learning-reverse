@@ -524,6 +524,8 @@ export interface TreeInfo {
   category?: 'xu' | 'premium';
 }
 
+export { DEFAULT_TREE_CATALOG } from './defaultCatalogs.js';
+
 /**
  * Giải mã bảng cây trồng (cmd 76).
  *
@@ -738,6 +740,8 @@ export interface ItemInfo {
   price: number;
 }
 
+export { DEFAULT_ITEM_CATALOG } from './defaultCatalogs.js';
+
 /**
  * Rút bảng vật phẩm ra khỏi gói cmd 76.
  *
@@ -885,6 +889,8 @@ export interface AnimalInfo {
   name: string;
   desc: string;
 }
+
+export { DEFAULT_ANIMAL_CATALOG } from './defaultCatalogs.js';
 
 /**
  * Bảng vật nuôi trong gói cmd 76, nằm ngay sau bảng cây và một bảng 10 mục
