@@ -3,8 +3,27 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 
 import { AutoFarm, type AutoFarmOptions } from './autoFarm.js';
-import { DEFAULT_FOOD_CATALOG, ITEM_DIARRHEA_CURE, ITEM_FLU_CURE, ITEM_GRASS, ITEM_TONIC, ITEM_WATER } from './game/farmData.js';
-import type { CookingState, FarmAnimal, FarmCell, FarmState, FoodRecipe, TreeInfo } from './game/farmData.js';
+import {
+  DEFAULT_ANIMAL_CATALOG,
+  DEFAULT_FOOD_CATALOG,
+  DEFAULT_ITEM_CATALOG,
+  DEFAULT_TREE_CATALOG,
+  ITEM_DIARRHEA_CURE,
+  ITEM_FLU_CURE,
+  ITEM_GRASS,
+  ITEM_TONIC,
+  ITEM_WATER,
+} from './game/farmData.js';
+import type {
+  AnimalInfo,
+  CookingState,
+  FarmAnimal,
+  FarmCell,
+  FarmState,
+  FoodRecipe,
+  ItemInfo,
+  TreeInfo,
+} from './game/farmData.js';
 
 function cell(index: number, overrides: Partial<FarmCell> = {}): FarmCell {
   return {
@@ -57,16 +76,11 @@ class FakeClient extends EventEmitter {
   farmState: FarmState;
   inventory: { id: number; num: number }[] = [];
   produce: { id: number; num: number }[] = [];
-  items: { id: number; price: number }[] = [];
-  trees: TreeInfo[] = [];
+  items: ItemInfo[] = [...DEFAULT_ITEM_CATALOG];
+  trees: TreeInfo[] = [...DEFAULT_TREE_CATALOG];
   cookingState?: CookingState;
   foods: FoodRecipe[] = [...DEFAULT_FOOD_CATALOG];
-  /** Bảng vật nuôi (cmd 76) — `desc` là nguồn tuổi lớn/tuổi thọ. */
-  animals: { id: number; name: string; desc: string }[] = [
-    { id: 50, name: 'Gà', desc: 'Thời gian lớn : 1 ngày - Sản phẩm : 20 trứng gà sau mỗi 6 giờ - Thời gian sống: 7 ngày' },
-    { id: 52, name: 'Heo', desc: 'Thời gian lớn : 2 ngày - Không  có sản phẩm - Thời gian sống: 20 ngày' },
-    { id: 59, name: 'Rùa', desc: 'Thời gian lớn : 1 ngày - Không có sản phẩm - Thời gian sống: 15 ngày' },
-  ];
+  animals: AnimalInfo[] = [...DEFAULT_ANIMAL_CATALOG];
   readonly calls: string[] = [];
   onPlantSeed?: (cellIndex: number, seedId: number) => void;
   /**
