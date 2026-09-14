@@ -20,6 +20,7 @@ import {
   decodePlayerInfo,
   decodeTreeInfo,
   decodeDailyQuestPacket,
+  DEFAULT_FOOD_CATALOG,
   type CookingState,
   type DailyQuestState,
   type FarmState,
@@ -31,6 +32,11 @@ import {
   type TreeInfo,
   type QuestOverviewState,
 } from './farmData.js';
+import {
+  DEFAULT_ANIMAL_CATALOG,
+  DEFAULT_ITEM_CATALOG,
+  DEFAULT_TREE_CATALOG,
+} from './defaultCatalogs.js';
 import {
   decodeProgressQuestPacket,
   parseQuestDialogText,
@@ -342,16 +348,16 @@ export class GameClient extends EventEmitter {
   produce: InventoryItem[] = [];
   /** Nguyên liệu/vật phẩm đặc biệt dùng cho bếp (section 4 của gói 70). */
   cookingMaterials: InventoryItem[] = [];
-  /** Bảng cây trồng (cmd 76) — dùng để hiện tên thay vì id. */
-  trees: TreeInfo[] = [];
-  /** Bảng vật phẩm rút từ cùng gói 76. */
-  items: ItemInfo[] = [];
-  /** Bảng vật nuôi (id 50..61) từ cùng gói 76. */
-  animals: AnimalInfo[] = [];
-  /** Danh mục công thức từ Cmd 76; rỗng cho tới khi decode được packet hợp lệ. */
-  foods: FoodRecipe[] = [];
-  /** Chỉ true sau khi decode được một block Food[] hoàn chỉnh từ Cmd 76. */
-  foodCatalogReady = false;
+  /** Bảng cây trồng mặc định của hệ thống. */
+  trees: TreeInfo[] = [...DEFAULT_TREE_CATALOG];
+  /** Bảng vật phẩm mặc định của hệ thống. */
+  items: ItemInfo[] = [...DEFAULT_ITEM_CATALOG];
+  /** Bảng vật nuôi mặc định của hệ thống. */
+  animals: AnimalInfo[] = [...DEFAULT_ANIMAL_CATALOG];
+  /** Danh mục công thức mặc định của hệ thống (35 món). */
+  foods: FoodRecipe[] = [...DEFAULT_FOOD_CATALOG];
+  /** Luôn sẵn sàng vì đã có catalog mặc định của hệ thống. */
+  foodCatalogReady = true;
   /** Event cmd 103 hợp lệ gần nhất; decoder lỗi không được ghi đè state này. */
   lastShopEvent: ShopProtocolEvent | null = null;
   /** Cảnh báo trailing bytes của event cmd 103 hợp lệ gần nhất. */
@@ -1658,8 +1664,7 @@ export class GameClient extends EventEmitter {
       case 61: // cùng payload readFarmData
         try {
           this.farmState = decodeFarmData(msg.getData());
-          // Tự động tải catalog dữ liệu cây / vật phẩm / món ăn, thông tin bếp và nhiệm vụ ngày khi vào farm
-          this.farm.getTreeInfo();
+          // Thông tin bếp và nhiệm vụ ngày khi vào farm (catalog cây/vật phẩm/món ăn đã có sẵn mặc định)
           this.farm.getCook(0);
           this.farm.getDailyQuest(0);
           // Tự động tương tác với NPC Lái buôn để lấy hộp thoại nhiệm vụ tiến trình mới nhất

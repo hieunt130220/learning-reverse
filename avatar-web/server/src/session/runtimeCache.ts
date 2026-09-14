@@ -1,13 +1,19 @@
-import type {
-  AnimalInfo,
-  CookingState,
-  FarmState,
-  FoodRecipe,
-  InventoryItem,
-  ItemInfo,
-  QuestOverviewState,
-  TreeInfo,
+import {
+  DEFAULT_FOOD_CATALOG,
+  type AnimalInfo,
+  type CookingState,
+  type FarmState,
+  type FoodRecipe,
+  type InventoryItem,
+  type ItemInfo,
+  type QuestOverviewState,
+  type TreeInfo,
 } from '../game/farmData.js';
+import {
+  DEFAULT_ANIMAL_CATALOG,
+  DEFAULT_ITEM_CATALOG,
+  DEFAULT_TREE_CATALOG,
+} from '../game/defaultCatalogs.js';
 
 export interface CachedRuntimeSnapshot {
   quests: QuestOverviewState | null;
@@ -32,10 +38,10 @@ export function emptyRuntimeSnapshot(): CachedRuntimeSnapshot {
     inventory: [],
     farmProduce: [],
     cookingMaterials: [],
-    trees: [],
-    items: [],
-    animals: [],
-    foods: [],
+    trees: [...DEFAULT_TREE_CATALOG],
+    items: [...DEFAULT_ITEM_CATALOG],
+    animals: [...DEFAULT_ANIMAL_CATALOG],
+    foods: [...DEFAULT_FOOD_CATALOG],
     cooking: null,
     capturedAt: null,
   };
