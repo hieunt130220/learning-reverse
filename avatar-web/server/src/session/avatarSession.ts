@@ -3240,6 +3240,8 @@ export class AvatarSession {
           || errText.includes('phải có cần')
           || errText.includes('cần tre')
           || errText.includes('cần sắt')
+          || errText.includes('lục sĩ')
+          || errText.includes('chuyên gia')
         ) {
           missingType = 'rod';
         }
@@ -3515,6 +3517,8 @@ export class AvatarSession {
             || castErrText.includes('phải có cần')
             || castErrText.includes('cần tre')
             || castErrText.includes('cần sắt')
+            || castErrText.includes('lục sĩ')
+            || castErrText.includes('chuyên gia')
           ) {
             castMissingType = 'rod';
           } else if (isMissingFishingTicketDialog(castErrText)) {
