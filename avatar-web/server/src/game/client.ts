@@ -746,6 +746,10 @@ export class GameClient extends EventEmitter {
     this.park.doParkBuyItem(id, typeMoney);
   }
 
+  buyItem(id: number, typeMoney: number, saleFocus = -1): void {
+    this.park.doBuyItem(id, typeMoney, saleFocus);
+  }
+
   buyItemStack(id: number, num: number, typeMoney: number): void {
     this.park.doBuyItemStack(id, num, typeMoney);
   }

@@ -25,6 +25,14 @@ export const CMD_AVATAR_START_CAU_CA = 45;
 export const CMD_AVATAR_BUY_ITEM_STACK = -43;
 
 /**
+ * AVATAR_BUY_ITEM: i16 idPart, i8 type (1=Xu, 2=Lượng), i8 saleFocus (-1=không giảm giá).
+ * Opcode -92 (0xA4): AvatarService.doBuyItem(int part, int typeBuy)
+ * RVA 0x9610B0, gọi từ MapScr.IActionSelectedMoney (0x854834).
+ * Mua vật phẩm trang bị / cần câu / part từ shop.
+ */
+export const CMD_AVATAR_BUY_ITEM = -92;
+
+/**
  * @deprecated Opcode -24 trong AvatarHD là REQUEST_CITY_MAP (tile map). Dùng CMD_AVATAR_BUY_ITEM_STACK (-43).
  */
 export const CMD_PARK_BUY_ITEM = -43;
@@ -150,8 +158,28 @@ export class ParkService {
     this.session.send(m);
   }
 
+  /**
+   * BUY_ITEM (TX-92): Mua vật phẩm trang bị / cần câu / part từ shop.
+   * RVA 0x9610B0 (AvatarService.doBuyItem).
+   * Payload: i16 idPart, i8 typeMoney (1=Xu, 2=Lượng), i8 saleFocus (-1 = không giảm giá).
+   */
+  doBuyItem(id: number, typeMoney: number, saleFocus = -1): void {
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new Error(`doBuyItem: id không hợp lệ: ${id}`);
+    }
+    if (!Number.isSafeInteger(typeMoney) || (typeMoney !== 1 && typeMoney !== 2)) {
+      throw new Error(`doBuyItem: typeMoney không hợp lệ: ${typeMoney}`);
+    }
+    if (!Number.isSafeInteger(saleFocus)) {
+      throw new Error(`doBuyItem: saleFocus không hợp lệ: ${saleFocus}`);
+    }
+    const m = Message.create(CMD_AVATAR_BUY_ITEM);
+    m.writer!.writeShort(id).writeByte(typeMoney).writeByte(saleFocus);
+    this.session.send(m);
+  }
+
   doParkBuyItem(id: number, typeMoney: number): void {
-    this.doBuyItemStack(id, 1, typeMoney);
+    this.doBuyItem(id, typeMoney, -1);
   }
 
   /**
