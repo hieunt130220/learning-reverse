@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Avatar Web — Desktop Operations Console Redesign</title>
+  <link rel="stylesheet" href="../../design-systems/avatar-web/tokens/colors_and_type.css">
+  <style>
+    /* Reset & Base Setup */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      color-scheme: dark;
+      overflow: hidden;
+    }
+
+    /* Top Comparison Banner */
+    .view-mode-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-deep);
+      border-bottom: 1px solid var(--line);
+      padding: 6px 16px;
+      font-size: 12px;
+      z-index: 100;
+    }
+    .view-mode-bar .left { display: flex; align-items: center; gap: 8px; }
+    .view-mode-bar .badge-prototype {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 10px;
+    }
+    .view-mode-switch {
+      display: flex;
+      background: var(--card-inset);
+      padding: 2px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+    }
+    .view-mode-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 120ms ease;
+    }
+    .view-mode-btn.active {
+      background: var(--tab-active);
+      color: var(--fg);
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    /* App Shell Container */
+    .app-root {
+      display: flex;
+      flex-direction: column;
+      height: calc(100% - 37px);
+      position: relative;
+    }
+
+    /* ==========================================================================
+       DESIGN MỚI: DESKTOP CONSOLE (3-PANE / FOCUSED WORKSPACE)
+       ========================================================================== */
+    .desktop-console {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      background: var(--bg);
+    }
+
+    /* 1. Top Telemetry & Global Control Header */
+    .console-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+      padding: 0 20px;
+      background: var(--card);
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+      gap: 16px;
+    }
+    .account-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .account-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md);
+      background: var(--card-inset);
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .account-info {
+      display: flex;
+      flex-direction: column;
+    }
+    .account-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .account-name {
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--fg);
+    }
+    .badge-status {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 8px;
+      border-radius: var(--radius-pill);
+      border: 1px solid;
+    }
+    .badge-status.online {
+      color: var(--ok);
+      border-color: var(--ok-line);
+      background: var(--ok-dim);
+    }
+    .badge-status.running {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .account-sub {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      gap: 12px;
+    }
+    .account-sub span strong { color: var(--fg); }
+
+    .telemetry-group {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--card-inset);
+      padding: 6px 14px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+    }
+    .metric-pill {
+      display: flex;
+      flex-direction: column;
+      font-size: 11px;
+    }
+    .metric-label {
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+    }
+    .metric-val {
+      font-weight: 700;
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+    .metric-val.gold { color: var(--gold); }
+    .metric-val.green { color: var(--ok); }
+    .metric-val.blue { color: var(--accent); }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-auto-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid;
+      transition: all 150ms ease;
+    }
+    .btn-auto-toggle.on {
+      background: var(--ok);
+      color: #081a13;
+      border-color: var(--ok-line);
+    }
+    .btn-auto-toggle.on:hover { brightness: 1.1; }
+    .btn-auto-toggle.off {
+      background: var(--card-inset);
+      color: var(--muted);
+      border-color: var(--line);
+    }
+    .btn-header-ghost {
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--fg);
+      padding: 7px 12px;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .btn-header-ghost:hover {
+      background: var(--card-inset);
+      border-color: var(--accent);
+    }
+
+    /* 2. Main Console Layout: Sidebar + Canvas */
+    .console-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Left Navigation Rail */
+    .console-sidebar {
+      width: 240px;
+      flex-shrink: 0;
+      background: var(--bg-raised);
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow-y: auto;
+    }
+    .nav-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      padding: 16px 16px 6px;
+    }
+    .nav-menu {
+      list-style: none;
+      padding: 0 8px;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .nav-item button {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-md);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: all 120ms ease;
+    }
+    .nav-item button:hover {
+      background: var(--card);
+      color: var(--fg);
+    }
+    .nav-item.active button {
+      background: var(--card);
+      color: var(--fg);
+      font-weight: 600;
+      border-left: 3px solid var(--accent);
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
+    }
+    .nav-label-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .nav-icon { font-size: 16px; }
+    .nav-badge {
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: var(--radius-pill);
+      background: var(--card-inset);
+      color: var(--muted);
+      border: 1px solid var(--line);
+    }
+    .nav-badge.accent {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .nav-badge.warn {
+      background: var(--warn-dim);
+      color: var(--warn-ink);
+      border-color: var(--warn-line);
+      font-weight: 600;
+    }
+    .nav-hotkey {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      background: var(--card-inset);
+      color: var(--muted);
+      padding: 2px 5px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+    }
+
+    /* Sidebar Footer Info */
+    .sidebar-footer {
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      background: var(--bg-deep);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .sidebar-footer .tip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Workspace Content Canvas */
+    .console-canvas {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      background: var(--bg);
+      padding: 24px 28px;
+    }
+    .canvas-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .canvas-title-group h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--fg);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .canvas-desc {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    /* Component Grids inside Canvas */
+    .section-view { display: none; }
+    .section-view.active { display: flex; flex-direction: column; gap: 20px; animation: fade-in 150ms ease; }
+
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Section 1: Overview Dashboard Grid */
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    .kpi-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .kpi-card .kpi-head {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .kpi-card .kpi-num {
+      font-size: 22px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--fg);
+    }
+    .kpi-card .kpi-sub {
+      font-size: 12px;
+      color: var(--ok);
+    }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+    }
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .card-head h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+
+    /* Section 2: Farm Layout (Side-by-Side 2 Columns) */
+    .farm-grid-2col {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 24px;
+    }
+    .tree-grid-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .tree-plan-grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 6px;
+      background: var(--card-inset);
+      padding: 12px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+    }
+    .tree-cell {
+      height: 64px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      font-size: 11px;
+      cursor: pointer;
+      position: relative;
+      background: var(--card);
+      transition: all 120ms ease;
+    }
+    .tree-cell:hover {
+      border-color: var(--accent);
+      transform: scale(1.02);
+      z-index: 2;
+    }
+    .tree-cell .cell-slot {
+      position: absolute;
+      top: 3px;
+      left: 4px;
+      font-size: 9px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+    .tree-cell.ripe {
+      border-color: var(--ok-line);
+      background: var(--ok-dim);
+      color: var(--ok);
+      font-weight: 600;
+    }
+    .tree-cell.growing {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+    .tree-cell.dry {
+      border-color: var(--warn-line);
+      background: var(--warn-dim);
+      color: var(--warn-ink);
+    }
+    .tree-cell.empty {
+      border-style: dashed;
+      color: var(--muted);
+      background: transparent;
+    }
+
+    .palette-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .palette-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: var(--radius-md);
+      background: var(--card-inset);
+      border: 1px solid var(--line);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .palette-item.active {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Animals & Auto-sell list */
+    .animal-card-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .animal-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      background: var(--card-inset);
+      border: 1px solid var(--line);
+    }
+
+    /* Section 3: Fishing Workspace */
+    .fishing-grid-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    .stat-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--card-inset);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+    }
+
+    /* Section 4: Quests Panel */
+    .quests-container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .attendance-banner {
+      background: linear-gradient(135deg, rgba(255, 215, 0, 0.08), rgba(255, 159, 28, 0.04));
+      border: 1px solid var(--gold);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .attendance-info h3 { margin: 0 0 4px; font-size: 15px; color: var(--gold); }
+    .quest-subtabs {
+      display: flex;
+      gap: 8px;
+      background: var(--card-inset);
+      padding: 4px;
+      border-radius: var(--radius-md);
+      width: fit-content;
+      border: 1px solid var(--line);
+    }
+    .quest-subtab {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 6px 16px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .quest-subtab.active {
+      background: var(--tab-active);
+      color: var(--fg);
+      font-weight: 600;
+    }
+    .quest-card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+    }
+    .quest-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .quest-card.claimable {
+      border-color: var(--warn-ink);
+      box-shadow: 0 0 16px rgba(227, 179, 65, 0.12);
+    }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: var(--card-inset);
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 4px;
+    }
+    .progress-fill.gold { background: linear-gradient(90deg, var(--gold), var(--gold-deep)); }
+
+    /* Tables for Shop & Assets */
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    table.data-table th {
+      background: var(--card-inset);
+      color: var(--muted);
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--line);
+    }
+    table.data-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    table.data-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Packet Log Viewer */
+    .log-terminal {
+      background: var(--bg-deep);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      height: calc(100vh - 250px);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .log-line { display: flex; gap: 12px; }
+    .log-time { color: var(--muted); }
+    .log-dir.tx { color: var(--accent); font-weight: 700; }
+    .log-dir.rx { color: var(--ok); font-weight: 700; }
+    .log-op { color: var(--log-op); font-weight: 600; }
+    .log-msg { color: var(--fg); }
+
+    /* Bottom Sticky Mini-Log Bar */
+    .bottom-telemetry-bar {
+      height: 38px;
+      background: var(--bg-deep);
+      border-top: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .mini-log-ticker {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-mono);
+      color: var(--muted);
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .ticker-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
+    .btn-log-toggle {
+      background: var(--card-inset);
+      border: 1px solid var(--line);
+      color: var(--fg);
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    /* ==========================================================================
+       TRẢI NGHIỆM CŨ: 720px RIGHT DRAWER (DEMO FOR COMPARISON)
+       ========================================================================== */
+    .legacy-drawer-container {
+      display: none;
+      height: 100%;
+      background: rgba(3, 6, 12, 0.75);
+      justify-content: flex-end;
+      position: relative;
+    }
+    .legacy-drawer {
+      width: 720px;
+      max-width: 100%;
+      height: 100%;
+      background: var(--bg);
+      border-left: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      box-shadow: -10px 0 40px rgba(0,0,0,0.6);
+    }
+    .legacy-drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      background: var(--card);
+    }
+    .legacy-drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .legacy-notice {
+      background: var(--warn-dim);
+      border: 1px solid var(--warn-line);
+      color: var(--warn-ink);
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .legacy-stack-item {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Mode Switcher Bar -->
+  <div class="view-mode-bar">
+    <div class="left">
+      <span class="badge-prototype">OpneDesign Preview</span>
+      <strong>Avatar Web Desktop UX Prototype</strong>
+      <span style="color: var(--muted); font-size: 11px;">(Đề xuất giải pháp giải quyết vấn đề Scroll & Khó Focus)</span>
+    </div>
+    <div class="view-mode-switch">
+      <button type="button" class="view-mode-btn active" id="btn-show-console" onclick="switchView('console')">
+        🖥️ Thiết kế mới: Desktop Focused Console
+      </button>
+      <button type="button" class="view-mode-btn" id="btn-show-legacy" onclick="switchView('legacy')">
+        📱 Trải nghiệm cũ: 720px Drawer (Scroll vô tận)
+      </button>
+    </div>
+  </div>
+
+  <div class="app-root">
+
+    <!-- ====================================================================
+         1. NEW DESIGN: DESKTOP FOCUSED CONSOLE
+         ==================================================================== -->
+    <div class="desktop-console" id="view-console">
+
+      <!-- Top Persistent Telemetry & Quick Action Bar -->
+      <header class="console-header">
+        <div class="account-meta">
+          <div class="account-avatar">🧑‍🌾</div>
+          <div class="account-info">
+            <div class="account-title-row">
+              <span class="account-name">farmer_pro_99</span>
+              <span class="badge-status online">Online</span>
+              <span class="badge-status running">Auto Farm #14</span>
+            </div>
+            <div class="account-sub">
+              <span>Cấp độ: <strong>Lv.45</strong></span>
+              <span>Khu vực: <strong>Nông trại 3</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Telemetry Pill Box -->
+        <div class="telemetry-group">
+          <div class="metric-pill">
+            <span class="metric-label">Xu trong người</span>
+            <span class="metric-val gold">12,450,800 xu</span>
+          </div>
+          <div style="width: 1px; height: 24px; background: var(--line);"></div>
+          <div class="metric-pill">
+            <span class="metric-label">Lượng (Khoá)</span>
+            <span class="metric-val green">320 (150)</span>
+          </div>
+          <div style="width: 1px; height: 24px; background: var(--line);"></div>
+          <div class="metric-pill">
+            <span class="metric-label">Vòng lặp tiếp theo</span>
+            <span class="metric-val blue">03:42</span>
+          </div>
+        </div>
+
+        <!-- Global Action Controls -->
+        <div class="header-actions">
+          <button type="button" class="btn-auto-toggle on" id="btn-auto-master" onclick="toggleAutoMaster()">
+            <span>⚡</span>
+            <span id="auto-master-label">Auto Đang Chạy</span>
+          </button>
+          <button type="button" class="btn-header-ghost" title="Đồng bộ lại dữ liệu">🔄 Làm mới</button>
+          <button type="button" class="btn-header-ghost" title="Đóng về dashboard">✕ Thoát</button>
+        </div>
+      </header>
+
+      <!-- Main Body: Navigation Rail + Focused Workspace -->
+      <div class="console-body">
+
+        <!-- Left Navigation Rail (Always Visible, 1-Click Jump) -->
+        <aside class="console-sidebar">
+          <div>
+            <div class="nav-section-title">Phân hệ vận hành</div>
+            <ul class="nav-menu">
+              <li class="nav-item active" id="nav-overview">
+                <button type="button" onclick="selectSection('overview')">
+                  <div class="nav-label-wrap">
+                    <span class="nav-icon">⚡</span>
+                    <span>Tổng quan</span>
+                  </div>
+                  <span class="nav-hotkey">1</span>
+                </button>
+              </li>
+              <li class="nav-item" id="nav-farm">
+                <button type="button" onclick="selectSection('farm')">
+                  <div class="nav-label-wrap">
+                    <span class="nav-icon">🌱</span>
+                    <span>Nông trại & Ô đất</span>
+                  </div>
+                  <span class="nav-badge accent">48 ô</span>
+                  <span class="nav-hotkey">2</span>
+                </button>
+              </li>
+              <li class="nav-item" id="nav-fishing">
+                <button type="button" onclick="selectSection('fishing')">
+                  <div class="nav-label-wrap">
+                    <span class="nav-icon">🎣</span>
+                    <span>Khu vực Câu cá</span>
+                  </div>
+                  <span class="nav-badge">Map 27</span>
+                  <span class="nav-hotkey">3</span>
+                </button>
+              </li>
+              <li class="nav-item" id="nav-quests">
+                <button type="button" onclick="selectSection('quests')">
+                  <div class="nav-label-wrap">
+                    <span class="nav-icon">📜</span>
+                    <span>Nhiệm vụ & Điểm danh</span>
+                  </div>
+                  <span class="nav-badge warn">2 nhận</span>
+                  <span class="nav-hotkey">4</span>
+                </button>
+              </li>
+              <li class="nav-item" id="nav-cooking">
+                <button type="button" onclick="selectSection('cooking')">
+                  <div class="nav-label-wrap">
+                    <span class="nav-icon">🍳</span>
+                    <span>Bếp ăn & Nồi nấu</span>
+                  </div>
+                  <span class="nav-badge">2/3</span>
+                  <span class="nav-hotkey">5</span>
+                </button>
+              </li>
+              <li class="nav-item" id="nav-assets">
+                <button type="button" onclick="selectSection('assets')">
+                  <div class="nav-label-wrap">
+                    <span class="nav-icon">🎒</span>
+                    <span>Túi đồ & Nông sản</span>
+                  </div>
+                  <span class="nav-hotkey">6</span>
+                </button>
+              </li>
+              <li class="nav-item" id="nav-shop">
+                <button type="button" onclick="selectSection('shop')">
+                  <div class="nav-label-wrap">
+                    <span class="nav-icon">🏪</span>
+                    <span>Sạp hàng cá nhân</span>
+                  </div>
+                  <span class="nav-badge">5/8</span>
+                  <span class="nav-hotkey">7</span>
+                </button>
+              </li>
+              <li class="nav-item" id="nav-logs">
+                <button type="button" onclick="selectSection('logs')">
+                  <div class="nav-label-wrap">
+                    <span class="nav-icon">📟</span>
+                    <span>Nhật ký gói tin</span>
+                  </div>
+                  <span class="nav-hotkey">8</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <div class="sidebar-footer">
+            <div class="tip">
+              <span>💡</span>
+              <span>Bấm phím <strong>1–8</strong> để chuyển nhanh section</span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Focused Canvas Area (Only 1 Section Rendered at a time) -->
+        <main class="console-canvas">
+
+          <!-- SECTION 1: TỔNG QUAN -->
+          <div class="section-view active" id="sec-overview">
+            <div class="canvas-header">
+              <div class="canvas-title-group">
+                <h1>⚡ Tổng quan Vận hành & Giám sát</h1>
+                <p class="canvas-desc">Trạng thái tự động hóa, chu kỳ thu hoạch và các thao tác điều khiển cốt lõi.</p>
+              </div>
+            </div>
+
+            <!-- KPI Cards Row -->
+            <div class="kpi-row">
+              <div class="kpi-card">
+                <div class="kpi-head"><span>Ô đất sắp chín</span><span>🌱</span></div>
+                <div class="kpi-num">16 / 48</div>
+                <div class="kpi-sub">Thu hoạch sau 14 phút</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-head"><span>Chuồng nuôi</span><span>🐔</span></div>
+                <div class="kpi-num">6 Gà, 4 Bò</div>
+                <div class="kpi-sub">Sản lượng: 100% no</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-head"><span>Cá câu hôm nay</span><span>🐟</span></div>
+                <div class="kpi-num">142 con</div>
+                <div class="kpi-sub">+184,000 xu ước tính</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-head"><span>Nhiệm vụ chờ nhận</span><span>⭐</span></div>
+                <div class="kpi-num" style="color: var(--gold);">2 quà</div>
+                <div class="kpi-sub" style="color: var(--warn-ink);">Thợ câu & Điểm danh</div>
+              </div>
+            </div>
+
+            <div class="overview-grid">
+              <div class="card">
+                <div class="card-head">
+                  <h2>Tiến trình Automation Vòng lặp #14</h2>
+                  <span class="badge-status online">Đang thực thi bình thường</span>
+                </div>
+                <p style="color: var(--muted); font-size: 13px; margin: 0 0 16px;">
+                  Hệ thống tự động thực hiện chuỗi hành động theo chu kỳ 5 phút: Chăm sóc ô đất → Cho ăn vật nuôi → Nấu món → Bán sạp.
+                </p>
+                <div style="display: flex; gap: 10px;">
+                  <button type="button" style="padding: 8px 16px; background: var(--card-inset); border: 1px solid var(--line); color: var(--fg); border-radius: var(--radius-md); cursor: pointer;">
+                    🚀 Buộc chạy vòng lặp ngay
+                  </button>
+                  <button type="button" style="padding: 8px 16px; background: var(--card-inset); border: 1px solid var(--line); color: var(--fg); border-radius: var(--radius-md); cursor: pointer;">
+                    🚪 Đăng xuất sau khi xong chu kỳ
+                  </button>
+                  <button type="button" style="padding: 8px 16px; background: var(--card-inset); border: 1px solid var(--err-line); color: var(--err); border-radius: var(--radius-md); cursor: pointer;">
+                    🛑 Dừng khẩn cấp
+                  </button>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head">
+                  <h2>Chế độ Tự động hóa</h2>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <button type="button" style="padding: 10px; background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); border-radius: var(--radius-md); font-weight: 600; text-align: left; cursor: pointer;">
+                    🌱 Tự động Nông trại (Auto Farm) - Đang BẬT
+                  </button>
+                  <button type="button" style="padding: 10px; background: var(--card-inset); border: 1px solid var(--line); color: var(--muted); border-radius: var(--radius-md); text-align: left; cursor: pointer;">
+                    🎣 Tự động Câu cá (Auto Fishing) - TẮT
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 2: NÔNG TRẠI (WIDE 2-COLUMN VIEW) -->
+          <div class="section-view" id="sec-farm">
+            <div class="canvas-header">
+              <div class="canvas-title-group">
+                <h1>🌱 Kế hoạch Ô đất & Quản lý Nông trại</h1>
+                <p class="canvas-desc">Xem toàn bộ 48 ô đất cùng lúc, quy hoạch loại hạt giống và cấu hình bán tự động mà không cần cuộn trang.</p>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn-header-ghost">Áp dụng cho tất cả ô</button>
+                <button type="button" style="padding: 7px 14px; background: var(--accent); color: #0d1017; border: 0; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer;">Lưu kế hoạch</button>
+              </div>
+            </div>
+
+            <div class="farm-grid-2col">
+              <!-- Left Col: 48-Cell Tree Grid -->
+              <div class="card tree-grid-container">
+                <div class="card-head">
+                  <h2>Sơ đồ 48 Ô đất (8 cột x 6 hàng)</h2>
+                  <div class="palette-row">
+                    <span style="font-size: 12px; color: var(--muted);">Chọn hạt giống:</span>
+                    <div class="palette-item active">🌾 Lúa</div>
+                    <div class="palette-item">🌽 Ngô</div>
+                    <div class="palette-item">🥕 Cà rốt</div>
+                    <div class="palette-item">🍅 Cà chua</div>
+                  </div>
+                </div>
+
+                <div class="tree-plan-grid" id="tree-grid-demo">
+                  <!-- Generated via script for 48 cells -->
+                </div>
+
+                <div style="display: flex; gap: 16px; font-size: 11px; color: var(--muted); padding-top: 6px;">
+                  <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: var(--ok); border-radius: 2px;"></span> Chín (Sẵn sàng thu)</span>
+                  <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: var(--accent); border-radius: 2px;"></span> Đang phát triển</span>
+                  <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: var(--warn); border-radius: 2px;"></span> Cần tưới/bón</span>
+                  <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; border: 1px dashed var(--muted); border-radius: 2px;"></span> Trống / Mặc định</span>
+                </div>
+              </div>
+
+              <!-- Right Col: Livestock & Auto Sell Rules -->
+              <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="card">
+                  <div class="card-head">
+                    <h2>Chuồng trại vật nuôi</h2>
+                    <span class="badge-status online">10 con</span>
+                  </div>
+                  <div class="animal-card-list">
+                    <div class="animal-row">
+                      <div><strong>🐔 6x Gà lấy trứng</strong><div style="font-size: 12px; color: var(--muted);">No: 95% • Thu sau 32m</div></div>
+                      <span class="badge-status online">Đang lớn</span>
+                    </div>
+                    <div class="animal-row">
+                      <div><strong>🐄 4x Bò sữa</strong><div style="font-size: 12px; color: var(--muted);">No: 100% • Thu sau 1h15m</div></div>
+                      <span class="badge-status online">Sẵn sàng vắt sữa</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-head">
+                    <h2>Quy tắc tự động bán sản phẩm</h2>
+                  </div>
+                  <table class="data-table">
+                    <thead>
+                      <tr><th>Nông sản</th><th>Giữ lại</th><th>Hành động</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>🌾 Lúa</td><td>0</td><td>Bán hết trên sạp</td></tr>
+                      <tr><td>🌽 Ngô</td><td>50</td><td>Giữ nấu cám</td></tr>
+                      <tr><td>🥚 Trứng gà</td><td>20</td><td>Bán dư thừa</td></tr>
+                      <tr><td>🥛 Sữa bò</td><td>10</td><td>Bán dư thừa</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 3: CÂU CÁ -->
+          <div class="section-view" id="sec-fishing">
+            <div class="canvas-header">
+              <div class="canvas-title-group">
+                <h1>🎣 Phân hệ Tự động Câu cá</h1>
+                <p class="canvas-desc">Cấu hình khu vực câu Map 27, tự động mua vé Cầu tàu, quản lý cần câu và mồi câu.</p>
+              </div>
+            </div>
+
+            <div class="fishing-grid-2col">
+              <div class="card">
+                <div class="card-head"><h2>Cấu hình câu cá</h2></div>
+                <div style="display: flex; flex-direction: column; gap: 14px;">
+                  <div>
+                    <label style="font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px;">Khu vực câu cá</label>
+                    <select style="width: 100%; padding: 8px 12px; background: var(--card-inset); border: 1px solid var(--line); color: var(--fg); border-radius: var(--radius-sm);">
+                      <option>Map 27 - Cầu tàu (Pier Fishing - Khuyên dùng)</option>
+                      <option>Map 27 - Hồ cá mập (Cần vé Lượng)</option>
+                      <option>Map 25 - Bờ sông khu sinh thái</option>
+                    </select>
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                      <label style="font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px;">Loại cần câu</label>
+                      <select style="width: 100%; padding: 8px 12px; background: var(--card-inset); border: 1px solid var(--line); color: var(--fg); border-radius: var(--radius-sm);">
+                        <option>Cần câu tre (Mặc định)</option>
+                        <option>Cần câu sắt</option>
+                        <option>Cần câu VIP</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style="font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px;">Loại mồi câu</label>
+                      <select style="width: 100%; padding: 8px 12px; background: var(--card-inset); border: 1px solid var(--line); color: var(--fg); border-radius: var(--radius-sm);">
+                        <option>Mồi giun (Tự mua thêm khi hết)</option>
+                        <option>Mồi tôm</option>
+                        <option>Mồi đặc biệt</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style="padding: 10px; background: var(--card-inset); border-radius: var(--radius-md); border: 1px solid var(--line);">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                      <input type="checkbox" checked>
+                      <span>Tự động mua vé Cầu tàu khi hết lượt (5,000 xu/vé)</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head"><h2>Thống kê buổi câu hôm nay</h2></div>
+                <div class="stat-list">
+                  <div class="stat-item"><span>Tổng số cá đã câu:</span><strong>142 con</strong></div>
+                  <div class="stat-item"><span>Tỷ lệ giật thành công (ML Solver):</span><strong style="color: var(--ok);">97.2%</strong></div>
+                  <div class="stat-item"><span>Cá Quả:</span><strong>48 con</strong></div>
+                  <div class="stat-item"><span>Cá Rô phi:</span><strong>62 con</strong></div>
+                  <div class="stat-item"><span>Cá Mập mini:</span><strong style="color: var(--gold);">4 con</strong></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 4: NHIỆM VỤ -->
+          <div class="section-view" id="sec-quests">
+            <div class="canvas-header">
+              <div class="canvas-title-group">
+                <h1>📜 Nhiệm vụ & Điểm danh Hàng ngày</h1>
+                <p class="canvas-desc">Theo dõi tiến độ chuỗi nhiệm vụ NPC Lái Buôn (Tân thủ, Nhà nông, Thợ câu).</p>
+              </div>
+            </div>
+
+            <div class="quests-container">
+              <div class="attendance-banner">
+                <div class="attendance-info">
+                  <h3>⭐ Điểm danh NPC Lái Buôn (Hôm nay: Sẵn sàng nhận)</h3>
+                  <div style="font-size: 13px; color: var(--fg);">Chuỗi điểm danh liên tục 12 ngày • Phần thưởng: 50,000 xu + 2 Phân bón</div>
+                </div>
+                <button type="button" style="padding: 8px 16px; background: var(--gold); color: #10131a; font-weight: 700; border: none; border-radius: var(--radius-md); cursor: pointer;">
+                  Nhận thưởng ngay
+                </button>
+              </div>
+
+              <div class="quest-subtabs">
+                <button type="button" class="quest-subtab active">🌾 Nhiệm vụ Nhà Nông</button>
+                <button type="button" class="quest-subtab">🎣 Nhiệm vụ Thợ Câu</button>
+                <button type="button" class="quest-subtab">🌟 Nhiệm vụ Tân Thủ</button>
+              </div>
+
+              <div class="quest-card-grid">
+                <div class="quest-card claimable">
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <strong>Thu hoạch 100 cây lúa nước</strong>
+                    <span class="badge-status online">Hoàn thành</span>
+                  </div>
+                  <p style="font-size: 12px; color: var(--muted); margin: 0;">Trồng và thu hoạch 100 cây lúa trên các ô đất trang trại của bạn.</p>
+                  <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+                      <span>Tiến độ</span><span>100 / 100</span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-fill gold" style="width: 100%;"></div></div>
+                  </div>
+                  <button type="button" style="width: 100%; padding: 8px; background: var(--accent); color: #0d1017; font-weight: 600; border: none; border-radius: var(--radius-sm); cursor: pointer;">
+                    Trả nhiệm vụ (+20,000 xu)
+                  </button>
+                </div>
+
+                <div class="quest-card">
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <strong>Vắt sữa 20 lần</strong>
+                    <span style="color: var(--muted); font-size: 12px;">Đang làm</span>
+                  </div>
+                  <p style="font-size: 12px; color: var(--muted); margin: 0;">Cho bò ăn đầy đủ và thu hoạch 20 bình sữa tươi.</p>
+                  <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+                      <span>Tiến độ</span><span>14 / 20</span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 70%;"></div></div>
+                  </div>
+                  <button type="button" disabled style="width: 100%; padding: 8px; background: var(--card-inset); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-sm); cursor: not-allowed;">
+                    Chưa hoàn thành
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 5: BẾP ĂN -->
+          <div class="section-view" id="sec-cooking">
+            <div class="canvas-header">
+              <div class="canvas-title-group">
+                <h1>🍳 Nhà bếp & Chế biến Món ăn</h1>
+                <p class="canvas-desc">3 Nồi nấu tự động, công thức chế biến thức ăn gia súc và món ăn cao cấp.</p>
+              </div>
+            </div>
+            <div class="kpi-row">
+              <div class="kpi-card">
+                <div class="kpi-head"><span>Nồi 1</span><span>🍲</span></div>
+                <div class="kpi-num">Cơm chiên trứng</div>
+                <div class="kpi-sub">Xong sau: 04:12</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-head"><span>Nồi 2</span><span>🥩</span></div>
+                <div class="kpi-num">Thịt bò xào</div>
+                <div class="kpi-sub">Xong sau: 12:40</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-head"><span>Nồi 3</span><span>🥘</span></div>
+                <div class="kpi-num" style="color: var(--muted);">Trống</div>
+                <div class="kpi-sub" style="color: var(--accent);">Bấm để chọn món</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 6: TÀI SẢN -->
+          <div class="section-view" id="sec-assets">
+            <div class="canvas-header">
+              <div class="canvas-title-group">
+                <h1>🎒 Kho đồ & Danh mục Tài sản</h1>
+                <p class="canvas-desc">Quản lý nông sản dự trữ, vật phẩm hỗ trợ và hạt giống trong kho.</p>
+              </div>
+            </div>
+            <div class="card">
+              <table class="data-table">
+                <thead>
+                  <tr><th>Vật phẩm / Nông sản</th><th>Số lượng</th><th>Giá sạp</th><th>Tổng giá trị</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>🌾 Lúa nước</td><td>4,200 bó</td><td>25 xu</td><td>105,000 xu</td></tr>
+                  <tr><td>🌽 Bắp ngô</td><td>1,500 bắp</td><td>80 xu</td><td>120,000 xu</td></tr>
+                  <tr><td>🥕 Cà rốt</td><td>850 củ</td><td>120 xu</td><td>102,000 xu</td></tr>
+                  <tr><td>🐟 Cá Quả</td><td>64 con</td><td>450 xu</td><td>28,800 xu</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SECTION 7: SẠP HÀNG -->
+          <div class="section-view" id="sec-shop">
+            <div class="canvas-header">
+              <div class="canvas-title-group">
+                <h1>🏪 Sạp hàng Cá nhân & Lịch sử Bán</h1>
+                <p class="canvas-desc">8 Slot sạp hàng ngoài chợ, cơ chế tự động treo bán và thu hồi xu.</p>
+              </div>
+            </div>
+            <div class="card">
+              <table class="data-table">
+                <thead>
+                  <tr><th>Slot</th><th>Mặt hàng</th><th>Đơn giá</th><th>Trạng thái</th><th>Thu tiền</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Slot 1</td><td>🌾 Lúa x100</td><td>2,500 xu</td><td><span class="badge-status online">Đã bán</span></td><td><button type="button" class="btn-header-ghost" style="padding: 3px 8px; font-size: 11px;">Thu xu</button></td></tr>
+                  <tr><td>Slot 2</td><td>🌽 Ngô x50</td><td>4,000 xu</td><td><span class="badge-status online">Đã bán</span></td><td><button type="button" class="btn-header-ghost" style="padding: 3px 8px; font-size: 11px;">Thu xu</button></td></tr>
+                  <tr><td>Slot 3</td><td>🐟 Cá Quả x10</td><td>4,500 xu</td><td><span style="color: var(--muted); font-size: 12px;">Đang treo</span></td><td>-</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SECTION 8: NHẬT KÝ -->
+          <div class="section-view" id="sec-logs">
+            <div class="canvas-header">
+              <div class="canvas-title-group">
+                <h1>📟 Nhật ký Gói tin (Live Packet Stream)</h1>
+                <p class="canvas-desc">Theo dõi các gói tin opcode gửi/nhận thời gian thực giữa client và server Avatar.</p>
+              </div>
+              <button type="button" class="btn-header-ghost">Xóa nhật ký</button>
+            </div>
+            <div class="log-terminal">
+              <div class="log-line"><span class="log-time">14:32:01</span><span class="log-dir tx">TX</span><span class="log-op">cmd 45</span><span class="log-msg">Gửi yêu cầu thu hoạch 16 ô lúa nước</span></div>
+              <div class="log-line"><span class="log-time">14:32:02</span><span class="log-dir rx">RX</span><span class="log-op">cmd 45</span><span class="log-msg">Thu hoạch thành công +1,600 lúa (+400 exp)</span></div>
+              <div class="log-line"><span class="log-time">14:32:03</span><span class="log-dir tx">TX</span><span class="log-op">cmd 41</span><span class="log-msg">Gieo hạt giống Lúa vào ô 1..16</span></div>
+              <div class="log-line"><span class="log-time">14:32:04</span><span class="log-dir rx">RX</span><span class="log-op">cmd 41</span><span class="log-msg">Gieo hạt hoàn tất</span></div>
+              <div class="log-line"><span class="log-time">14:32:05</span><span class="log-dir tx">TX</span><span class="log-op">cmd -62</span><span class="log-msg">Mở hội thoại NPC Lái buôn kiểm tra nhiệm vụ</span></div>
+              <div class="log-line"><span class="log-time">14:32:06</span><span class="log-dir rx">RX</span><span class="log-op">cmd -62</span><span class="log-msg">Nhận custom tab: 1 nhiệm vụ hoàn thành có thể nhận thưởng</span></div>
+            </div>
+          </div>
+
+        </main>
+      </div>
+
+      <!-- Bottom Mini Telemetry Ticker -->
+      <footer class="bottom-telemetry-bar">
+        <div class="mini-log-ticker">
+          <span class="ticker-dot"></span>
+          <span style="color: var(--ok); font-weight: 600;">[LIVE]</span>
+          <span>14:32:06 RX cmd -62: Nhận custom tab NPC Lái buôn: 1 nhiệm vụ hoàn thành</span>
+        </div>
+        <div>
+          <button type="button" class="btn-log-toggle" onclick="selectSection('logs')">Xem đầy đủ Log (Phím 8)</button>
+        </div>
+      </footer>
+    </div>
+
+    <!-- ====================================================================
+         2. LEGACY DESIGN: 720px RIGHT DRAWER (FOR DIRECT COMPARISON)
+         ==================================================================== -->
+    <div class="legacy-drawer-container" id="view-legacy">
+      <div class="legacy-drawer">
+        <div class="legacy-drawer-header">
+          <div>
+            <p style="margin: 0; font-size: 11px; text-transform: uppercase; color: var(--muted);">VẬN HÀNH</p>
+            <h2 style="margin: 0; font-size: 18px;">Vận hành farmer_pro_99</h2>
+          </div>
+          <button type="button" class="btn-header-ghost" onclick="switchView('console')">✕</button>
+        </div>
+        <div class="legacy-drawer-body">
+          <div class="legacy-notice">
+            <strong>⚠️ Nhược điểm của thiết kế cũ trên Desktop:</strong><br>
+            - Bị ép trong khung drawer hẹp 720px ở góc phải màn hình, lãng phí 65% diện tích màn hình lớn.<br>
+            - Trên desktop <strong>hoàn toàn không có Tab điều hướng</strong>, tất cả 9 panel xếp chồng thẳng đứng.<br>
+            - Người dùng phải cuộn chuột liên tục từ trên xuống dưới để tìm cấu hình, rất mỏi tay và mất tập trung.
+          </div>
+
+          <div class="legacy-stack-item">
+            <h3>Panel 1: Trạng thái & Điều khiển</h3>
+            <p style="color: var(--muted); font-size: 12px;">Bật/tắt tự động, chuyển chế độ Auto Farm / Fishing...</p>
+          </div>
+          <div class="legacy-stack-item">
+            <h3>Panel 2: Cài đặt nông trại & 48 ô đất</h3>
+            <p style="color: var(--muted); font-size: 12px;">Sơ đồ ô đất bị bóp hẹp trong chiều ngang 720px...</p>
+          </div>
+          <div class="legacy-stack-item">
+            <h3>Panel 3: Khu vực câu cá</h3>
+            <p style="color: var(--muted); font-size: 12px;">Cần tiếp tục cuộn xuống thêm để xem cấu hình cần và mồi câu...</p>
+          </div>
+          <div class="legacy-stack-item">
+            <h3>Panel 4: Nhiệm vụ NPC</h3>
+            <p style="color: var(--muted); font-size: 12px;">Cuộn tiếp qua các thanh tiến độ...</p>
+          </div>
+          <div class="legacy-stack-item">
+            <h3>Panel 5: Bếp ăn</h3>
+            <p style="color: var(--muted); font-size: 12px;">Cuộn tiếp để xem hàng đợi nấu...</p>
+          </div>
+          <div class="legacy-stack-item">
+            <h3>Panel 6: Kho tài sản</h3>
+            <p style="color: var(--muted); font-size: 12px;">Cuộn tiếp để xem bảng nông sản...</p>
+          </div>
+          <div class="legacy-stack-item">
+            <h3>Panel 7: Sạp hàng</h3>
+            <p style="color: var(--muted); font-size: 12px;">Cuộn tiếp để xem slot bán...</p>
+          </div>
+          <div class="legacy-stack-item">
+            <h3>Panel 8: Nhật ký Log</h3>
+            <p style="color: var(--muted); font-size: 12px;">Cuối cùng ở đáy drawer sau hàng nghìn pixel cuộn chuột...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Generate 48 demo cells for the farm grid
+    const treeGrid = document.getElementById('tree-grid-demo');
+    if (treeGrid) {
+      for (let i = 1; i <= 48; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'tree-cell';
+        let status = 'empty';
+        let label = 'Trống';
+        if (i <= 16) {
+          status = 'ripe';
+          label = '🌾 Chín';
+        } else if (i <= 32) {
+          status = 'growing';
+          label = '🌾 42m';
+        } else if (i <= 36) {
+          status = 'dry';
+          label = '💧 Khô';
+        }
+        cell.classList.add(status);
+        cell.innerHTML = `<span class="cell-slot">#${i}</span><span>${label}</span>`;
+        cell.title = `Ô đất số ${i} - ${label}`;
+        treeGrid.appendChild(cell);
+      }
+    }
+
+    // Switch view mode between New Desktop Console and Legacy Drawer
+    function switchView(mode) {
+      const consoleEl = document.getElementById('view-console');
+      const legacyEl = document.getElementById('view-legacy');
+      const btnConsole = document.getElementById('btn-show-console');
+      const btnLegacy = document.getElementById('btn-show-legacy');
+
+      if (mode === 'console') {
+        consoleEl.style.display = 'flex';
+        legacyEl.style.display = 'none';
+        btnConsole.classList.add('active');
+        btnLegacy.classList.remove('active');
+      } else {
+        consoleEl.style.display = 'none';
+        legacyEl.style.display = 'flex';
+        btnConsole.classList.remove('active');
+        btnLegacy.classList.add('active');
+      }
+    }
+
+    // Section Switching Logic
+    const sections = ['overview', 'farm', 'fishing', 'quests', 'cooking', 'assets', 'shop', 'logs'];
+    function selectSection(secId) {
+      sections.forEach(id => {
+        const nav = document.getElementById(`nav-${id}`);
+        const view = document.getElementById(`sec-${id}`);
+        if (nav) nav.classList.toggle('active', id === secId);
+        if (view) view.classList.toggle('active', id === secId);
+      });
+    }
+
+    // Keyboard Shortcuts (1-8 to switch sections)
+    window.addEventListener('keydown', (e) => {
+      // Don't trigger if user is typing in an input
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= 8) {
+        selectSection(sections[num - 1]);
+      }
+    });
+
+    // Auto toggle master button
+    let autoRunning = true;
+    function toggleAutoMaster() {
+      autoRunning = !autoRunning;
+      const btn = document.getElementById('btn-auto-master');
+      const label = document.getElementById('auto-master-label');
+      if (autoRunning) {
+        btn.className = 'btn-auto-toggle on';
+        label.textContent = 'Auto Đang Chạy';
+      } else {
+        btn.className = 'btn-auto-toggle off';
+        label.textContent = 'Auto Đang Tắt';
+      }
+    }
+  </script>
+</body>
+</html>
