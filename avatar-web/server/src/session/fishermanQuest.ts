@@ -28,6 +28,13 @@ export const FISHERMAN_QUEST_FISH_MAP: Readonly<Record<string, FishermanQuestFis
     'ca chim': { fishId: 454, map: 16, ticketId: 460 },
     chim: { fishId: 454, map: 16, ticketId: 460 },
     'ca map': { fishId: 457, map: 16, ticketId: 460 },
+    // Map 27: Bến tàu / Biển Hawai (Vé câu bến tàu 4876)
+    'ca lia thia': { fishId: 4504, map: 27, ticketId: 4876 },
+    'lia thia': { fishId: 4504, map: 27, ticketId: 4876 },
+    'ca chep': { fishId: 4505, map: 27, ticketId: 4876 },
+    'ca he': { fishId: 4506, map: 27, ticketId: 4876 },
+    he: { fishId: 4506, map: 27, ticketId: 4876 },
+    'ca vang': { fishId: 4507, map: 27, ticketId: 4876 },
   });
 
 /** Lowercase + bỏ dấu tiếng Việt + trim + gộp khoảng trắng. */

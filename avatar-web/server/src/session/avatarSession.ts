@@ -2455,6 +2455,7 @@ export class AvatarSession {
       });
       this.pushLog(`[thợ câu] mục tiêu: ${next.name} ${next.current}/${next.total} → map ${resolved.map}.`);
       if (resolved.map === 16) this.pushLog('[thợ câu] map 16 dùng vé Lượng (2 Lượng/vé 460).');
+      if (resolved.map === 27) this.pushLog('[thợ câu] map 27 dùng vé bến tàu (12.000 xu/vé 4876).');
       this.emitAutomation();
       // FISH: chỉ override map, giữ rod/bait/area/castDelay của user.
       this.fishingConfig = {
