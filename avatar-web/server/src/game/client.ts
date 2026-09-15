@@ -1479,7 +1479,6 @@ export class GameClient extends EventEmitter {
         // OPEN_INFO_FARM — thông tin chuỗi nhiệm vụ tiến trình (Tân Thủ / Nhà Nông)
         try {
           const data = msg.getData();
-          this.emit('log', `nhận gói 104: length=${data.length}, hex=${data.toString('hex')}`);
           const res = decodeProgressQuestPacket(data, this.progressQuestMappings, {
             trees: this.trees,
             items: this.items,

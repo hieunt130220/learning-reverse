@@ -1,1 +1,47 @@
-{"generated": "2026-09-14T15:20:00+07:00", "sections": [{"groups": [], "id": "mockups", "label": "Mockups"}, {"groups": [{"files": [{"label": "README.md", "path": "design-systems/avatar-web/README.md"}, {"label": "SKILL.md", "path": "design-systems/avatar-web/SKILL.md"}, {"label": "preview.html", "path": "design-systems/avatar-web/preview.html"}, {"label": "colors_and_type.css", "path": "design-systems/avatar-web/tokens/colors_and_type.css"}], "slug": "avatar-web"}], "id": "design-systems", "label": "Design Systems"}]}
+{
+  "generated": "2026-09-15T14:35:00+07:00",
+  "sections": [
+    {
+      "id": "mockups",
+      "label": "Mockups",
+      "groups": [
+        {
+          "slug": "desktop-operations",
+          "files": [
+            {
+              "label": "index.html",
+              "path": "mockups/desktop-operations/index.html"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "design-systems",
+      "label": "Design Systems",
+      "groups": [
+        {
+          "slug": "avatar-web",
+          "files": [
+            {
+              "label": "preview.html",
+              "path": "design-systems/avatar-web/preview.html"
+            },
+            {
+              "label": "README.md",
+              "path": "design-systems/avatar-web/README.md"
+            },
+            {
+              "label": "SKILL.md",
+              "path": "design-systems/avatar-web/SKILL.md"
+            },
+            {
+              "label": "colors_and_type.css",
+              "path": "design-systems/avatar-web/tokens/colors_and_type.css"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
