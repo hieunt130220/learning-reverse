@@ -751,6 +751,11 @@ export class AvatarSession {
       || this.pendingFindNpcTransitions > 0;
   }
 
+  /** Kiểm tra người dùng có đang yêu cầu một trong các chế độ tự động câu cá hay không (auto_fishing hoặc auto_fisherman_quest). */
+  private isFishingAutomationActive(): boolean {
+    return this.desiredMode === 'auto_fishing' || this.desiredMode === 'auto_fisherman_quest';
+  }
+
   /** auto_fishing hoặc auto_fisherman_quest (desired lẫn active): fishing loop đang/khả dĩ chạy. */
   private isFishingMode(): boolean {
     return this.desiredMode === 'auto_fishing'
@@ -2597,7 +2602,7 @@ export class AvatarSession {
       signal.aborted
       || client.status !== 'online'
       || !this.isCurrent(client, epoch)
-      || this.desiredMode !== 'auto_fishing'
+      || !this.isFishingAutomationActive()
     ) return false;
 
     const cfg = this.fishingConfig.config;
@@ -2608,7 +2613,7 @@ export class AvatarSession {
     this.emitAutomation();
 
     if (missingType === 'ticket') {
-      if (!cfg.autoBuyTicket) {
+      if (!cfg.autoBuyTicket && this.desiredMode !== 'auto_fisherman_quest') {
         const msg = 'Thiếu vé câu nhưng chưa bật tự mua vé';
         this.pushLog(`[câu cá] ${msg} — Dừng câu`);
         this.fishingRuntime.lastError = msg;
@@ -2949,7 +2954,7 @@ export class AvatarSession {
       signal.aborted
       || client.status !== 'online'
       || !this.isCurrent(client, epoch)
-      || this.desiredMode !== 'auto_fishing'
+      || !this.isFishingAutomationActive()
     ) return false;
 
     this.fishingRuntime.status = 'selling';
@@ -2969,7 +2974,7 @@ export class AvatarSession {
     const MAX_SELL_ATTEMPTS = 40; // Tối đa số ô rương
 
     for (let attempt = 1; attempt <= MAX_SELL_ATTEMPTS; attempt++) {
-      if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return false;
+      if (signal.aborted || !this.isCurrent(client, epoch) || !this.isFishingAutomationActive()) return false;
 
       let soldInThisTurn = false;
       let turnXuGained = 0;
@@ -3040,7 +3045,7 @@ export class AvatarSession {
       client.chatPark('banca');
       await sellTurnPromise;
 
-      if (signal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') return false;
+      if (signal.aborted || !this.isCurrent(client, epoch) || !this.isFishingAutomationActive()) return false;
 
       if (noMoreFish) {
         break;
@@ -3082,7 +3087,7 @@ export class AvatarSession {
       || client.status !== 'online'
       || !this.isCurrent(client, epoch)
       || !this.isAutomationGenerationCurrent(generation)
-      || this.desiredMode !== 'auto_fishing'
+      || !this.isFishingAutomationActive()
     ) return false;
 
     const config = this.fishingConfig.config;
@@ -3103,7 +3108,7 @@ export class AvatarSession {
       signal.aborted
       || !this.isCurrent(client, epoch)
       || !this.isAutomationGenerationCurrent(generation)
-      || this.desiredMode !== 'auto_fishing'
+      || !this.isFishingAutomationActive()
     ) return false;
 
     // Gửi TX90 (board list request) — probe xác nhận server cần bước này trước joinPark
@@ -3139,7 +3144,7 @@ export class AvatarSession {
       signal.aborted
       || !this.isCurrent(client, epoch)
       || !this.isAutomationGenerationCurrent(generation)
-      || this.desiredMode !== 'auto_fishing'
+      || !this.isFishingAutomationActive()
     ) return false;
 
     try {
@@ -3149,7 +3154,7 @@ export class AvatarSession {
         signal.aborted
         || !this.isCurrent(client, epoch)
         || !this.isAutomationGenerationCurrent(generation)
-        || this.desiredMode !== 'auto_fishing'
+        || !this.isFishingAutomationActive()
       ) return false;
       const msg = (err as Error).message;
       this.fishingRuntime.status = 'rejected';
@@ -3163,7 +3168,7 @@ export class AvatarSession {
       signal.aborted
       || !this.isCurrent(client, epoch)
       || !this.isAutomationGenerationCurrent(generation)
-      || this.desiredMode !== 'auto_fishing'
+      || !this.isFishingAutomationActive()
     ) return false;
     this.pushLog(`[câu cá] đã vào khu vực câu cá map ${map} — handler=${client.currentHandlerContext}`);
     // Chờ 3000ms để server đồng bộ hoàn toàn trạng thái thế giới và nhân vật trước khi gọi startFishing.
@@ -3174,7 +3179,7 @@ export class AvatarSession {
       signal.aborted
       || !this.isCurrent(client, epoch)
       || !this.isAutomationGenerationCurrent(generation)
-      || this.desiredMode !== 'auto_fishing'
+      || !this.isFishingAutomationActive()
     ) return false;
 
     return true;
@@ -3191,7 +3196,7 @@ export class AvatarSession {
       || client.status !== 'online'
       || !this.isCurrent(client, epoch)
       || !this.isAutomationGenerationCurrent(generation)
-      || this.desiredMode !== 'auto_fishing'
+      || !this.isFishingAutomationActive()
     ) return false;
 
     // Nếu nhân vật chưa ở trong Park context (handler 9), tự động vào map trước
@@ -3213,7 +3218,7 @@ export class AvatarSession {
         signal.aborted
         || !this.isCurrent(client, epoch)
         || !this.isAutomationGenerationCurrent(generation)
-        || this.desiredMode !== 'auto_fishing'
+        || !this.isFishingAutomationActive()
       ) return false;
 
       this.fishingRuntime.status = 'starting';
@@ -3271,7 +3276,7 @@ export class AvatarSession {
         signal.aborted
         || !this.isCurrent(client, epoch)
         || !this.isAutomationGenerationCurrent(generation)
-        || this.desiredMode !== 'auto_fishing'
+        || !this.isFishingAutomationActive()
       ) return false;
 
       if (!startResult.iss) {
@@ -3445,25 +3450,29 @@ export class AvatarSession {
     signal: AbortSignal,
   ): Promise<void> {
     try {
-      const initialFarm = await this.runFishingFarmCycle(
-        'initial',
-        client,
-        generation,
-        epoch,
-        signal,
-      );
-      if (initialFarm === 'cancelled' || initialFarm === 'reconnect') return;
+      if (this.desiredMode === 'auto_fishing') {
+        const initialFarm = await this.runFishingFarmCycle(
+          'initial',
+          client,
+          generation,
+          epoch,
+          signal,
+        );
+        if (initialFarm === 'cancelled' || initialFarm === 'reconnect') return;
+      }
       if (
         signal.aborted
         || !this.isCurrent(client, epoch)
         || !this.isAutomationGenerationCurrent(generation)
-        || this.desiredMode !== 'auto_fishing'
+        || !this.isFishingAutomationActive()
       ) return;
 
       this.fishingFarmPhase = 'moving-to-park';
       if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
       this.fishingFarmPhase = 'fishing';
-      this.scheduleFishingFarm(generation, epoch);
+      if (this.desiredMode === 'auto_fishing') {
+        this.scheduleFishingFarm(generation, epoch);
+      }
 
       const config = this.fishingConfig.config;
       let catchesSinceBreak = 0;
@@ -3477,7 +3486,7 @@ export class AvatarSession {
         !signal.aborted
         && this.isCurrent(client, epoch)
         && this.isAutomationGenerationCurrent(generation)
-        && this.desiredMode === 'auto_fishing'
+        && this.isFishingAutomationActive()
         && client.status === 'online'
       ) {
         if (this.fishingFarmDue) {
@@ -3554,7 +3563,7 @@ export class AvatarSession {
           || client.status !== 'online'
           || !this.isCurrent(client, epoch)
           || !this.isAutomationGenerationCurrent(generation)
-          || this.desiredMode !== 'auto_fishing'
+          || !this.isFishingAutomationActive()
           || catchResult === 'aborted'
         ) break;
 
@@ -3597,7 +3606,7 @@ export class AvatarSession {
               || client.status !== 'online'
               || !this.isCurrent(client, epoch)
               || !this.isAutomationGenerationCurrent(generation)
-              || this.desiredMode !== 'auto_fishing'
+              || !this.isFishingAutomationActive()
             ) break;
             if (this.fishingFarmDue) {
               const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
@@ -3632,7 +3641,7 @@ export class AvatarSession {
               || client.status !== 'online'
               || !this.isCurrent(client, epoch)
               || !this.isAutomationGenerationCurrent(generation)
-              || this.desiredMode !== 'auto_fishing'
+              || !this.isFishingAutomationActive()
             ) break;
             if (this.fishingFarmDue) {
               const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
@@ -3654,7 +3663,7 @@ export class AvatarSession {
               || client.status !== 'online'
               || !this.isCurrent(client, epoch)
               || !this.isAutomationGenerationCurrent(generation)
-              || this.desiredMode !== 'auto_fishing'
+              || !this.isFishingAutomationActive()
             ) break;
             if (this.fishingFarmDue) {
               const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
@@ -3676,7 +3685,7 @@ export class AvatarSession {
           || client.status !== 'online'
           || !this.isCurrent(client, epoch)
           || !this.isAutomationGenerationCurrent(generation)
-          || this.desiredMode !== 'auto_fishing'
+          || !this.isFishingAutomationActive()
         ) break;
 
         // Xử lý khi không bắt được cá (hết 35s không cắn câu hoặc giật hụt/sổng cá)
@@ -3689,7 +3698,7 @@ export class AvatarSession {
             || client.status !== 'online'
             || !this.isCurrent(client, epoch)
             || !this.isAutomationGenerationCurrent(generation)
-            || this.desiredMode !== 'auto_fishing'
+            || !this.isFishingAutomationActive()
           ) break;
           if (this.fishingFarmDue) {
             const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
@@ -3711,7 +3720,7 @@ export class AvatarSession {
           || client.status !== 'online'
           || !this.isCurrent(client, epoch)
           || !this.isAutomationGenerationCurrent(generation)
-          || this.desiredMode !== 'auto_fishing'
+          || !this.isFishingAutomationActive()
         ) break;
 
         // Bắt buộc gửi TX 44 (doCauCaXong) để server chốt kết quả và chuyển cá vào giỏ
@@ -3754,7 +3763,7 @@ export class AvatarSession {
           || client.status !== 'online'
           || !this.isCurrent(client, epoch)
           || !this.isAutomationGenerationCurrent(generation)
-          || this.desiredMode !== 'auto_fishing'
+          || !this.isFishingAutomationActive()
         ) break;
 
         if (this.fishingFarmDue) {
@@ -3783,7 +3792,7 @@ export class AvatarSession {
             || client.status !== 'online'
             || !this.isCurrent(client, epoch)
             || !this.isAutomationGenerationCurrent(generation)
-            || this.desiredMode !== 'auto_fishing'
+            || !this.isFishingAutomationActive()
           ) break;
 
           if (this.fishingFarmDue) {
@@ -3798,7 +3807,7 @@ export class AvatarSession {
           || client.status !== 'online'
           || !this.isCurrent(client, epoch)
           || !this.isAutomationGenerationCurrent(generation)
-          || this.desiredMode !== 'auto_fishing'
+          || !this.isFishingAutomationActive()
         ) break;
 
         // Nghỉ giữa các lượt câu trước khi quăng cần lượt mới (kèm jitter ngẫu nhiên)
@@ -3815,7 +3824,7 @@ export class AvatarSession {
           || client.status !== 'online'
           || !this.isCurrent(client, epoch)
           || !this.isAutomationGenerationCurrent(generation)
-          || this.desiredMode !== 'auto_fishing'
+          || !this.isFishingAutomationActive()
         ) break;
 
         if (this.fishingFarmDue) {
@@ -3896,7 +3905,7 @@ export class AvatarSession {
       !this.isCurrent(client, epoch)
       || client.status !== 'online'
       || !this.wanted
-      || this.desiredMode !== 'auto_fishing'
+      || !this.isFishingAutomationActive()
       || client.playerId === undefined
       || payload.idUser !== client.playerId
     ) {
@@ -3935,7 +3944,7 @@ export class AvatarSession {
           if (this.client !== client) return;
           if (!this.isCurrent(client, epoch)) return;
           if (!this.wanted) return;
-          if (this.desiredMode !== 'auto_fishing') return;
+          if (!this.isFishingAutomationActive()) return;
           if (client.status !== 'online') return;
 
           if (!isFishingAutoTx43Enabled()) {
@@ -3999,7 +4008,7 @@ export class AvatarSession {
         if (this.client !== client) return;
         if (!this.isCurrent(client, epoch)) return;
         if (!this.wanted) return;
-        if (this.desiredMode !== 'auto_fishing') return;
+        if (!this.isFishingAutomationActive()) return;
         if (client.status !== 'online') return;
 
         // Verify answer matches domain
