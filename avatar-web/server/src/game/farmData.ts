@@ -1,5 +1,21 @@
 import { MyReader } from '../proto/reader.js';
 
+export interface HarvestReply { cellIndex: number; quantity: number }
+export interface PlantReply { idUser: number; cellIndex: number; seedId: number }
+
+/** RX 64: onHarvestTree(indexCell, number). Unknown layouts are not ACKs. */
+export function decodeHarvestReply(body: Buffer): HarvestReply | null {
+  if (body.length !== 3) return null;
+  const quantity = body.readInt16BE(1);
+  return quantity < 0 ? null : { cellIndex: body.readUInt8(0), quantity };
+}
+
+/** RX 66: onPlantSeed(idUser, indexCell, idSeed); -1 means clear soil. */
+export function decodePlantReply(body: Buffer): PlantReply | null {
+  if (body.length !== 6) return null;
+  return { idUser: body.readInt32BE(0), cellIndex: body.readUInt8(4), seedId: body.readInt8(5) };
+}
+
 /**
  * Giải mã gói dữ liệu farm tổng (`FarmMsgHandler.readFarmData` @0x639438),
  * đến trên cmd 69 (JOIN) và cmd 61. Cấu trúc lồng nhau (điều kiện + vòng lặp)
@@ -2178,5 +2194,4 @@ export function createEmptyDailyQuestState(): DailyQuestState {
     updatedAt: Date.now(),
   };
 }
-
 
