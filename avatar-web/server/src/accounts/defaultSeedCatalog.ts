@@ -8,4 +8,4 @@ export const DEFAULT_SEED_CATALOG: CachedSeed[] = DEFAULT_TREE_CATALOG.map((t) =
   value: t.value,
 }));
 
-export const XU_SEED_IDS: ReadonlySet<number> = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+export const XU_SEED_IDS: ReadonlySet<number> = new Set(DEFAULT_SEED_CATALOG.map((s) => s.id));
