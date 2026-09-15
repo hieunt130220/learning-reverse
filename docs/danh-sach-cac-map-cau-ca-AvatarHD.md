@@ -110,10 +110,13 @@ Bảng trích xuất trực tiếp từ vector khởi tạo bảng giá bán và
 
 Server push `RX 79 (CAN_CAU)` chứa `idFish` thuộc dải ID mở rộng:
 
-| ID (`idFish`) | Vị trí câu | Phân loại |
-| :---: | :---: | :--- |
-| **`4507`** | Map 27 (Bến tàu / Biển Hawai) | Cá biển hiếm / sự kiện (thời gian delay mini-game 20-25s) |
-| **`4510`** | Map 27 (Bến tàu / Biển Hawai) | Cá biển hiếm / sự kiện |
+| ID (`idFish`) | Vị trí câu | Tên loại cá / Phân loại | Ghi chú & Đặc điểm |
+| :---: | :---: | :--- | :--- |
+| **`4504`** | Map 27 (Bến tàu / Biển Hawai) | **Cá lia thia** | Cá biển Bến Tàu |
+| **`4505`** | Map 27 (Bến tàu / Biển Hawai) | **Cá chép** | Cá biển Bến Tàu (phân biệt với Cá chép vàng 450) |
+| **`4506`** | Map 27 (Bến tàu / Biển Hawai) | **Cá hề** | Cá biển Bến Tàu |
+| **`4507`** | Map 27 (Bến tàu / Biển Hawai) | **Cá vàng** | Cá biển Bến Tàu (thời gian delay mini-game 20-25s) |
+| **`4510`** | Map 27 (Bến tàu / Biển Hawai) | **Cá biển (4510)** | Cá biển hiếm / sự kiện |
 
 ### 3.3. Cá & Thủy Sản Trong Nông Trại (Farm / Ao Cá)
 
@@ -151,7 +154,7 @@ Các vật phẩm hỗ trợ câu cá nằm liền kề với ID cá trong cơ s
 | **Khu cá rô** | **`14`** | `(254, 82)` / `(460, 97)` | Vé câu cá rô (`ID 458`) | Cá rô (`444`), Cá lòng tong (`449`), Cá chép vàng (`450`) |
 | **Khu cá lóc** | **`15`** | `(36, 97)` | Vé câu cá lóc (`ID 459`, 10.000 xu) | Cá lóc (`451`), Cá nóc (`452`), Con cua (`453`) |
 | **Khu cá mập** | **`16`** | `(324, 157)` | Vé câu cá mập (`ID 460`, Lượng) | Cá chim (`454`), Cá đuối (`455`), Cá ngựa (`456`), Cá mập (`457`) |
-| **Bến tàu** | **`27`** | `(254, 82)` *(area 0)* | **Vé câu cá bến tàu** | Cá biển đặc biệt (`4507`, `4510`...) |
+| **Bến tàu** | **`27`** | `(254, 82)` *(area 0)* | **Vé câu cá bến tàu** | Cá lia thia (`4504`), Cá chép (`4505`), Cá hề (`4506`), Cá vàng (`4507`), Cá biển (`4510`) |
 
 ---
 

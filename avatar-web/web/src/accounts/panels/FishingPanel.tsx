@@ -93,7 +93,10 @@ export const FISH_NAMES: Record<number, string> = {
   455: 'Cá đuối',
   456: 'Cá ngựa',
   457: 'Cá mập',
-  4507: 'Cá biển (4507)',
+  4504: 'Cá lia thia',
+  4505: 'Cá chép',
+  4506: 'Cá hề',
+  4507: 'Cá vàng',
   4510: 'Cá biển (4510)',
 };
 
