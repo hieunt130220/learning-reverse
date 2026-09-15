@@ -2026,7 +2026,7 @@ export class AvatarSession {
       if (
         !this.isAutomationGenerationCurrent(generation)
         || epoch !== this.connectionEpoch
-        || this.desiredMode !== 'auto_fishing'
+        || !this.isFishingAutomationActive()
         || this.fishingAbortController !== parent
       ) return;
       this.fishingFarmDue = true;
@@ -2104,7 +2104,7 @@ export class AvatarSession {
       && this.isAutomationGenerationCurrent(generation)
       && this.isCurrent(client, epoch)
       && client.status === 'online'
-      && (allowNonFishingMode ? this.desiredMode !== 'off' : this.desiredMode === 'auto_fishing');
+      && (allowNonFishingMode ? this.desiredMode !== 'off' : this.isFishingAutomationActive());
   }
 
   private isCurrentFishingFarmOwnership(ownership: FishingFarmCycleOwnership): boolean {
@@ -2140,7 +2140,7 @@ export class AvatarSession {
       this.pushLog('[nông trại] Bỏ qua chu kỳ kèm Auto Fishing: chưa có cấu hình Auto Farm đã lưu.');
       return 'skipped';
     }
-    if (parentSignal.aborted || !this.isCurrent(client, epoch) || this.desiredMode !== 'auto_fishing') {
+    if (parentSignal.aborted || !this.isCurrent(client, epoch) || !this.isFishingAutomationActive()) {
       return 'cancelled';
     }
 
@@ -3415,7 +3415,7 @@ export class AvatarSession {
       signal.aborted
       || !this.isCurrent(client, epoch)
       || !this.isAutomationGenerationCurrent(generation)
-      || this.desiredMode !== 'auto_fishing'
+      || !this.isFishingAutomationActive()
     ) {
       return 'stop';
     }
@@ -3429,7 +3429,7 @@ export class AvatarSession {
         signal.aborted
         || !this.isCurrent(client, epoch)
         || !this.isAutomationGenerationCurrent(generation)
-        || this.desiredMode !== 'auto_fishing'
+        || !this.isFishingAutomationActive()
       ) {
         return 'stop';
       }
@@ -3450,7 +3450,7 @@ export class AvatarSession {
     signal: AbortSignal,
   ): Promise<void> {
     try {
-      if (this.desiredMode === 'auto_fishing') {
+      if (this.isFishingAutomationActive()) {
         const initialFarm = await this.runFishingFarmCycle(
           'initial',
           client,
@@ -3470,7 +3470,7 @@ export class AvatarSession {
       this.fishingFarmPhase = 'moving-to-park';
       if (!(await this.prepareFishingAtPark(client, generation, epoch, signal))) return;
       this.fishingFarmPhase = 'fishing';
-      if (this.desiredMode === 'auto_fishing') {
+      if (this.isFishingAutomationActive()) {
         this.scheduleFishingFarm(generation, epoch);
       }
 
