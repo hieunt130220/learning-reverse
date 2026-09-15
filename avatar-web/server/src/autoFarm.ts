@@ -18,6 +18,8 @@ import {
   isCellSpent,
   DEFAULT_FOOD_CATALOG,
   getProduceOrItemName,
+  type HarvestReply,
+  type PlantReply,
   type CookingState,
   type DailyQuestState,
   type FoodRecipe,
@@ -177,6 +179,8 @@ export interface AutoFarmState {
   lastActions: string[];
 }
 
+type FarmWaitResult<T> = { status: 'confirmed'; value: T } | { status: 'timeout' } | { status: 'cancelled' };
+
 export interface AutoFarmClient {
   status: string;
   farmState?: FarmState;
@@ -290,6 +294,7 @@ const DEFAULTS: AutoFarmConfig = {
 export class AutoFarm extends EventEmitter {
   private timer?: NodeJS.Timeout;
   private aborted = true;
+  private readonly pendingFarmWaitCancels = new Set<() => void>();
   private generation = 0;
   private activeCycle?: Promise<void>;
   private activeConfig: AutoFarmConfig = DEFAULTS;
@@ -409,6 +414,7 @@ export class AutoFarm extends EventEmitter {
   private requestStop(): void {
     this.aborted = true;
     this.generation += 1;
+    for (const cancel of [...this.pendingFarmWaitCancels]) cancel();
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     this.emit('state', this.state());
@@ -474,21 +480,70 @@ export class AutoFarm extends EventEmitter {
     return !received;
   }
 
+  /** Register before sending; every exit releases listeners and the timer. */
+  private waitFarmEvent<T>(
+    event: string, matches: (value: T) => boolean, send: () => void,
+    generation: number, timeoutMs: number,
+  ): Promise<FarmWaitResult<T>> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
+      const cleanup = (): void => {
+        if (timer) clearTimeout(timer);
+        this.client.removeListener(event, onValue);
+        this.client.removeListener('status', onStatus);
+        this.pendingFarmWaitCancels.delete(cancel);
+      };
+      const finish = (result: FarmWaitResult<T>): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(result);
+      };
+      const cancel = (): void => finish({ status: 'cancelled' });
+      const onStatus = (): void => { if (this.client.status !== 'online') cancel(); };
+      const onValue = (value: T): void => {
+        if (!this.isCurrent(generation) || this.client.status !== 'online') return cancel();
+        if (matches(value)) finish({ status: 'confirmed', value });
+      };
+      if (!this.isCurrent(generation) || this.client.status !== 'online') return cancel();
+      this.client.on(event, onValue);
+      this.client.on('status', onStatus);
+      this.pendingFarmWaitCancels.add(cancel);
+      timer = setTimeout(() => finish({ status: 'timeout' }), timeoutMs);
+      try { send(); } catch (error) {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          reject(error);
+        }
+      }
+    });
+  }
+
+  private async refreshFarmSnapshot(idFarm: number, generation: number): Promise<FarmState> {
+    const result = await this.waitFarmEvent<FarmState>(
+      'farm-snapshot', state => state.idFarm === idFarm,
+      () => this.client.enterFarm(), generation, FARM_ENTRY_TIMEOUT_MS,
+    );
+    this.assertCurrent(generation);
+    if (result.status === 'cancelled') throw new AutoFarmStoppedError();
+    if (result.status === 'timeout') throw new Error('hết giờ đồng bộ farm — dừng vòng');
+    return result.value;
+  }
+
   /**
    * Xin lại kho (cmd 70) và chờ gói trả về. Server KHÔNG tự đẩy gói 70 sau
    * doBuyItem (chỉ trả UPDATE_MONEY + echo 68 + dialog), nên mua xong phải gọi
    * thủ công thì các giai đoạn sau (trồng/chăm sóc) mới thấy hàng vừa mua.
    */
-  private async refreshInventory(): Promise<void> {
-    const fresh = new Promise<void>((resolve) => {
-      const t = setTimeout(resolve, 5000);
-      this.client.once('inventory', () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-    this.client.farm.getInventory();
-    await fresh;
+  private async refreshInventory(generation: number): Promise<void> {
+    const result = await this.waitFarmEvent<unknown>(
+      'inventory', () => true, () => this.client.farm.getInventory(), generation, 5000,
+    );
+    this.assertCurrent(generation);
+    if (result.status === 'cancelled') throw new AutoFarmStoppedError();
+    if (result.status === 'timeout') throw new Error('hết giờ đồng bộ kho — dừng vòng');
   }
 
   private async enterFarmWithRetry(generation: number): Promise<FarmState> {
@@ -506,7 +561,9 @@ export class AutoFarm extends EventEmitter {
           let settled = false;
           const cleanup = (): void => {
             if (timer) clearTimeout(timer);
-            this.client.removeListener('farm', onFarm);
+            this.client.removeListener('farm-snapshot', onFarm);
+            this.client.removeListener('status', onStatus);
+            this.pendingFarmWaitCancels.delete(cancel);
             this.client.removeListener('dialog', onDialog);
           };
           const settle = (action: () => void): void => {
@@ -515,8 +572,9 @@ export class AutoFarm extends EventEmitter {
             cleanup();
             action();
           };
-          const onFarm = (): void => {
-            const snapshot = this.client.farmState;
+          const cancel = (): void => settle(() => reject(new AutoFarmStoppedError()));
+          const onStatus = (): void => { if (this.client.status !== 'online') cancel(); };
+          const onFarm = (snapshot: FarmState): void => {
             if (!snapshot) return;
             settle(() => resolve(snapshot));
           };
@@ -525,7 +583,9 @@ export class AutoFarm extends EventEmitter {
             settle(() => reject(new Error(`server từ chối vào farm: ${reason}`)));
           };
 
-          this.client.on('farm', onFarm);
+          this.client.on('farm-snapshot', onFarm);
+          this.client.on('status', onStatus);
+          this.pendingFarmWaitCancels.add(cancel);
           this.client.on('dialog', onDialog);
           timer = setTimeout(
             () => settle(() => reject(new Error('hết giờ chờ dữ liệu farm'))),
@@ -540,6 +600,7 @@ export class AutoFarm extends EventEmitter {
         this.assertCurrent(generation);
         return farm;
       } catch (error) {
+        if (error instanceof AutoFarmStoppedError) throw error;
         this.assertCurrent(generation);
         lastError = error instanceof Error ? error.message : String(error);
         if (attempt < FARM_ENTRY_MAX_ATTEMPTS) {
@@ -589,7 +650,7 @@ export class AutoFarm extends EventEmitter {
       // Kho PHẢI mới trước khi tính nhu cầu: nếu đọc kho rỗng (vd server vừa
       // khởi động lại, chưa có gói 70 nào) thì auto-buy sẽ tưởng đang có 0 và
       // mua thừa toàn bộ. Xin lại kho và chờ phản hồi.
-      await this.refreshInventory();
+      await this.refreshInventory(generation);
       guard();
       const idFarm = farm.idFarm;
 
@@ -817,7 +878,7 @@ export class AutoFarm extends EventEmitter {
           await tick();
           // Server không tự đẩy gói 70 sau khi mua — làm mới kho để giai đoạn
           // trồng cùng vòng thấy hạt vừa mua.
-          await this.refreshInventory();
+          await this.refreshInventory(generation);
         }
       }
 
@@ -985,90 +1046,108 @@ export class AutoFarm extends EventEmitter {
       // Mỗi ô chạm đúng một lần, làm hết mọi việc của ô đó rồi mới sang ô sau.
       // Thu hoạch và trồng đi trước vì đó là mục đích chính của farm và không
       // phụ thuộc kho; chăm sóc ô là việc bảo trì nên xếp sau.
-      const seedInventory = new Map(this.client.inventory.map((item) => [item.id, item.num]));
-      for (const c of farm.cells) {
-        if (this.aborted) return;
-        const seen: string[] = [];
+      let seedInventory = new Map(this.client.inventory.map((item) => [item.id, item.num]));
+      // Keep iteration identity stable; fallback decisions use freshly decoded cells.
+      for (const initialCell of farm.cells) {
+        guard();
+        if (this.client.status !== 'online' || this.client.farmState?.idFarm !== idFarm) {
+          throw new Error('farm hoặc kết nối đã thay đổi — dừng vòng');
+        }
+        const currentCell = this.client.farmState.cells.find(cell => cell.index === initialCell.index);
+        if (!currentCell) continue;
+        let c: FarmCell = currentCell;
+        const seen: string[] = [c.idTree === -1 ? 'trống' : `cây #${c.idTree}`];
         const did: string[] = [];
         const previousTreeId = c.idTree;
-        // Ô đi qua nhánh thu hoạch thì trạng thái care (hạn/cỏ/sâu/sức sống) của
-        // ảnh chụp đầu vòng thuộc về cây ĐÃ BỊ HẠ — chăm tiếp chỉ lãng phí vật
-        // phẩm và bón nhầm cho cây non vừa trồng. Cây mới sẽ được duyệt lại ở
-        // vòng kế tiếp với dữ liệu farm tươi.
         let harvested = false;
+        let planted = false;
+        let available = c.idTree === -1 || isCellSpent(c) || c.time === -1;
+        const refreshCell = async (): Promise<FarmCell | undefined> => {
+          const snapshot = await this.refreshFarmSnapshot(idFarm, generation);
+          return snapshot.cells.find(cell => cell.index === initialCell.index);
+        };
+        const plantCommand = async (newSeedId: number): Promise<FarmWaitResult<PlantReply>> => {
+          const result = await this.waitFarmEvent<PlantReply>(
+            'farm-plant-reply', value => value.idUser === idFarm
+              && value.cellIndex === c.index && value.seedId === newSeedId
+              && this.client.farmState?.idFarm === idFarm,
+            () => {
+              if (this.client.farmState?.idFarm !== idFarm) throw new Error('farm đã thay đổi — dừng vòng');
+              if (newSeedId === -1 && this.client.farm.clearCell) this.client.farm.clearCell(idFarm, c.index);
+              else this.client.farm.plantSeed(idFarm, c.index, newSeedId);
+              sent += 1;
+            }, generation, this.commandTimeoutMs,
+          );
+          guard();
+          if (result.status === 'cancelled') throw new AutoFarmStoppedError();
+          await tick();
+          return result;
+        };
 
         if (harvest && cellRipe(c)) {
-          this.client.farm.harvest(idFarm, c.index);
-          sent += 1;
-          // `hervestPer` thường là 0 kể cả trên ô chín, nên nói theo thời gian
-          // lớn — số đó mới là căn cứ thật để quyết định thu.
-          const need = growHours.get(previousTreeId);
-          seen.push(need === undefined ? `chín ${c.hervestPer}%` : `đủ tuổi ${c.time}/${need * 60} phút`);
-          did.push('thu hoạch');
-          await confirm(64, `thu hoạch ô ${c.index}`);
-          await tick();
-          // Harvest responses can leave the local cell snapshot one message
-          // behind (`time=-1`). Refresh farm state before replanting so the
-          // server has completed the harvest transition.
-          const farmSynced = new Promise<void>((resolve) => {
-            const timer = setTimeout(resolve, 5_000);
-            this.client.once('farm', () => {
-              clearTimeout(timer);
-              resolve();
-            });
-          });
-          this.client.enterFarm();
-          await farmSynced;
+          const result = await this.waitFarmEvent<HarvestReply>(
+            'farm-harvest-reply', value => value.cellIndex === c.index
+              && this.client.farmState?.idFarm === idFarm,
+            () => { this.client.farm.harvest(idFarm, c.index); sent += 1; },
+            generation, this.commandTimeoutMs,
+          );
           guard();
-          // Đặt kể cả khi server im lặng ở confirm(): đã bắn lệnh thu thì trạng
-          // thái care cũ không còn tin cậy để bắn tiếp lệnh useItem.
-          harvested = true;
+          if (result.status === 'cancelled') throw new AutoFarmStoppedError();
+          harvested = true; // Even an uncertain harvest invalidates old care flags.
+          await tick();
+          if (result.status === 'confirmed') {
+            available = true;
+            did.push('thu hoạch xác nhận');
+          } else {
+            note(`[cây] ô ${c.index}: thu hoạch chưa xác nhận — đồng bộ lại`);
+            const fresh = await refreshCell();
+            if (!fresh || !(fresh.idTree === -1 || isCellSpent(fresh) || fresh.time === -1)) {
+              note(`[cây] ô ${c.index}: chưa chứng minh đã thu — bỏ ô, không làm đất`);
+              continue;
+            }
+            c = fresh;
+            available = true;
+          }
         }
-        // Server keeps the harvested tree id and marks the cell as spent with
-        // time=-1; treat both representations as available for replanting.
-        const isSpent = c.idTree !== -1 && (isCellSpent(c) || c.time === -1);
-        if (c.idTree === -1 || isSpent || (harvest && cellRipe(c))) {
+        if (available) {
           const plan = planByCell.get(c.index);
           const plannedSeedId = plan?.action === 'seed'
             ? plan.seedId
             : (seedId ?? (previousTreeId !== -1 && knownSeeds.has(previousTreeId) ? previousTreeId : undefined));
-
-          // Nếu ô còn cây cũ (vừa thu hoạch hoặc spent time=-1), PHẢI làm đất phá bỏ cây cũ trước
           if (c.idTree !== -1) {
-            if (this.client.farm.clearCell) {
-              this.client.farm.clearCell(idFarm, c.index);
-            } else {
-              this.client.farm.plantSeed(idFarm, c.index, -1);
+            const result = await plantCommand(-1);
+            if (result.status === 'timeout') {
+              note(`[cây] ô ${c.index}: làm đất chưa xác nhận — đồng bộ lại`);
+              const fresh = await refreshCell();
+              if (!fresh || fresh.idTree !== -1) {
+                note(`[cây] ô ${c.index}: chưa trống — bỏ trồng`);
+                continue;
+              }
+              c = fresh;
             }
-            sent += 1;
-            seen.push(isSpent ? 'vừa thu' : 'cây cũ');
-            did.push('làm đất');
-            await confirm(66, `làm đất ô ${c.index}`);
-            await tick();
+            did.push('làm đất xác nhận');
           }
-
           if (plan?.action === 'skip') {
-            seen.push('trống');
             did.push('bỏ qua theo kế hoạch');
           } else if (plannedSeedId !== undefined && !knownSeeds.has(plannedSeedId)) {
-            seen.push('trống');
             did.push(`bỏ qua hạt #${plannedSeedId} — không có trong catalog cây`);
-            note(`[cây] ô ${c.index}: hạt #${plannedSeedId} không có trong knownSeeds`);
           } else if (plannedSeedId !== undefined && (seedInventory.get(plannedSeedId) ?? 0) <= 0) {
-            seen.push('trống');
             did.push(`bỏ qua — thiếu hạt #${plannedSeedId} trong kho`);
-            note(`[cây] ô ${c.index}: bỏ qua trồng #${plannedSeedId} — kho=${seedInventory.get(plannedSeedId) ?? 0}`);
           } else if (plannedSeedId !== undefined) {
-            this.client.farm.plantSeed(idFarm, c.index, plannedSeedId);
-            seedInventory.set(plannedSeedId, (seedInventory.get(plannedSeedId) ?? 0) - 1);
-            sent += 1;
-            seen.push('trống');
-            did.push(`trồng #${plannedSeedId}`);
-            await confirm(66, `trồng #${plannedSeedId} ô ${c.index}`);
-            await tick();
+            planted = true;
+            const result = await plantCommand(plannedSeedId);
+            if (result.status === 'confirmed') {
+              seedInventory.set(plannedSeedId, (seedInventory.get(plannedSeedId) ?? 0) - 1);
+              did.push(`trồng #${plannedSeedId} xác nhận`);
+            } else {
+              const fresh = await refreshCell();
+              await this.refreshInventory(generation);
+              seedInventory = new Map(this.client.inventory.map(item => [item.id, item.num]));
+              did.push(`trồng #${plannedSeedId} chưa xác nhận; snapshot cây=${fresh?.idTree ?? 'thiếu ô'} — không gửi lại`);
+            }
           }
         }
-        if (!harvested) {
+        if (!harvested && !planted && !available) {
           if (c.isArid && waterItemId !== undefined) {
             this.client.farm.useItem(idFarm, c.index, waterItemId);
             sent += 1;
@@ -1105,7 +1184,7 @@ export class AutoFarm extends EventEmitter {
 
         // Có care bị chặn bởi flag hay không — nói thẳng ra log thay vì im lặng,
         // kẻo người dùng tưởng bot sót việc.
-        const skippedCare = harvested
+        const skippedCare = (harvested || planted || available)
           && ((c.isArid && waterItemId !== undefined)
             || (c.isGrass && grassItemId !== undefined)
             || (c.isWorm && wormItemId !== undefined)
@@ -1469,15 +1548,7 @@ export class AutoFarm extends EventEmitter {
       // Nếu trong chu kỳ có phát sinh lệnh làm thay đổi farm, làm mới lại farm
       // ở cuối chu kỳ để snapshot phản ánh chính xác trạng thái mới nhất.
       if (sent > 0 && !this.aborted) {
-        const refreshed = new Promise<void>((resolve) => {
-          const t = setTimeout(resolve, 5000);
-          this.client.once('farm', () => {
-            clearTimeout(t);
-            resolve();
-          });
-        });
-        this.client.enterFarm();
-        await refreshed;
+        await this.refreshFarmSnapshot(idFarm, generation);
       }
       this.lastError = undefined;
     } catch (err) {
