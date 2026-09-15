@@ -374,6 +374,23 @@ test('không thay cây đang mọc; auto-buy mua bù hạt thiếu rồi trồng
   assert.ok(auto.state().lastActions.some((line) => line.includes('mua #5')));
 });
 
+test('auto-buy mua bù hạt Bí Ngô (#41) từ catalog và trồng vào ô trống', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(0, { idTree: -1 })],
+    animals: [],
+    updatedAt: 0,
+  });
+  client.trees = [];
+  client.inventory = [];
+
+  const auto = await runOneCycle(client, { seedId: 41, harvest: false, autoBuy: true });
+
+  assert.ok(client.calls.includes('buy:41x1'), 'phải mua bù đúng 1 hạt #41');
+  assert.ok(client.calls.includes('plantSeed:0:41'), 'phải trồng hạt #41 vào ô 0');
+  assert.ok(auto.state().lastActions.some((line) => line.includes('trồng #41')));
+});
+
 test('seed ngoài catalog bị bỏ qua và ghi rõ ô cùng id hạt', async () => {
   const client = new FakeClient({
     idFarm: 1,

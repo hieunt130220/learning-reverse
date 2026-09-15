@@ -752,9 +752,17 @@ export class AutoFarm extends EventEmitter {
       // dùng (plan skip / hạt ngoài catalog / hạt cao cấp thì không), để
       // auto-buy mua đúng số thiếu thay vì bỏ qua như trước.
       const seedBuyableWithXu = (id: number): boolean => {
+        if (XU_SEED_IDS.has(id)) return true;
         const tree = this.client.trees.find((t) => t.id === id);
-        if (tree !== undefined) return tree.category !== 'premium';
-        return XU_SEED_IDS.has(id);
+        if (tree?.attrsHex && tree.attrsHex.length >= 20) {
+          try {
+            const buf = Buffer.from(tree.attrsHex, 'hex');
+            return buf.readInt16BE(4 * 2) === 1;
+          } catch {
+            return false;
+          }
+        }
+        return false;
       };
       for (const c of farm.cells) {
         const plan = planByCell.get(c.index);
