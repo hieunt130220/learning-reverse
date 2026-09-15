@@ -553,11 +553,95 @@ export function decodeProgressQuestPacket(
   }
 }
 
+export interface CustomTabImage {
+  id: number;
+  data: Buffer;
+}
+
+export interface CustomTabPacket {
+  nImages: number;
+  images: CustomTabImage[];
+  title: string;
+  content: string;
+  idAction?: number;
+}
+
 /**
- * Giải mã các chuỗi cmd -62 (nhiệm vụ hiện tại): byte 0 là header,
- * sau đó lặp `[i16 len][utf8]`. Length là số byte UTF-8, big-endian.
+ * Giải mã gói tin CUSTOM_TAB (cmd -62).
+ * Cấu trúc xác minh từ GlobalMessageHandler.onMessage @0x5E8ED8:
+ * - byte nImages (số lượng ảnh)
+ * - Nếu nImages > 0, lặp nImages lần:
+ *     - i16 idImg
+ *     - i16 imgLen
+ *     - byte[imgLen] imgData (PNG/JPEG binary)
+ * - utf title (i16 len + utf8)
+ * - utf content (i16 len + utf8)
+ * - i8 idAction (nếu còn byte)
+ */
+export function decodeCustomTabPacket(buf: Buffer): CustomTabPacket {
+  if (buf.length < 1) {
+    return { nImages: 0, images: [], title: '', content: '' };
+  }
+
+  let offset = 0;
+  const nImages = buf.readInt8(offset);
+  offset += 1;
+
+  const images: CustomTabImage[] = [];
+  if (nImages > 0) {
+    for (let i = 0; i < nImages; i++) {
+      if (offset + 4 > buf.length) break;
+      const id = buf.readInt16BE(offset);
+      const imgLen = buf.readUInt16BE(offset + 2);
+      offset += 4;
+      if (offset + imgLen > buf.length) break;
+      const data = buf.subarray(offset, offset + imgLen);
+      images.push({ id, data });
+      offset += imgLen;
+    }
+  }
+
+  let title = '';
+  if (offset + 2 <= buf.length) {
+    const titleLen = buf.readUInt16BE(offset);
+    offset += 2;
+    if (offset + titleLen <= buf.length) {
+      title = buf.toString('utf8', offset, offset + titleLen);
+      offset += titleLen;
+    }
+  }
+
+  let content = '';
+  if (offset + 2 <= buf.length) {
+    const contentLen = buf.readUInt16BE(offset);
+    offset += 2;
+    if (offset + contentLen <= buf.length) {
+      content = buf.toString('utf8', offset, offset + contentLen);
+      offset += contentLen;
+    }
+  }
+
+  let idAction: number | undefined;
+  if (offset < buf.length) {
+    idAction = buf.readInt8(offset);
+    offset += 1;
+  }
+
+  return { nImages, images, title, content, idAction };
+}
+
+/**
+ * Giải mã các chuỗi cmd -62 (nhiệm vụ hiện tại):
+ * Hỗ trợ tương thích ngược: ưu tiên bóc tách qua decodeCustomTabPacket để tránh nuốt binary ảnh.
  */
 export function decodeQuestDialogStrings(buf: Buffer, start = 1): string[] {
+  if (start === 1) {
+    const tab = decodeCustomTabPacket(buf);
+    const res: string[] = [];
+    if (tab.title) res.push(tab.title);
+    if (tab.content) res.push(tab.content);
+    if (res.length > 0) return res;
+  }
   const out: string[] = [];
   let offset = start;
   while (offset + 2 <= buf.length) {

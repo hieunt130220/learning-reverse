@@ -41,6 +41,7 @@ import {
   decodeProgressQuestPacket,
   parseQuestDialogText,
   decodeQuestDialogStrings,
+  decodeCustomTabPacket,
   parseQuestListPacket,
   syncQuestStateWithFarm,
   type QuestCatalogEntry,
@@ -1304,15 +1305,18 @@ export class GameClient extends EventEmitter {
         }
         break;
       }
-      case -62: { // CURRENT_QUEST — "Xem nhiệm vụ hiện tại" (NPC Lái buôn)
+      case -62: { // CUSTOM_TAB — Hộp thoại tùy chỉnh / "Xem nhiệm vụ hiện tại" (NPC Lái buôn)
         try {
-          const parts = decodeQuestDialogStrings(msg.getData());
-          const text = parts.find((s) => /nhiệm vụ hiện tại/i.test(s));
+          const tab = decodeCustomTabPacket(msg.getData());
+          const text = [tab.content, tab.title].find((s) => /nhiệm vụ hiện tại/i.test(s));
           if (!text) {
-            const meaningful = parts.map((p) => p.trim()).filter(Boolean);
-            const joined = meaningful.join(' | ').trim();
-            if (joined.length > 0) {
-              this.emit('log', `thông báo (-62): ${joined}`);
+            const parts: string[] = [];
+            if (tab.title) parts.push(`tiêu đề="${tab.title}"`);
+            if (tab.content) parts.push(`nội dung="${tab.content.replace(/\r?\n/g, ' ').slice(0, 120)}"`);
+            if (tab.images.length > 0) parts.push(`ảnh=[${tab.images.map((img) => `#${img.id}(${img.data.length}B)`).join(', ')}]`);
+            const summary = parts.join(' · ');
+            if (summary.length > 0) {
+              this.emit('log', `hộp thoại (-62): ${summary}`);
             }
             break;
           }
