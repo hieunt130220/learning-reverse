@@ -535,3 +535,25 @@ Số dư xu cũng nằm ở **12 byte đuôi của gói kho (cmd 70)**: 4 byte �
 Kho chỉ có sau khi nhận gói 70. Nếu tính nhu cầu lúc `inventory` còn rỗng thì sẽ
 tưởng đang có 0 và mua thừa toàn bộ — đã gặp thật (suýt mua 57 Thuốc bổ dù kho có 99).
 Phải xin lại kho và **chờ phản hồi** trước khi quyết định mua.
+
+
+## 2026-09-15 — ACK cây trong avatar-web
+
+Metadata `il2cpp_out/dump.cs` ghi `onHarvestTree(int indexCell2, int number)`
+(RVA 0x63B08C) và `onPlantSeed(int idUser, int indexCell, int idSeed)`
+(RVA 0x63AB28). Kết hợp bảng đọc RX ở trên: Cmd 64 dài 3 byte
+(unsigned index + signed i16 quantity), Cmd 66 dài 6 byte
+(i32 idUser + unsigned index + signed i8 seed). Seed -1 là làm đất.
+Decoder từ chối payload khác độ dài; không tự coi packet không rõ là thành công.
+
+AutoFarm hiện chờ ACK đúng ô, và với Cmd 66 đúng farm/seed; đăng ký trước send.
+Luồng thành công giữ thứ tự thu → làm đất → trồng, không JOIN sau từng ô.
+Timeout dùng snapshot JOIN đúng farm trước khi chuyển bước; trồng timeout không retry
+trong cùng lượt và refresh kho. Sự kiện `farm-snapshot` chỉ từ Cmd 69,
+khác `farm` dùng chung cho cập nhật ô/vật nuôi. ACK không dựng care/vitality giả.
+
+Đây là implementation dựa trên metadata và packet đã ghi trước đó, **chưa phải
+live acceptance ngày 2026-09-15**. Probe cục bộ hai ô có 2 JOIN (đầu/cuối),
+không JOIN giữa các ô; các nhánh timeout/abort và cleanup đã qua probe.
+Cmd 64 không có request/farm ID; đối chiếu index và ownership không tạo được
+correlation tuyệt đối. Không suy ra tốc độ thực tế từ probe.
