@@ -31,9 +31,40 @@ interface ProbeArgs {
   area: number;
   /** Số khu quét liên tiếp trong 1 phiên (read-only): join area 0..areaScan-1. */
   areaScan?: number;
+  /** Gửi TX -59 [i32 objectId] đúng 1 lần để mở menu đối tượng (Spec §3.2.1). */
+  openMenu?: number;
+  /** Gửi TX -61 [i32 objectId, i8 idMenu, i8 -1] đúng 1 lần (yêu cầu --open-menu). */
+  selectMenu?: number;
+  /** Gửi TX 70 trước/sau để tính delta kho vật phẩm. */
+  observeInventory?: boolean;
 }
 
-type ProbePhase = 'login' | 'park-context' | 'board-list' | 'direct-join';
+type ProbePhase =
+  | 'login'
+  | 'park-context'
+  | 'board-list'
+  | 'direct-join'
+  | 'open-menu'
+  | 'select-menu'
+  | 'inventory';
+
+interface MenuEntry {
+  idMenu: number;
+  caption: string;
+}
+
+interface OpenMenuObservation {
+  objectId: number;
+  menuEntries: MenuEntry[];
+}
+
+interface SelectMenuObservation {
+  objectId: number;
+  idMenu: number;
+  dialogs: string[];
+  containerDelta: Array<{ id: number; before: number; after: number }>;
+  unknownRx: Array<{ cmd: number; len: number }>;
+}
 
 interface AreaScanEntry {
   area: number;
@@ -131,7 +162,15 @@ interface NativeJoinPosition {
   y: number;
 }
 
-const ALLOWED = new Set(['--account-id', '--map', '--area', '--area-scan']);
+const ALLOWED = new Set([
+  '--account-id',
+  '--map',
+  '--area',
+  '--area-scan',
+  '--open-menu',
+  '--select-menu',
+  '--observe-inventory',
+]);
 const REQUIRED_KEYS = ['--account-id', '--map', '--area'] as const;
 const POST_JOIN_GRACE_MS = 3_000;
 const BOARD_LIST_TIMEOUT_MS = 5_000;
@@ -161,24 +200,31 @@ function parseInteger(key: string, raw: string): number {
 }
 
 function parseArgs(argv: string[]): ProbeArgs {
-  if (argv.length % 2 !== 0) {
-    throw new RedactedProbeError('cli', 'mỗi key CLI phải có đúng một value');
-  }
-
   const values = new Map<string, number>();
-  for (let i = 0; i < argv.length; i += 2) {
+  let observeInventory = false;
+  let i = 0;
+  while (i < argv.length) {
     const key = argv[i]!;
-    const raw = argv[i + 1];
     if (!ALLOWED.has(key)) {
       throw new RedactedProbeError('cli', 'key hoặc positional arg không được phép');
+    }
+    if (key === '--observe-inventory') {
+      if (observeInventory) {
+        throw new RedactedProbeError('cli', `key CLI bị lặp: ${key}`);
+      }
+      observeInventory = true;
+      i += 1;
+      continue;
     }
     if (values.has(key)) {
       throw new RedactedProbeError('cli', `key CLI bị lặp: ${key}`);
     }
+    const raw = argv[i + 1];
     if (raw === undefined || raw.startsWith('--')) {
       throw new RedactedProbeError('cli', `thiếu value cho ${key}`);
     }
     values.set(key, parseInteger(key, raw));
+    i += 2;
   }
 
   for (const key of REQUIRED_KEYS) {
@@ -208,7 +254,30 @@ function parseArgs(argv: string[]): ProbeArgs {
       throw new RedactedProbeError('cli', '--area phải < --area-scan khi bật quét khu');
     }
   }
-  return { accountId, map, area, areaScan };
+  const openMenu = values.get('--open-menu');
+  const selectMenu = values.get('--select-menu');
+  if (selectMenu !== undefined && openMenu === undefined) {
+    throw new RedactedProbeError('cli', '--select-menu yêu cầu --open-menu');
+  }
+  if (openMenu !== undefined && (openMenu < -2_147_483_648 || openMenu > 2_147_483_647)) {
+    throw new RedactedProbeError('cli', '--open-menu phải nằm trong signed 32-bit integer');
+  }
+  if (selectMenu !== undefined && (selectMenu < -128 || selectMenu > 127)) {
+    throw new RedactedProbeError('cli', '--select-menu phải nằm trong signed-byte -128..127');
+  }
+  if (areaScan !== undefined && (openMenu !== undefined || selectMenu !== undefined)) {
+    throw new RedactedProbeError('cli', 'không thể kết hợp quét khu (--area-scan) với thao tác ghi menu');
+  }
+
+  return {
+    accountId,
+    map,
+    area,
+    areaScan,
+    openMenu,
+    selectMenu,
+    observeInventory: observeInventory || undefined,
+  };
 }
 
 /**
@@ -792,6 +861,180 @@ function waitForParkJoinResponse(
   });
 }
 
+function sanitizeCaption(text: string): string {
+  return text.replace(/[\r\n]+/g, ' ').trim().slice(0, 120);
+}
+
+function safeUtf(msg: Message): string {
+  try {
+    const reader = new MyReader(msg.getData());
+    return reader.readUTF();
+  } catch {
+    return '';
+  }
+}
+
+function decodeAddMenu(body: Buffer): MenuEntry | null {
+  try {
+    const reader = new MyReader(body);
+    const mode = reader.readByte();
+    const idMenu = reader.readShort();
+    if (mode === 1) {
+      const caption = sanitizeCaption(reader.readUTF());
+      return { idMenu, caption };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function getFullInventoryMap(client: GameClient): Map<number, number> {
+  const map = new Map<number, number>();
+  for (const item of client.inventory) {
+    map.set(item.id, (map.get(item.id) ?? 0) + item.num);
+  }
+  for (const item of client.produce) {
+    map.set(item.id, (map.get(item.id) ?? 0) + item.num);
+  }
+  for (const item of client.cookingMaterials) {
+    map.set(item.id, (map.get(item.id) ?? 0) + item.num);
+  }
+  return map;
+}
+
+async function requestInventorySnapshot(
+  client: GameClient,
+  timeoutMs = 5_000,
+): Promise<Map<number, number>> {
+  return new Promise<Map<number, number>>((resolve) => {
+    let timer: NodeJS.Timeout | undefined;
+    const onInventory = (): void => {
+      cleanup();
+      resolve(getFullInventoryMap(client));
+    };
+    const cleanup = (): void => {
+      client.removeListener('inventory', onInventory);
+      if (timer) clearTimeout(timer);
+    };
+    client.once('inventory', onInventory);
+    timer = setTimeout(() => {
+      cleanup();
+      resolve(getFullInventoryMap(client));
+    }, timeoutMs);
+
+    client.sendRaw(70, []);
+  });
+}
+
+function computeInventoryDelta(
+  before: Map<number, number>,
+  after: Map<number, number>,
+): Array<{ id: number; before: number; after: number }> {
+  const allIds = new Set([...before.keys(), ...after.keys()]);
+  const delta: Array<{ id: number; before: number; after: number }> = [];
+  for (const id of allIds) {
+    const b = before.get(id) ?? 0;
+    const a = after.get(id) ?? 0;
+    if (b !== a) {
+      delta.push({ id, before: b, after: a });
+    }
+  }
+  return delta;
+}
+
+async function executeOpenMenu(
+  client: GameClient,
+  objectId: number,
+  timeoutMs = 6_000,
+): Promise<OpenMenuObservation> {
+  const menuEntries: MenuEntry[] = [];
+
+  return new Promise<OpenMenuObservation>((resolve) => {
+    let timer: NodeJS.Timeout | undefined;
+    const onMessage = (msg: Message): void => {
+      if (msg.command === -101) {
+        const entry = decodeAddMenu(msg.getData());
+        if (entry) menuEntries.push(entry);
+      } else if (msg.command === -62 || msg.command === -70 || msg.command === -71 || msg.command === -87) {
+        try {
+          const text = sanitizeCaption(safeUtf(msg));
+          if (text) menuEntries.push({ idMenu: -1, caption: text });
+        } catch {
+          // ignore malformed utf
+        }
+      }
+    };
+
+    const cleanup = (): void => {
+      client.session.removeListener('message', onMessage);
+      if (timer) clearTimeout(timer);
+    };
+
+    const finish = (): void => {
+      cleanup();
+      resolve({ objectId, menuEntries });
+    };
+
+    client.session.on('message', onMessage);
+    timer = setTimeout(finish, timeoutMs);
+
+    // Gửi TX -59 [i32 objectId] đúng 1 lần (Spec §3.2.1)
+    client.sendRaw(-59, [{ t: 'i32', v: String(objectId) }]);
+  });
+}
+
+async function executeSelectMenu(
+  client: GameClient,
+  objectId: number,
+  idMenu: number,
+  timeoutMs = 6_000,
+): Promise<SelectMenuObservation> {
+  const dialogs: string[] = [];
+  const containerDelta: Array<{ id: number; before: number; after: number }> = [];
+  const unknownRx: Array<{ cmd: number; len: number }> = [];
+
+  return new Promise<SelectMenuObservation>((resolve) => {
+    let timer: NodeJS.Timeout | undefined;
+    const onMessage = (msg: Message): void => {
+      const cmd = msg.command;
+      const data = msg.getData();
+      if (cmd === -62 || cmd === -70 || cmd === -71 || cmd === -87 || cmd === -77) {
+        try {
+          const text = sanitizeCaption(safeUtf(msg));
+          if (text) dialogs.push(text);
+        } catch {
+          unknownRx.push({ cmd, len: data.length });
+        }
+      } else if (cmd === -67 || cmd === -17) {
+        unknownRx.push({ cmd, len: data.length });
+      } else if (cmd !== -3 && cmd !== 85 && cmd !== -20) {
+        unknownRx.push({ cmd, len: data.length });
+      }
+    };
+
+    const cleanup = (): void => {
+      client.session.removeListener('message', onMessage);
+      if (timer) clearTimeout(timer);
+    };
+
+    const finish = (): void => {
+      cleanup();
+      resolve({ objectId, idMenu, dialogs, containerDelta, unknownRx });
+    };
+
+    client.session.on('message', onMessage);
+    timer = setTimeout(finish, timeoutMs);
+
+    // Gửi TX -61 [i32 objectId, i8 idMenu, i8 sub=-1] đúng 1 lần (Spec §3.2.1)
+    client.sendRaw(-61, [
+      { t: 'i32', v: String(objectId) },
+      { t: 'i8', v: String(idMenu) },
+      { t: 'i8', v: '-1' },
+    ]);
+  });
+}
+
 function captureRelevantTraffic(
   metadata: TxRxMetadata[],
   phase: ProbePhase,
@@ -808,6 +1051,7 @@ function captureRelevantTraffic(
 function assertExpectedTraffic(
   metadata: TxRxMetadata[],
   boardCatalog: ParkBoardCatalogObservation,
+  probeArgs: ProbeArgs,
 ): void {
   const count = (
     phase: ProbePhase,
@@ -845,6 +1089,33 @@ function assertExpectedTraffic(
   }
   if (boardCatalog.status === 'pending' && boardRxCount !== 0) {
     throw new RedactedProbeError('traffic', 'catalog pending nhưng traffic đã ghi RX 90');
+  }
+
+  if (probeArgs.openMenu !== undefined) {
+    if (count('open-menu', 'TX', -59, 4) !== 1) {
+      throw new RedactedProbeError('traffic', 'thiếu đúng một TX -59 open-menu');
+    }
+  }
+  if (probeArgs.selectMenu !== undefined) {
+    if (count('select-menu', 'TX', -61, 6) !== 1) {
+      throw new RedactedProbeError('traffic', 'thiếu đúng một TX -61 select-menu');
+    }
+  }
+
+  for (const entry of metadata) {
+    if (entry.phase === 'login') continue;
+    if (entry.dir === 'TX') {
+      const allowedCmd = entry.cmd === -1
+        || entry.cmd === 90
+        || entry.cmd === 80
+        || entry.cmd === -94
+        || (probeArgs.openMenu !== undefined && entry.cmd === -59)
+        || (probeArgs.selectMenu !== undefined && entry.cmd === -61)
+        || (probeArgs.observeInventory && entry.cmd === 70);
+      if (!allowedCmd) {
+        throw new RedactedProbeError('traffic', `phát hiện TX ngoài whitelist: ${entry.cmd}`);
+      }
+    }
   }
 }
 
@@ -949,11 +1220,19 @@ function printRedactedEvidence(
   metadata: TxRxMetadata[],
   events: ProbeEventMetadata[],
   mapSpecialUpdates: MapSpecialUpdateMetadata[],
+  openMenuObs?: OpenMenuObservation,
+  selectMenuObs?: SelectMenuObservation,
 ): void {
   console.log(JSON.stringify({
     timestamp: new Date().toISOString(),
     accountId: args.accountId,
-    requested: { map: args.map, area: args.area },
+    requested: {
+      map: args.map,
+      area: args.area,
+      ...(args.openMenu !== undefined ? { openMenu: args.openMenu } : {}),
+      ...(args.selectMenu !== undefined ? { selectMenu: args.selectMenu } : {}),
+      ...(args.observeInventory ? { observeInventory: true } : {}),
+    },
     traffic: metadata,
     events,
     parkBoardCatalog: boardCatalog,
@@ -963,6 +1242,21 @@ function printRedactedEvidence(
     decode: response.specialCount === null ? 'park-response-prefix' : 'park-response-ok',
     requestBodyBytes: 6,
     parkJoinResponse: response,
+    ...(openMenuObs ? {
+      openMenu: {
+        objectId: openMenuObs.objectId,
+        menuEntries: openMenuObs.menuEntries,
+      },
+    } : {}),
+    ...(selectMenuObs ? {
+      selectMenu: {
+        objectId: selectMenuObs.objectId,
+        idMenu: selectMenuObs.idMenu,
+        dialogs: selectMenuObs.dialogs,
+        containerDelta: selectMenuObs.containerDelta,
+        unknownRx: selectMenuObs.unknownRx,
+      },
+    } : {}),
   }, null, 2));
 }
 
@@ -1120,7 +1414,32 @@ async function runProbe(
             'room/board response không khớp request',
           );
         }
-        assertExpectedTraffic(metadata, boardCatalog);
+        let openMenuObs: OpenMenuObservation | undefined;
+        let selectMenuObs: SelectMenuObservation | undefined;
+
+        let inventoryBefore = new Map<number, number>();
+        if (args.observeInventory) {
+          phase = 'inventory';
+          inventoryBefore = await requestInventorySnapshot(client);
+        }
+
+        if (args.openMenu !== undefined) {
+          phase = 'open-menu';
+          openMenuObs = await executeOpenMenu(client, args.openMenu);
+        }
+
+        if (args.selectMenu !== undefined && args.openMenu !== undefined) {
+          phase = 'select-menu';
+          selectMenuObs = await executeSelectMenu(client, args.openMenu, args.selectMenu);
+        }
+
+        if (args.observeInventory && selectMenuObs) {
+          phase = 'inventory';
+          const inventoryAfter = await requestInventorySnapshot(client);
+          selectMenuObs.containerDelta = computeInventoryDelta(inventoryBefore, inventoryAfter);
+        }
+
+        assertExpectedTraffic(metadata, boardCatalog, args);
         printRedactedEvidence(
           args,
           response,
@@ -1128,6 +1447,8 @@ async function runProbe(
           metadata,
           events,
           mapSpecialCapture.updates,
+          openMenuObs,
+          selectMenuObs,
         );
       }
     } finally {
@@ -1159,7 +1480,13 @@ try {
     timestamp: new Date().toISOString(),
     ...(args ? {
       accountId: args.accountId,
-      requested: { map: args.map, area: args.area },
+      requested: {
+        map: args.map,
+        area: args.area,
+        ...(args.openMenu !== undefined ? { openMenu: args.openMenu } : {}),
+        ...(args.selectMenu !== undefined ? { selectMenu: args.selectMenu } : {}),
+        ...(args.observeInventory ? { observeInventory: true } : {}),
+      },
     } : {}),
     traffic: metadata,
     events,
