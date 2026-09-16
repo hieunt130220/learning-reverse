@@ -1595,13 +1595,11 @@ export class GameClient extends EventEmitter {
       }
       case 64: {
         const reply = decodeHarvestReply(msg.getData());
-        this.emit('log', `server trả lời cmd 64: ${msg.getData().toString('hex')}`);
         if (reply) this.emit('farm-harvest-reply', reply);
         break;
       }
       case 66: {
         const reply = decodePlantReply(msg.getData());
-        this.emit('log', `server trả lời cmd 66: ${msg.getData().toString('hex')}`);
         if (reply) this.emit('farm-plant-reply', reply);
         break;
       }
