@@ -222,6 +222,71 @@ export interface DecodedInventory {
 }
 
 /**
+ * Đọc một section vật phẩm dạng: `[count: i8][count × (i16 id, i32 num)]`.
+ * Trả về `null` nếu count < 0 hoặc không đủ byte để hoàn tất section.
+ */
+export function readInventorySection(r: MyReader): InventoryItem[] | null {
+  if (r.available() < 1) return null;
+  const count = r.readByte();
+  if (count < 0 || r.available() < count * 6) {
+    return null;
+  }
+  const list: InventoryItem[] = [];
+  for (let i = 0; i < count; i++) {
+    list.push({ id: r.readShort(), num: r.readInt() });
+  }
+  return list;
+}
+
+/**
+ * Giải mã danh sách vật phẩm từ gói UPDATE_CONTAINER (cmd -67) và CONTAINER (cmd -17).
+ * Tái sử dụng logic đọc section của decodeInventory:
+ * - Đọc tuần tự các section [i8 count][count × (i16 id, i32 num)]
+ * - Fallback: đọc [i16 count][count × (i16 id, i32 num)]
+ * - Fallback: đọc đơn vật phẩm đúng 6 byte [i16 id, i32 num]
+ */
+export function decodeContainerItems(body: Buffer): InventoryItem[] {
+  if (body.length < 6) return [];
+  const r = new MyReader(body);
+  const items: InventoryItem[] = [];
+
+  while (r.available() >= 7) {
+    const section = readInventorySection(r);
+    if (!section || section.length === 0) break;
+    items.push(...section);
+  }
+  if (items.length > 0) return items;
+
+  // Fallback 1: tiền tố count dạng i16
+  try {
+    const r2 = new MyReader(body);
+    if (r2.available() >= 8) {
+      const count = r2.readShort();
+      if (count > 0 && r2.available() >= count * 6) {
+        for (let i = 0; i < count; i++) {
+          items.push({ id: r2.readShort(), num: r2.readInt() });
+        }
+        return items;
+      }
+    }
+  } catch {
+    /* bỏ qua */
+  }
+
+  // Fallback 2: đơn vật phẩm đúng 6 byte không có tiền tố count
+  if (body.length === 6) {
+    try {
+      const r3 = new MyReader(body);
+      return [{ id: r3.readShort(), num: r3.readInt() }];
+    } catch {
+      /* bỏ qua */
+    }
+  }
+
+  return items;
+}
+
+/**
  * Giải mã gói kho đồ (cmd 70) — gồm **4 section liên tiếp**, mỗi section
  * `i8 count` + count × (`i16 id`, `i32 num`), rồi 12 byte đuôi mang thông tin:
  * - `i32 xu`
@@ -235,12 +300,8 @@ export function decodeInventory(body: Buffer): DecodedInventory {
   const sections: InventoryItem[][] = [];
   // Gói 70 có đúng 4 section
   for (let s = 0; s < 4 && r.available() > 0; s++) {
-    const count = r.readByte();
-    if (count < 0 || r.available() < count * 6) {
-      break;
-    }
-    const list: InventoryItem[] = [];
-    for (let i = 0; i < count; i++) list.push({ id: r.readShort(), num: r.readInt() });
+    const list = readInventorySection(r);
+    if (!list) break;
     sections.push(list);
   }
 

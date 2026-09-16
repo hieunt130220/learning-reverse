@@ -17,6 +17,7 @@ import {
   decodeMoney,
   decodeInfoCell,
   decodeInventory,
+  decodeContainerItems,
   decodeLoginSuccessMoney,
   decodeItemCatalog,
   decodePlayerInfo,
@@ -321,6 +322,11 @@ export interface CaptchaEvent {
   sha256: string | null;
   error: Error | null;
   rawHex: string;
+}
+
+export interface MenuEntry {
+  idMenu: number;
+  caption: string;
 }
 
 /**
@@ -1334,6 +1340,67 @@ export class GameClient extends EventEmitter {
         }
         break;
       }
+      case -101: { // ADD_MENU — Server cấp menu tương tác đối tượng (khai thác / chạm)
+        try {
+          const data = msg.getData();
+          let decoded: MenuEntry | null = null;
+          // Format 1 (chuẩn Avatar J2ME fj_0.java:392 & mining-probe.ts):
+          // [i8 mode][i16 idMenu][utf caption]
+          try {
+            const r1 = new MyReader(data);
+            if (r1.available() >= 3) {
+              const mode = r1.readByte();
+              const idMenu = r1.readShort();
+              if (mode === 1 && r1.available() >= 2) {
+                const caption = r1.readUTF().replace(/[\r\n]+/g, ' ').trim().slice(0, 120);
+                decoded = { idMenu, caption };
+              }
+            }
+          } catch {
+            /* thử format kế */
+          }
+
+          // Format 2: [i16 idMenu][utf caption]
+          if (!decoded) {
+            try {
+              const r2 = new MyReader(data);
+              if (r2.available() >= 4) {
+                const idMenu = r2.readShort();
+                const caption = r2.readUTF().replace(/[\r\n]+/g, ' ').trim().slice(0, 120);
+                decoded = { idMenu, caption };
+              }
+            } catch {
+              /* thử format kế */
+            }
+          }
+
+          // Format 3: [utf caption][i16 idMenu]
+          if (!decoded) {
+            try {
+              const r3 = new MyReader(data);
+              if (r3.available() >= 4) {
+                const caption = r3.readUTF().replace(/[\r\n]+/g, ' ').trim().slice(0, 120);
+                if (r3.available() >= 2) {
+                  const idMenu = r3.readShort();
+                  decoded = { idMenu, caption };
+                }
+              }
+            } catch {
+              /* không khớp */
+            }
+          }
+
+          if (decoded) {
+            this.emit('menu', { entries: [decoded] });
+            this.emit('log', `menu (-101): #${decoded.idMenu} "${decoded.caption}"`);
+          } else {
+            this.emit('log', `decode menu lỗi: định dạng gói -101 không khớp (len=${data.length})`);
+          }
+        } catch (err) {
+          this.emit('log', `decode menu lỗi: ${(err as Error).message}`);
+        }
+        break;
+      }
       case -81: { // QUEST_LIST — "Xem danh sách nhiệm vụ" (NPC Lái buôn)
         try {
           const catalog = parseQuestListPacket(msg.getData());
@@ -1435,6 +1502,38 @@ export class GameClient extends EventEmitter {
           if (changed) {
             this.emit('quests', this.dailyQuestState);
           }
+        }
+        break;
+      }
+      case -67: // UPDATE_CONTAINER
+      case -17: { // CONTAINER
+        try {
+          const items = decodeContainerItems(msg.getData());
+          if (items.length === 0) {
+            this.emit(
+              'log',
+              `decode container (${msg.command}) lỗi: danh sách vật phẩm rỗng hoặc không đúng định dạng`,
+            );
+            break;
+          }
+
+          for (const item of items) {
+            const existing = this.inventory.find((i) => i.id === item.id);
+            if (existing) {
+              existing.num = item.num;
+            } else {
+              this.inventory.push({ id: item.id, num: item.num });
+            }
+          }
+
+          this.emit('container-update', { items });
+          this.emit('inventory', this.inventory);
+          this.emit(
+            'log',
+            `cập nhật container (${msg.command}): ${items.map((it) => `#${it.id}×${it.num}`).join(' ')}`,
+          );
+        } catch (err) {
+          this.emit('log', `decode container (${msg.command}) lỗi: ${(err as Error).message}`);
         }
         break;
       }
