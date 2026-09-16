@@ -1042,49 +1042,28 @@ export class AutoFarm extends EventEmitter {
         }
       }
 
-      // --- GIAI ĐOẠN CÂY ----------------------------------------------------
-      // Mỗi ô chạm đúng một lần, làm hết mọi việc của ô đó rồi mới sang ô sau.
-      // Thu hoạch và trồng đi trước vì đó là mục đích chính của farm và không
-      // phụ thuộc kho; chăm sóc ô là việc bảo trì nên xếp sau.
+      // --- GIAI ĐOẠN CÂY — 3 PHA ----------------------------------------------
+      // Pha 1: Thu hoạch (chờ ACK Cmd 64) + gửi clearCell ngay (không chờ ACK —
+      //   server không gửi Cmd 66 seed=-1, đã chứng minh bằng disasm RVA 0x63B08C
+      //   /0x63AB28 và 24/24 ô timeout trong log live 2026-09-15).
+      // Pha 2: Đúng 1 lần JOIN snapshot xác nhận tất cả ô đã làm đất thực sự trống.
+      // Pha 3: Trồng hạt (chờ ACK Cmd 66) + chăm sóc các ô còn lại.
       let seedInventory = new Map(this.client.inventory.map((item) => [item.id, item.num]));
-      // Keep iteration identity stable; fallback decisions use freshly decoded cells.
-      for (const initialCell of farm.cells) {
-        guard();
-        if (this.client.status !== 'online' || this.client.farmState?.idFarm !== idFarm) {
-          throw new Error('farm hoặc kết nối đã thay đổi — dừng vòng');
-        }
-        const currentCell = this.client.farmState.cells.find(cell => cell.index === initialCell.index);
-        if (!currentCell) continue;
-        let c: FarmCell = currentCell;
-        const seen: string[] = [c.idTree === -1 ? 'trống' : `cây #${c.idTree}`];
-        const did: string[] = [];
-        const previousTreeId = c.idTree;
-        let harvested = false;
-        let planted = false;
-        let available = c.idTree === -1 || isCellSpent(c) || c.time === -1;
-        const refreshCell = async (): Promise<FarmCell | undefined> => {
-          const snapshot = await this.refreshFarmSnapshot(idFarm, generation);
-          return snapshot.cells.find(cell => cell.index === initialCell.index);
-        };
-        const plantCommand = async (newSeedId: number): Promise<FarmWaitResult<PlantReply>> => {
-          const result = await this.waitFarmEvent<PlantReply>(
-            'farm-plant-reply', value => value.idUser === idFarm
-              && value.cellIndex === c.index && value.seedId === newSeedId
-              && this.client.farmState?.idFarm === idFarm,
-            () => {
-              if (this.client.farmState?.idFarm !== idFarm) throw new Error('farm đã thay đổi — dừng vòng');
-              if (newSeedId === -1 && this.client.farm.clearCell) this.client.farm.clearCell(idFarm, c.index);
-              else this.client.farm.plantSeed(idFarm, c.index, newSeedId);
-              sent += 1;
-            }, generation, this.commandTimeoutMs,
-          );
-          guard();
-          if (result.status === 'cancelled') throw new AutoFarmStoppedError();
-          await tick();
-          return result;
-        };
+      interface PendingClearCell { index: number; previousTreeId: number }
+      const pendingClearCells: PendingClearCell[] = [];
 
-        if (harvest && cellRipe(c)) {
+      // --- Pha 1: Thu hoạch & Làm đất tuần tự --------------------------------
+      if (harvest) {
+        for (const initialCell of farm.cells) {
+          guard();
+          if (this.client.status !== 'online' || this.client.farmState?.idFarm !== idFarm) {
+            throw new Error('farm hoặc kết nối đã thay đổi — dừng vòng');
+          }
+          const currentCell = this.client.farmState.cells.find(cell => cell.index === initialCell.index);
+          if (!currentCell) continue;
+          const c = currentCell;
+          if (!cellRipe(c)) continue;
+
           const result = await this.waitFarmEvent<HarvestReply>(
             'farm-harvest-reply', value => value.cellIndex === c.index
               && this.client.farmState?.idFarm === idFarm,
@@ -1093,107 +1072,144 @@ export class AutoFarm extends EventEmitter {
           );
           guard();
           if (result.status === 'cancelled') throw new AutoFarmStoppedError();
-          harvested = true; // Even an uncertain harvest invalidates old care flags.
           await tick();
+
           if (result.status === 'confirmed') {
-            available = true;
-            did.push('thu hoạch xác nhận');
+            note(`[cây] ô ${c.index}: thu hoạch xác nhận qua ACK (+${result.value.quantity})`);
+            // Gửi clearCell ngay — server xử lý nội bộ, không trả ACK
+            if (this.client.farm.clearCell) this.client.farm.clearCell(idFarm, c.index);
+            else this.client.farm.plantSeed(idFarm, c.index, -1);
+            sent += 1;
+            note(`[cây] ô ${c.index}: đã gửi làm đất (chờ xác nhận snapshot)`);
+            pendingClearCells.push({ index: c.index, previousTreeId: c.idTree });
+            await tick();
           } else {
-            note(`[cây] ô ${c.index}: thu hoạch chưa xác nhận — đồng bộ lại`);
-            const fresh = await refreshCell();
-            if (!fresh || !(fresh.idTree === -1 || isCellSpent(fresh) || fresh.time === -1)) {
-              note(`[cây] ô ${c.index}: chưa chứng minh đã thu — bỏ ô, không làm đất`);
-              continue;
-            }
-            c = fresh;
-            available = true;
+            note(`[cây] ô ${c.index}: thu hoạch chưa xác nhận — bỏ qua ô này`);
           }
         }
-        if (available) {
-          const plan = planByCell.get(c.index);
-          const plannedSeedId = plan?.action === 'seed'
-            ? plan.seedId
-            : (seedId ?? (previousTreeId !== -1 && knownSeeds.has(previousTreeId) ? previousTreeId : undefined));
-          if (c.idTree !== -1) {
-            const result = await plantCommand(-1);
-            if (result.status === 'timeout') {
-              note(`[cây] ô ${c.index}: làm đất chưa xác nhận — đồng bộ lại`);
-              const fresh = await refreshCell();
-              if (!fresh || fresh.idTree !== -1) {
-                note(`[cây] ô ${c.index}: chưa trống — bỏ trồng`);
-                continue;
-              }
-              c = fresh;
-            }
-            did.push('làm đất xác nhận');
-          }
-          if (plan?.action === 'skip') {
-            did.push('bỏ qua theo kế hoạch');
-          } else if (plannedSeedId !== undefined && !knownSeeds.has(plannedSeedId)) {
-            did.push(`bỏ qua hạt #${plannedSeedId} — không có trong catalog cây`);
-          } else if (plannedSeedId !== undefined && (seedInventory.get(plannedSeedId) ?? 0) <= 0) {
-            did.push(`bỏ qua — thiếu hạt #${plannedSeedId} trong kho`);
-          } else if (plannedSeedId !== undefined) {
-            planted = true;
-            const result = await plantCommand(plannedSeedId);
-            if (result.status === 'confirmed') {
-              seedInventory.set(plannedSeedId, (seedInventory.get(plannedSeedId) ?? 0) - 1);
-              did.push(`trồng #${plannedSeedId} xác nhận`);
-            } else {
-              const fresh = await refreshCell();
-              await this.refreshInventory(generation);
-              seedInventory = new Map(this.client.inventory.map(item => [item.id, item.num]));
-              did.push(`trồng #${plannedSeedId} chưa xác nhận; snapshot cây=${fresh?.idTree ?? 'thiếu ô'} — không gửi lại`);
-            }
+      }
+
+      // --- Pha 2: Snapshot Verification Gate ----------------------------------
+      // Thu thập ô đã trống sẵn có (không qua thu hoạch)
+      const readyToPlant: PendingClearCell[] = [];
+      for (const c of farm.cells) {
+        if (c.idTree === -1 || isCellSpent(c) || c.time === -1) {
+          if (!pendingClearCells.some(p => p.index === c.index)) {
+            readyToPlant.push({ index: c.index, previousTreeId: c.idTree });
           }
         }
-        if (!harvested && !planted && !available) {
-          if (c.isArid && waterItemId !== undefined) {
-            this.client.farm.useItem(idFarm, c.index, waterItemId);
-            sent += 1;
-            seen.push('hạn');
-            did.push(`tưới #${waterItemId}`);
-            await confirm(65, `tưới #${waterItemId} ô ${c.index}`);
-            await tick();
+      }
+
+      if (pendingClearCells.length > 0) {
+        guard();
+        const snapshot = await this.refreshFarmSnapshot(idFarm, generation);
+        let confirmedCount = 0;
+        let failedCount = 0;
+        for (const pending of pendingClearCells) {
+          const freshCell = snapshot.cells.find(sc => sc.index === pending.index);
+          if (freshCell && freshCell.idTree === -1) {
+            readyToPlant.push(pending);
+            confirmedCount += 1;
+          } else {
+            note(`[cây] ô ${pending.index}: snapshot cho thấy chưa trống (idTree=${freshCell?.idTree ?? '?'}) — bỏ trồng`);
+            failedCount += 1;
           }
-          if (c.isGrass && grassItemId !== undefined) {
-            this.client.farm.useItem(idFarm, c.index, grassItemId);
-            sent += 1;
-            seen.push('cỏ');
-            did.push(`nhổ cỏ #${grassItemId}`);
-            await confirm(65, `nhổ cỏ #${grassItemId} ô ${c.index}`);
-            await tick();
-          }
-          if (c.isWorm && wormItemId !== undefined) {
-            this.client.farm.useItem(idFarm, c.index, wormItemId);
-            sent += 1;
-            seen.push('sâu');
-            did.push(`bắt sâu #${wormItemId}`);
-            await confirm(65, `bắt sâu #${wormItemId} ô ${c.index}`);
-            await tick();
-          }
-          if (cfg.fertilizeCells && c.idTree !== -1 && c.vitalityPer < cfg.minVitality) {
-            this.client.farm.useItem(idFarm, c.index, ITEM_FERTILIZER);
-            sent += 1;
-            seen.push(`sức sống ${c.vitalityPer}`);
-            did.push('bón phân');
-            await confirm(65, `bón phân ô ${c.index}`);
-            await tick();
-          }
+        }
+        note(`[nông trại] snapshot xác nhận ${confirmedCount} ô đất trống sẵn sàng trồng` +
+          (failedCount > 0 ? ` (${failedCount} ô chưa sạch)` : ''));
+      }
+
+      // --- Pha 3: Gieo hạt & Chăm sóc ----------------------------------------
+      const plantedIndices = new Set<number>();
+      for (const entry of readyToPlant) {
+        guard();
+        if (this.client.status !== 'online' || this.client.farmState?.idFarm !== idFarm) {
+          throw new Error('farm hoặc kết nối đã thay đổi — dừng vòng');
+        }
+        const plan = planByCell.get(entry.index);
+        const plannedSeedId = plan?.action === 'seed'
+          ? plan.seedId
+          : (seedId ?? (entry.previousTreeId !== -1 && knownSeeds.has(entry.previousTreeId)
+              ? entry.previousTreeId : undefined));
+
+        if (plan?.action === 'skip') {
+          note(`[cây] ô ${entry.index}: bỏ qua theo kế hoạch`);
+          continue;
+        }
+        if (plannedSeedId === undefined) continue;
+        if (!knownSeeds.has(plannedSeedId)) {
+          note(`[cây] ô ${entry.index}: bỏ qua hạt #${plannedSeedId} — không có trong catalog cây`);
+          continue;
+        }
+        if ((seedInventory.get(plannedSeedId) ?? 0) <= 0) {
+          note(`[cây] ô ${entry.index}: bỏ qua — thiếu hạt #${plannedSeedId} trong kho`);
+          continue;
         }
 
-        // Có care bị chặn bởi flag hay không — nói thẳng ra log thay vì im lặng,
-        // kẻo người dùng tưởng bot sót việc.
-        const skippedCare = (harvested || planted || available)
-          && ((c.isArid && waterItemId !== undefined)
-            || (c.isGrass && grassItemId !== undefined)
-            || (c.isWorm && wormItemId !== undefined)
-            || (cfg.fertilizeCells && c.idTree !== -1 && c.vitalityPer < cfg.minVitality));
-        note(
-          did.length > 0
-            ? `[cây] ô ${c.index}: ${seen.join(', ')} -> ${did.join(', ')}${skippedCare ? ', bỏ qua chăm sóc' : ''}`
-            : `[cây] ô ${c.index}: không có việc`,
+        const plantResult = await this.waitFarmEvent<PlantReply>(
+          'farm-plant-reply', value => value.idUser === idFarm
+            && value.cellIndex === entry.index && value.seedId === plannedSeedId
+            && this.client.farmState?.idFarm === idFarm,
+          () => {
+            if (this.client.farmState?.idFarm !== idFarm) throw new Error('farm đã thay đổi — dừng vòng');
+            this.client.farm.plantSeed(idFarm, entry.index, plannedSeedId);
+            sent += 1;
+          }, generation, this.commandTimeoutMs,
         );
+        guard();
+        if (plantResult.status === 'cancelled') throw new AutoFarmStoppedError();
+        await tick();
+
+        if (plantResult.status === 'confirmed') {
+          seedInventory.set(plannedSeedId, (seedInventory.get(plannedSeedId) ?? 0) - 1);
+          note(`[cây] ô ${entry.index}: trồng #${plannedSeedId} xác nhận qua ACK`);
+          plantedIndices.add(entry.index);
+        } else {
+          note(`[cây] ô ${entry.index}: trồng #${plannedSeedId} chưa xác nhận — bỏ qua`);
+        }
+      }
+
+      // Chăm sóc (tưới/nhổ cỏ/bắt sâu/bón phân) — bỏ qua ô vừa trồng mới
+      for (const initialCell of farm.cells) {
+        guard();
+        if (plantedIndices.has(initialCell.index)) continue;
+        const currentCell = this.client.farmState?.cells.find(cell => cell.index === initialCell.index);
+        if (!currentCell || currentCell.idTree === -1 || isCellSpent(currentCell)) continue;
+        const c = currentCell;
+        const did: string[] = [];
+        if (c.isArid && waterItemId !== undefined) {
+          this.client.farm.useItem(idFarm, c.index, waterItemId);
+          sent += 1;
+          did.push(`tưới #${waterItemId}`);
+          await confirm(65, `tưới #${waterItemId} ô ${c.index}`);
+          await tick();
+        }
+        if (c.isGrass && grassItemId !== undefined) {
+          this.client.farm.useItem(idFarm, c.index, grassItemId);
+          sent += 1;
+          did.push(`nhổ cỏ #${grassItemId}`);
+          await confirm(65, `nhổ cỏ #${grassItemId} ô ${c.index}`);
+          await tick();
+        }
+        if (c.isWorm && wormItemId !== undefined) {
+          this.client.farm.useItem(idFarm, c.index, wormItemId);
+          sent += 1;
+          did.push(`bắt sâu #${wormItemId}`);
+          await confirm(65, `bắt sâu #${wormItemId} ô ${c.index}`);
+          await tick();
+        }
+        if (cfg.fertilizeCells && c.idTree !== -1 && c.vitalityPer < cfg.minVitality) {
+          this.client.farm.useItem(idFarm, c.index, ITEM_FERTILIZER);
+          sent += 1;
+          did.push('bón phân');
+          await confirm(65, `bón phân ô ${c.index}`);
+          await tick();
+        }
+        if (did.length > 0) {
+          note(`[cây] ô ${c.index}: ${did.join(', ')}`);
+        } else {
+          note(`[cây] ô ${c.index}: không có việc`);
+        }
         await tick();
       }
 
