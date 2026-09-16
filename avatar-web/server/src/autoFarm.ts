@@ -1075,12 +1075,11 @@ export class AutoFarm extends EventEmitter {
           await tick();
 
           if (result.status === 'confirmed') {
-            note(`[cây] ô ${c.index}: thu hoạch xác nhận qua ACK (+${result.value.quantity})`);
             // Gửi clearCell ngay — server xử lý nội bộ, không trả ACK
             if (this.client.farm.clearCell) this.client.farm.clearCell(idFarm, c.index);
             else this.client.farm.plantSeed(idFarm, c.index, -1);
             sent += 1;
-            note(`[cây] ô ${c.index}: đã gửi làm đất (chờ xác nhận snapshot)`);
+            note(`[cây] ô ${c.index}: thu hoạch (+${result.value.quantity}), làm đất`);
             pendingClearCells.push({ index: c.index, previousTreeId: c.idTree });
             await tick();
           } else {
@@ -1162,7 +1161,7 @@ export class AutoFarm extends EventEmitter {
 
         if (plantResult.status === 'confirmed') {
           seedInventory.set(plannedSeedId, (seedInventory.get(plannedSeedId) ?? 0) - 1);
-          note(`[cây] ô ${entry.index}: trồng #${plannedSeedId} xác nhận qua ACK`);
+          note(`[cây] ô ${entry.index}: trồng #${plannedSeedId}`);
           plantedIndices.add(entry.index);
         } else {
           note(`[cây] ô ${entry.index}: trồng #${plannedSeedId} chưa xác nhận — bỏ qua`);
