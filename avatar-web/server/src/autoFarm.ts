@@ -1362,9 +1362,10 @@ export class AutoFarm extends EventEmitter {
                 targetRecipe = foodCatalog.find((f) => f.id === cfg.defaultRecipeId);
               }
 
-              // Mặc định: chỉ chọn món đầu tiên của catalog ĐỘNG đã nhận từ Cmd 76.
+              // Mặc định khi bật autoCook chung:
+              // Ưu tiên chọn món ĐỦ NGUYÊN LIỆU để nấu. Nếu không có món nào đủ, fallback món đầu tiên để báo thiếu an toàn.
               if (!targetRecipe && cfg.autoCook && foodCatalog.length > 0) {
-                targetRecipe = foodCatalog[0];
+                targetRecipe = foodCatalog.find((f) => hasMaterials(f)) ?? foodCatalog[0];
               }
 
               if (targetRecipe) {

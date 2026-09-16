@@ -1206,7 +1206,7 @@ test('bếp: tự động thu hoạch món đã chín và bán ngay khi autoHarv
 
   assert.ok(client.calls.includes('getCook:0'), 'phải xin thông tin bếp');
   assert.ok(client.calls.includes('harvestCook:0'), 'phải thu hoạch món chín ở ô 0');
-  assert.ok(client.calls.includes('sellItem:118:1'), 'phải bán ngay Cơm (productID 118) số lượng 1');
+  assert.ok(client.calls.includes('sellItem:207:1'), 'phải bán ngay Cơm (productID 207) số lượng 1');
   assert.equal(client.calls.includes('harvestCook:1'), false, 'ô 1 đang nấu chưa chín không được thu');
 });
 
@@ -1217,10 +1217,10 @@ test('bếp: tự động nấu món theo cookingSlotPlan khi đủ nguyên li�
     animals: [],
     updatedAt: Date.now(),
   });
-  // Nông sản Cmd70 section 3 có 15 Lúa (#6), 10 Trứng gà (#50).
+  // Nông sản Cmd70 section 3 có 10000 Lúa (#6), 100 Trứng gà (#50).
   client.produce = [
-    { id: 6, num: 15 },
-    { id: 50, num: 10 },
+    { id: 6, num: 10000 },
+    { id: 50, num: 100 },
   ];
   client.cookingState = {
     numSlot: 3,
@@ -1235,7 +1235,7 @@ test('bếp: tự động nấu món theo cookingSlotPlan khi đủ nguyên li�
     updatedAt: Date.now(),
   };
 
-  // Cài đặt: Ô 0 nấu Cơm #3 (5 Lúa), Ô 1 nấu Bánh Trứng #1 (5 Lúa + 5 Trứng), Ô 2 không nấu (skip)
+  // Cài đặt: Ô 0 nấu Cơm #3 (5000 Lúa), Ô 1 nấu Bánh Trứng #1 (2000 Lúa + 50 Trứng), Ô 2 không nấu (skip)
   await runOneCycle(client, {
     cookingSlotPlan: [
       { slotIndex: 0, action: 'cook', recipeId: 3 },
@@ -1256,9 +1256,9 @@ test('bếp: không nấu khi thiếu nguyên liệu trong kho', async () => {
     animals: [],
     updatedAt: Date.now(),
   });
-  // Nông sản Cmd70 section 3 chỉ có 2 Lúa (#6) — không đủ 5 Lúa để nấu Cơm #3.
+  // Nông sản Cmd70 section 3 chỉ có 2000 Lúa (#6) — không đủ 5000 Lúa để nấu Cơm #3.
   client.produce = [
-    { id: 6, num: 2 },
+    { id: 6, num: 2000 },
   ];
   client.cookingState = {
     numSlot: 2,
