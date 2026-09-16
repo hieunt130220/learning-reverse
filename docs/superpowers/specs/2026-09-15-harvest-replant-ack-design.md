@@ -78,3 +78,11 @@ Trạng thái tiến trình từng ô là dữ liệu cục bộ của vòng; kh
 ## Trạng thái duyệt
 
 User đã duyệt Spec và Plan. Production đã triển khai; xem phần kết quả thực thi trong Plan để biết bằng chứng, regression fixture chưa cập nhật và live acceptance chưa chạy.
+
+## Amendments
+
+- `2026-09-15-harvest-clear-confirmation-amendment-design.md`: Phát hiện clearCell
+  không có ACK từ server (disasm RVA 0x63B08C / 0x63AB28 và live evidence).
+  Tái cấu trúc thành quy trình 3 pha (Thu & Clear → 1 lần Snapshot Gate → Trồng & Chăm sóc)
+  để loại bỏ 23/24 lần JOIN thừa. User duyệt ngày 2026-09-16.
+
