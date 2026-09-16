@@ -70,7 +70,6 @@ import {
   type ShopProtocolWarning,
 } from './shopProtocol.js';
 import {
-  decodeEnterWorld,
   decodeParkJoinWorld,
   WorldDataDecodeError,
   type EnterWorldSnapshot,
@@ -1112,16 +1111,6 @@ export class GameClient extends EventEmitter {
               );
             } else {
               this.emit('log', 'LOGIN_SUCESS không giải mã được số dư ví');
-            }
-            // Decoder chạy trên body độc lập; lỗi decode KHÔNG được ảnh hưởng status online.
-            try {
-              const snap = decodeEnterWorld(msg.getData());
-              this.emit('world-snapshot', snap);
-            } catch (err) {
-              const section = (err as { section?: string }).section ?? '?';
-              const offset = (err as { offset?: number }).offset ?? -1;
-              this.emit('log', `decode enter-world lỗi tại ${section}@${offset}: ${(err as Error).message}`);
-              this.emit('world-snapshot-error', err);
             }
             this.requestYourInfo(id);
           } else {

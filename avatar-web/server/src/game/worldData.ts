@@ -130,6 +130,10 @@ function readPlayerStateTail(r: StrictReader): void {
   }
 }
 
+/**
+ * @deprecated Gói LOGIN_SUCESS (cmd -34) không mang map snapshot; luồng map/Park chuẩn
+ * sử dụng `decodeParkJoinWorld` (cmd 80).
+ */
 export function decodeEnterWorld(body: Buffer): EnterWorldSnapshot {
   const r = new StrictReader(body);
 
