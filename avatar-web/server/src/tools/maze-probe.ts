@@ -18,6 +18,7 @@ import {
   GameClient,
   type ClientStatus,
 } from '../game/client.js';
+import { findMazePath } from '../game/mazePathfinding.js';
 import { NATIVE_PARK_JOIN_POSITIONS } from '../game/parkService.js';
 import { decodeCustomTabPacket } from '../game/progressQuests.js';
 import type { Message } from '../proto/message.js';
@@ -27,6 +28,7 @@ interface ProbeArgs {
   accountId: number;
   area: number;
   openChestId?: number;
+  autoNavigate: boolean;
   actionIndex: number;
   outputFormat: 'text' | 'json';
 }
@@ -64,6 +66,13 @@ interface MazeProbeResult {
   message?: string;
   chests: ChestObject[];
   allSpecials: ChestObject[];
+  navigationResult?: {
+    attempted: boolean;
+    targetChestId?: number;
+    pathLength: number;
+    stepsWalked: number;
+    giftsPickedUp: number[];
+  };
   openResult?: {
     chestId: number;
     removed: boolean;
@@ -88,6 +97,7 @@ function parseArgs(argv: string[]): ProbeArgs {
   let accountId: number | undefined;
   let area = 0;
   let openChestId: number | undefined;
+  let autoNavigate = false;
   let actionIndex = 0;
   let outputFormat: 'text' | 'json' = 'text';
 
@@ -136,6 +146,8 @@ function parseArgs(argv: string[]): ProbeArgs {
         throw new Error('--open-chest phải là số nguyên 32-bit (signed i32)');
       }
       openChestId = val;
+    } else if (flag === '--auto-navigate') {
+      autoNavigate = true;
     } else if (flag === '--action-index') {
       const valStr = getNextValue();
       if (!/^\d+$/.test(valStr)) {
@@ -161,7 +173,7 @@ function parseArgs(argv: string[]): ProbeArgs {
     throw new Error('--account-id là bắt buộc (phải là số nguyên dương)');
   }
 
-  return { accountId, area, openChestId, actionIndex, outputFormat };
+  return { accountId, area, openChestId, autoNavigate, actionIndex, outputFormat };
 }
 
 async function assertAvatarWebStopped(port: number): Promise<void> {
@@ -667,6 +679,10 @@ async function run(): Promise<void> {
             && body.readInt32BE(0) === client.playerId;
         }
         loginCommands.delete(message.command);
+      } else if (phase === 'navigate' && message.command === 84 && body.length === 5) {
+        allowed = true;
+      } else if (phase === 'navigate' && message.command === 47 && body.length === 5 && body.readInt8(0) === 11) {
+        allowed = true;
       } else if (permit && permit.command === message.command && permit.body.equals(body)) {
         allowed = true;
         permit = undefined;
@@ -734,7 +750,7 @@ async function run(): Promise<void> {
             }
           }
         } catch {}
-      } else if (msg.command === 47 && state.hasSentOpenChest && state.status === 'open') {
+      } else if (msg.command === 47 && (state.hasSentOpenChest || args.autoNavigate) && state.status === 'open') {
         try {
           capturedGifts.push(decodeGiftPacket(body));
         } catch {}
@@ -791,6 +807,7 @@ async function run(): Promise<void> {
       { t: 'i16', v: String(pos.y) },
     ]);
 
+    let currentAvatarPos = { x: pos.x, y: pos.y };
     try {
       const joinResult = await joinPending;
       state.isJoinPending = false;
@@ -799,6 +816,9 @@ async function run(): Promise<void> {
         state.closedMessage = joinResult.closedMessage;
       } else if (joinResult.status === 'open' && joinResult.snapshot) {
         state.status = 'open';
+        if (joinResult.snapshot.x && joinResult.snapshot.y) {
+          currentAvatarPos = { x: joinResult.snapshot.x, y: joinResult.snapshot.y };
+        }
         await observeFor(1000);
       }
     } catch (joinErr) {
@@ -816,9 +836,156 @@ async function run(): Promise<void> {
         s.name.toLowerCase().includes('kho báu'),
     );
 
-    // Mở rương khi có cờ và Mê cung đang mở
+    let navigationResultDetails: MazeProbeResult['navigationResult'];
     let openResultDetails: MazeProbeResult['openResult'];
-    if (args.openChestId !== undefined) {
+
+    if (args.autoNavigate && state.status === 'open') {
+      let targetChest: ChestObject | undefined;
+      if (args.openChestId !== undefined) {
+        targetChest = currentSpecials.get(args.openChestId);
+      } else if (chests.length > 0) {
+        targetChest = chests.slice().sort((a, b) => {
+          const distA = Math.hypot(a.x - currentAvatarPos.x, a.y - currentAvatarPos.y);
+          const distB = Math.hypot(b.x - currentAvatarPos.x, b.y - currentAvatarPos.y);
+          return distA - distB;
+        })[0];
+      }
+
+      if (!targetChest || !chests.some((c) => c.id === targetChest!.id) || state.removedChestIds.has(targetChest.id)) {
+        if (args.outputFormat === 'text') {
+          console.warn('[NAV] Không tìm thấy rương khả dụng trong khu để điều hướng.');
+        }
+      } else {
+        if (args.outputFormat === 'text') {
+          console.log(
+            `[NAV] Tìm đường từ (${currentAvatarPos.x}, ${currentAvatarPos.y}) tới rương ID ${targetChest.id} tại (${targetChest.x}, ${targetChest.y})...`,
+          );
+        }
+        const path = findMazePath(
+          currentAvatarPos,
+          { x: targetChest.x, y: targetChest.y },
+          (tx, ty) => {
+            if (tx < 0 || ty < 0 || tx > 120 || ty > 120) return true;
+            const px = tx * 24 + 12;
+            const py = ty * 24 + 12;
+            for (const c of chests) {
+              if (c.id === targetChest!.id) continue;
+              if (c.block && c.block.length >= 4) {
+                const [bx = 0, by = 0, bw = 0, bh = 0] = c.block;
+                if (px >= bx && px <= bx + bw && py >= by && py <= by + bh) {
+                  return true;
+                }
+              }
+            }
+            return false;
+          },
+        );
+
+        let stepsWalked = 0;
+        phase = 'navigate';
+        if (!path.reachable) {
+          if (args.outputFormat === 'text') {
+            console.warn(`[NAV] Không tìm thấy đường tới rương ID ${targetChest.id} (bị chặn hoàn toàn).`);
+          }
+        } else {
+          if (args.outputFormat === 'text') {
+            console.log(`[NAV] Đã tìm thấy lộ trình ${path.waypoints.length} bước. Bắt đầu di chuyển tới rương...`);
+          }
+          for (const wp of path.waypoints) {
+            if (abort.signal.aborted) break;
+            client.sendRaw(84, [
+              { t: 'i16', v: String(wp.x) },
+              { t: 'i16', v: String(wp.y) },
+              { t: 'i8', v: String(wp.direct) },
+            ]);
+            currentAvatarPos = { x: wp.x, y: wp.y };
+            stepsWalked++;
+            await observeFor(250);
+          }
+        }
+
+        // Mở rương khi đã tiếp cận gần (< 36px)
+        const distToChest = Math.hypot(currentAvatarPos.x - targetChest.x, currentAvatarPos.y - targetChest.y);
+        if (distToChest <= 36 && !state.hasSentOpenChest && !state.removedChestIds.has(targetChest.id)) {
+          dialogMessages.length = 0;
+          capturedGifts.length = 0;
+          state.hasSentOpenChest = true;
+          if (args.outputFormat === 'text') {
+            console.log(
+              `[CHEST] Đã tiếp cận rương! Gửi lệnh mở rương ID ${targetChest.id} (TX 48 [i8 3, i32 ${targetChest.id}, i8 ${args.actionIndex}])...`,
+            );
+          }
+          const openBody = Buffer.alloc(6);
+          openBody.writeInt8(3);
+          openBody.writeInt32BE(targetChest.id, 1);
+          openBody.writeInt8(args.actionIndex, 5);
+          permit = { command: 48, body: openBody };
+          client.sendRaw(48, [
+            { t: 'i8', v: '3' },
+            { t: 'i32', v: String(targetChest.id) },
+            { t: 'i8', v: String(args.actionIndex) },
+          ]);
+          await observeFor(3000);
+        }
+
+        // Tự động nhặt quà rơi sàn nếu có
+        const pickedGifts: number[] = [];
+        const groundGifts = capturedGifts.filter(
+          (g) => g.subType === 0 && g.xDrop !== undefined && g.yDrop !== undefined && g.idGift > 0,
+        );
+        for (const g of groundGifts) {
+          if (abort.signal.aborted) break;
+          if (args.outputFormat === 'text') {
+            console.log(`[GIFT] Phát hiện quà rơi sàn ID ${g.idGift} tại (${g.xDrop}, ${g.yDrop}). Di chuyển tới nhặt...`);
+          }
+          const giftPath = findMazePath(
+            currentAvatarPos,
+            { x: g.xDrop!, y: g.yDrop! },
+            (tx, ty) => tx < 0 || ty < 0 || tx > 120 || ty > 120,
+          );
+          if (giftPath.reachable) {
+            for (const wp of giftPath.waypoints) {
+              if (abort.signal.aborted) break;
+              client.sendRaw(84, [
+                { t: 'i16', v: String(wp.x) },
+                { t: 'i16', v: String(wp.y) },
+                { t: 'i8', v: String(wp.direct) },
+              ]);
+              currentAvatarPos = { x: wp.x, y: wp.y };
+              await observeFor(250);
+            }
+          }
+          if (args.outputFormat === 'text') {
+            console.log(`[GIFT] Gửi lệnh nhặt quà ID ${g.idGift} (TX 47 [i8 11, i32 ${g.idGift}])...`);
+          }
+          client.sendRaw(47, [
+            { t: 'i8', v: '11' },
+            { t: 'i32', v: String(g.idGift) },
+          ]);
+          pickedGifts.push(g.idGift);
+          await observeFor(1000);
+        }
+
+        navigationResultDetails = {
+          attempted: true,
+          targetChestId: targetChest.id,
+          pathLength: path.waypoints.length,
+          stepsWalked,
+          giftsPickedUp: pickedGifts,
+        };
+
+        openResultDetails = {
+          attempted: true,
+          sent: state.hasSentOpenChest,
+          causality: 'unknown',
+          observationStatus: 'window-ended',
+          chestId: targetChest.id,
+          removed: state.hasSentOpenChest && state.removedChestIds.has(targetChest.id),
+          gifts: capturedGifts,
+          dialogs: dialogMessages,
+        };
+      }
+    } else if (args.openChestId !== undefined) {
       if (state.status === 'open') {
         const targetChest = currentSpecials.get(args.openChestId);
         if (!targetChest || !chests.some((chest) => chest.id === targetChest.id)
@@ -874,6 +1041,7 @@ async function run(): Promise<void> {
       chests: Array.from(currentSpecials.values()).filter((s) =>
         s.name.toLowerCase().includes('rương') || s.name.toLowerCase().includes('kho báu')),
       allSpecials: Array.from(currentSpecials.values()),
+      navigationResult: navigationResultDetails,
       openResult: openResultDetails,
     };
 
@@ -900,6 +1068,16 @@ async function run(): Promise<void> {
       for (const chest of chests) {
         console.log(
           `  - Rương ID ${chest.id}: "${chest.name}" tại (${chest.x}, ${chest.y}), Type: ${chest.type}, Menu: [${chest.menuIds.join(', ')}]`,
+        );
+      }
+      if (result.navigationResult) {
+        console.log('\nKết quả điều hướng tự động:');
+        console.log(`  - Rương mục tiêu: ID ${result.navigationResult.targetChestId ?? 'N/A'}`);
+        console.log(
+          `  - Lộ trình: ${result.navigationResult.pathLength} bước (đã đi ${result.navigationResult.stepsWalked} bước)`,
+        );
+        console.log(
+          `  - Quà đã nhặt trên sàn: [${result.navigationResult.giftsPickedUp.join(', ')}]`,
         );
       }
       if (result.openResult) {

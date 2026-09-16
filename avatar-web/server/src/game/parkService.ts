@@ -37,12 +37,24 @@ export const CMD_AVATAR_BUY_ITEM = -92;
  */
 export const CMD_PARK_BUY_ITEM = -43;
 
-/**
- * PARK_CHAT: utf text, i8 style (mặc định 0).
+/** PARK_CHAT: utf text, i8 style (mặc định 0).
  * Opcode 85: Gửi tin nhắn chat trong Park / Khu câu cá (RVA 0x71AD98 ParkService.chatToBoard).
  * Dùng cho các lệnh chat in-game như "banca", "cauca"...
  */
 export const CMD_PARK_CHAT = 85;
+
+/**
+ * AVATAR_MOVE: i16 x, i16 y, i8 direct.
+ * Opcode 84: ParkService.doMove (RVA 0x71AC3C).
+ * Di chuyển avatar trong khu công viên / mê cung.
+ */
+export const CMD_AVATAR_MOVE = 84;
+
+/**
+ * AVATAR_GIFT: i8 subType, i32 idGift (subType 11 = nhặt quà rơi sàn).
+ * Opcode 47: ParkService.doGift (RVA 0x71C4EC).
+ */
+export const CMD_AVATAR_GIFT = 47;
 
 export interface NativeParkJoinPosition {
   x: number;
@@ -200,6 +212,35 @@ export class ParkService {
     }
     const m = Message.create(CMD_PARK_CHAT);
     m.writer!.writeUTF(text).writeByte(style);
+    this.session.send(m);
+  }
+
+  /**
+   * Di chuyển nhân vật (TX 84).
+   * Payload: i16 x, i16 y, i8 direct (0=Right, 1=Down, 2=Left, 3=Up).
+   */
+  doMove(x: number, y: number, direct: number): void {
+    if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) {
+      throw new Error(`doMove: tọa độ không hợp lệ: x=${x}, y=${y}`);
+    }
+    if (!Number.isSafeInteger(direct) || direct < 0 || direct > 3) {
+      throw new Error(`doMove: hướng không hợp lệ (0..3): ${direct}`);
+    }
+    const m = Message.create(CMD_AVATAR_MOVE);
+    m.writer!.writeShort(x).writeShort(y).writeByte(direct);
+    this.session.send(m);
+  }
+
+  /**
+   * Nhặt quà rơi sàn trong công viên / mê cung (TX 47 subType 11).
+   * Payload: i8 11, i32 idGift.
+   */
+  doPickupGift(idGift: number): void {
+    if (!Number.isSafeInteger(idGift) || idGift < 0) {
+      throw new Error(`doPickupGift: idGift không hợp lệ: ${idGift}`);
+    }
+    const m = Message.create(CMD_AVATAR_GIFT);
+    m.writer!.writeByte(11).writeInt(idGift);
     this.session.send(m);
   }
 }
