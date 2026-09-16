@@ -51,25 +51,25 @@ export interface NativeParkJoinPosition {
 
 /**
  * PositionMap values extracted from the CityMap TextAsset in AvatarHD 3.4.4.
- * Node IDs:
- *   1: Khu sinh thái (473, 100)
- *   3: Khu giải trí (236, 280)
- *   4: Khu mua sắm (452, 250)
- *   5: Công viên (254, 82)
- *   7: Nông trại (524, 423)
- *   8: Ngoại ô (100, 100)
- *   9: Mê cung (57, 209)
+ * Node IDs vs Server roomIDs (idToMap):
+ *   Node 1: Khu sinh thái (473, 100) -> roomID 13
+ *   Node 3: Khu giải trí (236, 280) -> roomID 9
+ *   Node 4: Khu mua sắm (452, 250) -> roomID 23
+ *   Node 5: Công viên (254, 82) -> roomID 11
+ *   Node 7: Nông trại (524, 423) -> roomID 25 (handler 10)
+ *   Node 8: Ngoại ô (100, 100) -> roomID 17
+ *   Node 9: Mê cung (57, 209) -> roomID 28
+ *
+ * LƯU Ý NAMESPACE: Key ở NATIVE_PARK_JOIN_POSITIONS là roomID server dùng cho doJoinPark (cmd 80),
+ * KHÔNG phải CityMap node ID.
+ *   9:  Khu giải trí (236, 280) — từ CityMap node 3 (idToMap = 9)
  *   13: Khu sinh thái / cửa hàng sinh thái (364, 64)
  *   14: Khu cá rô (460, 97) — verified from native bot bs_0.java & live traffic
  *   15: Khu cá lóc (36, 97)
  *   16: Khu cá mập (324, 157)
- *   17: Ngoại ô (100, 100) — roomID verify từ CityMap node id=8
- *       (handler 9, idToMap 17, TextAsset SHA e3fc3c12…) + J2ME
- *       "ID 17: Khu ngoại ô" (gs_0.java:3321).
- *       LƯU Ý NAMESPACE: key ở đây là roomID dùng cho doJoinPark, KHÔNG
- *       phải CityMap node id. CityMap node id=8 ("Ngoại ô", 100, 100)
- *       ánh xạ sang roomID=17 (idToMap), nên KHÔNG được thêm key 8.
+ *   17: Ngoại ô (100, 100) — từ CityMap node 8 (idToMap = 17) + J2ME "ID 17: Khu ngoại ô" (gs_0.java:3321)
  *   27: Bến tàu / Đảo Hawai (254, 82)
+ *   28: Mê cung (57, 209) — từ CityMap node 9 (idToMap = 28)
  */
 export const NATIVE_PARK_JOIN_POSITIONS: Readonly<Record<number, NativeParkJoinPosition>> =
   Object.freeze({
@@ -78,13 +78,14 @@ export const NATIVE_PARK_JOIN_POSITIONS: Readonly<Record<number, NativeParkJoinP
     4: Object.freeze({ x: 452, y: 250 }),
     5: Object.freeze({ x: 254, y: 82 }),
     7: Object.freeze({ x: 524, y: 423 }),
-    9: Object.freeze({ x: 57, y: 209 }),
+    9: Object.freeze({ x: 236, y: 280 }),
     13: Object.freeze({ x: 364, y: 64 }),
     14: Object.freeze({ x: 460, y: 97 }),
     15: Object.freeze({ x: 36, y: 97 }),
     16: Object.freeze({ x: 324, y: 157 }),
     17: Object.freeze({ x: 100, y: 100 }),
     27: Object.freeze({ x: 254, y: 82 }),
+    28: Object.freeze({ x: 57, y: 209 }),
   });
 
 /** V1 chỉ encode cmd 80 — không có REQUEST_JOIN_ANY/-23 hay opcode tương tác. */
