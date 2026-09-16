@@ -29,9 +29,23 @@ interface ProbeArgs {
   accountId: number;
   map: number;
   area: number;
+  /** Số khu quét liên tiếp trong 1 phiên (read-only): join area 0..areaScan-1. */
+  areaScan?: number;
 }
 
 type ProbePhase = 'login' | 'park-context' | 'board-list' | 'direct-join';
+
+interface AreaScanEntry {
+  area: number;
+  roomId: number;
+  boardId: number;
+  specialCount: number | null;
+  specials: MapObjectMetadata[];
+  mapMarker: number | null;
+  mapItemTypeCount: number | null;
+  mapItemCount: number | null;
+  trailingBytes: number;
+}
 
 interface TxRxMetadata {
   phase: ProbePhase;
@@ -117,10 +131,12 @@ interface NativeJoinPosition {
   y: number;
 }
 
-const ALLOWED = new Set(['--account-id', '--map', '--area']);
+const ALLOWED = new Set(['--account-id', '--map', '--area', '--area-scan']);
 const REQUIRED_KEYS = ['--account-id', '--map', '--area'] as const;
 const POST_JOIN_GRACE_MS = 3_000;
 const BOARD_LIST_TIMEOUT_MS = 5_000;
+/** Cooldown giữa 2 lần join khu trong chế độ quét — chống anti-cheat join dồn (Spec §2.5). */
+const AREA_SCAN_COOLDOWN_MS = 2_000;
 
 class RedactedProbeError extends Error {
   constructor(
@@ -182,7 +198,17 @@ function parseArgs(argv: string[]): ProbeArgs {
       throw new RedactedProbeError('cli', `${key} phải nằm trong signed-byte -128..127`);
     }
   }
-  return { accountId, map, area };
+  let areaScan: number | undefined;
+  if (values.has('--area-scan')) {
+    areaScan = values.get('--area-scan')!;
+    if (areaScan < 1 || areaScan > 20) {
+      throw new RedactedProbeError('cli', '--area-scan phải trong 1..20 (boardCount map 17 = 20)');
+    }
+    if (area >= areaScan) {
+      throw new RedactedProbeError('cli', '--area phải < --area-scan khi bật quét khu');
+    }
+  }
+  return { accountId, map, area, areaScan };
 }
 
 /**
@@ -822,6 +848,100 @@ function assertExpectedTraffic(
   }
 }
 
+/** Bản scan của assertExpectedTraffic: cho phép N lần TX80/RX80 (quét khu), whitelist TX không đổi. */
+function assertScanTraffic(
+  metadata: TxRxMetadata[],
+  joinCount: number,
+  boardCatalog: ParkBoardCatalogObservation,
+): void {
+  const count = (
+    phase: ProbePhase,
+    dir: 'TX' | 'RX',
+    cmd: number,
+    len?: number,
+  ): number => (
+    metadata.filter((entry) => (
+      entry.phase === phase
+      && entry.dir === dir
+      && entry.cmd === cmd
+      && (len === undefined || entry.len === len)
+    )).length
+  );
+  if (
+    count('login', 'RX', -34) !== 1
+    || count('park-context', 'TX', -1, 1) !== 1
+    || count('park-context', 'RX', -1, 1) !== 1
+    || count('board-list', 'TX', 90, 1) !== 1
+  ) {
+    throw new RedactedProbeError(
+      'traffic',
+      'traffic phase không khớp login/park/board-list contract',
+    );
+  }
+  if (count('direct-join', 'TX', 80, 6) !== joinCount || count('direct-join', 'RX', 80) < joinCount) {
+    throw new RedactedProbeError(
+      'traffic',
+      `số lượng join không khớp (TX80=${count('direct-join', 'TX', 80, 6)}/${joinCount})`,
+    );
+  }
+  // Whitelist TX chỉ áp dụng cho phase sau-login: các gói -27/-33/-47/-79/-87/-94
+  // trong phase 'login' là handshake của GameClient.login(), không phải lệnh probe.
+  for (const entry of metadata) {
+    if (entry.phase === 'login') continue;
+  // -94 (REQUEST_YOUR_INFO) là TX nội bộ của GameClient khi nhận world snapshot — read-only.
+  if (entry.dir === 'TX' && entry.cmd !== -1 && entry.cmd !== 90 && entry.cmd !== 80 && entry.cmd !== -94) {
+      throw new RedactedProbeError('traffic', `phát hiện TX ngoài whitelist read-only: ${entry.cmd}`);
+    }
+  }
+  const boardRxCount = count('board-list', 'RX', 90);
+  if (boardCatalog.status === 'observed' && boardRxCount !== 1) {
+    throw new RedactedProbeError('traffic', 'catalog observed nhưng thiếu đúng một RX 90');
+  }
+}
+
+function printScanEvidence(
+  args: ProbeArgs,
+  scan: AreaScanEntry[],
+  boardCatalog: ParkBoardCatalogObservation,
+  metadata: TxRxMetadata[],
+  events: ProbeEventMetadata[],
+  mapSpecialUpdates: MapSpecialUpdateMetadata[],
+): void {
+  const allSpecials = scan.flatMap((entry) => entry.specials.map((special) => ({
+    ...special,
+    area: entry.area,
+  })));
+  console.log(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    accountId: args.accountId,
+    requested: { map: args.map, area: args.area, areaScan: args.areaScan },
+    mode: 'area-scan',
+    joinedAreas: scan.length,
+    perArea: scan.map((entry) => ({
+      area: entry.area,
+      roomId: entry.roomId,
+      boardId: entry.boardId,
+      specialCount: entry.specialCount,
+      mapMarker: entry.mapMarker,
+      mapItemTypeCount: entry.mapItemTypeCount,
+      mapItemCount: entry.mapItemCount,
+      trailingBytes: entry.trailingBytes,
+    })),
+    specials: allSpecials,
+    parkBoardCatalog: {
+      status: boardCatalog.status,
+      boardCount: boardCatalog.catalog?.boardCount ?? null,
+    },
+    traffic: metadata,
+    events,
+    mapSpecialUpdates,
+    postJoinGraceMs: POST_JOIN_GRACE_MS,
+    areaScanCooldownMs: AREA_SCAN_COOLDOWN_MS,
+    requestBodyBytes: 6,
+    decode: allSpecials.length > 0 ? 'park-response-ok' : 'no-specials-any-area',
+  }, null, 2));
+}
+
 function printRedactedEvidence(
   args: ProbeArgs,
   response: ParkJoinResponseMetadata,
@@ -907,8 +1027,8 @@ async function runProbe(
       user: row.gameUser,
       pass: readGamePass(db, config.masterKey, args.accountId),
       device: row.device,
-    }, 12_000);
-    await waitUntilOnline(client, 10_000);
+    }, 25_000);
+    await waitUntilOnline(client, 20_000);
 
     // GameClient.login() already emitted the native main-handler request as
     // part of setProviderAndClientType(). Re-emitting -1[8] here would add a
@@ -932,40 +1052,84 @@ async function runProbe(
     const boardCatalog = await boardListPending;
 
     phase = 'direct-join';
-    const pending = waitForParkJoinResponse(client, abort.signal, 7_000);
     const mapSpecialCapture = startMapSpecialCapture(client);
-    // Native ParkService.doJoinPark writes the two requested signed bytes and
-    // then LoadMap.xJoinCasino/yJoinCasino as two big-endian i16 values. The
-    // reviewed map-5 candidate uses x=254,y=82 from CityMap node id=5; that
-    // node's label/idToMap are kept separate from the requested room ID.
-    client.sendRaw(80, [
-      { t: 'i8', v: String(args.map) },
-      { t: 'i8', v: String(args.area) },
-      { t: 'i16', v: String(joinPosition.x) },
-      { t: 'i16', v: String(joinPosition.y) },
-    ]);
     try {
-      const response = await pending;
-      // ITEM_MAP_SPECIAL (cmd 48) can be pushed asynchronously after RX 80.
-      // Keep this read-only probe online briefly so a delayed NPC event is not
-      // mistaken for an empty map snapshot.
-      await new Promise<void>((resolve) => setTimeout(resolve, POST_JOIN_GRACE_MS));
-      if (mapSpecialCapture.error) throw mapSpecialCapture.error;
-      if (response.roomId !== args.map || response.boardId !== args.area) {
-        throw new RedactedProbeError(
-          'park-response',
-          'room/board response không khớp request',
+      if (args.areaScan !== undefined) {
+        // Chế độ quét khu (read-only): join tuần tự area 0..areaScan-1 trong CÙNG
+        // một phiên, cooldown giữa các join chống anti-cheat join dồn (Spec §2.5).
+        const scan: AreaScanEntry[] = [];
+        for (let area = args.area; area < args.areaScan; area += 1) {
+          if (area > args.area) {
+            await new Promise<void>((resolve) => setTimeout(resolve, AREA_SCAN_COOLDOWN_MS));
+          }
+          phase = 'direct-join';
+          const pending = waitForParkJoinResponse(client, abort.signal, 7_000);
+          // Native ParkService.doJoinPark writes the two requested signed bytes and
+          // then LoadMap.xJoinCasino/yJoinCasino as two big-endian i16 values.
+          client.sendRaw(80, [
+            { t: 'i8', v: String(args.map) },
+            { t: 'i8', v: String(area) },
+            { t: 'i16', v: String(joinPosition.x) },
+            { t: 'i16', v: String(joinPosition.y) },
+          ]);
+          const response = await pending;
+          // ITEM_MAP_SPECIAL (cmd 48) có thể bị đẩy trễ sau RX 80 — chờ grace ngắn.
+          await new Promise<void>((resolve) => setTimeout(resolve, POST_JOIN_GRACE_MS));
+          if (mapSpecialCapture.error) throw mapSpecialCapture.error;
+          if (response.roomId !== args.map || response.boardId !== area) {
+            throw new RedactedProbeError(
+              'park-response',
+              `room/board response không khớp request (area ${area})`,
+            );
+          }
+          scan.push({
+            area: response.boardId,
+            roomId: response.roomId,
+            boardId: response.boardId,
+            specialCount: response.specialCount,
+            specials: response.specials,
+            mapMarker: response.mapMarker,
+            mapItemTypeCount: response.mapItemTypeCount,
+            mapItemCount: response.mapItemCount,
+            trailingBytes: response.trailingBytes,
+          });
+        }
+        assertScanTraffic(metadata, args.areaScan - args.area, boardCatalog);
+        printScanEvidence(args, scan, boardCatalog, metadata, events, mapSpecialCapture.updates);
+      } else {
+        const pending = waitForParkJoinResponse(client, abort.signal, 7_000);
+        // Native ParkService.doJoinPark writes the two requested signed bytes and
+        // then LoadMap.xJoinCasino/yJoinCasino as two big-endian i16 values. The
+        // reviewed map-5 candidate uses x=254,y=82 from CityMap node id=5; that
+        // node's label/idToMap are kept separate from the requested room ID.
+        client.sendRaw(80, [
+          { t: 'i8', v: String(args.map) },
+          { t: 'i8', v: String(args.area) },
+          { t: 'i16', v: String(joinPosition.x) },
+          { t: 'i16', v: String(joinPosition.y) },
+        ]);
+        const response = await pending;
+        // ITEM_MAP_SPECIAL (cmd 48) can be pushed asynchronously after RX 80.
+        // Keep this read-only probe online briefly so a delayed NPC event is not
+        // mistaken for an empty map snapshot.
+        await new Promise<void>((resolve) => setTimeout(resolve, POST_JOIN_GRACE_MS));
+        if (mapSpecialCapture.error) throw mapSpecialCapture.error;
+        if (response.roomId !== args.map || response.boardId !== args.area) {
+          throw new RedactedProbeError(
+            'park-response',
+            'room/board response không khớp request',
+          );
+        }
+        assertExpectedTraffic(metadata, boardCatalog);
+        printRedactedEvidence(
+          args,
+          response,
+          boardCatalog,
+          metadata,
+          events,
+          mapSpecialCapture.updates,
         );
       }
-      assertExpectedTraffic(metadata, boardCatalog);
-      printRedactedEvidence(
-        args,
-        response,
-        boardCatalog,
-        metadata,
-        events,
-        mapSpecialCapture.updates,
-      );
     } finally {
       mapSpecialCapture.stop();
     }
