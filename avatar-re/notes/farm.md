@@ -535,3 +535,41 @@ Số dư xu cũng nằm ở **12 byte đuôi của gói kho (cmd 70)**: 4 byte �
 Kho chỉ có sau khi nhận gói 70. Nếu tính nhu cầu lúc `inventory` còn rỗng thì sẽ
 tưởng đang có 0 và mua thừa toàn bộ — đã gặp thật (suýt mua 57 Thuốc bổ dù kho có 99).
 Phải xin lại kho và **chờ phản hồi** trước khi quyết định mua.
+
+
+## 2026-09-16 — clearCell (doPlantSeed seed=-1) KHÔNG có ACK từ server
+
+### Phát hiện từ disasm client gốc và log live 24 ô
+
+Server xử lý `doPlantSeed(idFarm, indexCell, -1)` (Cmd 66 TX) như thao tác cập
+nhật database nội bộ, **hoàn toàn không gửi packet phản hồi** (không Cmd 66 RX
+với seed=-1, không Cmd 100 INFO_CELL).
+
+### Bằng chứng kỹ thuật
+
+1. **Client disassembly** (`FarmScr$$onHarvestTree` RVA `0x63B08C`):
+   - Tại `0x63b2f0`: Gán local `cell.idTree = -1`, `hervestPer = 100`.
+   - Tại `0x63b340`: Gọi ngay `FarmService$$doPlantSeed(idFarm, indexCell, -1)`.
+   - Tại `0x63b364`: Nhảy thẳng sang `FarmScr$$setInfoCell` — không đăng ký
+     handler chờ phản hồi.
+2. **Client disassembly** (`FarmScr$$onPlantSeed` RVA `0x63AB28`):
+   - Tại `0x63ac5c`: Gọi `Item$$getItemByList(idSeed)`. Với `idSeed = -1` (0xFF),
+     hàm trả NULL → nhảy tới `0x63b010` gọi `Out$$logError` rồi return.
+   - Client gốc không hỗ trợ nhận Cmd 66 mang seed = -1.
+3. **Log thực nghiệm** (24/24 ô, tài khoản 1005161, 2026-09-15):
+   - Sau mỗi Cmd 64 (harvest ACK), không có Cmd 66 seed=-1 hay Cmd 100.
+   - Waiter chờ 2.500 ms đều timeout (24 ô × 2.5s = ~60s lãng phí).
+   - Snapshot JOIN ngay sau timeout xác nhận ô đã trống (47/48 ô có cây).
+
+### Kết luận kiến trúc
+
+AutoFarm **không tạo waiter chờ ACK cho lệnh clearCell**. Thay vào đó, áp dụng
+**quy trình 3 pha**:
+- Pha 1: Thu hoạch tuần tự (chờ ACK Cmd 64), gửi ngay `clearCell` (không chờ).
+- Pha 2: Đúng **1 lần** snapshot JOIN (Cmd 69) làm Verification Gate xác nhận
+  tất cả ô đã làm đất thực sự trống (`idTree === -1`).
+- Pha 3: Gieo hạt tuần tự cho các ô đã xác nhận trống (chờ ACK Cmd 66 seed>=0),
+  sau đó chăm sóc các ô còn lại.
+
+Số lần JOIN giảm từ 24 lần xuống đúng **1 lần**; thời gian xử lý từ ~93s xuống ~3–5s.
+

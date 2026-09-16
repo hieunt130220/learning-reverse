@@ -7,6 +7,8 @@ import { CMD_GET_KEY, Session } from '../proto/session.js';
 import {
   classifyFarmSlots,
   decodeFarmData,
+  decodeHarvestReply,
+  decodePlantReply,
   decodeAnimalCatalog,
   decodeCookingPacket,
   decodeFoodCatalog,
@@ -475,6 +477,7 @@ export class GameClient extends EventEmitter {
       onReply = (msg: Message): void => {
         if (msg.command !== cmd) return;
         clearTimeout(timer);
+        this.session.removeListener('message', onReply);
         resolve(true);
       };
       this.session.on('message', onReply);
@@ -1590,11 +1593,21 @@ export class GameClient extends EventEmitter {
         this.emit('log', `server xác nhận: dùng vật phẩm #${idItem} lên ô ${index}`);
         break;
       }
-      case 64: // HERVEST — thu hoạch ô
-      case 66: // PLANT_SEED — trồng hạt
+      case 64: {
+        const reply = decodeHarvestReply(msg.getData());
+        this.emit('log', `server trả lời cmd 64: ${msg.getData().toString('hex')}`);
+        if (reply) this.emit('farm-harvest-reply', reply);
+        break;
+      }
+      case 66: {
+        const reply = decodePlantReply(msg.getData());
+        this.emit('log', `server trả lời cmd 66: ${msg.getData().toString('hex')}`);
+        if (reply) this.emit('farm-plant-reply', reply);
+        break;
+      }
       case 53: // SELL_ANIMAL — bán vật nuôi
       case 54: { // HARVEST_ANIMAL — thu sản phẩm vật nuôi
-        // Bốn lệnh này chưa chốt được layout gói trả lời, và cũng chính là bốn
+        // Hai lệnh này chưa chốt được layout gói trả lời, và cũng chính là hai
         // lệnh hay "gửi xong không thấy gì xảy ra". Log nguyên hex để phân biệt
         // được: server im lặng bỏ qua, hay có trả lời mà mình chưa đọc.
         this.emit('log', `server trả lời cmd ${msg.command}: ${msg.getData().toString('hex')}`);
@@ -1671,6 +1684,9 @@ export class GameClient extends EventEmitter {
       case 61: // cùng payload readFarmData
         try {
           this.farmState = decodeFarmData(msg.getData());
+          if (msg.command === 69 && this.farmState.idFarm >= 0) {
+            this.emit('farm-snapshot', this.farmState);
+          }
           // Thông tin bếp và nhiệm vụ ngày khi vào farm (catalog cây/vật phẩm/món ăn đã có sẵn mặc định)
           this.farm.getCook(0);
           this.farm.getDailyQuest(0);
