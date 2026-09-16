@@ -62,13 +62,13 @@ Commit: `git commit -m "feat(farm): add water and fertilizer fallback names to K
 - Consumes: `getProduceOrItemName`, `this.client.trees`, `this.client.items`
 - Produces: Nhật ký thân thiện, hiển thị tên cây trồng & vật phẩm.
 
-- [ ] **Step 1: Impact analysis `runCycle`.**
+- [x] **Step 1: Impact analysis `runCycle`.**
 Run:
 ```bash
 gitnexus_impact({target: "runCycle", direction: "upstream", repo: "learning-reverse"})
 ```
 
-- [ ] **Step 2: Thêm helper `nameOf` và cập nhật các dòng log trong `autoFarm.ts`.**
+- [x] **Step 2: Thêm helper `nameOf` và cập nhật các dòng log trong `autoFarm.ts`.**
 Định nghĩa helper trong `runCycle`:
 ```ts
 const nameOf = (id: number) => getProduceOrItemName(id, this.client.trees, this.client.items);
@@ -104,7 +104,7 @@ if (plantResult.status === 'confirmed') {
   note(`[cây] ô ${entry.index}: trồng ${nameOf(plannedSeedId)}`);
   plantedIndices.add(entry.index);
 } else {
-  note(`[cây] ô ${entry.index}: trồng ${nameOf(plannedSeedId)} chưa xác nhận — bỏ qua`);
+  note(`[cây] ô ${entry.index}: server im lặng — trồng ${nameOf(plannedSeedId)} chưa nhận xác nhận, bỏ qua`);
 }
 ```
 
@@ -150,7 +150,7 @@ note(`  - ${nameOf(r.itemId)}: đăng ${r.listedLots} lô (${r.listedQuantity} s
 note(`  - ${nameOf(r.itemId)}: bỏ qua (${r.skippedReason})`);
 ```
 
-- [ ] **Step 3: Verify toàn diện & Commit Task 2.**
+- [x] **Step 3: Verify toàn diện & Commit Task 2.**
 Run:
 ```bash
 cd avatar-web/server && npm run typecheck && node --import tsx --test src/game/farmData.test.ts src/game/client.test.ts src/autoFarm.test.ts

@@ -630,6 +630,8 @@ export class AutoFarm extends EventEmitter {
       actions.push(line);
       this.emit('log', line);
     };
+    const nameOf = (id: number): string =>
+      getProduceOrItemName(id, this.client.trees, this.client.items);
 
     // Mất kết nối đầu vòng thì bỏ qua vòng này nhưng KHÔNG tắt auto: vòng kế
     // sau intervalMs tự kiểm tra lại. Đăng nhập lại là việc của tầng phiên
@@ -854,12 +856,12 @@ export class AutoFarm extends EventEmitter {
             ?? this.client.trees.find((t) => t.id === id)?.value
             ?? DEFAULT_SEED_CATALOG.find((s) => s.id === id)?.value;
           if (price === undefined) {
-            note(`bỏ mua #${id}: chưa biết giá`);
+            note(`bỏ mua ${nameOf(id)}: chưa biết giá`);
             continue;
           }
           const cost = short * price;
           if (spent + cost > cfg.buyBudgetXu) {
-            note(`dừng mua #${id}: vượt trần ${cfg.buyBudgetXu} xu`);
+            note(`dừng mua ${nameOf(id)}: vượt trần ${cfg.buyBudgetXu} xu`);
             continue;
           }
           // num là i8 trên wire -> chia lô tối đa 100 mỗi lệnh.
@@ -868,7 +870,7 @@ export class AutoFarm extends EventEmitter {
             const lot = Math.min(left, 20);
             this.client.farm.buyItem(id, lot, SHOP_XU);
             sent += 1;
-            note(`mua #${id} ×${lot} (~${lot * price} xu)`);
+            note(`mua ${nameOf(id)} ×${lot} (~${lot * price} xu)`);
             left -= lot;
             await tick();
           }
@@ -1079,7 +1081,9 @@ export class AutoFarm extends EventEmitter {
             if (this.client.farm.clearCell) this.client.farm.clearCell(idFarm, c.index);
             else this.client.farm.plantSeed(idFarm, c.index, -1);
             sent += 1;
-            note(`[cây] ô ${c.index}: thu hoạch (+${result.value.quantity}), làm đất`);
+            const treeName = c.idTree !== -1 ? nameOf(c.idTree) : '';
+            const harvestDesc = treeName ? `thu hoạch ${treeName}` : 'thu hoạch';
+            note(`[cây] ô ${c.index}: ${harvestDesc} (+${result.value.quantity}), làm đất`);
             pendingClearCells.push({ index: c.index, previousTreeId: c.idTree });
             await tick();
           } else {
@@ -1141,7 +1145,7 @@ export class AutoFarm extends EventEmitter {
           continue;
         }
         if ((seedInventory.get(plannedSeedId) ?? 0) <= 0) {
-          note(`[cây] ô ${entry.index}: bỏ qua — thiếu hạt #${plannedSeedId} trong kho`);
+          note(`[cây] ô ${entry.index}: bỏ qua — thiếu hạt ${nameOf(plannedSeedId)} trong kho`);
           continue;
         }
 
@@ -1161,10 +1165,10 @@ export class AutoFarm extends EventEmitter {
 
         if (plantResult.status === 'confirmed') {
           seedInventory.set(plannedSeedId, (seedInventory.get(plannedSeedId) ?? 0) - 1);
-          note(`[cây] ô ${entry.index}: trồng #${plannedSeedId}`);
+          note(`[cây] ô ${entry.index}: trồng ${nameOf(plannedSeedId)}`);
           plantedIndices.add(entry.index);
         } else {
-          note(`[cây] ô ${entry.index}: trồng #${plannedSeedId} chưa xác nhận — bỏ qua`);
+          note(`[cây] ô ${entry.index}: server im lặng — trồng ${nameOf(plannedSeedId)} chưa nhận xác nhận, bỏ qua`);
         }
       }
 
@@ -1179,22 +1183,22 @@ export class AutoFarm extends EventEmitter {
         if (c.isArid && waterItemId !== undefined) {
           this.client.farm.useItem(idFarm, c.index, waterItemId);
           sent += 1;
-          did.push(`tưới #${waterItemId}`);
-          await confirm(65, `tưới #${waterItemId} ô ${c.index}`);
+          did.push('tưới');
+          await confirm(65, `tưới ô ${c.index}`);
           await tick();
         }
         if (c.isGrass && grassItemId !== undefined) {
           this.client.farm.useItem(idFarm, c.index, grassItemId);
           sent += 1;
-          did.push(`nhổ cỏ #${grassItemId}`);
-          await confirm(65, `nhổ cỏ #${grassItemId} ô ${c.index}`);
+          did.push('nhổ cỏ');
+          await confirm(65, `nhổ cỏ ô ${c.index}`);
           await tick();
         }
         if (c.isWorm && wormItemId !== undefined) {
           this.client.farm.useItem(idFarm, c.index, wormItemId);
           sent += 1;
-          did.push(`bắt sâu #${wormItemId}`);
-          await confirm(65, `bắt sâu #${wormItemId} ô ${c.index}`);
+          did.push('bắt sâu');
+          await confirm(65, `bắt sâu ô ${c.index}`);
           await tick();
         }
         if (cfg.fertilizeCells && c.idTree !== -1 && c.vitalityPer < cfg.minVitality) {
@@ -1320,9 +1324,9 @@ export class AutoFarm extends EventEmitter {
             this.client.farm.useItem(idFarm, a.index, ITEM_DIARRHEA_CURE);
             sent += 2;
             seen.push(a.hasFlu && a.hasDiarrhea ? 'cúm + tiêu chảy' : a.hasFlu ? 'cúm' : 'tiêu chảy');
-            did.push('chữa bệnh (#120 & #121)');
+            did.push('chữa bệnh (Thuốc cúm & Thuốc tiêu chảy)');
             if (!hasFluCure || !hasDiarrheaCure) {
-              did.push('(lưu ý: cần bật Tự mua xu hoặc mua sẵn thuốc #120,#121 trong kho)');
+              did.push('(lưu ý: cần bật Tự mua xu hoặc mua sẵn thuốc cúm, tiêu chảy trong kho)');
             }
             await confirm(65, `chữa bệnh slot ${a.index}`);
             await tick();
@@ -1335,8 +1339,8 @@ export class AutoFarm extends EventEmitter {
               this.client.farm.useItem(idFarm, a.index, food);
               sent += 1;
               seen.push('đói');
-              did.push(`cho ăn #${food}`);
-              await confirm(65, `cho ăn #${food} slot ${a.index}`);
+              did.push(`cho ăn ${nameOf(food)}`);
+              await confirm(65, `cho ăn slot ${a.index}`);
               await tick();
             }
           }
@@ -1549,10 +1553,10 @@ export class AutoFarm extends EventEmitter {
           note(`[sạp tự động] hoàn thành: đã đăng ${result.listedLots} lô. Lý do dừng: ${result.stopReason}`);
           for (const r of result.rules) {
             if (r.listedLots > 0) {
-              note(`  - Nông sản #${r.itemId}: đăng ${r.listedLots} lô (${r.listedQuantity} sản phẩm)`);
+              note(`  - ${nameOf(r.itemId)}: đăng ${r.listedLots} lô (${r.listedQuantity} sản phẩm)`);
             }
             if (r.skippedReason) {
-              note(`  - Nông sản #${r.itemId}: bỏ qua (${r.skippedReason})`);
+              note(`  - ${nameOf(r.itemId)}: bỏ qua (${r.skippedReason})`);
             }
           }
         } catch (err) {

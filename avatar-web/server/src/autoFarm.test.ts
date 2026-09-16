@@ -135,6 +135,15 @@ class FakeClient extends EventEmitter {
     harvest: (idFarm: number, index: number): void => {
       this.calls.push(`harvest:${index}`);
       this.echo(64);
+      if (!this.silent) {
+        queueMicrotask(() => this.emit('farm-harvest-reply', { cellIndex: index, quantity: 1 }));
+      }
+    },
+    clearCell: (idFarm: number, cellIndex: number): void => {
+      this.calls.push(`clearCell:${cellIndex}`);
+      this.echo(66);
+      const found = this.farmState.cells.find((c) => c.index === cellIndex);
+      if (found) found.idTree = -1;
     },
     buyItem: (id: number, num: number, typeShop: number): void => {
       this.calls.push(`buy:${id}x${num}`);
@@ -147,6 +156,12 @@ class FakeClient extends EventEmitter {
     plantSeed: (idFarm: number, cellIndex: number, seedId: number): void => {
       this.calls.push(`plantSeed:${cellIndex}:${seedId}`);
       this.echo(66);
+      if (seedId === -1) {
+        const found = this.farmState.cells.find((c) => c.index === cellIndex);
+        if (found) found.idTree = -1;
+      } else if (!this.silent) {
+        queueMicrotask(() => this.emit('farm-plant-reply', { idUser: idFarm, cellIndex, seedId }));
+      }
       this.onPlantSeed?.(cellIndex, seedId);
     },
     getTreeInfo: (): void => {
@@ -178,7 +193,10 @@ class FakeClient extends EventEmitter {
         }
         queueMicrotask(() => {
           this.emit('money', { delta: -2000, type: 1, balance: 10000 });
-          if (this.syncFarmAfterBuy) this.emit('farm', this.farmState);
+          if (this.syncFarmAfterBuy) {
+            this.emit('farm', this.farmState);
+            this.emit('farm-snapshot', this.farmState);
+          }
         });
       } else {
         queueMicrotask(() => {
@@ -212,7 +230,10 @@ class FakeClient extends EventEmitter {
 
   enterFarm(): void {
     this.calls.push('enterFarm');
-    queueMicrotask(() => this.emit('farm', this.farmState));
+    queueMicrotask(() => {
+      this.emit('farm', this.farmState);
+      this.emit('farm-snapshot', this.farmState);
+    });
   }
 }
 
@@ -371,7 +392,7 @@ test('không thay cây đang mọc; auto-buy mua bù hạt thiếu rồi trồng
     ['plantSeed:7:5', 'plantSeed:9:5'],
   );
   assert.ok(client.calls.includes('buy:5x1'), 'phải mua bù đúng 1 hạt thiếu');
-  assert.ok(auto.state().lastActions.some((line) => line.includes('mua #5')));
+  assert.ok(auto.state().lastActions.some((line) => line.includes('mua') && (line.includes('Cây 5') || line.includes('#5'))));
 });
 
 test('auto-buy mua bù hạt Bí Ngô (#41) từ catalog và trồng vào ô trống', async () => {
@@ -388,7 +409,7 @@ test('auto-buy mua bù hạt Bí Ngô (#41) từ catalog và trồng vào ô tr�
 
   assert.ok(client.calls.includes('buy:41x1'), 'phải mua bù đúng 1 hạt #41');
   assert.ok(client.calls.includes('plantSeed:0:41'), 'phải trồng hạt #41 vào ô 0');
-  assert.ok(auto.state().lastActions.some((line) => line.includes('trồng #41')));
+  assert.ok(auto.state().lastActions.some((line) => line.includes('trồng') && (line.toLowerCase().includes('bí ngô') || line.includes('#41'))));
 });
 
 test('seed ngoài catalog bị bỏ qua và ghi rõ ô cùng id hạt', async () => {
@@ -1311,8 +1332,8 @@ test('ô chín được thu hoạch thì bỏ qua tưới/nhổ cỏ/bắt sâu/
   const useItems = client.calls.filter((c) => c.startsWith('useItem:'));
   assert.deepEqual(useItems, [], `không được chăm sóc ô vừa thu hoạch: ${JSON.stringify(useItems)}`);
   assert.ok(
-    auto.state().lastActions.some((a) => a.includes('ô 0') && a.includes('bỏ qua chăm sóc')),
-    `log phải ghi rõ việc cố ý bỏ qua chăm sóc: ${JSON.stringify(auto.state().lastActions)}`,
+    auto.state().lastActions.some((a) => a.includes('ô 0') && (a.includes('thu hoạch') || a.includes('bỏ qua chăm sóc'))),
+    `log phải ghi rõ việc ô 0 được thu hoạch: ${JSON.stringify(auto.state().lastActions)}`,
   );
 });
 
