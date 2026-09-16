@@ -63,6 +63,12 @@ export interface NativeParkJoinPosition {
  *   14: Khu cá rô (460, 97) — verified from native bot bs_0.java & live traffic
  *   15: Khu cá lóc (36, 97)
  *   16: Khu cá mập (324, 157)
+ *   17: Ngoại ô (100, 100) — roomID verify từ CityMap node id=8
+ *       (handler 9, idToMap 17, TextAsset SHA e3fc3c12…) + J2ME
+ *       "ID 17: Khu ngoại ô" (gs_0.java:3321).
+ *       LƯU Ý NAMESPACE: key ở đây là roomID dùng cho doJoinPark, KHÔNG
+ *       phải CityMap node id. CityMap node id=8 ("Ngoại ô", 100, 100)
+ *       ánh xạ sang roomID=17 (idToMap), nên KHÔNG được thêm key 8.
  *   27: Bến tàu / Đảo Hawai (254, 82)
  */
 export const NATIVE_PARK_JOIN_POSITIONS: Readonly<Record<number, NativeParkJoinPosition>> =
@@ -72,12 +78,12 @@ export const NATIVE_PARK_JOIN_POSITIONS: Readonly<Record<number, NativeParkJoinP
     4: Object.freeze({ x: 452, y: 250 }),
     5: Object.freeze({ x: 254, y: 82 }),
     7: Object.freeze({ x: 524, y: 423 }),
-    8: Object.freeze({ x: 100, y: 100 }),
     9: Object.freeze({ x: 57, y: 209 }),
     13: Object.freeze({ x: 364, y: 64 }),
     14: Object.freeze({ x: 460, y: 97 }),
     15: Object.freeze({ x: 36, y: 97 }),
     16: Object.freeze({ x: 324, y: 157 }),
+    17: Object.freeze({ x: 100, y: 100 }),
     27: Object.freeze({ x: 254, y: 82 }),
   });
 
