@@ -12,6 +12,7 @@ import { CookingPanel } from './panels/CookingPanel.js';
 import { FindNpcPanel } from './panels/FindNpcPanel.js';
 import { FishingPanel } from './panels/FishingPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
+import { MiningPanel } from './panels/MiningPanel.js';
 import { QuestsPanel } from './panels/QuestsPanel.js';
 import { SettingsPanel } from './panels/SettingsPanel.js';
 import { ShopPanel } from './panels/ShopPanel.js';
@@ -21,6 +22,7 @@ const PANEL_TABS = [
   ['status', 'Trạng thái'],
   ['settings', 'Cài đặt'],
   ['fishing', '🎣 Câu cá'],
+  ['mining', '⛏️ Khai thác'],
   ['find_npc', 'Tìm NPC'],
   ['quests', 'Nhiệm vụ'],
   ['cooking', 'Nấu ăn'],
@@ -40,6 +42,7 @@ export const PANEL_GROUPS: PanelGroup[] = [
   { id: 'operations', label: 'Vận hành', panels: ['status', 'settings'] },
   { id: 'farm', label: 'Nông trại', panels: ['quests', 'cooking'] },
   { id: 'fishing', label: '🎣 Câu cá', panels: ['fishing'] },
+  { id: 'mining', label: '⛏️ Khai thác', panels: ['mining'] },
   { id: 'assets', label: 'Tài sản', panels: ['assets', 'shop'] },
   { id: 'logs', label: 'Log', panels: ['logs'] },
 ];
@@ -52,8 +55,9 @@ export const DESKTOP_CONSOLE_GROUPS = [
   { id: 'operations', label: 'Vận hành & Cài đặt', icon: '⚡', hotkey: '1' },
   { id: 'farm', label: 'Nông trại & Bếp', icon: '🌱', hotkey: '2' },
   { id: 'fishing', label: '🎣 Câu cá', icon: '🎣', hotkey: '3' },
-  { id: 'assets', label: 'Tài sản & Sạp', icon: '🎒', hotkey: '4' },
-  { id: 'logs', label: 'Nhật ký Log', icon: '📟', hotkey: '5' },
+  { id: 'mining', label: '⛏️ Khai thác', icon: '⛏️', hotkey: '4' },
+  { id: 'assets', label: 'Tài sản & Sạp', icon: '🎒', hotkey: '5' },
+  { id: 'logs', label: 'Nhật ký Log', icon: '📟', hotkey: '6' },
 ] as const;
 
 const FIND_NPC_TAB_HIDDEN = true;
@@ -302,6 +306,17 @@ function LoadedOperations({
           onSelectSettingsTab={() => selectPanel('settings')}
         />
       </div>
+      <div id="drawer-panel-mining" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('mining')}` : undefined} hidden={!visible('mining')}>
+        <MiningPanel
+          account={account}
+          automation={automation}
+          onChanged={() => {
+            void reload();
+            void refreshAutomation();
+          }}
+          onAutomationChange={handleAutomationChange}
+        />
+      </div>
       {!FIND_NPC_TAB_HIDDEN && (
         <div id="drawer-panel-find_npc" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('find_npc')}` : undefined} hidden={!visible('find_npc')}>
           <FindNpcPanel
@@ -407,7 +422,7 @@ function LoadedOperations({
             </ul>
           </div>
           <div className="console-sidebar-footer">
-            💡 Phím <strong>1–5</strong> để chuyển nhanh
+            💡 Phím <strong>1–6</strong> để chuyển nhanh
           </div>
         </aside>
         <div ref={panelsRef} className="console-canvas">
@@ -426,7 +441,7 @@ function LoadedOperations({
             style={{ padding: '2px 8px', fontSize: 11 }}
             onClick={() => selectGroup('logs')}
           >
-            Nhật ký gói tin (Phím 5)
+            Nhật ký gói tin (Phím 6)
           </button>
         </div>
       </footer>

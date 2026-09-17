@@ -3,7 +3,13 @@
  * Module thuần type + helper — không import runtime gì để tránh chu kỳ phụ thuộc.
  */
 
-export type AutomationMode = 'off' | 'auto_farm' | 'find_npc' | 'auto_fishing' | 'auto_fisherman_quest';
+export type AutomationMode =
+  | 'off'
+  | 'auto_farm'
+  | 'find_npc'
+  | 'auto_fishing'
+  | 'auto_fisherman_quest'
+  | 'auto_mining';
 export type AutomationTransitionState = 'stable' | 'switching';
 
 export interface FishingConfig {
@@ -113,6 +119,67 @@ export function idleFishingRuntime(): FishingRuntimeState {
   };
 }
 
+export type MiningTarget = 'diamond' | 'wood' | 'patrol';
+
+export interface MiningConfig {
+  readonly target: MiningTarget;
+  readonly startArea: number;
+  readonly switchAreaWhenDepleted: boolean;
+  readonly maxAreasToScan: number;
+  readonly delayBetweenActionsMs: number;
+}
+
+export const DEFAULT_MINING_CONFIG: MiningConfig = Object.freeze({
+  target: 'diamond',
+  startArea: 0,
+  switchAreaWhenDepleted: true,
+  maxAreasToScan: 10,
+  delayBetweenActionsMs: 3000,
+});
+
+export interface StoredMiningConfigState {
+  revision: number;
+  config: MiningConfig;
+}
+
+export type MiningStatus =
+  | 'idle'
+  | 'navigating'
+  | 'scanning_nodes'
+  | 'mining'
+  | 'switching_area'
+  | 'paused_no_tool'
+  | 'paused_low_energy'
+  | 'stopped';
+
+export interface MiningRuntimeState {
+  status: MiningStatus;
+  currentMap: number | null;
+  currentArea: number | null;
+  currentNodeId: number | null;
+  currentNodeName: string | null;
+  resourceName: string | null;
+  remainingCapacity: number | null;
+  maxCapacity: number | null;
+  sessionHarvestCount: number;
+  lastMessage: string | null;
+}
+
+export function idleMiningRuntime(): MiningRuntimeState {
+  return {
+    status: 'idle',
+    currentMap: null,
+    currentArea: null,
+    currentNodeId: null,
+    currentNodeName: null,
+    resourceName: null,
+    remainingCapacity: null,
+    maxCapacity: null,
+    sessionHarvestCount: 0,
+    lastMessage: null,
+  };
+}
+
 export interface AutomationLocation {
   map: number;
   area: number;
@@ -133,6 +200,7 @@ export interface LoadedAutomationIntent {
   desiredMode: AutomationMode;
   findNpcConfig: StoredFindNpcConfigState;
   fishingConfig?: StoredFishingConfigState;
+  miningConfig?: StoredMiningConfigState;
   location: AutomationLocation | null;
 }
 
@@ -195,6 +263,8 @@ export interface AutomationSnapshot {
   fishermanQuestRuntime?: FishermanQuestRuntimeState;
   dailyFishingStatistics?: DailyFishingStatistics;
   mlFishingStatistics?: MlFishingStatistics;
+  miningConfig?: StoredMiningConfigState;
+  miningRuntime?: MiningRuntimeState;
   location: AutomationLocation | null;
 }
 
@@ -240,6 +310,7 @@ export type AutomationApiErrorCode =
   | 'automation-connect-pending'
   | 'automation-start-failed'
   | 'invalid-fishing-config'
+  | 'invalid-mining-config'
   | 'automation-save-failed';
 
 export function idleFindNpcRuntime(targetName: string): AutoFindNpcState {

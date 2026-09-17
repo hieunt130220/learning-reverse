@@ -30,6 +30,7 @@ import type {
   LoadedAutomationIntent,
   NpcMapLocation,
   StoredFishingConfigState,
+  StoredMiningConfigState,
 } from './automationTypes.js';
 import { FIND_NPC_DISABLED } from './featureFlags.js';
 import { runtimeSnapshotPatchFromEvent } from './runtimeCache.js';
@@ -212,6 +213,10 @@ export class SessionManager {
 
   updateFishingConfig(accountId: number, state: StoredFishingConfigState): void {
     this.sessions.get(accountId)?.setFishingConfig?.(state);
+  }
+
+  updateMiningConfig(accountId: number, state: StoredMiningConfigState): void {
+    this.sessions.get(accountId)?.setMiningConfig?.(state);
   }
 
   async stopAutomation(accountId: number): Promise<void> {

@@ -335,7 +335,51 @@ export interface ShopRuntimeState {
   lastError?: { code: string; message: string };
 }
 
-export type AutomationMode = 'off' | 'auto_farm' | 'find_npc' | 'auto_fishing' | 'auto_fisherman_quest';
+export type AutomationMode =
+  | 'off'
+  | 'auto_farm'
+  | 'find_npc'
+  | 'auto_fishing'
+  | 'auto_fisherman_quest'
+  | 'auto_mining';
+
+export type MiningTarget = 'diamond' | 'wood' | 'patrol';
+
+export interface MiningConfig {
+  readonly target: MiningTarget;
+  readonly startArea: number;
+  readonly switchAreaWhenDepleted: boolean;
+  readonly maxAreasToScan: number;
+  readonly delayBetweenActionsMs: number;
+}
+
+export interface StoredMiningConfigState {
+  revision: number;
+  config: MiningConfig;
+}
+
+export type MiningStatus =
+  | 'idle'
+  | 'navigating'
+  | 'scanning_nodes'
+  | 'mining'
+  | 'switching_area'
+  | 'paused_no_tool'
+  | 'paused_low_energy'
+  | 'stopped';
+
+export interface MiningRuntimeState {
+  status: MiningStatus;
+  currentMap: number | null;
+  currentArea: number | null;
+  currentNodeId: number | null;
+  currentNodeName: string | null;
+  resourceName: string | null;
+  remainingCapacity: number | null;
+  maxCapacity: number | null;
+  sessionHarvestCount: number;
+  lastMessage: string | null;
+}
 
 export interface FishingConfig {
   readonly map: number;
@@ -472,6 +516,8 @@ export interface AutomationSnapshot {
   fishingConfig?: StoredFishingConfigState;
   fishingRuntime?: FishingRuntimeState;
   fishermanQuestRuntime?: FishermanQuestRuntimeState;
+  miningConfig?: StoredMiningConfigState;
+  miningRuntime?: MiningRuntimeState;
   location: AutomationLocation | null;
 }
 
@@ -483,6 +529,7 @@ export interface AutomationApiErrorDto {
     | 'find-npc-name-required'
     | 'catalog-unverified'
     | 'revision-conflict'
+    | 'invalid-mining-config'
     | 'automation-connect-pending'
     | 'automation-start-failed';
   snapshot?: AutomationSnapshot;

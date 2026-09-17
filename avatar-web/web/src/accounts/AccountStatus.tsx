@@ -19,6 +19,7 @@ const MODE_LABEL: Record<AutomationMode, string> = {
   auto_fishing: 'Câu cá',
   find_npc: 'Tìm NPC',
   auto_fisherman_quest: 'Nhiệm vụ thợ câu',
+  auto_mining: 'Khai thác',
 };
 
 export function automationModeLabel(mode: AutomationMode): string {

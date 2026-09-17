@@ -1,19 +1,24 @@
 import type { Db } from '../db/index.js';
 import {
   DEFAULT_FISHING_CONFIG,
+  DEFAULT_MINING_CONFIG,
   FISHING_BAITS,
   FISHING_RODS,
   idleFindNpcRuntime,
   idleFishermanQuestRuntime,
   idleFishingRuntime,
+  idleMiningRuntime,
   type AutomationLocation,
   type AutomationMode,
   type AutomationSnapshot,
   type FindNpcConfig,
   type FishingConfig,
   type LoadedAutomationIntent,
+  type MiningConfig,
+  type MiningTarget,
   type StoredFindNpcConfigState,
   type StoredFishingConfigState,
+  type StoredMiningConfigState,
 } from '../session/automationTypes.js';
 
 export class FindNpcConfigError extends Error {
@@ -24,11 +29,20 @@ export class FindNpcConfigError extends Error {
   readonly code = 'invalid-find-npc-config' as const;
 }
 
+export class MiningConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MiningConfigError';
+  }
+  readonly code = 'invalid-mining-config' as const;
+}
+
 interface AutomationRow {
   account_id: number;
   desired_mode: AutomationMode;
   find_npc_config_json: string | null;
   fishing_config_json: string | null;
+  mining_config_json: string | null;
   current_map: number | null;
   current_area: number | null;
   location_observed_at: number | null;
@@ -135,6 +149,69 @@ function storedFishingConfig(raw: string | null): StoredFishingConfigState {
   return defaultFishingConfig();
 }
 
+export function defaultMiningConfig(): StoredMiningConfigState {
+  return {
+    revision: 0,
+    config: { ...DEFAULT_MINING_CONFIG },
+  };
+}
+
+export function normalizeMiningConfig(input: unknown): MiningConfig {
+  if (typeof input !== 'object' || input === null) {
+    throw new MiningConfigError('Cấu hình khai thác phải là một object');
+  }
+  const obj = input as Record<string, unknown>;
+  const target: MiningTarget =
+    obj.target === 'diamond' || obj.target === 'wood' || obj.target === 'patrol'
+      ? obj.target
+      : 'diamond';
+  const startArea =
+    typeof obj.startArea === 'number' && obj.startArea >= 0 && obj.startArea <= 19
+      ? Math.floor(obj.startArea)
+      : 0;
+  const switchAreaWhenDepleted =
+    typeof obj.switchAreaWhenDepleted === 'boolean'
+      ? obj.switchAreaWhenDepleted
+      : true;
+  const maxAreasToScan =
+    typeof obj.maxAreasToScan === 'number' && obj.maxAreasToScan >= 1 && obj.maxAreasToScan <= 20
+      ? Math.floor(obj.maxAreasToScan)
+      : 10;
+  const delayBetweenActionsMs =
+    typeof obj.delayBetweenActionsMs === 'number' && obj.delayBetweenActionsMs >= 1500 && obj.delayBetweenActionsMs <= 10000
+      ? Math.floor(obj.delayBetweenActionsMs)
+      : 3000;
+
+  return {
+    target,
+    startArea,
+    switchAreaWhenDepleted,
+    maxAreasToScan,
+    delayBetweenActionsMs,
+  };
+}
+
+function storedMiningConfig(raw: string | null): StoredMiningConfigState {
+  if (!raw) return defaultMiningConfig();
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      typeof parsed === 'object' && parsed !== null
+      && (parsed as Record<string, unknown>).version === 1
+      && typeof (parsed as Record<string, unknown>).revision === 'number'
+    ) {
+      const envelope = parsed as { version: 1; revision: number; config: unknown };
+      return {
+        revision: envelope.revision,
+        config: normalizeMiningConfig(envelope.config),
+      };
+    }
+  } catch {
+    /* JSON hỏng -> mặc định */
+  }
+  return defaultMiningConfig();
+}
+
 function rowToState(row: AutomationRow) {
   const location: AutomationLocation | null =
     row.current_map !== null && row.current_area !== null && row.location_observed_at !== null
@@ -144,6 +221,7 @@ function rowToState(row: AutomationRow) {
     desiredMode: row.desired_mode,
     findNpcConfig: storedFindNpcConfig(row.find_npc_config_json),
     fishingConfig: storedFishingConfig(row.fishing_config_json),
+    miningConfig: storedMiningConfig(row.mining_config_json),
     location,
   };
 }
@@ -154,7 +232,7 @@ export type StoredAutomationState = ReturnType<typeof rowToState>;
 export function readAutomationState(db: Db, accountId: number): StoredAutomationState {
   const row = db
     .prepare<[number], AutomationRow>(
-      `SELECT desired_mode, find_npc_config_json, fishing_config_json, current_map, current_area, location_observed_at
+      `SELECT desired_mode, find_npc_config_json, fishing_config_json, mining_config_json, current_map, current_area, location_observed_at
          FROM avatar_automation_state WHERE account_id = ?`,
     )
     .get(accountId);
@@ -163,6 +241,7 @@ export function readAutomationState(db: Db, accountId: number): StoredAutomation
       desiredMode: 'off',
       findNpcConfig: defaultFindNpcConfig(),
       fishingConfig: defaultFishingConfig(),
+      miningConfig: defaultMiningConfig(),
       location: null,
     };
   }
@@ -279,6 +358,57 @@ export function saveFishingConfig(
   })();
 }
 
+export type SaveMiningConfigResult =
+  | { status: 'saved'; state: StoredMiningConfigState }
+  | { status: 'conflict'; current: StoredMiningConfigState }
+  | { status: 'missing' };
+
+export function saveMiningConfig(
+  db: Db,
+  accountId: number,
+  expectedRevision: number,
+  config: MiningConfig,
+  now = Date.now(),
+): SaveMiningConfigResult {
+  return db.transaction((): SaveMiningConfigResult => {
+    const owned = db
+      .prepare<[number], { user_id: number }>('SELECT user_id FROM avatar_accounts WHERE id = ?')
+      .get(accountId);
+    if (!owned) return { status: 'missing' };
+
+    const current = readAutomationState(db, accountId).miningConfig;
+    if (
+      current.revision === expectedRevision &&
+      current.revision === 0 &&
+      !db.prepare<[number], { account_id: number }>(
+        'SELECT account_id FROM avatar_automation_state WHERE account_id = ?',
+      ).get(accountId)
+    ) {
+      db.prepare(
+        `INSERT INTO avatar_automation_state (account_id, desired_mode, updated_at)
+           VALUES (?, 'off', ?)`,
+      ).run(accountId, now);
+    } else if (current.revision !== expectedRevision) {
+      return { status: 'conflict', current };
+    }
+
+    const nextRevision = current.revision + 1;
+    const json = JSON.stringify({
+      version: 1,
+      revision: nextRevision,
+      config,
+    });
+
+    db.prepare(
+      `UPDATE avatar_automation_state
+         SET mining_config_json = ?, updated_at = ?
+       WHERE account_id = ?`,
+    ).run(json, now, accountId);
+
+    return { status: 'saved', state: { revision: nextRevision, config } };
+  })();
+}
+
 /** Ghi/xóa location nguyên tử: cả ba cột cùng giá trị hoặc cùng NULL. */
 export function saveFindNpcLocation(
   db: Db,
@@ -313,7 +443,7 @@ export function listDesiredAutomation(db: Db): DesiredAutomationEntry[] {
       `SELECT account_id, desired_mode, find_npc_config_json, fishing_config_json,
               current_map, current_area, location_observed_at
          FROM avatar_automation_state
-        WHERE desired_mode IN ('auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest')
+        WHERE desired_mode IN ('auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest', 'auto_mining')
         ORDER BY account_id`,
     )
     .all();
@@ -325,6 +455,7 @@ export function listDesiredAutomation(db: Db): DesiredAutomationEntry[] {
         desiredMode: state.desiredMode,
         findNpcConfig: state.findNpcConfig,
         fishingConfig: state.fishingConfig,
+        miningConfig: state.miningConfig,
         location: state.location,
       },
     };
@@ -342,6 +473,8 @@ export function offlineAutomationSnapshot(state: StoredAutomationState): Automat
     fishingConfig: state.fishingConfig,
     fishingRuntime: idleFishingRuntime(),
     fishermanQuestRuntime: idleFishermanQuestRuntime(),
+    miningConfig: state.miningConfig,
+    miningRuntime: idleMiningRuntime(),
     location: state.location,
   };
 }

@@ -37,14 +37,15 @@ export function openDb(file: string): Db {
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_farm_level INTEGER');
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_metrics_at INTEGER');
   addColumn('ALTER TABLE avatar_automation_state ADD COLUMN fishing_config_json TEXT');
+  addColumn('ALTER TABLE avatar_automation_state ADD COLUMN mining_config_json TEXT');
 
-  // Nâng cấp CHECK constraint cho avatar_automation_state nếu chưa hỗ trợ auto_fishing / auto_fisherman_quest
+  // Nâng cấp CHECK constraint cho avatar_automation_state nếu chưa hỗ trợ auto_fishing / auto_fisherman_quest / auto_mining
   const stateTable = db
     .prepare<[string], { sql: string }>(
       "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?",
     )
     .get('avatar_automation_state');
-  if (stateTable && (!stateTable.sql.includes('auto_fishing') || !stateTable.sql.includes('auto_fisherman_quest'))) {
+  if (stateTable && (!stateTable.sql.includes('auto_fishing') || !stateTable.sql.includes('auto_fisherman_quest') || !stateTable.sql.includes('auto_mining'))) {
     db.pragma('foreign_keys = OFF');
     db.transaction(() => {
       db.exec(`
@@ -53,9 +54,10 @@ export function openDb(file: string): Db {
           account_id              INTEGER PRIMARY KEY
                                   REFERENCES avatar_accounts(id) ON DELETE CASCADE,
           desired_mode            TEXT NOT NULL DEFAULT 'off'
-                                  CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest')),
+                                  CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest', 'auto_mining')),
           find_npc_config_json    TEXT,
           fishing_config_json     TEXT,
+          mining_config_json      TEXT,
           current_map             INTEGER,
           current_area            INTEGER,
           location_observed_at    INTEGER,
