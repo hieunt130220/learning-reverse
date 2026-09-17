@@ -6,7 +6,7 @@ import { StatusBanner } from '../StatusBanner.js';
 import type { AutomationSnapshot, AutoConfigResponse, AutoConfigStateDto, SessionSnapshot } from '../../types.js';
 import { formatFishingStatus } from './FishingPanel.js';
 
-type StatusAutomationMode = 'auto_farm' | 'auto_fishing' | 'auto_fisherman_quest';
+type StatusAutomationMode = 'auto_farm' | 'auto_fishing' | 'auto_fisherman_quest' | 'auto_mining';
 
 export function StatusPanel({
   accountId,
@@ -56,13 +56,28 @@ export function StatusPanel({
     const snapshotMode = automation?.desiredMode !== 'off'
       ? automation?.desiredMode
       : automation?.activeMode;
-    if (snapshotMode === 'auto_farm' || snapshotMode === 'auto_fishing' || snapshotMode === 'auto_fisherman_quest') {
+    if (
+      snapshotMode === 'auto_farm' ||
+      snapshotMode === 'auto_fishing' ||
+      snapshotMode === 'auto_fisherman_quest' ||
+      snapshotMode === 'auto_mining'
+    ) {
       setSelectedMode(snapshotMode);
     }
   }, [automation?.desiredMode, automation?.activeMode]);
 
   const automationProgress = (() => {
     if (!automation || progressMode === 'off') return 'automation đang tắt';
+    if (progressMode === 'auto_mining') {
+      const m = automation.miningRuntime;
+      const mapStr = m?.currentMap === 26 ? 'mỏ đá (26)' : m?.currentMap === 22 ? 'rừng gỗ (22)' : 'đang vào map';
+      const areaStr = m?.currentArea !== null && m?.currentArea !== undefined ? ` khu ${m.currentArea}` : '';
+      const nodeStr = m?.currentNodeName ? ` · ${m.currentNodeName}` : '';
+      const capStr = m?.remainingCapacity !== null && m?.remainingCapacity !== undefined ? ` (${m.remainingCapacity}/${m.maxCapacity})` : '';
+      const countStr = m?.sessionHarvestCount ? ` · thu hoạch: ${m.sessionHarvestCount}` : '';
+      const statusDesc = m?.status === 'paused_no_tool' ? ' · ⚠️ thiếu cuốc/rìu' : m?.status === 'paused_low_energy' ? ' · ⚡ hết năng lượng' : '';
+      return `khai thác: ${mapStr}${areaStr}${nodeStr}${capStr}${countStr}${statusDesc}`;
+    }
     if (progressMode === 'auto_fishing') {
       return `câu cá: ${formatFishingStatus(
         true,
@@ -222,6 +237,15 @@ export function StatusPanel({
           onClick={() => setSelectedMode('auto_fisherman_quest')}
         >
           🎣 Làm nhiệm vụ thợ câu
+        </button>
+        <button
+          type="button"
+          className={`automation-mode-button${selectedMode === 'auto_mining' ? ' active' : ''}`}
+          aria-pressed={selectedMode === 'auto_mining'}
+          disabled={controlsLocked}
+          onClick={() => setSelectedMode('auto_mining')}
+        >
+          ⛏️ Khai thác gỗ/đá
         </button>
       </div>
       <div className="row">

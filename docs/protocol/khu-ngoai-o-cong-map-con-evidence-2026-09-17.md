@@ -216,16 +216,20 @@ Qua dịch ngược `libil2cpp.so` ARM64:
 2. **Khởi tạo Menu hành động:**
    - Client duyệt mảng `short[] idMenu` tại offset `0x1B0` (vd `[1207, 1220]`).
    - Với mỗi menu index `i`, client tạo `ItemMapSpecial.IActionMenu(index: i, id: objectId)`.
-3. **Thực thi hành động:**
-   - Khi chọn menu (vd index 0 = menu `1207`), client gọi:
-     `ItemMapSpecial.IActionMenu.perform()` (RVA `0x83E708`)
-     → `GlobalService.gI().doItemSpecial(sbyte type = 3, int id = objectId, sbyte index = menuIndex)` (RVA `0x69EE6C`).
+3. **Thực thi hành động & Phân biệt Menu Index:**
+   - Khi tương tác đối tượng, mảng `menuIds: [1207, 1220]` chứa 2 lệnh:
+     - **`menuIndex = 0` (icon 1207):** **Xem thông tin đối tượng** (Server trả về `RX -40` mô tả: `KIM CƯƠNG Thu hoạch: Kim Cương Trắng Sản lượng: 3000/3000` hoặc `THÂN CÂY KHÔ Thu hoạch: Củi Khô Sản lượng: 3688/4000`). Lệnh này **KHÔNG** làm nhân vật cuốc/chặt và **KHÔNG** làm tăng tài nguyên trong kho.
+     - **`menuIndex = 1` (icon 1220):** **Khai thác thực tế** (`GlobalService.doItemSpecial(3, objectId, 1)`). Khi gửi lệnh này, nhân vật thực hiện một loạt nhát cuốc/chặt liên tục (khoảng 10 nhát), server trả về chuỗi thông báo:
+       - `Chúc mừng bạn đã thu hoạch được 1 Đá Trắng` (Room 26) / `Chúc mừng bạn đã thu hoạch được 1 Củi` (Room 22) $\rightarrow$ Cộng trực tiếp vào kho đồ nhân vật!
+       - `Úi cha, tài nguyên cứng quá. Gãy cuốc rồi T_T` (hao mòn cuốc chim).
 4. **Cấu trúc gói tin TX 48:**
    - **Opcode:** `48` (`ITEM_MAP_SPECIAL`).
    - **Payload:** `[i8 type = 3, i32 objectId, i8 menuIndex]`.
+     - `menuIndex = 0`: Đọc popup thông tin sản lượng.
+     - `menuIndex = 1`: Khai thác thực tế thu hoạch đá / củi.
    - **Kích thước:** Đúng 6 bytes.
 5. **Gói tin phản hồi từ Server:**
-   - `RX -40`: Hộp thoại UTF-8 hiển thị tên đối tượng, loại tài nguyên thu hoạch và sản lượng còn lại / tối đa.
+   - `RX -40`: Chuỗi UTF-8 trả về từng nhát đào thành công hoặc thông báo hao mòn/lỗi công cụ.
    - `RX 48`: Cập nhật trạng thái đối tượng sau khai thác.
    - `RX 70`: Cập nhật số lượng tài nguyên trong kho đồ (nếu thành công).
 

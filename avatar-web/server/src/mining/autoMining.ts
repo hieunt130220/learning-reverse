@@ -284,69 +284,113 @@ export class AutoMiningRunner {
         };
         this.emitState();
 
+        // Bước 3.1: Gửi menuIndex = 0 một lần để lấy tên mỏ và sản lượng ban đầu
+        const infoPending = this.waitForMiningResult(signal, 3000);
+        this.client.sendRaw(48, [
+          { t: 'i8', v: '3' },
+          { t: 'i32', v: String(node.id) },
+          { t: 'i8', v: '0' },
+        ]);
+        const infoResult = await infoPending;
+        if (!this.running || signal.aborted) break;
+        for (const d of infoResult.dialogs) {
+          const parsed = this.parseHarvestMessage(d);
+          if (parsed) {
+            this.state = {
+              ...this.state,
+              currentNodeName: parsed.nodeName,
+              resourceName: parsed.resourceName,
+              remainingCapacity: parsed.remaining,
+              maxCapacity: parsed.max,
+              lastMessage: d,
+            };
+            this.emitState();
+            if (parsed.remaining === 0) {
+              node.depleted = true;
+              break;
+            }
+          }
+        }
+        if (node.depleted) continue;
+
+        await this.sleep(1000, signal);
+
+        // Bước 3.2: Gửi menuIndex = 1 để THỰC HIỆN ĐÀO / THU HOẠCH TÀI NGUYÊN
         let nodeDepleted = false;
         while (this.running && !signal.aborted && !nodeDepleted) {
-          // Gửi TX 48 [i8 3, i32 id, i8 0] (chọn menu đào 1207)
           const outcomePending = this.waitForMiningResult(signal, 5000);
           this.client.sendRaw(48, [
             { t: 'i8', v: '3' },
             { t: 'i32', v: String(node.id) },
-            { t: 'i8', v: '0' },
+            { t: 'i8', v: '1' }, // MENU 1 = KHAI THÁC THỰC TẾ
           ]);
 
           const result = await outcomePending;
           if (!this.running || signal.aborted) break;
 
-          if (result.dialog) {
-            const parsed = this.parseHarvestMessage(result.dialog);
-            if (parsed) {
-              this.state = {
-                ...this.state,
-                currentNodeName: parsed.nodeName,
-                resourceName: parsed.resourceName,
-                remainingCapacity: parsed.remaining,
-                maxCapacity: parsed.max,
-                sessionHarvestCount: this.state.sessionHarvestCount + 1,
-                lastMessage: result.dialog,
-              };
-              this.emitState();
+          let batchHarvestCount = 0;
+          for (const dialog of result.dialogs) {
+            this.state = {
+              ...this.state,
+              lastMessage: dialog,
+            };
 
-              if (parsed.remaining === 0) {
-                nodeDepleted = true;
-                node.depleted = true;
-                break;
-              }
-            } else {
-              this.state = {
-                ...this.state,
-                lastMessage: result.dialog,
-              };
-              this.emitState();
-
-              // Kiểm tra lỗi thiếu công cụ
-              if (/cuốc|rìu|hỏng|cần có cuốc/i.test(result.dialog)) {
-                this.state = {
-                  ...this.state,
-                  status: 'paused_no_tool',
-                  lastMessage: `Tạm dừng: ${result.dialog}`,
-                };
-                this.emitState();
-                this.running = false;
-                return;
-              }
-
-              // Kiểm tra lỗi cạn năng lượng
-              if (/sức khỏe|năng lượng|nghỉ ngơi/i.test(result.dialog)) {
-                this.state = {
-                  ...this.state,
-                  status: 'paused_low_energy',
-                  lastMessage: `Tạm dừng: ${result.dialog}`,
-                };
-                this.emitState();
-                this.running = false;
-                return;
+            // 1. Thu hoạch thành công
+            if (/thu hoạch được/i.test(dialog)) {
+              batchHarvestCount += 1;
+              if (this.state.remainingCapacity && this.state.remainingCapacity > 0) {
+                this.state.remainingCapacity -= 1;
               }
             }
+
+            // 2. Kiểm tra mỏ cạn
+            if (/cạn|hết sản lượng|không còn/i.test(dialog)) {
+              nodeDepleted = true;
+              node.depleted = true;
+            }
+
+            // 3. Kiểm tra lỗi thiếu công cụ (chỉ khi hoàn toàn không có cuốc/rìu)
+            if (/chưa có cuốc|không có cuốc|cần có cuốc|cần cuốc|chưa có rìu|không có rìu|cần rìu/i.test(dialog)) {
+              this.state = {
+                ...this.state,
+                status: 'paused_no_tool',
+                lastMessage: `Tạm dừng: ${dialog}`,
+              };
+              this.emitState();
+              this.running = false;
+              return;
+            }
+
+            // 4. Kiểm tra lỗi cạn năng lượng
+            if (/sức khỏe|năng lượng|nghỉ ngơi/i.test(dialog)) {
+              this.state = {
+                ...this.state,
+                status: 'paused_low_energy',
+                lastMessage: `Tạm dừng: ${dialog}`,
+              };
+              this.emitState();
+              this.running = false;
+              return;
+            }
+          }
+
+          if (batchHarvestCount > 0) {
+            this.state = {
+              ...this.state,
+              sessionHarvestCount: this.state.sessionHarvestCount + batchHarvestCount,
+            };
+            this.emitState();
+          }
+
+          if (result.dialogs.length === 0 && !result.hasUpdate) {
+            // Không nhận được phản hồi tiếp, kết thúc node
+            break;
+          }
+
+          if (this.state.remainingCapacity !== null && this.state.remainingCapacity <= 0) {
+            nodeDepleted = true;
+            node.depleted = true;
+            break;
           }
 
           // Khoảng cách an toàn giữa các lượt đào
@@ -447,24 +491,26 @@ export class AutoMiningRunner {
   private waitForMiningResult(
     signal: AbortSignal,
     timeoutMs: number,
-  ): Promise<{ dialog?: string; hasUpdate: boolean }> {
+  ): Promise<{ dialogs: string[]; hasUpdate: boolean }> {
     return new Promise((resolve) => {
       let settled = false;
       let timer: NodeJS.Timeout | undefined;
-      let receivedDialog: string | undefined;
+      let debounceTimer: NodeJS.Timeout | undefined;
+      const dialogs: string[] = [];
       let hasUpdate = false;
 
       const cleanup = (): void => {
         this.client.session.removeListener('message', onMessage);
         signal.removeEventListener('abort', onAbort);
         if (timer) clearTimeout(timer);
+        if (debounceTimer) clearTimeout(debounceTimer);
       };
 
       const finish = (): void => {
         if (settled) return;
         settled = true;
         cleanup();
-        resolve({ dialog: receivedDialog, hasUpdate });
+        resolve({ dialogs, hasUpdate });
       };
 
       const onMessage = (msg: Message): void => {
@@ -472,9 +518,10 @@ export class AutoMiningRunner {
         if (cmd === -40) {
           try {
             const text = sanitizeCaption(safeUtf(msg));
-            if (text) receivedDialog = text;
+            if (text) dialogs.push(text);
           } catch {}
-          finish();
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(finish, 800);
         } else if (cmd === 48 || cmd === 70) {
           hasUpdate = true;
         }
