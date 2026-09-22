@@ -1,12 +1,14 @@
 import type { Db } from '../db/index.js';
 import {
   DEFAULT_FISHING_CONFIG,
+  DEFAULT_MAZE_CONFIG,
   DEFAULT_MINING_CONFIG,
   FISHING_BAITS,
   FISHING_RODS,
   idleFindNpcRuntime,
   idleFishermanQuestRuntime,
   idleFishingRuntime,
+  idleMazeRuntime,
   idleMiningRuntime,
   type AutomationLocation,
   type AutomationMode,
@@ -14,10 +16,12 @@ import {
   type FindNpcConfig,
   type FishingConfig,
   type LoadedAutomationIntent,
+  type MazeConfig,
   type MiningConfig,
   type MiningTarget,
   type StoredFindNpcConfigState,
   type StoredFishingConfigState,
+  type StoredMazeConfigState,
   type StoredMiningConfigState,
 } from '../session/automationTypes.js';
 
@@ -37,12 +41,21 @@ export class MiningConfigError extends Error {
   readonly code = 'invalid-mining-config' as const;
 }
 
+export class MazeConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MazeConfigError';
+  }
+  readonly code = 'invalid-maze-config' as const;
+}
+
 interface AutomationRow {
   account_id: number;
   desired_mode: AutomationMode;
   find_npc_config_json: string | null;
   fishing_config_json: string | null;
   mining_config_json: string | null;
+  maze_config_json: string | null;
   current_map: number | null;
   current_area: number | null;
   location_observed_at: number | null;
@@ -212,6 +225,66 @@ function storedMiningConfig(raw: string | null): StoredMiningConfigState {
   return defaultMiningConfig();
 }
 
+function defaultMazeConfig(): StoredMazeConfigState {
+  return {
+    revision: 0,
+    config: DEFAULT_MAZE_CONFIG,
+  };
+}
+
+export function normalizeMazeConfig(input: unknown): MazeConfig {
+  if (typeof input !== 'object' || input === null) {
+    throw new MazeConfigError('Cấu hình Mê cung phải là một object');
+  }
+  const obj = input as Record<string, unknown>;
+  const startArea =
+    typeof obj.startArea === 'number' && obj.startArea >= 0 && obj.startArea <= 50
+      ? Math.floor(obj.startArea)
+      : 0;
+  const autoSwitchArea =
+    typeof obj.autoSwitchArea === 'boolean' ? obj.autoSwitchArea : true;
+  const maxAreasToScan =
+    typeof obj.maxAreasToScan === 'number' && obj.maxAreasToScan >= 1 && obj.maxAreasToScan <= 50
+      ? Math.floor(obj.maxAreasToScan)
+      : 20;
+  const watchRespawn =
+    typeof obj.watchRespawn === 'boolean' ? obj.watchRespawn : true;
+  const maxChestsPerSession =
+    typeof obj.maxChestsPerSession === 'number' && obj.maxChestsPerSession >= 1 && obj.maxChestsPerSession <= 50
+      ? Math.floor(obj.maxChestsPerSession)
+      : 30;
+
+  return {
+    startArea,
+    autoSwitchArea,
+    maxAreasToScan,
+    watchRespawn,
+    maxChestsPerSession,
+  };
+}
+
+function storedMazeConfig(raw: string | null): StoredMazeConfigState {
+  if (!raw) return defaultMazeConfig();
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      (parsed as Record<string, unknown>).version === 1 &&
+      typeof (parsed as Record<string, unknown>).revision === 'number'
+    ) {
+      const envelope = parsed as { version: 1; revision: number; config: unknown };
+      return {
+        revision: envelope.revision,
+        config: normalizeMazeConfig(envelope.config),
+      };
+    }
+  } catch {
+    /* JSON hỏng -> mặc định */
+  }
+  return defaultMazeConfig();
+}
+
 function rowToState(row: AutomationRow) {
   const location: AutomationLocation | null =
     row.current_map !== null && row.current_area !== null && row.location_observed_at !== null
@@ -222,6 +295,7 @@ function rowToState(row: AutomationRow) {
     findNpcConfig: storedFindNpcConfig(row.find_npc_config_json),
     fishingConfig: storedFishingConfig(row.fishing_config_json),
     miningConfig: storedMiningConfig(row.mining_config_json),
+    mazeConfig: storedMazeConfig(row.maze_config_json),
     location,
   };
 }
@@ -232,7 +306,7 @@ export type StoredAutomationState = ReturnType<typeof rowToState>;
 export function readAutomationState(db: Db, accountId: number): StoredAutomationState {
   const row = db
     .prepare<[number], AutomationRow>(
-      `SELECT desired_mode, find_npc_config_json, fishing_config_json, mining_config_json, current_map, current_area, location_observed_at
+      `SELECT desired_mode, find_npc_config_json, fishing_config_json, mining_config_json, maze_config_json, current_map, current_area, location_observed_at
          FROM avatar_automation_state WHERE account_id = ?`,
     )
     .get(accountId);
@@ -242,6 +316,7 @@ export function readAutomationState(db: Db, accountId: number): StoredAutomation
       findNpcConfig: defaultFindNpcConfig(),
       fishingConfig: defaultFishingConfig(),
       miningConfig: defaultMiningConfig(),
+      mazeConfig: defaultMazeConfig(),
       location: null,
     };
   }
@@ -409,6 +484,57 @@ export function saveMiningConfig(
   })();
 }
 
+export type SaveMazeConfigResult =
+  | { status: 'saved'; state: StoredMazeConfigState }
+  | { status: 'conflict'; current: StoredMazeConfigState }
+  | { status: 'missing' };
+
+export function saveMazeConfig(
+  db: Db,
+  accountId: number,
+  expectedRevision: number,
+  config: MazeConfig,
+  now = Date.now(),
+): SaveMazeConfigResult {
+  return db.transaction((): SaveMazeConfigResult => {
+    const owned = db
+      .prepare<[number], { user_id: number }>('SELECT user_id FROM avatar_accounts WHERE id = ?')
+      .get(accountId);
+    if (!owned) return { status: 'missing' };
+
+    const current = readAutomationState(db, accountId).mazeConfig;
+    if (
+      current.revision === expectedRevision &&
+      current.revision === 0 &&
+      !db.prepare<[number], { account_id: number }>(
+        'SELECT account_id FROM avatar_automation_state WHERE account_id = ?',
+      ).get(accountId)
+    ) {
+      db.prepare(
+        `INSERT INTO avatar_automation_state (account_id, desired_mode, updated_at)
+           VALUES (?, 'off', ?)`,
+      ).run(accountId, now);
+    } else if (current.revision !== expectedRevision) {
+      return { status: 'conflict', current };
+    }
+
+    const nextRevision = current.revision + 1;
+    const json = JSON.stringify({
+      version: 1,
+      revision: nextRevision,
+      config,
+    });
+
+    db.prepare(
+      `UPDATE avatar_automation_state
+         SET maze_config_json = ?, updated_at = ?
+       WHERE account_id = ?`,
+    ).run(json, now, accountId);
+
+    return { status: 'saved', state: { revision: nextRevision, config } };
+  })();
+}
+
 /** Ghi/xóa location nguyên tử: cả ba cột cùng giá trị hoặc cùng NULL. */
 export function saveFindNpcLocation(
   db: Db,
@@ -441,9 +567,10 @@ export function listDesiredAutomation(db: Db): DesiredAutomationEntry[] {
   const rows = db
     .prepare<[], AutomationRow>(
       `SELECT account_id, desired_mode, find_npc_config_json, fishing_config_json,
+              mining_config_json, maze_config_json,
               current_map, current_area, location_observed_at
          FROM avatar_automation_state
-        WHERE desired_mode IN ('auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest', 'auto_mining')
+        WHERE desired_mode IN ('auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest', 'auto_mining', 'auto_maze')
         ORDER BY account_id`,
     )
     .all();
@@ -456,6 +583,7 @@ export function listDesiredAutomation(db: Db): DesiredAutomationEntry[] {
         findNpcConfig: state.findNpcConfig,
         fishingConfig: state.fishingConfig,
         miningConfig: state.miningConfig,
+        mazeConfig: state.mazeConfig,
         location: state.location,
       },
     };
@@ -475,6 +603,8 @@ export function offlineAutomationSnapshot(state: StoredAutomationState): Automat
     fishermanQuestRuntime: idleFishermanQuestRuntime(),
     miningConfig: state.miningConfig,
     miningRuntime: idleMiningRuntime(),
+    mazeConfig: state.mazeConfig,
+    mazeRuntime: idleMazeRuntime(),
     location: state.location,
   };
 }

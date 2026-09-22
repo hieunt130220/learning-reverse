@@ -41,6 +41,7 @@ import {
 } from './shopCoordinator.js';
 import {
   DEFAULT_FISHING_CONFIG,
+  DEFAULT_MAZE_CONFIG,
   DEFAULT_MINING_CONFIG,
   FISHING_BAITS,
   FISHING_RODS,
@@ -49,6 +50,7 @@ import {
   idleFindNpcRuntime,
   idleFishermanQuestRuntime,
   idleFishingRuntime,
+  idleMazeRuntime,
   idleMiningRuntime,
   type AutomationLocation,
   type AutomationMode,
@@ -59,15 +61,18 @@ import {
   type FishermanQuestRuntimeState,
   type FishingRuntimeState,
   type LoadedAutomationIntent,
+  type MazeRuntimeState,
   type MiningConfig,
   type MiningRuntimeState,
   type MlFishingStatistics,
   type NpcMapLocation,
   type StoredFishingConfigState,
+  type StoredMazeConfigState,
   type StoredMiningConfigState,
 } from './automationTypes.js';
 import { defaultFishingConfig, defaultMiningConfig } from '../accounts/automationRepo.js';
 import { AutoMiningRunner } from '../mining/autoMining.js';
+import { AutoMazeRunner } from '../maze/autoMaze.js';
 import { pickNextFishTarget, resolveFishQuestTarget } from './fishermanQuest.js';
 import {
   emptyRuntimeSnapshot,
@@ -318,12 +323,15 @@ export class AvatarSession {
   private findNpcConfig = { revision: 0, config: { npcName: '' } };
   private fishingConfig: StoredFishingConfigState = defaultFishingConfig();
   private miningConfig: StoredMiningConfigState = defaultMiningConfig();
+  private mazeConfig: StoredMazeConfigState = { revision: 0, config: DEFAULT_MAZE_CONFIG };
   private automationLocation: AutomationLocation | null = null;
   private findNpc?: AutoFindNpc;
   private findNpcRuntime: AutoFindNpcState = idleFindNpcRuntime('');
   private fishingRuntime: FishingRuntimeState = idleFishingRuntime();
   private miningRuntime: MiningRuntimeState = idleMiningRuntime();
   private miningRunner?: AutoMiningRunner;
+  private mazeRuntime: MazeRuntimeState = idleMazeRuntime();
+  private mazeRunner?: AutoMazeRunner;
   private fishermanQuestAbort?: AbortController;
   private fishermanQuestRuntime: FishermanQuestRuntimeState = idleFishermanQuestRuntime();
   private dailyFishingStatistics: DailyFishingStatistics;
@@ -526,6 +534,14 @@ export class AvatarSession {
     this.emitAutomation();
   }
 
+  setMazeConfig(state: StoredMazeConfigState): void {
+    this.mazeConfig = state;
+    if (this.mazeRunner) {
+      this.mazeRunner.updateConfig(state.config);
+    }
+    this.emitAutomation();
+  }
+
   async stopAutomation(): Promise<void> {
     await this.switchAutomationMode({
       desiredMode: 'off',
@@ -563,6 +579,9 @@ export class AvatarSession {
         if (intent.miningConfig) {
           this.miningConfig = intent.miningConfig;
         }
+        if (intent.mazeConfig) {
+          this.mazeConfig = intent.mazeConfig;
+        }
         this.automationLocation = intent.location;
         if (intent.desiredMode === 'find_npc') this.cancelAutoSyncKickoff();
         this.transitionState = 'switching';
@@ -596,6 +615,9 @@ export class AvatarSession {
         }
         if (intent.miningConfig) {
           this.miningConfig = intent.miningConfig;
+        }
+        if (intent.mazeConfig) {
+          this.mazeConfig = intent.mazeConfig;
         }
         this.automationLocation = intent.location;
         this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
@@ -796,11 +818,16 @@ export class AvatarSession {
     return this.desiredMode === 'auto_mining' || this.activeMode === 'auto_mining';
   }
 
+  private mazeOwnsOrTargetsContext(): boolean {
+    return this.desiredMode === 'auto_maze' || this.activeMode === 'auto_maze';
+  }
+
   private parkOwnsOrTargetsContext(): boolean {
     return (
       this.findNpcOwnsOrTargetsContext() ||
       this.fishingOwnsOrTargetsContext() ||
-      this.miningOwnsOrTargetsContext()
+      this.miningOwnsOrTargetsContext() ||
+      this.mazeOwnsOrTargetsContext()
     );
   }
 
@@ -813,6 +840,9 @@ export class AvatarSession {
     }
     if (this.miningOwnsOrTargetsContext()) {
       throw new Error('Auto Mining đang sở hữu ngữ cảnh Park; không thể chuyển sang farm');
+    }
+    if (this.mazeOwnsOrTargetsContext()) {
+      throw new Error('Auto Maze đang sở hữu ngữ cảnh Park; không thể chuyển sang farm');
     }
   }
 
@@ -834,6 +864,8 @@ export class AvatarSession {
       mlFishingStatistics: this.mlFishingStatistics,
       miningConfig: this.miningConfig,
       miningRuntime: this.miningRuntime,
+      mazeConfig: this.mazeConfig,
+      mazeRuntime: this.mazeRuntime,
       location: this.automationLocation,
     };
   }
@@ -951,6 +983,9 @@ export class AvatarSession {
     }
     if (creds.automation.miningConfig) {
       this.miningConfig = creds.automation.miningConfig;
+    }
+    if (creds.automation.mazeConfig) {
+      this.mazeConfig = creds.automation.mazeConfig;
     }
     this.automationLocation = creds.automation.location;
     this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
@@ -1637,6 +1672,13 @@ export class AvatarSession {
       this.pushLog('[khai thác] đã dừng tự động khai thác.');
     }
     this.miningRuntime = idleMiningRuntime();
+    if (this.activeMode === 'auto_maze' || this.mazeRunner) {
+      const runner = this.mazeRunner;
+      this.mazeRunner = undefined;
+      if (runner) await runner.stop();
+      this.pushLog('[mê cung] đã dừng tự động Mê cung.');
+    }
+    this.mazeRuntime = idleMazeRuntime();
     this.fishingRuntime.status = 'idle';
     this.fishermanQuestRuntime = idleFishermanQuestRuntime();
     if (!this.isAutomationGenerationCurrent(generation)) return false;
@@ -1835,6 +1877,36 @@ export class AvatarSession {
       void this.miningRunner.start(this.miningConfig.config);
       return true;
     }
+    if (this.desiredMode === 'auto_maze') {
+      if (
+        !this.isAutomationGenerationCurrent(generation)
+        || !this.isCurrent(client, epoch)
+        || client.status !== 'online'
+      ) return false;
+      this.activeMode = 'auto_maze';
+      this.pushLog('[mê cung] bắt đầu tự động Mê cung.');
+      this.mazeRunner = new AutoMazeRunner(client, {
+        accountId: this.opts.accountId,
+        onStateChange: (state) => {
+          this.mazeRuntime = state;
+          this.emitAutomation();
+        },
+        onRequestStop: (_reason, message) => {
+          if (message) this.pushLog(`[mê cung] ${message}`);
+          void this.switchAutomationMode({
+            desiredMode: 'off',
+            findNpcConfig: this.findNpcConfig,
+            fishingConfig: this.fishingConfig,
+            miningConfig: this.miningConfig,
+            mazeConfig: this.mazeConfig,
+            location: this.automationLocation,
+          });
+        },
+        onLog: (msg) => this.pushLog(msg),
+      });
+      void this.mazeRunner.start(this.mazeConfig.config);
+      return true;
+    }
     return true;
   }
 
@@ -1955,6 +2027,16 @@ export class AvatarSession {
     const finder = this.findNpc;
     this.findNpc = undefined;
     if (finder) void finder.stop();
+    if (this.miningRunner) {
+      void this.miningRunner.stop();
+      this.miningRunner = undefined;
+    }
+    this.miningRuntime = idleMiningRuntime();
+    if (this.mazeRunner) {
+      void this.mazeRunner.stop();
+      this.mazeRunner = undefined;
+    }
+    this.mazeRuntime = idleMazeRuntime();
     this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
     this.emitAutomation();
     this.pushLog(reason);
@@ -1983,6 +2065,11 @@ export class AvatarSession {
       this.miningRunner = undefined;
     }
     this.miningRuntime = idleMiningRuntime();
+    if (this.mazeRunner) {
+      void this.mazeRunner.stop();
+      this.mazeRunner = undefined;
+    }
+    this.mazeRuntime = idleMazeRuntime();
     this.activeMode = 'off';
     this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
     this.emitAutomation();

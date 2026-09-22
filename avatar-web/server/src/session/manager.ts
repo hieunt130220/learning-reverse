@@ -30,6 +30,7 @@ import type {
   LoadedAutomationIntent,
   NpcMapLocation,
   StoredFishingConfigState,
+  StoredMazeConfigState,
   StoredMiningConfigState,
 } from './automationTypes.js';
 import { FIND_NPC_DISABLED } from './featureFlags.js';
@@ -217,6 +218,10 @@ export class SessionManager {
 
   updateMiningConfig(accountId: number, state: StoredMiningConfigState): void {
     this.sessions.get(accountId)?.setMiningConfig?.(state);
+  }
+
+  updateMazeConfig(accountId: number, state: StoredMazeConfigState): void {
+    this.sessions.get(accountId)?.setMazeConfig?.(state);
   }
 
   async stopAutomation(accountId: number): Promise<void> {
