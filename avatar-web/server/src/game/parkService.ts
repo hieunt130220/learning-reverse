@@ -74,6 +74,7 @@ export interface NativeParkJoinPosition {
  *
  * LƯU Ý NAMESPACE: Key ở NATIVE_PARK_JOIN_POSITIONS là roomID server dùng cho doJoinPark (cmd 80),
  * KHÔNG phải CityMap node ID.
+ *   0:  Công viên trung tâm (254, 82) — LoadMap.T_PARK = 0
  *   9:  Khu giải trí (236, 280) — từ CityMap node 3 (idToMap = 9)
  *   13: Khu sinh thái / cửa hàng sinh thái (364, 64)
  *   14: Khu cá rô (460, 97) — verified from native bot bs_0.java & live traffic
@@ -85,6 +86,7 @@ export interface NativeParkJoinPosition {
  */
 export const NATIVE_PARK_JOIN_POSITIONS: Readonly<Record<number, NativeParkJoinPosition>> =
   Object.freeze({
+    0: Object.freeze({ x: 254, y: 82 }), // Công viên trung tâm (LoadMap.T_PARK = 0)
     1: Object.freeze({ x: 473, y: 100 }),
     3: Object.freeze({ x: 236, y: 280 }),
     4: Object.freeze({ x: 452, y: 250 }),
