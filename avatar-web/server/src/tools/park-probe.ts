@@ -362,8 +362,9 @@ function decodeParkJoinResponse(body: Buffer): ParkJoinSnapshot {
   const x = reader.readShort();
   const y = reader.readShort();
 
-  // 1. List players
+  // 1. List players (tách riêng người chơi thật và Avatar NPC như Chức Nữ / Ngưu Lang có ID >= 2_000_000_000 hoặc âm)
   const users: ParkUser[] = [];
+  const npcs: ParkNpc[] = [];
   const playerCount = readNativeCount(reader, 'listPlayer');
   for (let i = 0; i < playerCount; i += 1) {
     if (reader.available() < 4) {
@@ -383,7 +384,11 @@ function decodeParkJoinResponse(body: Buffer): ParkJoinSnapshot {
     const dir = reader.readByte();
     readNativeBytes(reader, 13, `player[${i}].stateTail`);
 
-    users.push({ id, name, x: px, y: py, dir });
+    if (id >= 2_000_000_000 || id < 0) {
+      npcs.push({ id, name, x: px, y: py, type: -1, menuIds: [] });
+    } else {
+      users.push({ id, name, x: px, y: py, dir });
+    }
   }
 
   // 2. Drop parts
@@ -419,7 +424,6 @@ function decodeParkJoinResponse(body: Buffer): ParkJoinSnapshot {
   }
 
   // 5. Specials (NPCs)
-  const npcs: ParkNpc[] = [];
   if (reader.available() >= 1) {
     const specialCount = readNativeCount(reader, 'specials');
     for (let s = 0; s < specialCount; s += 1) {
@@ -592,8 +596,9 @@ export function printSummary(result: ParkScanResult, map: number, board: number)
     console.log('  (Không có đối tượng)');
   } else {
     for (const n of result.npcs) {
-      const menuStr = n.menuIds.length > 0 ? n.menuIds.join(', ') : '';
-      console.log(`  - [${n.id}] ${n.name} (vị trí: ${n.x}, ${n.y} - menus: [${menuStr}])`);
+      const typeLabel = n.type === -1 ? 'Avatar NPC' : `type: ${n.type}`;
+      const menuLabel = n.menuIds.length > 0 ? `, menus: [${n.menuIds.join(', ')}]` : '';
+      console.log(`  - [${n.id}] ${n.name} (vị trí: ${n.x}, ${n.y} - ${typeLabel}${menuLabel})`);
     }
   }
 }
