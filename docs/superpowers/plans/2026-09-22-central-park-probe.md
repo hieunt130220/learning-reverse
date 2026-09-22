@@ -67,7 +67,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Consumes: `GameClient` (`../game/client.js`), `openDb` (`../db/index.js`), `getAccountById`, `readGamePass` (`../accounts/repo.js`), `NATIVE_PARK_JOIN_POSITIONS` (`../game/parkService.js`), `MyReader` (`../proto/reader.js`).
 - Produces: CLI script chạy quét người chơi và NPC theo map/board chỉ định.
 
-- [ ] **Step 1: Viết script `park-probe.ts`**
+- [x] **Step 1: Viết script `park-probe.ts`**
 
 Tạo file `avatar-web/server/src/tools/park-probe.ts` với đầy đủ logic:
 1. Parse CLI arguments (`--account-id`, `--map` mặc định 0, `--board` mặc định 0).
@@ -94,18 +94,18 @@ Tạo file `avatar-web/server/src/tools/park-probe.ts` với đầy đủ logic:
    ```
 10. Tự động đóng kết nối socket và SQLite DB trong khối `finally`.
 
-- [ ] **Step 2: Kiểm tra biên dịch**
+- [x] **Step 2: Kiểm tra biên dịch**
 Run: `npm --prefix avatar-web/server run typecheck`
 Expected: Typecheck hoàn tất không có lỗi.
 
-- [ ] **Step 3: Chạy thử nghiệm probe thực tế**
+- [x] **Step 3: Chạy thử nghiệm probe thực tế**
 Run:
 ```bash
 node --env-file=avatar-web/server/.env --import tsx avatar-web/server/src/tools/park-probe.ts --account-id 1 --map 0 --board 0
 ```
 Expected: Kết nối thành công, join vào Map 0 Board 0, in ra danh sách User và NPC trong khu vực.
 
-- [ ] **Step 4: Kiểm tra thay đổi GitNexus và commit**
+- [x] **Step 4: Kiểm tra thay đổi GitNexus và commit**
 Run: `gitnexus_detect_changes({scope: "unstaged"})`
 Run:
 ```bash
