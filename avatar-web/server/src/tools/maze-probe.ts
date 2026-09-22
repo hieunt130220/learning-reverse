@@ -90,9 +90,10 @@ interface MazeProbeResult {
     chestId: number;
     pos: { x: number; y: number };
     steps: number;
-    result: 'success' | 'taken_by_other' | 'unreachable' | 'failed';
+    result: 'success' | 'taken_by_other' | 'unreachable' | 'daily_limit' | 'failed';
     dialog?: string;
   }>;
+  dailyLimitReached?: boolean;
   cycleObservation?: {
     cycleDetected: boolean;
     emptyTimestamp?: string;
@@ -439,6 +440,14 @@ function isMazeClosureMessage(text: string): boolean {
   const lower = text.toLowerCase();
   return (
     lower.includes('mê cung') && lower.includes('đóng cửa')
+  );
+}
+
+function isDailyLimitMessage(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes('đủ 30 hộp quà') ||
+    (lower.includes('30 hộp quà') && (lower.includes('hôm nay') || lower.includes('ngày')))
   );
 }
 
@@ -947,6 +956,7 @@ async function run(): Promise<void> {
     const multiChestHistory: NonNullable<MazeProbeResult['multiChestHistory']> = [];
     let totalStepsWalked = 0;
     const allPickedGifts: number[] = [];
+    let dailyLimitReached = false;
 
     if (args.autoNavigate && state.status === 'open') {
       phase = 'navigate';
@@ -1040,7 +1050,7 @@ async function run(): Promise<void> {
         }
 
         const distToChest = Math.hypot(currentAvatarPos.x - targetChest.x, currentAvatarPos.y - targetChest.y);
-        let openOutcome: 'success' | 'taken_by_other' | 'failed' = 'failed';
+        let openOutcome: 'success' | 'taken_by_other' | 'unreachable' | 'daily_limit' | 'failed' = 'failed';
         let outcomeDialog = '';
 
         if (distToChest <= 36 && !state.removedChestIds.has(targetChest.id)) {
@@ -1065,7 +1075,15 @@ async function run(): Promise<void> {
 
           outcomeDialog = dialogMessages.join(' | ');
           const updated = currentSpecials.get(targetChest.id);
-          if (
+          if (dialogMessages.some(isDailyLimitMessage) || isDailyLimitMessage(outcomeDialog)) {
+            openOutcome = 'daily_limit';
+            dailyLimitReached = true;
+            if (args.outputFormat === 'text') {
+              console.warn(
+                `\n[DAILY LIMIT] Đã đạt giới hạn nhận 30 hộp quà trong ngày của sự kiện Mê cung! Dừng mở rương.`,
+              );
+            }
+          } else if (
             outcomeDialog.includes('Chúc mừng') ||
             (updated && updated.name === account.label) ||
             (updated && updated.name.length > 0 && outcomeDialog.length === 0)
@@ -1086,6 +1104,10 @@ async function run(): Promise<void> {
           result: openOutcome,
           dialog: outcomeDialog || undefined,
         });
+
+        if (dailyLimitReached) {
+          break;
+        }
 
         // Tự động nhặt quà rơi sàn nếu có
         const groundGifts = capturedGifts.filter(
@@ -1158,6 +1180,14 @@ async function run(): Promise<void> {
             { t: 'i8', v: String(args.actionIndex) },
           ]);
           await observeFor(3000);
+          if (dialogMessages.some(isDailyLimitMessage)) {
+            dailyLimitReached = true;
+            if (args.outputFormat === 'text') {
+              console.warn(
+                `\n[DAILY LIMIT] Đã đạt giới hạn nhận 30 hộp quà trong ngày của sự kiện Mê cung!`,
+              );
+            }
+          }
         }
       }
 
@@ -1176,88 +1206,96 @@ async function run(): Promise<void> {
     let cycleObservationDetails: MazeProbeResult['cycleObservation'];
 
     if (args.watchCycle && state.status === 'open') {
-      isWatchingCycle = true;
-      const initialEmptyChests = Array.from(currentSpecials.values())
-        .filter(isChest)
-        .filter((c) => !c.name && !state.removedChestIds.has(c.id));
-
-      if (args.outputFormat === 'text') {
-        console.log(
-          `\n[WATCH] Bắt đầu chế độ theo dõi chu kỳ hồi sinh rương (timeout: ${args.watchTimeout}s)...`,
-        );
-        console.log(
-          `[WATCH] Hiện tại trong khu có ${initialEmptyChests.length} rương trống chưa ai mở.`,
-        );
-      }
-
-      let emptyTimestamp: number | undefined;
-      if (initialEmptyChests.length === 0) {
-        emptyTimestamp = Date.now();
+      if (dailyLimitReached) {
         if (args.outputFormat === 'text') {
-          console.log(`[WATCH] Khu vực ĐÃ HẾT RƯƠNG TRỐNG lúc ${new Date(emptyTimestamp).toLocaleTimeString()}.`);
-          console.log(`[WATCH] Đang lắng nghe phản hồi của server để phát hiện đợt rương mới...`);
+          console.log(
+            `\n[WATCH] Đã đạt giới hạn 30 hộp quà trong ngày, bỏ qua theo dõi chu kỳ hồi sinh rương.`,
+          );
         }
-      }
+      } else {
+        isWatchingCycle = true;
+        const initialEmptyChests = Array.from(currentSpecials.values())
+          .filter(isChest)
+          .filter((c) => !c.name && !state.removedChestIds.has(c.id));
 
-      const watchStart = Date.now();
-      const watchDeadline = watchStart + args.watchTimeout * 1000;
-      let respawnTimestamp: number | undefined;
-      let detectedMechanism: NonNullable<NonNullable<MazeProbeResult['cycleObservation']>['respawnMechanism']> = 'unknown';
+        if (args.outputFormat === 'text') {
+          console.log(
+            `\n[WATCH] Bắt đầu chế độ theo dõi chu kỳ hồi sinh rương (timeout: ${args.watchTimeout}s)...`,
+          );
+          console.log(
+            `[WATCH] Hiện tại trong khu có ${initialEmptyChests.length} rương trống chưa ai mở.`,
+          );
+        }
 
-      while (Date.now() < watchDeadline && !abort.signal.aborted) {
-        await observeFor(1000);
-
-        const currentChests = Array.from(currentSpecials.values()).filter(isChest);
-        const currentEmpty = currentChests.filter((c) => !c.name && !state.removedChestIds.has(c.id));
-
-        if (emptyTimestamp === undefined) {
-          if (currentEmpty.length === 0) {
-            emptyTimestamp = Date.now();
-            if (args.outputFormat === 'text') {
-              console.log(
-                `[WATCH] Khu vực ĐÃ HẾT RƯƠNG TRỐNG lúc ${new Date(emptyTimestamp).toLocaleTimeString()}. Bắt đầu tính giờ hồi sinh!`,
-              );
-            }
-          }
-        } else {
-          if (currentEmpty.length > 0 || respawnDetected) {
-            respawnTimestamp = Date.now();
-            detectedMechanism = lastRespawnMechanism ?? 'rx48-name-reset';
-            if (args.outputFormat === 'text') {
-              const diffSec = Math.round((respawnTimestamp - emptyTimestamp) / 1000);
-              console.log(
-                `\n[CYCLE] >>> ĐÃ PHÁT HIỆN RƯƠNG MỚI HỒI SINH! <<<`,
-              );
-              console.log(
-                `[CYCLE] Số rương trống mới xuất hiện: ${currentEmpty.length}`,
-              );
-              console.log(
-                `[CYCLE] Khoảng thời gian hồi sinh: ${diffSec} giây (~${(diffSec / 60).toFixed(1)} phút)`,
-              );
-              console.log(
-                `[CYCLE] Cơ chế phát hiện: ${detectedMechanism}`,
-              );
-            }
-            break;
+        let emptyTimestamp: number | undefined;
+        if (initialEmptyChests.length === 0) {
+          emptyTimestamp = Date.now();
+          if (args.outputFormat === 'text') {
+            console.log(`[WATCH] Khu vực ĐÃ HẾT RƯƠNG TRỐNG lúc ${new Date(emptyTimestamp).toLocaleTimeString()}.`);
+            console.log(`[WATCH] Đang lắng nghe phản hồi của server để phát hiện đợt rương mới...`);
           }
         }
+
+        const watchStart = Date.now();
+        const watchDeadline = watchStart + args.watchTimeout * 1000;
+        let respawnTimestamp: number | undefined;
+        let detectedMechanism: NonNullable<NonNullable<MazeProbeResult['cycleObservation']>['respawnMechanism']> = 'unknown';
+
+        while (Date.now() < watchDeadline && !abort.signal.aborted) {
+          await observeFor(1000);
+
+          const currentChests = Array.from(currentSpecials.values()).filter(isChest);
+          const currentEmpty = currentChests.filter((c) => !c.name && !state.removedChestIds.has(c.id));
+
+          if (emptyTimestamp === undefined) {
+            if (currentEmpty.length === 0) {
+              emptyTimestamp = Date.now();
+              if (args.outputFormat === 'text') {
+                console.log(
+                  `[WATCH] Khu vực ĐÃ HẾT RƯƠNG TRỐNG lúc ${new Date(emptyTimestamp).toLocaleTimeString()}. Bắt đầu tính giờ hồi sinh!`,
+                );
+              }
+            }
+          } else {
+            if (currentEmpty.length > 0 || respawnDetected) {
+              respawnTimestamp = Date.now();
+              detectedMechanism = lastRespawnMechanism ?? 'rx48-name-reset';
+              if (args.outputFormat === 'text') {
+                const diffSec = Math.round((respawnTimestamp - emptyTimestamp) / 1000);
+                console.log(
+                  `\n[CYCLE] >>> ĐÃ PHÁT HIỆN RƯƠNG MỚI HỒI SINH! <<<`,
+                );
+                console.log(
+                  `[CYCLE] Số rương trống mới xuất hiện: ${currentEmpty.length}`,
+                );
+                console.log(
+                  `[CYCLE] Khoảng thời gian hồi sinh: ${diffSec} giây (~${(diffSec / 60).toFixed(1)} phút)`,
+                );
+                console.log(
+                  `[CYCLE] Cơ chế phát hiện: ${detectedMechanism}`,
+                );
+              }
+              break;
+            }
+          }
+        }
+
+        const durationSeconds =
+          emptyTimestamp !== undefined && respawnTimestamp !== undefined
+            ? Math.round((respawnTimestamp - emptyTimestamp) / 1000)
+            : undefined;
+
+        cycleObservationDetails = {
+          cycleDetected: respawnTimestamp !== undefined,
+          emptyTimestamp: emptyTimestamp ? new Date(emptyTimestamp).toISOString() : undefined,
+          respawnTimestamp: respawnTimestamp ? new Date(respawnTimestamp).toISOString() : undefined,
+          durationSeconds,
+          initialEmptyCount: initialEmptyChests.length,
+          respawnedCount: Array.from(currentSpecials.values()).filter(isChest).filter((c) => !c.name).length,
+          respawnMechanism: respawnTimestamp !== undefined ? detectedMechanism : undefined,
+          announcements: [...announcements],
+        };
       }
-
-      const durationSeconds =
-        emptyTimestamp !== undefined && respawnTimestamp !== undefined
-          ? Math.round((respawnTimestamp - emptyTimestamp) / 1000)
-          : undefined;
-
-      cycleObservationDetails = {
-        cycleDetected: respawnTimestamp !== undefined,
-        emptyTimestamp: emptyTimestamp ? new Date(emptyTimestamp).toISOString() : undefined,
-        respawnTimestamp: respawnTimestamp ? new Date(respawnTimestamp).toISOString() : undefined,
-        durationSeconds,
-        initialEmptyCount: initialEmptyChests.length,
-        respawnedCount: Array.from(currentSpecials.values()).filter(isChest).filter((c) => !c.name).length,
-        respawnMechanism: respawnTimestamp !== undefined ? detectedMechanism : undefined,
-        announcements: [...announcements],
-      };
     }
 
     if (abort.signal.aborted || state.status === 'error') throw new Error('probe-failed');
@@ -1273,6 +1311,7 @@ async function run(): Promise<void> {
       navigationResult: navigationResultDetails,
       openResult: openResultDetails,
       multiChestHistory: multiChestHistory.length > 0 ? multiChestHistory : undefined,
+      dailyLimitReached: dailyLimitReached ? true : undefined,
       cycleObservation: cycleObservationDetails,
     };
 
@@ -1328,6 +1367,9 @@ async function run(): Promise<void> {
         for (const gift of result.openResult.gifts) {
           console.log(`    + Quà ID: ${gift.idGift} (subType: ${gift.subType})`);
         }
+      }
+      if (result.dailyLimitReached) {
+        console.log('\n⚠️  GIỚI HẠN NGÀY: Bạn đã nhận đủ 30 hộp quà của ngày hôm nay. Vui lòng quay lại vào ngày khác!');
       }
       if (result.multiChestHistory && result.multiChestHistory.length > 0) {
         console.log('\n=================== LỊCH SỬ MỞ RƯƠNG TUẦN TỰ ===================');
