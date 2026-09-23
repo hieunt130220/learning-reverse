@@ -190,10 +190,10 @@
 **Files:**
 - None (Verification)
 
-- [ ] **Step 1: Build production server**
+- [x] **Step 1: Build production server**
   Run: `cd avatar-web/server && npm run build`
   Expected: Build thành công không cảnh báo hoặc lỗi.
 
-- [ ] **Step 2: Kiểm tra GitNexus scope**
+- [x] **Step 2: Kiểm tra GitNexus scope**
   Run: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})`
   Expected: Chỉ chứa các thay đổi mong muốn trên `avatarSession.ts`.
