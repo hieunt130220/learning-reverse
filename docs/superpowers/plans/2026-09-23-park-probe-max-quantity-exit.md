@@ -101,11 +101,11 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Consumes: `parseMaxQuantityDialog`, `GameClient` `'dialog'` event
 - Produces: `ProbeContext`, auto-exit behavior khi `isMax === true`
 
-- [ ] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
+- [x] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
 Run: `node .gitnexus/run.cjs impact "waitForNpcDeparture" --direction upstream --repo .`
 Expected: Kiểm tra caller của `waitForNpcDeparture` (`runParkSweep`, `runParkProbe`).
 
-- [ ] **Step 2: Cập nhật `waitForNpcDeparture` nhận `ProbeContext` và ngắt khi đạt quota**
+- [x] **Step 2: Cập nhật `waitForNpcDeparture` nhận `ProbeContext` và ngắt khi đạt quota**
 Định nghĩa interface:
 ```typescript
 export interface ProbeContext {
@@ -147,7 +147,7 @@ client.on('dialog', onDialog);
 client.removeListener('dialog', onDialog);
 ```
 
-- [ ] **Step 3: Cập nhật `runParkSweep` kiểm tra cờ `quotaReached` và ngắt vòng lặp**
+- [x] **Step 3: Cập nhật `runParkSweep` kiểm tra cờ `quotaReached` và ngắt vòng lặp**
 Trong `runParkSweep`:
 1. Khởi tạo `const ctx: ProbeContext = { quotaReached: false };` ở đầu hàm.
 2. Lắng nghe `'dialog'` ở cấp sweep để bắt cả các dialog nhận được ngoài lúc đứng chờ NPC:
@@ -174,17 +174,17 @@ if (ctx.quotaReached) {
 5. Đảm bảo nếu `ctx.quotaReached` thì vòng lặp map ngoài cùng cũng `break`.
 6. Dọn dẹp listener trong khối `finally`: `client.removeListener('dialog', onSweepDialog);`.
 
-- [ ] **Step 4: Cập nhật `runParkProbe` cho chế độ probe đơn lẻ**
+- [x] **Step 4: Cập nhật `runParkProbe` cho chế độ probe đơn lẻ**
 Trong `runParkProbe`:
 1. Tạo `ctx: ProbeContext = { quotaReached: false };`.
 2. Truyền `ctx` vào `waitForNpcDeparture`.
 3. Nếu `ctx.quotaReached` thì in thông báo và hoàn thành sớm.
 
-- [ ] **Step 5: Kiểm tra biên dịch**
+- [x] **Step 5: Kiểm tra biên dịch**
 Run: `npm --prefix avatar-web/server run typecheck`
 Expected: Compile thành công không có lỗi type.
 
-- [ ] **Step 6: Kiểm tra thay đổi GitNexus và commit**
+- [x] **Step 6: Kiểm tra thay đổi GitNexus và commit**
 Run: `node .gitnexus/run.cjs detect-changes --scope unstaged --repo .`
 Run:
 ```bash
