@@ -29,6 +29,7 @@ import type {
   AutomationStartOutcome,
   LoadedAutomationIntent,
   NpcMapLocation,
+  StoredFindNpcConfigState,
   StoredFishingConfigState,
   StoredMazeConfigState,
   StoredMiningConfigState,
@@ -210,6 +211,10 @@ export class SessionManager {
     intent: LoadedAutomationIntent,
   ): Promise<AutomationStartOutcome> {
     return this.getOrCreate(accountId).switchAutomationMode(intent);
+  }
+
+  updateFindNpcConfig(accountId: number, state: StoredFindNpcConfigState): void {
+    this.sessions.get(accountId)?.setFindNpcConfig?.(state);
   }
 
   updateFishingConfig(accountId: number, state: StoredFishingConfigState): void {

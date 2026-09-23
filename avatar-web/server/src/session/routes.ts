@@ -205,6 +205,15 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     }
   });
 
+  router.get('/:id/automation/find-npc/config', owned, (req, res) => {
+    try {
+      const state = readAutomationState(db, accountId(req)).findNpcConfig;
+      res.json(state);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
   router.put('/:id/automation/find-npc/config', owned, (req, res) => {
     if (
       !exactObject(req.body, ['expectedRevision', 'config'])
@@ -243,7 +252,8 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
       });
       return;
     }
-    res.json({ ...saved.state, application: 'next-start' });
+    sessions.updateFindNpcConfig(accountId(req), saved.state);
+    res.json({ ...saved.state, application: 'immediate' });
   });
 
   router.put('/:id/automation/fishing/config', owned, (req, res) => {
@@ -408,10 +418,6 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     }
     const id = accountId(req);
     const mode = req.body.mode;
-    if (mode === 'find_npc' && FIND_NPC_DISABLED) {
-      automationError(res, 503, 'find-npc-disabled', 'Tính năng Tìm NPC đang tạm đóng');
-      return;
-    }
     try {
       const reply = await serializeAutomation(id, async (): Promise<AutomationHttpResponse> => {
         let persisted = false;
@@ -425,9 +431,6 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
                 'find-npc-name-required',
                 'hãy lưu tên NPC trước khi bắt đầu',
               );
-            }
-            if (!sessions.hasVerifiedFindNpcCatalog()) {
-              return automationFailure(409, 'catalog-unverified', 'catalog NPC chưa được live-verify');
             }
           }
 

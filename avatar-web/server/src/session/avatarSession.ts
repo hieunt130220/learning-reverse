@@ -40,6 +40,7 @@ import {
   type WithdrawListingInput,
 } from './shopCoordinator.js';
 import {
+  DEFAULT_FIND_NPC_CONFIG,
   DEFAULT_FISHING_CONFIG,
   DEFAULT_MAZE_CONFIG,
   DEFAULT_MINING_CONFIG,
@@ -66,6 +67,7 @@ import {
   type MiningRuntimeState,
   type MlFishingStatistics,
   type NpcMapLocation,
+  type StoredFindNpcConfigState,
   type StoredFishingConfigState,
   type StoredMazeConfigState,
   type StoredMiningConfigState,
@@ -320,13 +322,13 @@ export class AvatarSession {
   private desiredMode: AutomationMode = 'off';
   private activeMode: AutomationMode = 'off';
   private transitionState: 'stable' | 'switching' = 'stable';
-  private findNpcConfig = { revision: 0, config: { npcName: '' } };
+  private findNpcConfig: StoredFindNpcConfigState = { revision: 0, config: DEFAULT_FIND_NPC_CONFIG };
   private fishingConfig: StoredFishingConfigState = defaultFishingConfig();
   private miningConfig: StoredMiningConfigState = defaultMiningConfig();
   private mazeConfig: StoredMazeConfigState = { revision: 0, config: DEFAULT_MAZE_CONFIG };
   private automationLocation: AutomationLocation | null = null;
   private findNpc?: AutoFindNpc;
-  private findNpcRuntime: AutoFindNpcState = idleFindNpcRuntime('');
+  private findNpcRuntime: AutoFindNpcState = idleFindNpcRuntime(DEFAULT_FIND_NPC_CONFIG.npcName);
   private fishingRuntime: FishingRuntimeState = idleFishingRuntime();
   private miningRuntime: MiningRuntimeState = idleMiningRuntime();
   private miningRunner?: AutoMiningRunner;
@@ -521,6 +523,14 @@ export class AvatarSession {
       return 'next-cycle';
     }
     return 'next-start';
+  }
+
+  setFindNpcConfig(state: StoredFindNpcConfigState): void {
+    this.findNpcConfig = state;
+    if (this.findNpc) {
+      this.findNpc.updateConfig(state.config);
+    }
+    this.emitAutomation();
   }
 
   setFishingConfig(state: StoredFishingConfigState): void {
@@ -1639,7 +1649,10 @@ export class AvatarSession {
     }
     const finder = this.findNpc;
     this.findNpc = undefined;
-    if (finder) await finder.stop();
+    if (finder) {
+      await finder.stop();
+      this.pushLog('[tìm NPC] đã dừng tự động tìm NPC.');
+    }
     if (this.fishingAbortController === fishingController) {
       this.fishingAbortController?.abort();
       this.fishingAbortController = undefined;
@@ -1692,13 +1705,9 @@ export class AvatarSession {
   }
 
   private async startFindNpc(client: GameClient, generation: number, epoch: number): Promise<boolean> {
-    const targetName = this.findNpcConfig.config.npcName;
-    const catalog = this.opts.findNpcCatalog ?? [];
+    const targetName = this.findNpcConfig.config.npcName?.trim();
     if (!targetName) {
       throw new AutomationInitializationError('find-npc-name-required', 'tên NPC trống');
-    }
-    if (catalog.length === 0) {
-      throw new AutomationInitializationError('catalog-unverified', 'catalog NPC chưa verified');
     }
 
     const farmSync = this.farmSyncPromise;
@@ -1719,7 +1728,7 @@ export class AvatarSession {
     let finder!: AutoFindNpc;
     const runnerOptions: AutoFindNpcOptions = {
       client,
-      catalog,
+      config: this.findNpcConfig.config,
       targetName,
       onState: (state) => {
         if (this.findNpc !== finder) return;
@@ -1738,6 +1747,19 @@ export class AvatarSession {
         this.opts.onAutomationLocation(null);
         this.emitAutomation();
       },
+      onRequestStop: (_reason, message) => {
+        if (this.findNpc !== finder) return;
+        if (message) this.pushLog(`[tìm NPC] ${message}`);
+        void this.switchAutomationMode({
+          desiredMode: 'off',
+          findNpcConfig: this.findNpcConfig,
+          fishingConfig: this.fishingConfig,
+          miningConfig: this.miningConfig,
+          mazeConfig: this.mazeConfig,
+          location: this.automationLocation,
+        });
+      },
+      onLog: (msg) => this.pushLog(`[tìm NPC] ${msg}`),
       onTerminalFailure: (error) => {
         if (
           this.findNpc !== finder
@@ -1771,24 +1793,7 @@ export class AvatarSession {
       ? this.opts.createAutoFindNpc(runnerOptions)
       : new AutoFindNpc(runnerOptions);
     this.findNpc = finder;
-    finder.start();
-    if (
-      !this.isAutomationGenerationCurrent(generation)
-      || !this.isCurrent(client, epoch)
-      || client.status !== 'online'
-      || this.findNpc !== finder
-    ) {
-      if (this.findNpc === finder) this.findNpc = undefined;
-      void finder.stop();
-      return false;
-    }
-    if (!finder.state().running) {
-      throw new AutomationInitializationError(
-        'find-npc-init-failed',
-        finder.state().lastError ?? 'runner Find NPC không khởi động',
-      );
-    }
-    this.findNpcRuntime = finder.state();
+    void finder.start(this.findNpcConfig.config);
     return true;
   }
 
