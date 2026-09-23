@@ -349,6 +349,7 @@ export class AvatarSession {
     resolve: () => void;
   };
   private fishingFarmWake?: () => void;
+  private fishermanQuestWake?: () => void;
   private automationTransition: Promise<AutomationStartOutcome> = Promise.resolve('active');
   private pendingAutomationTransitions = 0;
   private pendingFindNpcTransitions = 0;
@@ -494,6 +495,7 @@ export class AvatarSession {
     this.cancelFishingFarmSchedule();
     this.fishermanQuestAbort?.abort();
     this.fishermanQuestAbort = undefined;
+    this.wakeFishermanQuest();
     this.fishermanQuestRuntime = idleFishermanQuestRuntime();
     this.teardown();
     this.activeMode = 'off';
@@ -1131,6 +1133,7 @@ export class AvatarSession {
     client.on('quests', () => {
       if (this.isCurrent(client, epoch)) {
         this.emit('quests', this.getQuestOverview());
+        this.wakeFishermanQuest();
       }
     });
     client.on('metrics', (patch: unknown) => {
@@ -1654,6 +1657,7 @@ export class AvatarSession {
     if (this.fishermanQuestAbort) {
       this.fishermanQuestAbort.abort();
       this.fishermanQuestAbort = undefined;
+      this.wakeFishermanQuest();
     }
     if (this.activeMode === 'auto_fisherman_quest') {
       if (this.client && this.client.status === 'online') {
@@ -2524,8 +2528,45 @@ export class AvatarSession {
     })();
   }
 
+  private wakeFishermanQuest(): void {
+    const wake = this.fishermanQuestWake;
+    this.fishermanQuestWake = undefined;
+    wake?.();
+  }
+
+  private sleepOrQuestWake(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve) => {
+      const previousWake = this.fishermanQuestWake;
+      this.fishermanQuestWake = undefined;
+      previousWake?.();
+      if (signal.aborted) {
+        resolve();
+        return;
+      }
+      let timer: NodeJS.Timeout | undefined;
+      let settled = false;
+      const cleanup = (): void => {
+        if (timer) this.clearTimeoutFn(timer);
+        signal.removeEventListener('abort', onAbort);
+        if (this.fishermanQuestWake === onWake) this.fishermanQuestWake = undefined;
+      };
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      const onAbort = (): void => finish();
+      const onWake = (): void => finish();
+      this.fishermanQuestWake = onWake;
+      signal.addEventListener('abort', onAbort, { once: true });
+      timer = this.setTimeoutFn(finish, ms);
+    });
+  }
+
   private startFishermanQuestLoop(client: GameClient, generation: number, epoch: number): void {
     this.fishermanQuestAbort?.abort();
+    this.wakeFishermanQuest();
     const abort = new AbortController();
     this.fishermanQuestAbort = abort;
     void (async () => {
@@ -2628,30 +2669,54 @@ export class AvatarSession {
       let lastSyncAt = this.now();
       let syncedCaught = 0;
       for (;;) {
-        await this.sleepAbortable(10_000, signal);
+        await this.sleepOrQuestWake(5_000, signal);
         if (!alive()) return;
+
+        // 1. Kiểm tra ngay trong RAM: nếu quest title hoặc step đã đổi -> break ngay
+        const fresh = client.fishermanQuestState;
+        if (!fresh || fresh.title !== quest.title || fresh.step !== quest.step) {
+          this.pushLog(`[thợ câu] phát hiện nhiệm vụ thay đổi (${quest.title} → ${fresh?.title ?? 'mới'}), chuyển mục tiêu…`);
+          break;
+        }
+        const freshCond = fresh.conditions.find((c) => c.name === next.name);
+        if (!freshCond || freshCond.isDone || freshCond.current >= freshCond.total) {
+          this.pushLog(`[thợ câu] điều kiện "${next.name}" đã hoàn thành trên server (${freshCond?.current ?? 0}/${freshCond?.total ?? next.total}).`);
+          break;
+        }
+
+        // 2. Kiểm tra tiến độ local vừa đủ
         const runtime = this.fishermanQuestRuntime;
-        if (runtime.needed > 0 && runtime.caught >= runtime.needed) break;
+        if (runtime.needed > 0 && runtime.caught >= runtime.needed) {
+          this.pushLog(`[thợ câu] đã câu đủ ${runtime.caught}/${runtime.needed} ${runtime.targetFishName} theo bộ đếm local.`);
+          break;
+        }
+
+        // 3. Đồng bộ định kỳ (mỗi 5 con cá mới hoặc sau 60s)
         const dueCount = runtime.caught - syncedCaught >= 5;
-        const dueTime = this.now() - lastSyncAt >= 180_000;
+        const dueTime = this.now() - lastSyncAt >= 60_000;
         if (!dueCount && !dueTime) continue;
+
         // SYNC: server là source of truth.
         this.updateFishermanQuest({ phase: 'syncing' });
         this.emitAutomation();
-        this.refreshProgressQuests();
-        await this.sleepAbortable(4000, signal);
+        await this.refreshProgressQuests(true);
+        await this.sleepAbortable(1000, signal);
         if (!alive()) return;
+
         lastSyncAt = this.now();
         syncedCaught = this.fishermanQuestRuntime.caught;
-        const fresh = client.fishermanQuestState;
-        if (!fresh || fresh.title !== quest.title) break; // quest đổi → SCAN lại
-        const freshCond = fresh.conditions.find((c) => c.name === next.name);
-        if (!freshCond || freshCond.isDone || freshCond.current >= freshCond.total) {
+        const freshAfterSync = client.fishermanQuestState;
+        if (!freshAfterSync || freshAfterSync.title !== quest.title || freshAfterSync.step !== quest.step) {
+          this.pushLog(`[thợ câu] sau đồng bộ: nhiệm vụ đã chuyển sang ${freshAfterSync?.title ?? 'mới'}.`);
+          break;
+        }
+        const freshCondAfterSync = freshAfterSync.conditions.find((c) => c.name === next.name);
+        if (!freshCondAfterSync || freshCondAfterSync.isDone || freshCondAfterSync.current >= freshCondAfterSync.total) {
           this.pushLog(`[thợ câu] server báo xong "${next.name}" (local=${this.fishermanQuestRuntime.caught}).`);
           break;
         }
-        if (freshCond.current > next.current) {
-          this.pushLog(`[thợ câu] tiến độ server: ${freshCond.current}/${freshCond.total}.`);
+        if (freshCondAfterSync.current > next.current) {
+          this.pushLog(`[thợ câu] tiến độ server: ${freshCondAfterSync.current}/${freshCondAfterSync.total}.`);
         }
         this.updateFishermanQuest({ phase: 'fishing' });
         this.emitAutomation();
@@ -2663,6 +2728,7 @@ export class AvatarSession {
         this.fishingAbortController.abort();
         this.fishingAbortController = undefined;
       }
+      await this.sleepAbortable(500, signal);
     }
   }
 

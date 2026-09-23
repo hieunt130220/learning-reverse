@@ -74,7 +74,7 @@
 - Consumes: `client.on('quests')`, `client.fishermanQuestState`, `this.fishermanQuestRuntime`
 - Produces: `wakeFishermanQuest()`, `sleepOrQuestWake(ms, signal)`
 
-- [ ] **Step 1: Thêm `fishermanQuestWake` và `sleepOrQuestWake`**
+- [x] **Step 1: Thêm `fishermanQuestWake` và `sleepOrQuestWake`**
   Thêm field và phương thức vào `AvatarSession`:
   ```typescript
   private fishermanQuestWake?: () => void;
@@ -106,7 +106,7 @@
   }
   ```
 
-- [ ] **Step 2: Kích hoạt `wakeFishermanQuest` khi có event `quests`**
+- [x] **Step 2: Kích hoạt `wakeFishermanQuest` khi có event `quests`**
   Trong block listener `client.on('quests', ...)` (~ dòng 1131):
   ```typescript
   client.on('quests', () => {
@@ -117,7 +117,7 @@
   });
   ```
 
-- [ ] **Step 3: Viết lại vòng lặp chờ trong `runFishermanQuestLoop`**
+- [x] **Step 3: Viết lại vòng lặp chờ trong `runFishermanQuestLoop`**
   Thay thế đoạn `for (;;)` hiện tại bằng logic kiểm tra RAM ở đầu tick và sync chủ động:
   ```typescript
   for (;;) {
@@ -175,11 +175,11 @@
   }
   ```
 
-- [ ] **Step 4: Kiểm tra biên dịch**
+- [x] **Step 4: Kiểm tra biên dịch**
   Run: `cd avatar-web/server && npx tsc --noEmit`
   Expected: Build thành công không lỗi.
 
-- [ ] **Step 5: Commit thay đổi**
+- [x] **Step 5: Commit thay đổi**
   Run: `gitnexus_detect_changes({scope: "all"})`
   `git commit -m "fix(quest): add event-driven quest wake and zero-latency state check"`
 
