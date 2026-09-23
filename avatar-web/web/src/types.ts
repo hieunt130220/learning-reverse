@@ -494,9 +494,29 @@ export interface AutomationLocation {
   observedAt: number;
 }
 
+export interface FindNpcConfig {
+  npcName: string;
+  fromMap?: number;
+  toMap?: number;
+  fromBoard?: number;
+  toBoard?: number;
+  stopOnMaxQuantity?: boolean;
+  cycleDelaySeconds?: number;
+}
+
+export const DEFAULT_FIND_NPC_CONFIG: FindNpcConfig = {
+  npcName: 'Chú Cuội',
+  fromMap: 1,
+  toMap: 8,
+  fromBoard: 0,
+  toBoard: 19,
+  stopOnMaxQuantity: true,
+  cycleDelaySeconds: 30,
+};
+
 export interface StoredFindNpcConfigState {
   revision: number;
-  config: { npcName: string };
+  config: FindNpcConfig;
 }
 
 export interface NpcMapLocation {
@@ -504,7 +524,16 @@ export interface NpcMapLocation {
   area: number;
 }
 
-export type AutoFindNpcPhase = 'idle' | 'scanning' | 'scan_backoff' | 'tracking' | 'stopping';
+export type AutoFindNpcPhase =
+  | 'idle'
+  | 'entering_park'
+  | 'scanning'
+  | 'waiting_npc'
+  | 'waiting_next_cycle'
+  | 'daily_limit_reached'
+  | 'scan_backoff'
+  | 'tracking'
+  | 'stopping';
 
 export interface AutoFindNpcState {
   phase: AutoFindNpcPhase;
@@ -518,6 +547,15 @@ export interface AutoFindNpcState {
   timeoutStreak: number;
   backoffUntil?: number;
   lastError?: string;
+  currentMap?: number | null;
+  currentBoard?: number | null;
+  foundNpc?: { id: number; name: string; map: number; board: number } | null;
+  waitingSeconds?: number;
+  eventRewardProgress?: { current: number; max: number } | null;
+  lastRewardMessage?: string | null;
+  dailyLimitReached?: boolean;
+  cycleCount?: number;
+  updatedAt?: number;
 }
 
 export type FishermanQuestPhase =

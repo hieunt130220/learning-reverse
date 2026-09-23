@@ -1,5 +1,4 @@
 /**
- * Bật lại tính năng Tìm NPC: đặt thành false rồi deploy/restart server.
- * Xem docs/superpowers/specs/2026-08-25-disable-find-npc-design.md.
+ * Tính năng Tìm NPC: đặt false để bật hoạt động trên Web và API.
  */
-export const FIND_NPC_DISABLED = true;
+export const FIND_NPC_DISABLED = false;

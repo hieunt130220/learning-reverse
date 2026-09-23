@@ -241,8 +241,24 @@ export interface AutomationLocation {
 }
 
 export interface FindNpcConfig {
-  npcName: string;
+  readonly npcName: string;
+  readonly fromMap?: number;
+  readonly toMap?: number;
+  readonly fromBoard?: number;
+  readonly toBoard?: number;
+  readonly stopOnMaxQuantity?: boolean;
+  readonly cycleDelaySeconds?: number;
 }
+
+export const DEFAULT_FIND_NPC_CONFIG: FindNpcConfig = Object.freeze({
+  npcName: 'Chú Cuội',
+  fromMap: 1,
+  toMap: 8,
+  fromBoard: 0,
+  toBoard: 19,
+  stopOnMaxQuantity: true,
+  cycleDelaySeconds: 30,
+});
 
 export interface StoredFindNpcConfigState {
   revision: number;
@@ -261,7 +277,11 @@ export interface LoadedAutomationIntent {
 
 export type AutoFindNpcPhase =
   | 'idle'
+  | 'entering_park'
   | 'scanning'
+  | 'waiting_npc'
+  | 'waiting_next_cycle'
+  | 'daily_limit_reached'
   | 'scan_backoff'
   | 'tracking'
   | 'stopping';
@@ -278,6 +298,15 @@ export interface AutoFindNpcState {
   timeoutStreak: number;
   backoffUntil?: number;
   lastError?: string;
+  currentMap?: number | null;
+  currentBoard?: number | null;
+  foundNpc?: { id: number; name: string; map: number; board: number } | null;
+  waitingSeconds?: number;
+  eventRewardProgress?: { current: number; max: number } | null;
+  lastRewardMessage?: string | null;
+  dailyLimitReached?: boolean;
+  cycleCount?: number;
+  updatedAt?: number;
 }
 
 /** Một cặp map/khu đã được live-verify. `map`/`area` == roomID/boardID của cmd 80. */
@@ -371,8 +400,24 @@ export type AutomationApiErrorCode =
   | 'invalid-maze-config'
   | 'automation-save-failed';
 
-export function idleFindNpcRuntime(targetName: string): AutoFindNpcState {
-  return { phase: 'idle', running: false, targetName, cursor: 0, total: 0, timeoutStreak: 0 };
+export function idleFindNpcRuntime(targetName = 'Chú Cuội'): AutoFindNpcState {
+  return {
+    phase: 'idle',
+    running: false,
+    targetName,
+    cursor: 0,
+    total: 0,
+    timeoutStreak: 0,
+    currentMap: null,
+    currentBoard: null,
+    foundNpc: null,
+    waitingSeconds: 0,
+    eventRewardProgress: null,
+    lastRewardMessage: null,
+    dailyLimitReached: false,
+    cycleCount: 0,
+    updatedAt: Date.now(),
+  };
 }
 
 export function idleFishermanQuestRuntime(): FishermanQuestRuntimeState {

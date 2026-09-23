@@ -1,5 +1,6 @@
 import type { Db } from '../db/index.js';
 import {
+  DEFAULT_FIND_NPC_CONFIG,
   DEFAULT_FISHING_CONFIG,
   DEFAULT_MAZE_CONFIG,
   DEFAULT_MINING_CONFIG,
@@ -62,26 +63,56 @@ interface AutomationRow {
 }
 
 function defaultFindNpcConfig(): StoredFindNpcConfigState {
-  return { revision: 0, config: { npcName: '' } };
+  return { revision: 0, config: DEFAULT_FIND_NPC_CONFIG };
 }
 
-/** Trim + giới hạn 1..80 Unicode code points; chỉ nhận đúng key `npcName`. */
+/** Trim + giới hạn 1..80 Unicode code points và validate dải map/board. */
 export function normalizeFindNpcConfig(input: unknown): FindNpcConfig {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     throw new FindNpcConfigError('cấu hình tìm NPC phải là object');
   }
-  const keys = Object.keys(input);
-  if (keys.length !== 1 || keys[0] !== 'npcName') {
-    throw new FindNpcConfigError('chỉ nhận trường "npcName"');
-  }
-  const raw = (input as { npcName: unknown }).npcName;
+  const obj = input as Record<string, unknown>;
+  const raw = obj.npcName;
   if (typeof raw !== 'string') throw new FindNpcConfigError('"npcName" phải là chuỗi');
   const name = raw.trim();
   const length = [...name].length;
   if (length < 1 || length > 80) {
     throw new FindNpcConfigError('"npcName" phải dài 1..80 ký tự sau khi trim');
   }
-  return { npcName: name };
+  const fromMap =
+    typeof obj.fromMap === 'number' && obj.fromMap >= 0 && obj.fromMap <= 100
+      ? Math.floor(obj.fromMap)
+      : DEFAULT_FIND_NPC_CONFIG.fromMap;
+  const toMap =
+    typeof obj.toMap === 'number' && obj.toMap >= 0 && obj.toMap <= 100
+      ? Math.floor(obj.toMap)
+      : DEFAULT_FIND_NPC_CONFIG.toMap;
+  const fromBoard =
+    typeof obj.fromBoard === 'number' && obj.fromBoard >= 0 && obj.fromBoard <= 50
+      ? Math.floor(obj.fromBoard)
+      : DEFAULT_FIND_NPC_CONFIG.fromBoard;
+  const toBoard =
+    typeof obj.toBoard === 'number' && obj.toBoard >= 0 && obj.toBoard <= 50
+      ? Math.floor(obj.toBoard)
+      : DEFAULT_FIND_NPC_CONFIG.toBoard;
+  const stopOnMaxQuantity =
+    typeof obj.stopOnMaxQuantity === 'boolean'
+      ? obj.stopOnMaxQuantity
+      : true;
+  const cycleDelaySeconds =
+    typeof obj.cycleDelaySeconds === 'number' && obj.cycleDelaySeconds >= 0 && obj.cycleDelaySeconds <= 3600
+      ? Math.floor(obj.cycleDelaySeconds)
+      : DEFAULT_FIND_NPC_CONFIG.cycleDelaySeconds;
+
+  return {
+    npcName: name,
+    fromMap,
+    toMap,
+    fromBoard,
+    toBoard,
+    stopOnMaxQuantity,
+    cycleDelaySeconds,
+  };
 }
 
 function storedFindNpcConfig(raw: string | null): StoredFindNpcConfigState {
@@ -94,10 +125,10 @@ function storedFindNpcConfig(raw: string | null): StoredFindNpcConfigState {
       && typeof (parsed as Record<string, unknown>).revision === 'number'
     ) {
       const envelope = parsed as { version: 1; revision: number; config: unknown };
-      const npcName = (envelope.config as Record<string, unknown> | null)?.npcName;
-      if (typeof npcName === 'string') {
-        return { revision: envelope.revision, config: { npcName } };
-      }
+      return {
+        revision: envelope.revision,
+        config: normalizeFindNpcConfig(envelope.config),
+      };
     }
   } catch {
     /* JSON hỏng -> mặc định */
