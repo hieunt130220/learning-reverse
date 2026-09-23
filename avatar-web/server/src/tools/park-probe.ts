@@ -59,6 +59,11 @@ export interface MaxQuantityCheck {
   isMax: boolean;
 }
 
+export interface ProbeContext {
+  quotaReached: boolean;
+  quotaMessage?: string;
+}
+
 export function parseMaxQuantityDialog(text: string): MaxQuantityCheck | null {
   const match = text.match(/số lượng\s*[:]?\s*(\d+)\s*\/\s*(\d+)/i);
   if (!match) return null;
@@ -680,6 +685,7 @@ async function waitForNpcDeparture(
   _boardId: number,
   targetNpc: ParkNpc,
   _pos: NativeParkJoinPosition,
+  ctx?: ProbeContext,
   maxWaitSeconds = 300,
 ): Promise<number> {
   const startTime = Date.now();
@@ -694,6 +700,7 @@ async function waitForNpcDeparture(
       if (maxWaitTimer) clearTimeout(maxWaitTimer);
       client.session.removeListener('message', onMessage);
       client.removeListener('status', onStatus);
+      client.removeListener('dialog', onDialog);
     };
 
     const finish = (reason: string): void => {
@@ -715,6 +722,18 @@ async function waitForNpcDeparture(
     const onStatus = (status: ClientStatus): void => {
       if (status === 'error' || status === 'idle') {
         fail(new Error(`Mất kết nối game trong khi chờ NPC (status=${status})`));
+      }
+    };
+
+    const onDialog = (text: string): void => {
+      if (settled) return;
+      const check = parseMaxQuantityDialog(text);
+      if (check?.isMax) {
+        if (ctx) {
+          ctx.quotaReached = true;
+          ctx.quotaMessage = text;
+        }
+        finish(`Đạt giới hạn số lượng tối đa (${check.current}/${check.max})`);
       }
     };
 
@@ -751,6 +770,7 @@ async function waitForNpcDeparture(
 
     client.session.on('message', onMessage);
     client.on('status', onStatus);
+    client.on('dialog', onDialog);
 
     // Heartbeat log mỗi 5 giây
     heartbeatTimer = setInterval(() => {
@@ -803,6 +823,16 @@ async function runParkSweep(
   const fromBoard = args.fromBoard ?? 0;
   const toBoard = args.toBoard ?? 10;
 
+  const ctx: ProbeContext = { quotaReached: false };
+  const onSweepDialog = (text: string): void => {
+    const check = parseMaxQuantityDialog(text);
+    if (check?.isMax) {
+      ctx.quotaReached = true;
+      ctx.quotaMessage = text;
+    }
+  };
+  client.on('dialog', onSweepDialog);
+
   console.log(`\n=== BẮT ĐẦU QUÉT LIÊN TỤC: MAP ${fromMap}..${toMap}, BOARD ${fromBoard}..${toBoard} ===`);
   const total = (toMap - fromMap + 1) * (toBoard - fromBoard + 1);
   console.log(`Tổng số phòng cần quét: ${total}\n`);
@@ -815,8 +845,10 @@ async function runParkSweep(
 
   try {
     for (let m = fromMap; m <= toMap; m += 1) {
+      if (ctx.quotaReached) break;
       const pos = getJoinPosition(m);
       for (let b = fromBoard; b <= toBoard; b += 1) {
+        if (ctx.quotaReached) break;
         specialCapture.updates.length = 0;
         try {
           const pending = waitForParkJoinResponse(client, 2_500, m, b);
@@ -884,10 +916,16 @@ async function runParkSweep(
               console.log(
                 `⏳ Đang đứng lại tại Map ${m} - Board ${b} để chờ NPC "${match.name}" biến mất...\n`,
               );
-              const elapsed = await waitForNpcDeparture(client, m, b, match, pos);
+              const elapsed = await waitForNpcDeparture(client, m, b, match, pos, ctx);
               console.log(
                 `\n✅ [NPC BIẾN MẤT] NPC "${match.name}" đã rời khỏi Map ${m} - Board ${b} sau ${elapsed} giây.`,
               );
+              if (ctx.quotaReached) {
+                console.log(
+                  `\n🛑 [ĐẠT GIỚI HẠN SỰ KIỆN] Nhận thông báo "${ctx.quotaMessage}". Dừng quét và kết thúc probe!\n`,
+                );
+                break;
+              }
               console.log(`Tiếp tục quét các board tiếp theo...\n`);
             }
           }
@@ -900,14 +938,25 @@ async function runParkSweep(
           }
         }
 
+        if (ctx.quotaReached) {
+          console.log(
+            `\n🛑 [ĐẠT GIỚI HẠN SỰ KIỆN] Nhận thông báo "${ctx.quotaMessage}". Dừng quét và kết thúc probe!\n`,
+          );
+          break;
+        }
+
         await new Promise<void>((r) => setTimeout(r, 1_200));
       }
     }
   } finally {
+    client.removeListener('dialog', onSweepDialog);
     specialCapture.stop();
   }
 
   console.log(`\n================ TỔNG KẾT QUÉT (SWEEP SUMMARY) ================`);
+  if (ctx.quotaReached) {
+    console.log(`[DỪNG SỚM] Đã đạt giới hạn tối đa sự kiện: "${ctx.quotaMessage}"`);
+  }
   console.log(`Đã quét: ${successCount}/${total} phòng thành công (${failCount} lỗi/bỏ qua)\n`);
 
   console.log(`[TỔNG HỢP NPC TÌM ĐƯỢC (${allNpcs.length} lượt)]:`);
@@ -997,6 +1046,16 @@ export async function runParkProbe(args: ProbeArgs): Promise<ParkScanResult | vo
     }
 
     // 4. Lắng nghe RX 48 và gửi TX 80 vào phòng
+    const probeCtx: ProbeContext = { quotaReached: false };
+    const onProbeDialog = (text: string): void => {
+      const check = parseMaxQuantityDialog(text);
+      if (check?.isMax) {
+        probeCtx.quotaReached = true;
+        probeCtx.quotaMessage = text;
+      }
+    };
+    client.on('dialog', onProbeDialog);
+
     const specialCapture = startMapSpecialCapture(client);
     try {
       const joinPending = waitForParkJoinResponse(client, 7_000, args.map, args.board);
@@ -1050,10 +1109,15 @@ export async function runParkProbe(args: ProbeArgs): Promise<ParkScanResult | vo
           console.log(
             `⏳ Đang đứng lại tại Map ${args.map} - Board ${args.board} để chờ NPC "${match.name}" biến mất...\n`,
           );
-          const elapsed = await waitForNpcDeparture(client, args.map, args.board, match, position);
+          const elapsed = await waitForNpcDeparture(client, args.map, args.board, match, position, probeCtx);
           console.log(
             `\n✅ [NPC BIẾN MẤT] NPC "${match.name}" đã rời khỏi Map ${args.map} - Board ${args.board} sau ${elapsed} giây.\n`,
           );
+          if (probeCtx.quotaReached) {
+            console.log(
+              `🛑 [ĐẠT GIỚI HẠN SỰ KIỆN] Nhận thông báo "${probeCtx.quotaMessage}". Kết thúc probe.\n`,
+            );
+          }
         } else {
           console.log(
             `\n(Không tìm thấy NPC "${args.targetNpc}" tại Map ${args.map} - Board ${args.board})\n`,
@@ -1071,6 +1135,7 @@ export async function runParkProbe(args: ProbeArgs): Promise<ParkScanResult | vo
         npcs: finalNpcs,
       };
     } finally {
+      client.removeListener('dialog', onProbeDialog);
       specialCapture.stop();
     }
   } finally {
