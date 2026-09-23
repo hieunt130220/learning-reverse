@@ -339,7 +339,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 **Files:**
 - Execute: Backend & Frontend
 
-- [ ] **Step 1: Chạy Typecheck toàn bộ workspace**
+- [x] **Step 1: Chạy Typecheck toàn bộ workspace**
 Run:
 ```bash
 npm --prefix avatar-web/server run typecheck
@@ -347,7 +347,7 @@ npm --prefix avatar-web/web run build
 ```
 Expected: Exit 0 cho cả server và frontend.
 
-- [ ] **Step 2: Khởi động server dev và kiểm tra API**
+- [x] **Step 2: Khởi động server dev và kiểm tra API**
 Run:
 ```bash
 (cd avatar-web/server && node --env-file=.env --import tsx -e '
@@ -361,7 +361,7 @@ db.close();
 ```
 Expected: Đọc cấu hình `findNpcConfig` thành công từ SQLite.
 
-- [ ] **Step 3: Cập nhật hoàn thành Implementation Plan**
+- [x] **Step 3: Cập nhật hoàn thành Implementation Plan**
 Tích chọn toàn bộ các checklist item `- [x]` trong plan file.
 Run:
 ```bash
