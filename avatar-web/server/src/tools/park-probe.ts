@@ -7,7 +7,10 @@ import {
   GameClient,
   type ClientStatus,
 } from '../game/client.js';
-import { NATIVE_PARK_JOIN_POSITIONS } from '../game/parkService.js';
+import {
+  NATIVE_PARK_JOIN_POSITIONS,
+  type NativeParkJoinPosition,
+} from '../game/parkService.js';
 import type { Message } from '../proto/message.js';
 import { MyReader } from '../proto/reader.js';
 
@@ -15,6 +18,11 @@ export interface ProbeArgs {
   accountId: number;
   map: number;
   board: number;
+  sweep?: boolean;
+  fromMap?: number;
+  toMap?: number;
+  fromBoard?: number;
+  toBoard?: number;
 }
 
 export interface ParkUser {
@@ -70,7 +78,16 @@ interface MapSpecialUpdate {
   menuIds?: number[];
 }
 
-const ALLOWED_KEYS = new Set(['--account-id', '--map', '--board']);
+const ALLOWED_KEYS = new Set([
+  '--account-id',
+  '--map',
+  '--board',
+  '--sweep',
+  '--from-map',
+  '--to-map',
+  '--from-board',
+  '--to-board',
+]);
 
 function parseInteger(key: string, raw: string): number {
   if (!/^-?\d+$/.test(raw)) {
@@ -84,14 +101,24 @@ function parseInteger(key: string, raw: string): number {
 }
 
 export function parseArgs(argv: string[]): ProbeArgs {
-  if (argv.length % 2 !== 0) {
-    throw new Error('Mỗi tùy chọn CLI phải có đúng một giá trị đi kèm');
+  let sweep = false;
+  const filteredArgv: string[] = [];
+  for (const arg of argv) {
+    if (arg === '--sweep') {
+      sweep = true;
+    } else {
+      filteredArgv.push(arg);
+    }
+  }
+
+  if (filteredArgv.length % 2 !== 0) {
+    throw new Error('Mỗi tùy chọn CLI (ngoại trừ cờ --sweep) phải có đúng một giá trị đi kèm');
   }
 
   const values = new Map<string, number>();
-  for (let i = 0; i < argv.length; i += 2) {
-    const key = argv[i]!;
-    const raw = argv[i + 1];
+  for (let i = 0; i < filteredArgv.length; i += 2) {
+    const key = filteredArgv[i]!;
+    const raw = filteredArgv[i + 1];
     if (!ALLOWED_KEYS.has(key)) {
       throw new Error(`Tùy chọn CLI không được hỗ trợ: ${key}`);
     }
@@ -122,7 +149,21 @@ export function parseArgs(argv: string[]): ProbeArgs {
     }
   }
 
-  return { accountId, map, board };
+  const fromMap = values.get('--from-map') ?? (sweep ? 1 : undefined);
+  const toMap = values.get('--to-map') ?? (sweep ? 8 : undefined);
+  const fromBoard = values.get('--from-board') ?? (sweep ? 0 : undefined);
+  const toBoard = values.get('--to-board') ?? (sweep ? 10 : undefined);
+
+  return {
+    accountId,
+    map,
+    board,
+    sweep,
+    fromMap,
+    toMap,
+    fromBoard,
+    toBoard,
+  };
 }
 
 function assertAvatarWebStopped(port: number): Promise<void> {
@@ -525,9 +566,22 @@ function startMapSpecialCapture(client: GameClient): MapSpecialCapture {
   };
 }
 
+function getJoinPosition(map: number): NativeParkJoinPosition {
+  if (NATIVE_PARK_JOIN_POSITIONS[map]) {
+    return NATIVE_PARK_JOIN_POSITIONS[map];
+  }
+  // Mặc định cho toàn bộ cụm công viên 0..8
+  if (map >= 0 && map <= 8) {
+    return { x: 254, y: 82 };
+  }
+  throw new Error(`Chưa có toạ độ native cho map ${map}`);
+}
+
 function waitForParkJoinResponse(
   client: GameClient,
   timeoutMs: number,
+  expectedMap?: number,
+  expectedBoard?: number,
 ): Promise<ParkJoinSnapshot> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -552,6 +606,8 @@ function waitForParkJoinResponse(
       if (msg.command === 80) {
         try {
           const snapshot = decodeParkJoinResponse(msg.getData());
+          if (expectedMap !== undefined && snapshot.roomId !== expectedMap) return;
+          if (expectedBoard !== undefined && snapshot.boardId !== expectedBoard) return;
           finishResolve(snapshot);
         } catch (err) {
           finishReject(new Error(`Lỗi giải mã RX 80: ${(err as Error).message}`));
@@ -561,7 +617,12 @@ function waitForParkJoinResponse(
           const reader = new MyReader(msg.getData());
           const text = reader.available() >= 2 ? reader.readUTF() : msg.getData().toString('utf8');
           const lower = text.toLowerCase();
-          if (lower.includes('đã đầy') || lower.includes('đóng cửa') || lower.includes('không thể vào')) {
+          if (
+            lower.includes('đã đầy')
+            || lower.includes('đóng cửa')
+            || lower.includes('không thể vào')
+            || lower.includes('chầm chậm')
+          ) {
             finishReject(new Error(`Server từ chối vào khu (-40): ${text}`));
           }
         } catch {
@@ -603,7 +664,129 @@ export function printSummary(result: ParkScanResult, map: number, board: number)
   }
 }
 
-export async function runParkProbe(args: ProbeArgs): Promise<ParkScanResult> {
+async function runParkSweep(
+  client: GameClient,
+  account: { gameUser: string; id: number },
+  args: ProbeArgs,
+): Promise<void> {
+  const fromMap = args.fromMap ?? 1;
+  const toMap = args.toMap ?? 8;
+  const fromBoard = args.fromBoard ?? 0;
+  const toBoard = args.toBoard ?? 10;
+
+  console.log(`\n=== BẮT ĐẦU QUÉT LIÊN TỤC: MAP ${fromMap}..${toMap}, BOARD ${fromBoard}..${toBoard} ===`);
+  const total = (toMap - fromMap + 1) * (toBoard - fromBoard + 1);
+  console.log(`Tổng số phòng cần quét: ${total}\n`);
+
+  const specialCapture = startMapSpecialCapture(client);
+  const allNpcs: Array<{ map: number; board: number; npc: ParkNpc }> = [];
+  const allUsers: Array<{ map: number; board: number; user: ParkUser }> = [];
+  let successCount = 0;
+  let failCount = 0;
+
+  try {
+    for (let m = fromMap; m <= toMap; m += 1) {
+      const pos = getJoinPosition(m);
+      for (let b = fromBoard; b <= toBoard; b += 1) {
+        specialCapture.updates.length = 0;
+        try {
+          const pending = waitForParkJoinResponse(client, 2_500, m, b);
+          client.sendRaw(80, [
+            { t: 'i8', v: String(m) },
+            { t: 'i8', v: String(b) },
+            { t: 'i16', v: String(pos.x) },
+            { t: 'i16', v: String(pos.y) },
+          ]);
+          const snap = await pending;
+          await new Promise<void>((r) => setTimeout(r, 150));
+
+          const npcMap = new Map<number, ParkNpc>();
+          for (const n of snap.npcs) npcMap.set(n.id, n);
+          for (const u of specialCapture.updates) {
+            if (
+              u.operation === 'upsert'
+              && u.name
+              && u.x !== undefined
+              && u.y !== undefined
+              && u.type !== undefined
+            ) {
+              npcMap.set(u.id, {
+                id: u.id,
+                name: u.name,
+                x: u.x,
+                y: u.y,
+                type: u.type,
+                menuIds: u.menuIds ?? [],
+              });
+            } else if (u.operation === 'remove') {
+              npcMap.delete(u.id);
+            }
+          }
+
+          const roomNpcs = Array.from(npcMap.values());
+          const roomUsers = snap.users.filter(
+            (u) => u.name !== account.gameUser && u.id !== account.id,
+          );
+
+          for (const n of roomNpcs) allNpcs.push({ map: m, board: b, npc: n });
+          for (const u of roomUsers) allUsers.push({ map: m, board: b, user: u });
+          successCount += 1;
+
+          if (roomNpcs.length > 0) {
+            const npcNames = roomNpcs.map((n) => `"${n.name}"`).join(', ');
+            console.log(
+              `[Map ${m} - Board ${b}] 🎯 NPC (${roomNpcs.length}): ${npcNames} | Users (${roomUsers.length})`,
+            );
+          } else if (roomUsers.length > 0) {
+            const userNames = roomUsers.map((u) => u.name).join(', ');
+            console.log(`[Map ${m} - Board ${b}] Users (${roomUsers.length}): ${userNames}`);
+          } else {
+            console.log(`[Map ${m} - Board ${b}] Trống (0 user, 0 NPC)`);
+          }
+        } catch (err) {
+          failCount += 1;
+          const msg = (err as Error).message;
+          console.log(`[Map ${m} - Board ${b}] Bỏ qua (${msg})`);
+          if (msg.includes('chầm chậm') || msg.includes('Chầm chậm')) {
+            await new Promise<void>((r) => setTimeout(r, 1_500));
+          }
+        }
+
+        await new Promise<void>((r) => setTimeout(r, 1_200));
+      }
+    }
+  } finally {
+    specialCapture.stop();
+  }
+
+  console.log(`\n================ TỔNG KẾT QUÉT (SWEEP SUMMARY) ================`);
+  console.log(`Đã quét: ${successCount}/${total} phòng thành công (${failCount} lỗi/bỏ qua)\n`);
+
+  console.log(`[TỔNG HỢP NPC TÌM ĐƯỢC (${allNpcs.length} lượt)]:`);
+  if (allNpcs.length === 0) {
+    console.log('  (Không tìm thấy NPC nào)');
+  } else {
+    for (const item of allNpcs) {
+      const typeLabel = item.npc.type === -1 ? 'Avatar NPC' : `type: ${item.npc.type}`;
+      console.log(
+        `  - [Map ${item.map} - Board ${item.board}] [${item.npc.id}] ${item.npc.name} (x: ${item.npc.x}, y: ${item.npc.y} - ${typeLabel})`,
+      );
+    }
+  }
+
+  console.log(`\n[TỔNG HỢP NGƯỜI CHƠI KHÁC (${allUsers.length} lượt)]:`);
+  if (allUsers.length === 0) {
+    console.log('  (Không có người chơi nào khác)');
+  } else {
+    for (const item of allUsers) {
+      console.log(
+        `  - [Map ${item.map} - Board ${item.board}] [${item.user.id}] ${item.user.name} (x: ${item.user.x}, y: ${item.user.y})`,
+      );
+    }
+  }
+}
+
+export async function runParkProbe(args: ProbeArgs): Promise<ParkScanResult | void> {
   const config = loadConfig();
   await assertAvatarWebStopped(config.port);
 
@@ -620,12 +803,11 @@ export async function runParkProbe(args: ProbeArgs): Promise<ParkScanResult> {
       throw new Error(`Tài khoản ${account.gameUser} (ID ${args.accountId}) không có mật khẩu game`);
     }
 
-    const position = NATIVE_PARK_JOIN_POSITIONS[args.map];
-    if (!position) {
-      throw new Error(`Chưa có toạ độ native cho map ${args.map}`);
-    }
+    const position = getJoinPosition(args.map);
 
     client = new GameClient();
+    client.on('dialog', (text) => console.log(`[GAME DIALOG] ${text}`));
+    client.on('temporary-rejection', (rej) => console.log(`[TEMPORARY REJECTION] Chờ ${rej.retryAfterMs}ms: ${rej.reason}`));
 
     // 1. Đăng nhập game client
     await loginWithTimeout(
@@ -646,6 +828,12 @@ export async function runParkProbe(args: ProbeArgs): Promise<ParkScanResult> {
     client.enterParkContext();
     await parkAckPending;
 
+    // Chế độ sweep quét nhiều phòng
+    if (args.sweep) {
+      await runParkSweep(client, account, args);
+      return;
+    }
+
     // 3. Xin sĩ số khu (TX 90) và chờ RX 90
     let occupancy: number | undefined;
     try {
@@ -663,7 +851,7 @@ export async function runParkProbe(args: ProbeArgs): Promise<ParkScanResult> {
     // 4. Lắng nghe RX 48 và gửi TX 80 vào phòng
     const specialCapture = startMapSpecialCapture(client);
     try {
-      const joinPending = waitForParkJoinResponse(client, 7_000);
+      const joinPending = waitForParkJoinResponse(client, 7_000, args.map, args.board);
       client.sendRaw(80, [
         { t: 'i8', v: String(args.map) },
         { t: 'i8', v: String(args.board) },
@@ -736,18 +924,26 @@ async function main(): Promise<void> {
   if (rawArgs.includes('-h') || rawArgs.includes('--help')) {
     console.log(`Cách dùng:
   node --env-file=.env --import tsx src/tools/park-probe.ts --account-id <number> [--map <number>] [--board <number>]
+  node --env-file=.env --import tsx src/tools/park-probe.ts --account-id <number> --sweep [--from-map 1] [--to-map 8] [--from-board 0] [--to-board 10]
 
 Tùy chọn:
   --account-id  ID tài khoản trong database (bắt buộc)
   --map         ID bản đồ / phòng (mặc định: 0 - Công viên trung tâm)
   --board       ID khu / bàn (mặc định: 0)
+  --sweep       Bật chế độ quét duyệt tự động qua nhiều map và board
+  --from-map    Map bắt đầu quét (mặc định: 1)
+  --to-map      Map kết thúc quét (mặc định: 8)
+  --from-board  Board bắt đầu quét (mặc định: 0)
+  --to-board    Board kết thúc quét (mặc định: 10)
 `);
     process.exit(0);
   }
 
   const args = parseArgs(rawArgs);
   const result = await runParkProbe(args);
-  printSummary(result, args.map, args.board);
+  if (result) {
+    printSummary(result, args.map, args.board);
+  }
 }
 
 const isDirectRun = Boolean(
