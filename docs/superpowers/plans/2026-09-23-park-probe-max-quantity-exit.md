@@ -27,11 +27,11 @@
 - Consumes: `text: string`
 - Produces: `parseMaxQuantityDialog(text: string): MaxQuantityCheck | null`
 
-- [ ] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
+- [x] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
 Run: `node .gitnexus/run.cjs impact "parseArgs" --direction upstream --repo .`
 Expected: Xác định các caller liên quan trong `park-probe.ts`.
 
-- [ ] **Step 2: Thêm `MaxQuantityCheck` và `parseMaxQuantityDialog` vào `park-probe.ts`**
+- [x] **Step 2: Thêm `MaxQuantityCheck` và `parseMaxQuantityDialog` vào `park-probe.ts`**
 Thêm interface và hàm vào `avatar-web/server/src/tools/park-probe.ts`:
 
 ```typescript
@@ -57,11 +57,11 @@ export function parseMaxQuantityDialog(text: string): MaxQuantityCheck | null {
 }
 ```
 
-- [ ] **Step 3: Kiểm tra biên dịch**
+- [x] **Step 3: Kiểm tra biên dịch**
 Run: `npm --prefix avatar-web/server run typecheck`
 Expected: TypeScript compile thành công, không có lỗi.
 
-- [ ] **Step 4: Kiểm tra nhanh bằng node CLI**
+- [x] **Step 4: Kiểm tra nhanh bằng node CLI**
 Run:
 ```bash
 node -e '
@@ -78,7 +78,7 @@ Expected:
 `Test 50/50: { current: 50, max: 50, isMax: true }`
 `Test 51/50: { current: 51, max: 50, isMax: true }`
 
-- [ ] **Step 5: Kiểm tra thay đổi GitNexus và commit**
+- [x] **Step 5: Kiểm tra thay đổi GitNexus và commit**
 Run: `node .gitnexus/run.cjs detect-changes --scope unstaged --repo .`
 Run:
 ```bash
