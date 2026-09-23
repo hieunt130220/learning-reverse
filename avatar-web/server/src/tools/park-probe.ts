@@ -655,22 +655,22 @@ function waitForParkJoinResponse(
 
 async function waitForNpcDeparture(
   client: GameClient,
-  roomId: number,
-  boardId: number,
+  _roomId: number,
+  _boardId: number,
   targetNpc: ParkNpc,
-  pos: NativeParkJoinPosition,
+  _pos: NativeParkJoinPosition,
+  maxWaitSeconds = 300,
 ): Promise<number> {
   const startTime = Date.now();
 
   return new Promise<number>((resolve, reject) => {
     let settled = false;
     let heartbeatTimer: NodeJS.Timeout | undefined;
-    let pollTimer: NodeJS.Timeout | undefined;
-    let isPolling = false;
+    let maxWaitTimer: NodeJS.Timeout | undefined;
 
     const cleanup = (): void => {
       if (heartbeatTimer) clearInterval(heartbeatTimer);
-      if (pollTimer) clearInterval(pollTimer);
+      if (maxWaitTimer) clearTimeout(maxWaitTimer);
       client.session.removeListener('message', onMessage);
       client.removeListener('status', onStatus);
     };
@@ -706,7 +706,7 @@ async function waitForNpcDeparture(
           if (reader.available() >= 4) {
             const leaveId = reader.readInt();
             if (leaveId === targetNpc.id) {
-              finish(`Nhận broadcast RX 83: đối tượng ID ${leaveId} đã rời phòng`);
+              finish(`Nhận broadcast RX 83: NPC ID ${leaveId} đã rời phòng`);
               return;
             }
           }
@@ -738,35 +738,10 @@ async function waitForNpcDeparture(
       console.log(`  [WAITING] Đang chờ NPC "${targetNpc.name}" biến mất... (đã chờ ${elapsed}s)`);
     }, 5_000);
 
-    // Re-poll snapshot mỗi 15 giây để phòng ngừa mất gói broadcast
-    pollTimer = setInterval(async () => {
-      if (settled || isPolling) return;
-      isPolling = true;
-      try {
-        const pending = waitForParkJoinResponse(client, 4_000, roomId, boardId);
-        client.sendRaw(80, [
-          { t: 'i8', v: String(roomId) },
-          { t: 'i8', v: String(boardId) },
-          { t: 'i16', v: String(pos.x) },
-          { t: 'i16', v: String(pos.y) },
-        ]);
-        const snap = await pending;
-        await new Promise<void>((r) => setTimeout(r, 200));
-
-        // Kiểm tra xem targetNpc còn trong danh sách NPC của snapshot mới hay không
-        const stillInSnapshot = snap.npcs.some((n) => n.id === targetNpc.id);
-        if (!stillInSnapshot) {
-          finish(`Re-poll snapshot (RX 80): NPC ID ${targetNpc.id} không còn trong phòng`);
-        }
-      } catch (err) {
-        const msg = (err as Error).message;
-        if (!msg.includes('chầm chậm') && !msg.includes('Chầm chậm')) {
-          console.log(`  [POLL NOTE] Không thể re-poll snapshot (${msg})`);
-        }
-      } finally {
-        isPolling = false;
-      }
-    }, 15_000);
+    // Giới hạn thời gian chờ tối đa (mặc định 5 phút)
+    maxWaitTimer = setTimeout(() => {
+      finish(`Đã đạt giới hạn thời gian chờ tối đa (${maxWaitSeconds}s)`);
+    }, maxWaitSeconds * 1_000);
   });
 }
 
