@@ -462,9 +462,9 @@ export class AvatarSession {
     }
   }
 
-  refreshProgressQuests(): void {
+  async refreshProgressQuests(force = false): Promise<void> {
     if (this.client?.status === 'online') {
-      void this.client.refreshProgressQuests();
+      await this.client.refreshProgressQuests(force);
     }
   }
 
@@ -2568,8 +2568,8 @@ export class AvatarSession {
       // SCAN: quest hiện tại từ server.
       this.updateFishermanQuest({ phase: 'scanning', lastError: null });
       this.emitAutomation();
-      this.refreshProgressQuests();
-      await this.sleepAbortable(4000, signal);
+      await this.refreshProgressQuests(true);
+      await this.sleepAbortable(1000, signal);
       if (!alive()) return;
       const quest = client.fishermanQuestState;
       const conditions = quest?.conditions ?? [];
