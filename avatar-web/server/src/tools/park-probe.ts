@@ -53,6 +53,27 @@ export interface ParkScanResult {
   npcs: ParkNpc[];
 }
 
+export interface MaxQuantityCheck {
+  current: number;
+  max: number;
+  isMax: boolean;
+}
+
+export function parseMaxQuantityDialog(text: string): MaxQuantityCheck | null {
+  const match = text.match(/số lượng\s*[:]?\s*(\d+)\s*\/\s*(\d+)/i);
+  if (!match) return null;
+  const current = Number(match[1]);
+  const max = Number(match[2]);
+  if (!Number.isFinite(current) || !Number.isFinite(max) || max <= 0) {
+    return null;
+  }
+  return {
+    current,
+    max,
+    isMax: current >= max,
+  };
+}
+
 interface ParkBoardCatalog {
   roomId: number;
   boardCount: number;
