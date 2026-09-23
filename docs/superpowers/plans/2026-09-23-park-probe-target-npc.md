@@ -28,11 +28,11 @@
 - Consumes: CLI argv
 - Produces: `ProbeArgs.targetNpc?: string`
 
-- [ ] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
+- [x] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
 Run: `gitnexus_impact({target: "parseArgs", direction: "upstream"})`
 Expected: Kiểm tra các caller của `parseArgs` (chủ yếu là `main()` trong `park-probe.ts`).
 
-- [ ] **Step 2: Cập nhật `ProbeArgs` và `parseArgs`**
+- [x] **Step 2: Cập nhật `ProbeArgs` và `parseArgs`**
 Mở file `avatar-web/server/src/tools/park-probe.ts`:
 1. Thêm trường `targetNpc?: string;` vào interface `ProbeArgs`.
 2. Thêm `'--target-npc'` vào `ALLOWED_KEYS`.
@@ -40,11 +40,11 @@ Mở file `avatar-web/server/src/tools/park-probe.ts`:
 4. Chuẩn hóa giá trị `targetNpc = raw.trim();` nếu rỗng thì báo lỗi `Tên NPC không được để trống`.
 5. Cập nhật hướng dẫn trợ giúp `--help` trong `main()`.
 
-- [ ] **Step 3: Kiểm tra biên dịch**
+- [x] **Step 3: Kiểm tra biên dịch**
 Run: `npm --prefix avatar-web/server run typecheck`
 Expected: TypeScript compile thành công, không có lỗi.
 
-- [ ] **Step 4: Kiểm tra thay đổi GitNexus và commit**
+- [x] **Step 4: Kiểm tra thay đổi GitNexus và commit**
 Run: `gitnexus_detect_changes({scope: "unstaged"})`
 Run:
 ```bash
@@ -65,11 +65,11 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Consumes: `GameClient`, `ParkNpc`, `NativeParkJoinPosition`, `Message`, `MyReader`.
 - Produces: `waitForNpcDeparture(...) -> Promise<number>` trả về số giây NPC tồn tại trước khi biến mất.
 
-- [ ] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
+- [x] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
 Run: `gitnexus_impact({target: "runParkSweep", direction: "upstream"})`
 Expected: Xác định ảnh hưởng của việc sửa đổi vòng lặp `runParkSweep`.
 
-- [ ] **Step 2: Cài đặt hàm `waitForNpcDeparture`**
+- [x] **Step 2: Cài đặt hàm `waitForNpcDeparture`**
 Hàm `waitForNpcDeparture(client, roomId, boardId, targetNpc, pos)`:
 1. Ghi nhận thời điểm bắt đầu `const startTime = Date.now()`.
 2. Lắng nghe `client.session.on('message', onMessage)`:
@@ -96,7 +96,7 @@ Hàm `waitForNpcDeparture(client, roomId, boardId, targetNpc, pos)`:
 5. Trong khối dọn dẹp (`cleanup`): huỷ bỏ mọi interval, timer và remove message listener.
 6. Trả về tổng thời gian đã chờ (tính theo giây).
 
-- [ ] **Step 3: Tích hợp logic chờ vào `runParkSweep`**
+- [x] **Step 3: Tích hợp logic chờ vào `runParkSweep`**
 Trong vòng lặp quét từng board của `runParkSweep`:
 ```typescript
 if (args.targetNpc) {
@@ -118,11 +118,11 @@ if (args.targetNpc) {
 }
 ```
 
-- [ ] **Step 4: Kiểm tra biên dịch**
+- [x] **Step 4: Kiểm tra biên dịch**
 Run: `npm --prefix avatar-web/server run typecheck`
 Expected: Compile thành công không có lỗi type.
 
-- [ ] **Step 5: Kiểm tra thay đổi GitNexus và commit**
+- [x] **Step 5: Kiểm tra thay đổi GitNexus và commit**
 Run: `gitnexus_detect_changes({scope: "unstaged"})`
 Run:
 ```bash
