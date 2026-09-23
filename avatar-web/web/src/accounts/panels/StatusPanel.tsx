@@ -6,7 +6,13 @@ import { StatusBanner } from '../StatusBanner.js';
 import type { AutomationSnapshot, AutoConfigResponse, AutoConfigStateDto, SessionSnapshot } from '../../types.js';
 import { formatFishingStatus } from './FishingPanel.js';
 
-type StatusAutomationMode = 'auto_farm' | 'auto_fishing' | 'auto_fisherman_quest' | 'auto_mining' | 'auto_maze';
+type StatusAutomationMode =
+  | 'auto_farm'
+  | 'auto_fishing'
+  | 'auto_fisherman_quest'
+  | 'auto_mining'
+  | 'auto_maze'
+  | 'find_npc';
 
 export function StatusPanel({
   accountId,
@@ -61,7 +67,8 @@ export function StatusPanel({
       snapshotMode === 'auto_fishing' ||
       snapshotMode === 'auto_fisherman_quest' ||
       snapshotMode === 'auto_mining' ||
-      snapshotMode === 'auto_maze'
+      snapshotMode === 'auto_maze' ||
+      snapshotMode === 'find_npc'
     ) {
       setSelectedMode(snapshotMode);
     }
@@ -69,6 +76,25 @@ export function StatusPanel({
 
   const automationProgress = (() => {
     if (!automation || progressMode === 'off') return 'automation đang tắt';
+    if (progressMode === 'find_npc') {
+      const f = automation.findNpcRuntime;
+      const mapStr =
+        f?.currentMap !== null && f?.currentMap !== undefined
+          ? `Map ${f.currentMap} - Khu ${f.currentBoard ?? 0}`
+          : 'đang vào công viên';
+      const statusStr =
+        f?.phase === 'waiting_npc'
+          ? ` · 🎯 đang chờ ${f.foundNpc?.name ?? 'NPC'} (${f.waitingSeconds ?? 0}s)`
+          : f?.phase === 'daily_limit_reached'
+          ? ' · ⚠️ đã đạt giới hạn ngày'
+          : f?.phase === 'waiting_next_cycle'
+          ? ' · ⏳ chờ vòng quét tiếp'
+          : ' · 🔍 đang quét';
+      const progressStr = f?.eventRewardProgress
+        ? ` · 🎁 số lượng ${f.eventRewardProgress.current}/${f.eventRewardProgress.max}`
+        : '';
+      return `tìm NPC: ${mapStr}${statusStr}${progressStr}`;
+    }
     if (progressMode === 'auto_maze') {
       const mz = automation.mazeRuntime;
       const areaStr = mz?.currentArea !== null && mz?.currentArea !== undefined ? `Khu ${mz.currentArea}` : 'đang vào map 28';
@@ -274,6 +300,15 @@ export function StatusPanel({
           onClick={() => setSelectedMode('auto_maze')}
         >
           🗝️ Mê cung
+        </button>
+        <button
+          type="button"
+          className={`automation-mode-button${selectedMode === 'find_npc' ? ' active' : ''}`}
+          aria-pressed={selectedMode === 'find_npc'}
+          disabled={controlsLocked}
+          onClick={() => setSelectedMode('find_npc')}
+        >
+          🎯 Tìm NPC
         </button>
       </div>
       <div className="row">

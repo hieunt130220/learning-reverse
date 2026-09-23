@@ -25,7 +25,7 @@ const PANEL_TABS = [
   ['fishing', '🎣 Câu cá'],
   ['mining', '⛏️ Khai thác'],
   ['maze', '🗝️ Mê cung'],
-  ['find_npc', 'Tìm NPC'],
+  ['find_npc', '🎯 Tìm NPC'],
   ['quests', 'Nhiệm vụ'],
   ['cooking', 'Nấu ăn'],
   ['assets', 'Tài sản'],
@@ -46,6 +46,7 @@ export const PANEL_GROUPS: PanelGroup[] = [
   { id: 'fishing', label: '🎣 Câu cá', panels: ['fishing'] },
   { id: 'mining', label: '⛏️ Khai thác', panels: ['mining'] },
   { id: 'maze', label: '🗝️ Mê cung', panels: ['maze'] },
+  { id: 'find_npc', label: '🎯 Tìm NPC', panels: ['find_npc'] },
   { id: 'assets', label: 'Tài sản', panels: ['assets', 'shop'] },
   { id: 'logs', label: 'Log', panels: ['logs'] },
 ];
@@ -60,11 +61,12 @@ export const DESKTOP_CONSOLE_GROUPS = [
   { id: 'fishing', label: '🎣 Câu cá', icon: '🎣', hotkey: '3' },
   { id: 'mining', label: '⛏️ Khai thác', icon: '⛏️', hotkey: '4' },
   { id: 'maze', label: '🗝️ Mê cung', icon: '🗝️', hotkey: '5' },
-  { id: 'assets', label: 'Tài sản & Sạp', icon: '🎒', hotkey: '6' },
-  { id: 'logs', label: 'Nhật ký Log', icon: '📟', hotkey: '7' },
+  { id: 'find_npc', label: '🎯 Tìm NPC', icon: '🎯', hotkey: '6' },
+  { id: 'assets', label: 'Tài sản & Sạp', icon: '🎒', hotkey: '7' },
+  { id: 'logs', label: 'Nhật ký Log', icon: '📟', hotkey: '8' },
 ] as const;
 
-const FIND_NPC_TAB_HIDDEN = true;
+const FIND_NPC_TAB_HIDDEN = false;
 
 export function AccountOperationsDrawer() {
   const navigate = useNavigate();
