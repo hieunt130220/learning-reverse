@@ -653,6 +653,123 @@ function waitForParkJoinResponse(
   });
 }
 
+async function waitForNpcDeparture(
+  client: GameClient,
+  roomId: number,
+  boardId: number,
+  targetNpc: ParkNpc,
+  pos: NativeParkJoinPosition,
+): Promise<number> {
+  const startTime = Date.now();
+
+  return new Promise<number>((resolve, reject) => {
+    let settled = false;
+    let heartbeatTimer: NodeJS.Timeout | undefined;
+    let pollTimer: NodeJS.Timeout | undefined;
+    let isPolling = false;
+
+    const cleanup = (): void => {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (pollTimer) clearInterval(pollTimer);
+      client.session.removeListener('message', onMessage);
+      client.removeListener('status', onStatus);
+    };
+
+    const finish = (reason: string): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      const elapsedSeconds = Math.max(1, Math.floor((Date.now() - startTime) / 1000));
+      console.log(`  [TÍN HIỆU BIẾN MẤT] ${reason}`);
+      resolve(elapsedSeconds);
+    };
+
+    const fail = (err: Error): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+
+    const onStatus = (status: ClientStatus): void => {
+      if (status === 'error' || status === 'idle') {
+        fail(new Error(`Mất kết nối game trong khi chờ NPC (status=${status})`));
+      }
+    };
+
+    const onMessage = (msg: Message): void => {
+      if (settled) return;
+      // 1. Broadcast RX 83 (PLAYER_LEAVE_PARK)
+      if (msg.command === 83) {
+        try {
+          const reader = new MyReader(msg.getData());
+          if (reader.available() >= 4) {
+            const leaveId = reader.readInt();
+            if (leaveId === targetNpc.id) {
+              finish(`Nhận broadcast RX 83: đối tượng ID ${leaveId} đã rời phòng`);
+              return;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+      // 2. Broadcast RX 48 (ITEM_MAP_SPECIAL update)
+      if (msg.command === 48) {
+        try {
+          const update = decodeMapSpecialUpdate(msg.getData());
+          if (update.operation === 'remove' && update.id === targetNpc.id) {
+            finish(`Nhận broadcast RX 48 remove: đối tượng ID ${update.id} đã bị gỡ khỏi map`);
+            return;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    client.session.on('message', onMessage);
+    client.on('status', onStatus);
+
+    // Heartbeat log mỗi 5 giây
+    heartbeatTimer = setInterval(() => {
+      if (settled) return;
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      console.log(`  [WAITING] Đang chờ NPC "${targetNpc.name}" biến mất... (đã chờ ${elapsed}s)`);
+    }, 5_000);
+
+    // Re-poll snapshot mỗi 15 giây để phòng ngừa mất gói broadcast
+    pollTimer = setInterval(async () => {
+      if (settled || isPolling) return;
+      isPolling = true;
+      try {
+        const pending = waitForParkJoinResponse(client, 4_000, roomId, boardId);
+        client.sendRaw(80, [
+          { t: 'i8', v: String(roomId) },
+          { t: 'i8', v: String(boardId) },
+          { t: 'i16', v: String(pos.x) },
+          { t: 'i16', v: String(pos.y) },
+        ]);
+        const snap = await pending;
+        await new Promise<void>((r) => setTimeout(r, 200));
+
+        // Kiểm tra xem targetNpc còn trong danh sách NPC của snapshot mới hay không
+        const stillInSnapshot = snap.npcs.some((n) => n.id === targetNpc.id);
+        if (!stillInSnapshot) {
+          finish(`Re-poll snapshot (RX 80): NPC ID ${targetNpc.id} không còn trong phòng`);
+        }
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (!msg.includes('chầm chậm') && !msg.includes('Chầm chậm')) {
+          console.log(`  [POLL NOTE] Không thể re-poll snapshot (${msg})`);
+        }
+      } finally {
+        isPolling = false;
+      }
+    }, 15_000);
+  });
+}
+
 export function printSummary(result: ParkScanResult, map: number, board: number): void {
   const mapTitle = map === 0 ? 'CÔNG VIÊN TRUNG TÂM' : `MAP ${map}`;
   console.log(`=== ${mapTitle} (Map ${map} - Board ${board}) ===`);
@@ -758,6 +875,25 @@ async function runParkSweep(
             console.log(`[Map ${m} - Board ${b}] Users (${roomUsers.length}): ${userNames}`);
           } else {
             console.log(`[Map ${m} - Board ${b}] Trống (0 user, 0 NPC)`);
+          }
+
+          if (args.targetNpc) {
+            const match = roomNpcs.find(
+              (n) => n.name.trim().toLowerCase() === args.targetNpc!.trim().toLowerCase(),
+            );
+            if (match) {
+              console.log(
+                `\n🎯 [PHÁT HIỆN TARGET NPC] Tìm thấy "${match.name}" (ID: ${match.id}) tại Map ${m} - Board ${b}!`,
+              );
+              console.log(
+                `⏳ Đang đứng lại tại Map ${m} - Board ${b} để chờ NPC "${match.name}" biến mất...\n`,
+              );
+              const elapsed = await waitForNpcDeparture(client, m, b, match, pos);
+              console.log(
+                `\n✅ [NPC BIẾN MẤT] NPC "${match.name}" đã rời khỏi Map ${m} - Board ${b} sau ${elapsed} giây.`,
+              );
+              console.log(`Tiếp tục quét các board tiếp theo...\n`);
+            }
           }
         } catch (err) {
           failCount += 1;
@@ -906,6 +1042,28 @@ export async function runParkProbe(args: ProbeArgs): Promise<ParkScanResult | vo
       }
 
       const finalNpcs = Array.from(npcMap.values());
+
+      if (args.targetNpc) {
+        const match = finalNpcs.find(
+          (n) => n.name.trim().toLowerCase() === args.targetNpc!.trim().toLowerCase(),
+        );
+        if (match) {
+          console.log(
+            `\n🎯 [PHÁT HIỆN TARGET NPC] Tìm thấy "${match.name}" (ID: ${match.id}) tại Map ${args.map} - Board ${args.board}!`,
+          );
+          console.log(
+            `⏳ Đang đứng lại tại Map ${args.map} - Board ${args.board} để chờ NPC "${match.name}" biến mất...\n`,
+          );
+          const elapsed = await waitForNpcDeparture(client, args.map, args.board, match, position);
+          console.log(
+            `\n✅ [NPC BIẾN MẤT] NPC "${match.name}" đã rời khỏi Map ${args.map} - Board ${args.board} sau ${elapsed} giây.\n`,
+          );
+        } else {
+          console.log(
+            `\n(Không tìm thấy NPC "${args.targetNpc}" tại Map ${args.map} - Board ${args.board})\n`,
+          );
+        }
+      }
 
       return {
         roomId: snapshot.roomId,
