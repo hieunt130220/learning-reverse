@@ -139,14 +139,14 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 **Files:**
 - Execute: `avatar-web/server/src/tools/park-probe.ts`
 
-- [ ] **Step 1: Test cờ `--help`**
+- [x] **Step 1: Test cờ `--help`**
 Run:
 ```bash
 node --env-file=avatar-web/server/.env --import tsx avatar-web/server/src/tools/park-probe.ts --help
 ```
 Expected: Hiển thị tùy chọn `--target-npc <tên NPC>`.
 
-- [ ] **Step 2: Test sweep với `--target-npc`**
+- [x] **Step 2: Test sweep với `--target-npc`**
 Chạy probe quét thử với `--target-npc "Chức Nữ"` hoặc `--target-npc "Ngưu Lang"`:
 ```bash
 node --env-file=avatar-web/server/.env --import tsx avatar-web/server/src/tools/park-probe.ts --account-id 1 --sweep --from-map 1 --to-map 3 --from-board 0 --to-board 5 --target-npc "Chức Nữ"
