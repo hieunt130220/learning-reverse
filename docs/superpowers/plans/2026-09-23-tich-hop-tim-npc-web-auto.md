@@ -146,11 +146,11 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Consumes: `GameClient`, `FindNpcConfig`, `NATIVE_PARK_JOIN_POSITIONS`, `parseMaxQuantityDialog`
 - Produces: `AutoFindNpc` runner class với các method `start(config)`, `stop()`, `updateConfig(config)`, `state()`
 
-- [ ] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
+- [x] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
 Run: `node .gitnexus/run.cjs impact "AutoFindNpc" --direction upstream --repo .`
 Expected: Xác định caller là `avatarSession.ts`.
 
-- [ ] **Step 2: Viết lại `avatar-web/server/src/autoFindNpc.ts`**
+- [x] **Step 2: Viết lại `avatar-web/server/src/autoFindNpc.ts`**
 Tạo runner `AutoFindNpc` với các chức năng:
 1. `start(config)`:
    - Đặt `running = true`, chuyển `phase = 'entering_park'`.
@@ -188,11 +188,11 @@ Tạo runner `AutoFindNpc` với các chức năng:
 3. `updateConfig(config)`:
    - Cập nhật tham số dải map/khu hoặc tên NPC mục tiêu khi đang chạy.
 
-- [ ] **Step 3: Kiểm tra biên dịch**
+- [x] **Step 3: Kiểm tra biên dịch**
 Run: `npm --prefix avatar-web/server run typecheck`
 Expected: Compile thành công không có lỗi type.
 
-- [ ] **Step 4: Kiểm tra GitNexus và commit**
+- [x] **Step 4: Kiểm tra GitNexus và commit**
 Run: `node .gitnexus/run.cjs detect-changes --scope unstaged --repo .`
 Run:
 ```bash
