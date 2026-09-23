@@ -23,6 +23,7 @@ export interface ProbeArgs {
   toMap?: number;
   fromBoard?: number;
   toBoard?: number;
+  targetNpc?: string;
 }
 
 export interface ParkUser {
@@ -87,6 +88,7 @@ const ALLOWED_KEYS = new Set([
   '--to-map',
   '--from-board',
   '--to-board',
+  '--target-npc',
 ]);
 
 function parseInteger(key: string, raw: string): number {
@@ -116,19 +118,32 @@ export function parseArgs(argv: string[]): ProbeArgs {
   }
 
   const values = new Map<string, number>();
+  let targetNpc: string | undefined;
+
   for (let i = 0; i < filteredArgv.length; i += 2) {
     const key = filteredArgv[i]!;
     const raw = filteredArgv[i + 1];
     if (!ALLOWED_KEYS.has(key)) {
       throw new Error(`Tùy chọn CLI không được hỗ trợ: ${key}`);
     }
-    if (values.has(key)) {
-      throw new Error(`Tùy chọn CLI bị lặp lại: ${key}`);
-    }
     if (raw === undefined || raw.startsWith('--')) {
       throw new Error(`Thiếu giá trị cho ${key}`);
     }
-    values.set(key, parseInteger(key, raw));
+    if (key === '--target-npc') {
+      if (targetNpc !== undefined) {
+        throw new Error(`Tùy chọn CLI bị lặp lại: ${key}`);
+      }
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        throw new Error('Tên NPC trong --target-npc không được để trống');
+      }
+      targetNpc = trimmed;
+    } else {
+      if (values.has(key)) {
+        throw new Error(`Tùy chọn CLI bị lặp lại: ${key}`);
+      }
+      values.set(key, parseInteger(key, raw));
+    }
   }
 
   if (!values.has('--account-id')) {
@@ -163,6 +178,7 @@ export function parseArgs(argv: string[]): ProbeArgs {
     toMap,
     fromBoard,
     toBoard,
+    targetNpc,
   };
 }
 
@@ -923,8 +939,8 @@ async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
   if (rawArgs.includes('-h') || rawArgs.includes('--help')) {
     console.log(`Cách dùng:
-  node --env-file=.env --import tsx src/tools/park-probe.ts --account-id <number> [--map <number>] [--board <number>]
-  node --env-file=.env --import tsx src/tools/park-probe.ts --account-id <number> --sweep [--from-map 1] [--to-map 8] [--from-board 0] [--to-board 10]
+  node --env-file=.env --import tsx src/tools/park-probe.ts --account-id <number> [--map <number>] [--board <number>] [--target-npc <name>]
+  node --env-file=.env --import tsx src/tools/park-probe.ts --account-id <number> --sweep [--from-map 1] [--to-map 8] [--from-board 0] [--to-board 10] [--target-npc <name>]
 
 Tùy chọn:
   --account-id  ID tài khoản trong database (bắt buộc)
@@ -935,6 +951,7 @@ Tùy chọn:
   --to-map      Map kết thúc quét (mặc định: 8)
   --from-board  Board bắt đầu quét (mặc định: 0)
   --to-board    Board kết thúc quét (mặc định: 10)
+  --target-npc  Tên NPC cần tìm và theo dõi (ví dụ: "Chức Nữ", "Ngưu Lang")
 `);
     process.exit(0);
   }
