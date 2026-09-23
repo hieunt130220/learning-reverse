@@ -268,11 +268,11 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Consumes: `AutomationSnapshot`, `FindNpcConfig`, `AutoFindNpcState`
 - Produces: Web UI tab Tìm NPC, Mode button trong StatusPanel, Live monitor panel
 
-- [ ] **Step 1: Mở lại tab Tìm NPC trong `AccountOperationsDrawer.tsx`**
+- [x] **Step 1: Mở lại tab Tìm NPC trong `AccountOperationsDrawer.tsx`**
 1. Đặt `const FIND_NPC_TAB_HIDDEN = false;`.
 2. Bổ sung `find_npc` vào danh sách tabs hiển thị trên drawer (trong `PANEL_GROUPS` nhóm `operations` hoặc group riêng).
 
-- [ ] **Step 2: Cập nhật `StatusPanel.tsx`**
+- [x] **Step 2: Cập nhật `StatusPanel.tsx`**
 1. Trong `selectedMode`: Hỗ trợ `'find_npc'`.
 2. Thêm button chọn mode:
 ```tsx
@@ -304,7 +304,7 @@ if (progressMode === 'find_npc') {
 }
 ```
 
-- [ ] **Step 3: Cập nhật `FindNpcPanel.tsx`**
+- [x] **Step 3: Cập nhật `FindNpcPanel.tsx`**
 1. Nâng cấp form cài đặt:
    - Input: Tên NPC (`npcName`).
    - Inputs: Dải Map (`fromMap` - `toMap`).
@@ -318,11 +318,11 @@ if (progressMode === 'find_npc') {
    - Box cảnh báo khi `dailyLimitReached === true`: Đã nhận đủ quà trong ngày.
    - Nút Bắt đầu / Dừng nhanh.
 
-- [ ] **Step 4: Kiểm tra biên dịch & Build frontend**
+- [x] **Step 4: Kiểm tra biên dịch & Build frontend**
 Run: `npm --prefix avatar-web/web run build`
 Expected: Build Vite production thành công không có lỗi type hay syntax.
 
-- [ ] **Step 5: Kiểm tra GitNexus và commit**
+- [x] **Step 5: Kiểm tra GitNexus và commit**
 Run: `node .gitnexus/run.cjs detect-changes --scope unstaged --repo .`
 Run:
 ```bash
