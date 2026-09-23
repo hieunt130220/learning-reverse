@@ -215,11 +215,11 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Consumes: `AutoFindNpc`, `FindNpcConfig`, `FIND_NPC_DISABLED`
 - Produces: API routes quản lý `find_npc`, Session coordinator start/stop runner, WebSocket emit
 
-- [ ] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
+- [x] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
 Run: `node .gitnexus/run.cjs impact "startFindNpc" --direction upstream --repo .`
 Expected: Kiểm tra các luồng gọi `startFindNpc` trong `avatarSession.ts`.
 
-- [ ] **Step 2: Cập nhật `startFindNpc` và `stopFindNpc` trong `avatarSession.ts`**
+- [x] **Step 2: Cập nhật `startFindNpc` và `stopFindNpc` trong `avatarSession.ts`**
 1. Trong `startFindNpc`:
    - Gỡ bỏ kiểm tra `catalog.length === 0` (vì engine mới dùng toạ độ native trực tiếp, không cần catalog ngoài).
    - Khởi tạo `AutoFindNpc` với callbacks `onState`, `onFound`, `onMissing`, `onRequestStop`.
@@ -229,11 +229,11 @@ Expected: Kiểm tra các luồng gọi `startFindNpc` trong `avatarSession.ts`.
 2. Trong `stopFindNpc` và `switchMode`:
    - Dừng runner hiện tại qua `await finder.stop()`.
 
-- [ ] **Step 3: Cập nhật `manager.ts`**
+- [x] **Step 3: Cập nhật `manager.ts`**
 Trong `SessionManager.bootstrap()`:
 - Gỡ bỏ logic filter loại trừ `find_npc` khi `FIND_NPC_DISABLED === false`, cho phép resume các tài khoản có `desired_mode === 'find_npc'`.
 
-- [ ] **Step 4: Cập nhật `routes.ts`**
+- [x] **Step 4: Cập nhật `routes.ts`**
 1. Trong `POST /api/accounts/:id/automation/start`:
    - Đảm bảo `mode: 'find_npc'` được chấp nhận và khởi động bình thường.
 2. Thêm route GET/PUT:
@@ -241,11 +241,11 @@ Trong `SessionManager.bootstrap()`:
    - `PUT /api/accounts/:id/automation/find-npc/config`: Lưu và cập nhật `findNpcConfig`.
    - Giữ route cũ `PUT /api/accounts/:id/automation/find-npc-config/config` để tương thích ngược.
 
-- [ ] **Step 5: Kiểm tra biên dịch**
+- [x] **Step 5: Kiểm tra biên dịch**
 Run: `npm --prefix avatar-web/server run typecheck`
 Expected: Compile thành công không có lỗi type.
 
-- [ ] **Step 6: Kiểm tra GitNexus và commit**
+- [x] **Step 6: Kiểm tra GitNexus và commit**
 Run: `node .gitnexus/run.cjs detect-changes --scope unstaged --repo .`
 Run:
 ```bash
