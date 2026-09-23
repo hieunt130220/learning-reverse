@@ -201,14 +201,14 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 **Files:**
 - Execute: `avatar-web/server/src/tools/park-probe.ts`
 
-- [ ] **Step 1: Test cờ `--help`**
+- [x] **Step 1: Test cờ `--help`**
 Run:
 ```bash
 (cd avatar-web/server && node --env-file=.env --import tsx src/tools/park-probe.ts --help)
 ```
 Expected: Hiển thị help bình thường.
 
-- [ ] **Step 2: Test với tài khoản đã đạt 50/50 bánh**
+- [x] **Step 2: Test với tài khoản đã đạt 50/50 bánh**
 Run:
 ```bash
 (cd avatar-web/server && node --env-file=.env --import tsx src/tools/park-probe.ts --account-id 3 --sweep --from-map 1 --to-map 3 --from-board 0 --to-board 5 --target-npc "Chú cuội")
