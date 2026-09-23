@@ -29,11 +29,11 @@
 - Consumes: không
 - Produces: `FIND_NPC_DISABLED = false`, `FindNpcConfig`, `DEFAULT_FIND_NPC_CONFIG`, `AutoFindNpcState` mở rộng
 
-- [ ] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
+- [x] **Step 1: Chạy GitNexus impact analysis trước khi sửa**
 Run: `node .gitnexus/run.cjs impact "FIND_NPC_DISABLED" --direction upstream --repo .`
 Expected: Xác định các caller của `FIND_NPC_DISABLED` (`routes.ts`, `manager.ts`).
 
-- [ ] **Step 2: Đổi `FIND_NPC_DISABLED = false` trong `featureFlags.ts`**
+- [x] **Step 2: Đổi `FIND_NPC_DISABLED = false` trong `featureFlags.ts`**
 Cập nhật `avatar-web/server/src/session/featureFlags.ts`:
 ```typescript
 /**
@@ -42,7 +42,7 @@ Cập nhật `avatar-web/server/src/session/featureFlags.ts`:
 export const FIND_NPC_DISABLED = false;
 ```
 
-- [ ] **Step 3: Mở rộng `FindNpcConfig` và `AutoFindNpcState` trong `automationTypes.ts`**
+- [x] **Step 3: Mở rộng `FindNpcConfig` và `AutoFindNpcState` trong `automationTypes.ts`**
 Trong `avatar-web/server/src/session/automationTypes.ts`:
 ```typescript
 export interface FindNpcConfig {
@@ -118,14 +118,14 @@ export function idleFindNpcRuntime(targetName = 'Chú Cuội'): AutoFindNpcState
 }
 ```
 
-- [ ] **Step 4: Đồng bộ types trong `avatar-web/web/src/types.ts`**
+- [x] **Step 4: Đồng bộ types trong `avatar-web/web/src/types.ts`**
 Cập nhật `FindNpcConfig`, `DEFAULT_FIND_NPC_CONFIG`, `AutoFindNpcPhase`, `AutoFindNpcState` trong `web/src/types.ts` tương ứng.
 
-- [ ] **Step 5: Kiểm tra biên dịch**
+- [x] **Step 5: Kiểm tra biên dịch**
 Run: `npm --prefix avatar-web/server run typecheck && npm --prefix avatar-web/web run build`
 Expected: Cả server và web build thành công, không có lỗi type.
 
-- [ ] **Step 6: Kiểm tra GitNexus và commit**
+- [x] **Step 6: Kiểm tra GitNexus và commit**
 Run: `node .gitnexus/run.cjs detect-changes --scope unstaged --repo .`
 Run:
 ```bash
