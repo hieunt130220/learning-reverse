@@ -3,11 +3,13 @@ import { Router, type Response } from 'express';
 import { normalizeAutoConfig, type AutoConfigProfile } from '../accounts/autoConfig.js';
 import {
   normalizeFindNpcConfig,
+  normalizeMazeConfig,
   normalizeMiningConfig,
   parseFishingConfig,
   readAutomationState,
   saveFindNpcConfig,
   saveFishingConfig,
+  saveMazeConfig,
   saveMiningConfig,
   setDesiredMode,
 } from '../accounts/automationRepo.js';
@@ -339,6 +341,56 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     res.json({ ...saved.state, application: 'immediate' });
   });
 
+  router.get('/:id/automation/maze/config', owned, (req, res) => {
+    const state = readAutomationState(db, accountId(req)).mazeConfig;
+    res.json(state);
+  });
+
+  router.put('/:id/automation/maze/config', owned, (req, res) => {
+    if (
+      !exactObject(req.body, ['expectedRevision', 'config'])
+      || !Number.isInteger(req.body.expectedRevision)
+      || (req.body.expectedRevision as number) < 0
+    ) {
+      automationError(res, 400, 'invalid-maze-config', 'payload cấu hình Mê cung không hợp lệ');
+      return;
+    }
+    let config;
+    try {
+      config = normalizeMazeConfig(req.body.config);
+    } catch (err) {
+      automationError(res, 400, 'invalid-maze-config', (err as Error).message);
+      return;
+    }
+
+    let saved;
+    try {
+      saved = saveMazeConfig(
+        db,
+        accountId(req),
+        req.body.expectedRevision as number,
+        config,
+      );
+    } catch {
+      automationError(res, 500, 'automation-save-failed', 'không lưu được cấu hình Mê cung');
+      return;
+    }
+    if (saved.status === 'missing') {
+      res.status(404).json({ error: 'không có tài khoản này' });
+      return;
+    }
+    if (saved.status === 'conflict') {
+      automationError(res, 409, 'revision-conflict', 'revision cấu hình đã thay đổi', {
+        current: saved.current,
+      });
+      return;
+    }
+
+    // Cập nhật cấu hình ngay cho session đang chạy nếu có
+    sessions.updateMazeConfig(accountId(req), saved.state);
+    res.json({ ...saved.state, application: 'immediate' });
+  });
+
   router.post('/:id/automation/start', owned, async (req, res) => {
     if (
       !exactObject(req.body, ['mode'])
@@ -348,6 +400,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
         && req.body.mode !== 'auto_fishing'
         && req.body.mode !== 'auto_fisherman_quest'
         && req.body.mode !== 'auto_mining'
+        && req.body.mode !== 'auto_maze'
       )
     ) {
       automationError(res, 400, 'invalid-automation-mode', 'mode automation không hợp lệ');
@@ -395,6 +448,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
             findNpcConfig: stored.findNpcConfig,
             fishingConfig: stored.fishingConfig,
             miningConfig: stored.miningConfig,
+            mazeConfig: stored.mazeConfig,
             location: stored.location,
           };
           const outcome = await sessions.switchAutomationMode(id, intent);

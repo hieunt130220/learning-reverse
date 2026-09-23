@@ -6,7 +6,7 @@ import { StatusBanner } from '../StatusBanner.js';
 import type { AutomationSnapshot, AutoConfigResponse, AutoConfigStateDto, SessionSnapshot } from '../../types.js';
 import { formatFishingStatus } from './FishingPanel.js';
 
-type StatusAutomationMode = 'auto_farm' | 'auto_fishing' | 'auto_fisherman_quest' | 'auto_mining';
+type StatusAutomationMode = 'auto_farm' | 'auto_fishing' | 'auto_fisherman_quest' | 'auto_mining' | 'auto_maze';
 
 export function StatusPanel({
   accountId,
@@ -60,7 +60,8 @@ export function StatusPanel({
       snapshotMode === 'auto_farm' ||
       snapshotMode === 'auto_fishing' ||
       snapshotMode === 'auto_fisherman_quest' ||
-      snapshotMode === 'auto_mining'
+      snapshotMode === 'auto_mining' ||
+      snapshotMode === 'auto_maze'
     ) {
       setSelectedMode(snapshotMode);
     }
@@ -68,6 +69,24 @@ export function StatusPanel({
 
   const automationProgress = (() => {
     if (!automation || progressMode === 'off') return 'automation đang tắt';
+    if (progressMode === 'auto_maze') {
+      const mz = automation.mazeRuntime;
+      const areaStr = mz?.currentArea !== null && mz?.currentArea !== undefined ? `Khu ${mz.currentArea}` : 'đang vào map 28';
+      const statusStr =
+        mz?.status === 'navigating'
+          ? ' · 🚶 đang đi tới rương'
+          : mz?.status === 'opening'
+          ? ' · 🎁 đang mở rương'
+          : mz?.status === 'switching_area'
+          ? ' · 🔄 đang chuyển khu'
+          : mz?.status === 'waiting_respawn'
+          ? ' · ⏳ chờ hồi sinh rương'
+          : mz?.status === 'daily_limit_reached'
+          ? ' · ⚠️ đã đạt 30 hộp quà'
+          : '';
+      const openedStr = mz?.sessionChestsOpened ? ` · đã mở: ${mz.sessionChestsOpened} rương` : '';
+      return `mê cung: ${areaStr}${statusStr}${openedStr}`;
+    }
     if (progressMode === 'auto_mining') {
       const m = automation.miningRuntime;
       const mapStr = m?.currentMap === 26 ? 'mỏ đá (26)' : m?.currentMap === 22 ? 'rừng gỗ (22)' : 'đang vào map';
@@ -246,6 +265,15 @@ export function StatusPanel({
           onClick={() => setSelectedMode('auto_mining')}
         >
           ⛏️ Khai thác gỗ/đá
+        </button>
+        <button
+          type="button"
+          className={`automation-mode-button${selectedMode === 'auto_maze' ? ' active' : ''}`}
+          aria-pressed={selectedMode === 'auto_maze'}
+          disabled={controlsLocked}
+          onClick={() => setSelectedMode('auto_maze')}
+        >
+          🗝️ Mê cung
         </button>
       </div>
       <div className="row">

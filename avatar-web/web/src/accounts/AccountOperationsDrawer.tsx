@@ -12,6 +12,7 @@ import { CookingPanel } from './panels/CookingPanel.js';
 import { FindNpcPanel } from './panels/FindNpcPanel.js';
 import { FishingPanel } from './panels/FishingPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
+import { MazePanel } from './panels/MazePanel.js';
 import { MiningPanel } from './panels/MiningPanel.js';
 import { QuestsPanel } from './panels/QuestsPanel.js';
 import { SettingsPanel } from './panels/SettingsPanel.js';
@@ -23,6 +24,7 @@ const PANEL_TABS = [
   ['settings', 'Cài đặt'],
   ['fishing', '🎣 Câu cá'],
   ['mining', '⛏️ Khai thác'],
+  ['maze', '🗝️ Mê cung'],
   ['find_npc', 'Tìm NPC'],
   ['quests', 'Nhiệm vụ'],
   ['cooking', 'Nấu ăn'],
@@ -43,6 +45,7 @@ export const PANEL_GROUPS: PanelGroup[] = [
   { id: 'farm', label: 'Nông trại', panels: ['quests', 'cooking'] },
   { id: 'fishing', label: '🎣 Câu cá', panels: ['fishing'] },
   { id: 'mining', label: '⛏️ Khai thác', panels: ['mining'] },
+  { id: 'maze', label: '🗝️ Mê cung', panels: ['maze'] },
   { id: 'assets', label: 'Tài sản', panels: ['assets', 'shop'] },
   { id: 'logs', label: 'Log', panels: ['logs'] },
 ];
@@ -56,8 +59,9 @@ export const DESKTOP_CONSOLE_GROUPS = [
   { id: 'farm', label: 'Nông trại & Bếp', icon: '🌱', hotkey: '2' },
   { id: 'fishing', label: '🎣 Câu cá', icon: '🎣', hotkey: '3' },
   { id: 'mining', label: '⛏️ Khai thác', icon: '⛏️', hotkey: '4' },
-  { id: 'assets', label: 'Tài sản & Sạp', icon: '🎒', hotkey: '5' },
-  { id: 'logs', label: 'Nhật ký Log', icon: '📟', hotkey: '6' },
+  { id: 'maze', label: '🗝️ Mê cung', icon: '🗝️', hotkey: '5' },
+  { id: 'assets', label: 'Tài sản & Sạp', icon: '🎒', hotkey: '6' },
+  { id: 'logs', label: 'Nhật ký Log', icon: '📟', hotkey: '7' },
 ] as const;
 
 const FIND_NPC_TAB_HIDDEN = true;
@@ -308,6 +312,17 @@ function LoadedOperations({
       </div>
       <div id="drawer-panel-mining" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('mining')}` : undefined} hidden={!visible('mining')}>
         <MiningPanel
+          account={account}
+          automation={automation}
+          onChanged={() => {
+            void reload();
+            void refreshAutomation();
+          }}
+          onAutomationChange={handleAutomationChange}
+        />
+      </div>
+      <div id="drawer-panel-maze" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('maze')}` : undefined} hidden={!visible('maze')}>
+        <MazePanel
           account={account}
           automation={automation}
           onChanged={() => {

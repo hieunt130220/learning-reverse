@@ -341,7 +341,41 @@ export type AutomationMode =
   | 'find_npc'
   | 'auto_fishing'
   | 'auto_fisherman_quest'
-  | 'auto_mining';
+  | 'auto_mining'
+  | 'auto_maze';
+
+export interface MazeConfig {
+  readonly startArea: number;
+  readonly autoSwitchArea: boolean;
+  readonly maxAreasToScan: number;
+  readonly watchRespawn: boolean;
+  readonly maxChestsPerSession: number;
+}
+
+export interface StoredMazeConfigState {
+  revision: number;
+  config: MazeConfig;
+}
+
+export type MazeStatus =
+  | 'idle'
+  | 'entering'
+  | 'navigating'
+  | 'opening'
+  | 'switching_area'
+  | 'waiting_respawn'
+  | 'daily_limit_reached'
+  | 'stopped';
+
+export interface MazeRuntimeState {
+  status: MazeStatus;
+  currentArea: number | null;
+  targetChestId: number | null;
+  targetChestPos: { x: number; y: number } | null;
+  sessionChestsOpened: number;
+  dailyLimitReached: boolean;
+  lastMessage: string | null;
+}
 
 export type MiningTarget = 'diamond' | 'wood' | 'patrol';
 
@@ -518,6 +552,8 @@ export interface AutomationSnapshot {
   fishermanQuestRuntime?: FishermanQuestRuntimeState;
   miningConfig?: StoredMiningConfigState;
   miningRuntime?: MiningRuntimeState;
+  mazeConfig?: StoredMazeConfigState;
+  mazeRuntime?: MazeRuntimeState;
   location: AutomationLocation | null;
 }
 
@@ -530,6 +566,7 @@ export interface AutomationApiErrorDto {
     | 'catalog-unverified'
     | 'revision-conflict'
     | 'invalid-mining-config'
+    | 'invalid-maze-config'
     | 'automation-connect-pending'
     | 'automation-start-failed';
   snapshot?: AutomationSnapshot;

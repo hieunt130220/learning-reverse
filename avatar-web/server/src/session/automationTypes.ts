@@ -9,7 +9,8 @@ export type AutomationMode =
   | 'find_npc'
   | 'auto_fishing'
   | 'auto_fisherman_quest'
-  | 'auto_mining';
+  | 'auto_mining'
+  | 'auto_maze';
 export type AutomationTransitionState = 'stable' | 'switching';
 
 export interface FishingConfig {
@@ -180,6 +181,59 @@ export function idleMiningRuntime(): MiningRuntimeState {
   };
 }
 
+export interface MazeConfig {
+  readonly startArea: number;
+  readonly autoSwitchArea: boolean;
+  readonly maxAreasToScan: number;
+  readonly watchRespawn: boolean;
+  readonly maxChestsPerSession: number;
+}
+
+export const DEFAULT_MAZE_CONFIG: MazeConfig = Object.freeze({
+  startArea: 0,
+  autoSwitchArea: true,
+  maxAreasToScan: 20,
+  watchRespawn: true,
+  maxChestsPerSession: 30,
+});
+
+export interface StoredMazeConfigState {
+  revision: number;
+  config: MazeConfig;
+}
+
+export type MazeStatus =
+  | 'idle'
+  | 'entering'
+  | 'navigating'
+  | 'opening'
+  | 'switching_area'
+  | 'waiting_respawn'
+  | 'daily_limit_reached'
+  | 'stopped';
+
+export interface MazeRuntimeState {
+  status: MazeStatus;
+  currentArea: number | null;
+  targetChestId: number | null;
+  targetChestPos: { x: number; y: number } | null;
+  sessionChestsOpened: number;
+  dailyLimitReached: boolean;
+  lastMessage: string | null;
+}
+
+export function idleMazeRuntime(): MazeRuntimeState {
+  return {
+    status: 'idle',
+    currentArea: null,
+    targetChestId: null,
+    targetChestPos: null,
+    sessionChestsOpened: 0,
+    dailyLimitReached: false,
+    lastMessage: null,
+  };
+}
+
 export interface AutomationLocation {
   map: number;
   area: number;
@@ -201,6 +255,7 @@ export interface LoadedAutomationIntent {
   findNpcConfig: StoredFindNpcConfigState;
   fishingConfig?: StoredFishingConfigState;
   miningConfig?: StoredMiningConfigState;
+  mazeConfig?: StoredMazeConfigState;
   location: AutomationLocation | null;
 }
 
@@ -265,6 +320,8 @@ export interface AutomationSnapshot {
   mlFishingStatistics?: MlFishingStatistics;
   miningConfig?: StoredMiningConfigState;
   miningRuntime?: MiningRuntimeState;
+  mazeConfig?: StoredMazeConfigState;
+  mazeRuntime?: MazeRuntimeState;
   location: AutomationLocation | null;
 }
 
@@ -311,6 +368,7 @@ export type AutomationApiErrorCode =
   | 'automation-start-failed'
   | 'invalid-fishing-config'
   | 'invalid-mining-config'
+  | 'invalid-maze-config'
   | 'automation-save-failed';
 
 export function idleFindNpcRuntime(targetName: string): AutoFindNpcState {

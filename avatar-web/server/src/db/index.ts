@@ -38,14 +38,21 @@ export function openDb(file: string): Db {
   addColumn('ALTER TABLE avatar_accounts ADD COLUMN cached_metrics_at INTEGER');
   addColumn('ALTER TABLE avatar_automation_state ADD COLUMN fishing_config_json TEXT');
   addColumn('ALTER TABLE avatar_automation_state ADD COLUMN mining_config_json TEXT');
+  addColumn('ALTER TABLE avatar_automation_state ADD COLUMN maze_config_json TEXT');
 
-  // Nâng cấp CHECK constraint cho avatar_automation_state nếu chưa hỗ trợ auto_fishing / auto_fisherman_quest / auto_mining
+  // Nâng cấp CHECK constraint cho avatar_automation_state nếu chưa hỗ trợ auto_fishing / auto_fisherman_quest / auto_mining / auto_maze
   const stateTable = db
     .prepare<[string], { sql: string }>(
       "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?",
     )
     .get('avatar_automation_state');
-  if (stateTable && (!stateTable.sql.includes('auto_fishing') || !stateTable.sql.includes('auto_fisherman_quest') || !stateTable.sql.includes('auto_mining'))) {
+  if (
+    stateTable &&
+    (!stateTable.sql.includes('auto_fishing') ||
+      !stateTable.sql.includes('auto_fisherman_quest') ||
+      !stateTable.sql.includes('auto_mining') ||
+      !stateTable.sql.includes('auto_maze'))
+  ) {
     db.pragma('foreign_keys = OFF');
     db.transaction(() => {
       db.exec(`
@@ -54,10 +61,11 @@ export function openDb(file: string): Db {
           account_id              INTEGER PRIMARY KEY
                                   REFERENCES avatar_accounts(id) ON DELETE CASCADE,
           desired_mode            TEXT NOT NULL DEFAULT 'off'
-                                  CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest', 'auto_mining')),
+                                  CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest', 'auto_mining', 'auto_maze')),
           find_npc_config_json    TEXT,
           fishing_config_json     TEXT,
           mining_config_json      TEXT,
+          maze_config_json        TEXT,
           current_map             INTEGER,
           current_area            INTEGER,
           location_observed_at    INTEGER,
@@ -69,10 +77,10 @@ export function openDb(file: string): Db {
           )
         );
         INSERT INTO avatar_automation_state (
-          account_id, desired_mode, find_npc_config_json, fishing_config_json,
+          account_id, desired_mode, find_npc_config_json, fishing_config_json, mining_config_json, maze_config_json,
           current_map, current_area, location_observed_at, updated_at
         ) SELECT
-          account_id, desired_mode, find_npc_config_json, fishing_config_json,
+          account_id, desired_mode, find_npc_config_json, fishing_config_json, mining_config_json, maze_config_json,
           current_map, current_area, location_observed_at, updated_at
         FROM _avatar_automation_state_old;
         DROP TABLE _avatar_automation_state_old;
