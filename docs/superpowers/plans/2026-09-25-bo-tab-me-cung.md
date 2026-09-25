@@ -27,7 +27,7 @@
 - Consumes: None
 - Produces: Thanh menu Drawer gọn gàng với 6 nhóm chức năng (1..6).
 
-- [ ] **Step 1: Cập nhật `AccountOperationsDrawer.tsx`**
+- [x] **Step 1: Cập nhật `AccountOperationsDrawer.tsx`**
   - Xóa `import { MazePanel } from './panels/MazePanel.js';`.
   - Xóa `['maze', '🗝️ Mê cung'],` trong `PANEL_TABS`.
   - Xóa `{ id: 'maze', label: '🗝️ Mê cung', panels: ['maze'] },` trong `PANEL_GROUPS`.
@@ -40,10 +40,10 @@
     - 6: logs
   - Xóa slot `<div id="drawer-panel-maze">...</div>`.
 
-- [ ] **Step 2: Xóa file `MazePanel.tsx`**
+- [x] **Step 2: Xóa file `MazePanel.tsx`**
   - Chạy `git rm avatar-web/web/src/accounts/panels/MazePanel.tsx`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 `git commit -m "refactor(web): remove maze tab and MazePanel from drawer"`
 
 ---
@@ -53,12 +53,12 @@
 **Files:**
 - Modify: `avatar-web/web/src/accounts/accountsRoutes.test.tsx` (nếu cần dọn dẹp)
 
-- [ ] **Step 1: Chạy test toàn bộ web**
+- [x] **Step 1: Chạy test toàn bộ web**
 Run: `cd avatar-web/web && npm test -- --run`
 Expected: 11/11 test files pass 100%.
 
-- [ ] **Step 2: Verify `detect_changes`**
+- [x] **Step 2: Verify `detect_changes`**
 Run: `mcp__gitnexus__detect_changes` để phân tích đồ thị trước khi hoàn tất.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 `git commit -m "test(web): verify all tests pass after removing maze tab"`
