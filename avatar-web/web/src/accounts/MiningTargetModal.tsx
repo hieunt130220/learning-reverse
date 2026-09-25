@@ -141,10 +141,10 @@ export function MiningTargetModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="mining-target-title"
-        style={{ maxWidth: '480px', width: '100%' }}
+        style={{ maxWidth: '480px', width: '100%', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto' }}
       >
-        <header className="dialog-heading">
-          <h2 id="mining-target-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <header className="dialog-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 id="mining-target-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <span>⛏️</span> Chọn Loại Khai Thác
           </h2>
           <button type="button" className="ghost" onClick={onClose} disabled={busy} aria-label="Đóng">
@@ -152,7 +152,7 @@ export function MiningTargetModal({
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '0.75rem' }}>
           <p className="hint" style={{ margin: 0 }}>
             Chọn tài nguyên bạn muốn tự động khai thác khi bắt đầu:
           </p>
@@ -168,11 +168,13 @@ export function MiningTargetModal({
                     alignItems: 'flex-start',
                     gap: '12px',
                     padding: '0.75rem 1rem',
+                    margin: 0,
                     borderRadius: '8px',
                     background: isSelected ? 'rgba(88, 166, 255, 0.12)' : 'var(--bg-deep, #111722)',
                     border: `1.5px solid ${isSelected ? 'var(--accent, #58a6ff)' : 'var(--line, #30363d)'}`,
                     cursor: busy ? 'not-allowed' : 'pointer',
                     transition: 'border-color 0.15s, background-color 0.15s',
+                    boxSizing: 'border-box',
                   }}
                 >
                   <input
@@ -183,11 +185,22 @@ export function MiningTargetModal({
                     checked={isSelected}
                     disabled={busy}
                     onChange={() => setTarget(opt.value)}
-                    style={{ marginTop: '3px' }}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      minWidth: '18px',
+                      maxWidth: '18px',
+                      flex: '0 0 18px',
+                      margin: '3px 0 0 0',
+                      padding: 0,
+                      accentColor: 'var(--accent, #58a6ff)',
+                      cursor: busy ? 'not-allowed' : 'pointer',
+                    }}
                   />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.95rem', color: isSelected ? 'var(--accent, #58a6ff)' : 'inherit' }}>
-                      {opt.icon} {opt.label}
+                  <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.95rem', color: isSelected ? 'var(--accent, #58a6ff)' : 'inherit', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>{opt.icon}</span>
+                      <span>{opt.label}</span>
                     </div>
                     <small style={{ color: 'var(--muted, #8b949e)', display: 'block', marginTop: '2px', lineHeight: 1.35 }}>
                       {opt.desc}
