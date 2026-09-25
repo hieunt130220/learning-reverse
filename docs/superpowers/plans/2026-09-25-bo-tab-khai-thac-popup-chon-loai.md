@@ -38,7 +38,7 @@
     }
     ```
 
-- [ ] **Step 1: Viết Component `MiningTargetModal.tsx`**
+- [x] **Step 1: Viết Component `MiningTargetModal.tsx`**
 
 ```tsx
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
@@ -258,7 +258,7 @@ export function MiningTargetModal({
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 `git commit -m "feat(web): add MiningTargetModal component"`
 
 ---
@@ -273,7 +273,7 @@ export function MiningTargetModal({
 - Consumes: `MiningTargetModal` từ `../MiningTargetModal.js`.
 - Produces: Khi `selectedMode === 'auto_mining'` và bấm nút "Bắt đầu", `StatusPanel` mở modal popup thay vì gửi request trực tiếp.
 
-- [ ] **Step 1: Cập nhật `StatusPanel.tsx`**
+- [x] **Step 1: Cập nhật `StatusPanel.tsx`**
   - Import `MiningTargetModal`.
   - Thêm state `const [showMiningModal, setShowMiningModal] = useState(false);`.
   - Trong `startAuto()`:
@@ -292,15 +292,15 @@ export function MiningTargetModal({
     ```
   - Render `<MiningTargetModal open={showMiningModal} accountId={accountId} onClose={() => setShowMiningModal(false)} onSuccess={handleMiningStarted} />` bên dưới JSX.
 
-- [ ] **Step 2: Cập nhật Unit Tests trong `StatusPanel.test.tsx`**
+- [x] **Step 2: Cập nhật Unit Tests trong `StatusPanel.test.tsx`**
   - Bổ sung mock cho `GET /api/accounts/1/automation/mining/config` và `PUT /api/accounts/1/automation/mining/config`.
   - Viết test case: Bấm chọn `⛏️ Khai thác gỗ/đá` -> bấm `Bắt đầu` -> modal "Chọn Loại Khai Thác" xuất hiện -> chọn "Khai thác Gỗ (Củi khô)" -> bấm "Bắt đầu khai thác" -> gọi đúng PUT config và POST automation/start.
 
-- [ ] **Step 3: Chạy test xác minh**
+- [x] **Step 3: Chạy test xác minh**
 Run: `cd avatar-web/web && npx vitest run src/accounts/panels/StatusPanel.test.tsx`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 `git commit -m "feat(web): integrate MiningTargetModal into StatusPanel"`
 
 ---
@@ -317,7 +317,7 @@ Expected: PASS
 - Consumes: None (loại bỏ liên kết không dùng).
 - Produces: Giao diện drawer và settings panel sạch sẽ, không còn tab/subtab mining.
 
-- [ ] **Step 1: Cập nhật `AccountOperationsDrawer.tsx`**
+- [x] **Step 1: Cập nhật `AccountOperationsDrawer.tsx`**
   - Bỏ `['mining', '⛏️ Khai thác'],` trong `PANEL_TABS`.
   - Bỏ `{ id: 'mining', label: '⛏️ Khai thác', panels: ['mining'] },` trong `PANEL_GROUPS`.
   - Bỏ `{ id: 'mining', label: '⛏️ Khai thác', icon: '⛏️', hotkey: '4' },` trong `DESKTOP_CONSOLE_GROUPS` và đánh số lại hotkey 1..7:
@@ -330,16 +330,16 @@ Expected: PASS
     - 7: logs
   - Xóa import `MiningPanel` và slot `<div id="drawer-panel-mining">`.
 
-- [ ] **Step 2: Cập nhật `SettingsPanel.tsx`**
+- [x] **Step 2: Cập nhật `SettingsPanel.tsx`**
   - Bỏ `'mining'` khỏi kiểu `SettingsSubTab` (`type SettingsSubTab = 'farm' | 'fishing';`).
   - Xóa button `#settings-tab-mining`.
   - Xóa slot `#settings-panel-mining` và import `MiningSettingsPanel`.
 
-- [ ] **Step 3: Xóa hai file component cũ không còn sử dụng**
+- [x] **Step 3: Xóa hai file component cũ không còn sử dụng**
   - Xóa `avatar-web/web/src/accounts/panels/MiningPanel.tsx`
   - Xóa `avatar-web/web/src/accounts/panels/MiningSettingsPanel.tsx`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 `git commit -m "refactor(web): remove mining tabs and unused panels from drawer and settings"`
 
 ---
@@ -349,12 +349,12 @@ Expected: PASS
 **Files:**
 - Modify: `avatar-web/web/src/accounts/accountsRoutes.test.tsx` (nếu cần cập nhật mock)
 
-- [ ] **Step 1: Chạy test toàn bộ web**
+- [x] **Step 1: Chạy test toàn bộ web**
 Run: `cd avatar-web/web && npm test -- --run`
 Expected: Tất cả các file test pass 100%.
 
-- [ ] **Step 2: Verify `detect_changes`**
+- [x] **Step 2: Verify `detect_changes`**
 Run: `mcp__gitnexus__detect_changes` để phân tích đồ thị trước khi hoàn tất.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 `git commit -m "test(web): verify all tests pass after removing mining tabs"`
