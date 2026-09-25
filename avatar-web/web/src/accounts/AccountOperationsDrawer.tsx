@@ -13,7 +13,6 @@ import { FindNpcPanel } from './panels/FindNpcPanel.js';
 import { FishingPanel } from './panels/FishingPanel.js';
 import { LogPanel } from './panels/LogPanel.js';
 import { MazePanel } from './panels/MazePanel.js';
-import { MiningPanel } from './panels/MiningPanel.js';
 import { QuestsPanel } from './panels/QuestsPanel.js';
 import { SettingsPanel } from './panels/SettingsPanel.js';
 import { ShopPanel } from './panels/ShopPanel.js';
@@ -23,7 +22,6 @@ const PANEL_TABS = [
   ['status', 'Trạng thái'],
   ['settings', 'Cài đặt'],
   ['fishing', '🎣 Câu cá'],
-  ['mining', '⛏️ Khai thác'],
   ['maze', '🗝️ Mê cung'],
   ['find_npc', '🎯 Tìm NPC'],
   ['quests', 'Nhiệm vụ'],
@@ -44,7 +42,6 @@ export const PANEL_GROUPS: PanelGroup[] = [
   { id: 'operations', label: 'Vận hành', panels: ['status', 'settings'] },
   { id: 'farm', label: 'Nông trại', panels: ['quests', 'cooking'] },
   { id: 'fishing', label: '🎣 Câu cá', panels: ['fishing'] },
-  { id: 'mining', label: '⛏️ Khai thác', panels: ['mining'] },
   { id: 'maze', label: '🗝️ Mê cung', panels: ['maze'] },
   { id: 'find_npc', label: '🎯 Tìm NPC', panels: ['find_npc'] },
   { id: 'assets', label: 'Tài sản', panels: ['assets', 'shop'] },
@@ -59,11 +56,10 @@ export const DESKTOP_CONSOLE_GROUPS = [
   { id: 'operations', label: 'Vận hành & Cài đặt', icon: '⚡', hotkey: '1' },
   { id: 'farm', label: 'Nông trại & Bếp', icon: '🌱', hotkey: '2' },
   { id: 'fishing', label: '🎣 Câu cá', icon: '🎣', hotkey: '3' },
-  { id: 'mining', label: '⛏️ Khai thác', icon: '⛏️', hotkey: '4' },
-  { id: 'maze', label: '🗝️ Mê cung', icon: '🗝️', hotkey: '5' },
-  { id: 'find_npc', label: '🎯 Tìm NPC', icon: '🎯', hotkey: '6' },
-  { id: 'assets', label: 'Tài sản & Sạp', icon: '🎒', hotkey: '7' },
-  { id: 'logs', label: 'Nhật ký Log', icon: '📟', hotkey: '8' },
+  { id: 'maze', label: '🗝️ Mê cung', icon: '🗝️', hotkey: '4' },
+  { id: 'find_npc', label: '🎯 Tìm NPC', icon: '🎯', hotkey: '5' },
+  { id: 'assets', label: 'Tài sản & Sạp', icon: '🎒', hotkey: '6' },
+  { id: 'logs', label: 'Nhật ký Log', icon: '📟', hotkey: '7' },
 ] as const;
 
 const FIND_NPC_TAB_HIDDEN = false;
@@ -310,17 +306,6 @@ function LoadedOperations({
             void refreshAutomation();
           }}
           onSelectSettingsTab={() => selectPanel('settings')}
-        />
-      </div>
-      <div id="drawer-panel-mining" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('mining')}` : undefined} hidden={!visible('mining')}>
-        <MiningPanel
-          account={account}
-          automation={automation}
-          onChanged={() => {
-            void reload();
-            void refreshAutomation();
-          }}
-          onAutomationChange={handleAutomationChange}
         />
       </div>
       <div id="drawer-panel-maze" className="drawer-panel-slot" role={isMobile ? 'tabpanel' : undefined} aria-labelledby={isMobile ? `drawer-tab-${PANEL_TO_GROUP.get('maze')}` : undefined} hidden={!visible('maze')}>

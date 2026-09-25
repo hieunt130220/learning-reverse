@@ -3,7 +3,6 @@ import { useState } from 'react';
 import type { AccountWithRuntime, AutomationSnapshot, SessionSnapshot } from '../../types.js';
 import { AutoFarmPanel } from './AutoFarmPanel.js';
 import { FishingSettingsPanel } from './FishingSettingsPanel.js';
-import { MiningSettingsPanel } from './MiningSettingsPanel.js';
 
 export interface SettingsPanelProps {
   account: AccountWithRuntime;
@@ -15,7 +14,7 @@ export interface SettingsPanelProps {
   onChanged?(): void;
 }
 
-type SettingsSubTab = 'farm' | 'fishing' | 'mining';
+type SettingsSubTab = 'farm' | 'fishing';
 
 export function SettingsPanel({
   account,
@@ -57,17 +56,6 @@ export function SettingsPanel({
         >
           🎣 Câu cá
         </button>
-        <button
-          type="button"
-          role="tab"
-          id="settings-tab-mining"
-          aria-controls="settings-panel-mining"
-          aria-selected={activeSubTab === 'mining'}
-          className={`settings-tab-btn ${activeSubTab === 'mining' ? 'active' : ''}`}
-          onClick={() => setActiveSubTab('mining')}
-        >
-          ⛏️ Khai thác
-        </button>
       </nav>
 
       <div
@@ -103,20 +91,6 @@ export function SettingsPanel({
           onAutomationChange={onAutomationChange}
           onChanged={onChanged}
           onDirtyChange={onFishingDirtyChange}
-        />
-      </div>
-
-      <div
-        id="settings-panel-mining"
-        role="tabpanel"
-        aria-labelledby="settings-tab-mining"
-        className="settings-tab-slot"
-        hidden={activeSubTab !== 'mining'}
-      >
-        <MiningSettingsPanel
-          accountId={account.id}
-          automation={automation}
-          onChanged={onChanged}
         />
       </div>
     </div>
