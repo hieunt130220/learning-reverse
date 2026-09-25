@@ -26,7 +26,7 @@
 - Consumes: None
 - Produces: `QuestsPanel` chỉ còn 3 tab: `daily`, `beginner`, `farmer`.
 
-- [ ] **Step 1: Sửa `QuestsPanel.tsx`**
+- [x] **Step 1: Sửa `QuestsPanel.tsx`**
   - Đổi kiểu `QuestTab`:
     ```typescript
     type QuestTab = 'daily' | 'beginner' | 'farmer' | 'upgrade';
@@ -50,7 +50,7 @@
     ```
   - Xóa khối render `{activeTab === 'fisherman' && ...}`.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 `git commit -m "refactor(web): remove fisherman quest tab from QuestsPanel"`
 
 ---
@@ -60,12 +60,12 @@
 **Files:**
 - Modify: None (kiểm tra test suite)
 
-- [ ] **Step 1: Chạy test toàn bộ web**
+- [x] **Step 1: Chạy test toàn bộ web**
 Run: `cd avatar-web/web && npm test -- --run`
 Expected: 11/11 test files pass 100%.
 
-- [ ] **Step 2: Verify `detect_changes`**
+- [x] **Step 2: Verify `detect_changes`**
 Run: `mcp__gitnexus__detect_changes` để phân tích đồ thị trước khi hoàn tất.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 `git commit -m "test(web): verify all tests pass after removing fisherman quest tab"`
