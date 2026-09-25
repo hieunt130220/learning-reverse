@@ -56,6 +56,10 @@ function renderRoute(path: string) {
       location: null,
     });
     if (url === '/api/accounts/1/auto/config') return Promise.resolve({ revision: 3, config: { treeCellPlan: [] } });
+    if (url === '/api/accounts/1/automation/maze/config') return Promise.resolve({
+      revision: 1,
+      config: { startArea: 0, switchAreaWhenDepleted: true, maxAreasToScan: 10, delayBetweenActionsMs: 3000 },
+    });
     if (url === '/api/accounts/1/farm/profile') return Promise.resolve({
       farmId: 12,
       cellIndices: [2, 7],
