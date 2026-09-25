@@ -266,6 +266,7 @@ export class TrucXanhGameRunner {
   constructor(
     private readonly client: GameClient,
     private readonly delayMs: number,
+    private readonly username: string = '',
   ) {}
 
   onOpenCardPacket(pkt: Extract<TrucXanhPacket, { type: 'OPENCARD' }>): void {
@@ -291,7 +292,7 @@ export class TrucXanhGameRunner {
     switch (pkt.type) {
       case 'JOIN':
         if (pkt.rawBuffer) {
-          const username = this.client.user?.username ?? '';
+          const username = this.username;
           this.myPos = findMyPositionInJoin(pkt.rawBuffer, username);
         }
         console.log(`👤 [BÀN CHƠI] Người chơi trên bàn: ${pkt.playerName} (ID: ${pkt.playerId}) | Vị trí của bạn: Player #${this.myPos}`);
@@ -676,7 +677,7 @@ export async function runTrucXanhProbe(args: TrucXanhProbeArgs): Promise<void> {
     }
 
     // Khởi tạo Runner cho Client 1
-    const runner = new TrucXanhGameRunner(client1, args.delayMs);
+    const runner = new TrucXanhGameRunner(client1, args.delayMs, account1.gameUser);
     let gameFinished = false;
 
     // Lắng nghe tất cả RX trên client 1
