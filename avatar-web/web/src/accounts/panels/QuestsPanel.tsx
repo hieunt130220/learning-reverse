@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { apiGet, apiPost } from '../../api.js';
 import type { QuestOverviewState, ProgressQuestChain, FarmUpgradeRequirements } from '../../types.js';
 
-type QuestTab = 'daily' | 'beginner' | 'farmer' | 'fisherman' | 'upgrade';
+type QuestTab = 'daily' | 'beginner' | 'farmer' | 'upgrade';
 
 const SHOW_UPGRADE_TAB = false;
 
@@ -33,7 +33,7 @@ export function QuestsPanel({
   }, [activeTab]);
 
   useEffect(() => {
-    if (!quests?.daily && !quests?.beginner && !quests?.farmer && !quests?.fisherman) {
+    if (!quests?.daily && !quests?.beginner && !quests?.farmer) {
       void apiGet<QuestOverviewState>(`/api/accounts/${accountId}/quests`)
         .then((res) => {
           if (res) setLocalQuests(res);
@@ -46,7 +46,6 @@ export function QuestsPanel({
   const daily = effectiveQuests?.daily ?? null;
   const beginner = effectiveQuests?.beginner ?? null;
   const farmer = effectiveQuests?.farmer ?? null;
-  const fisherman = effectiveQuests?.fisherman ?? null;
   const upgrade = effectiveQuests?.upgradeRequirements ?? null;
 
   const runAction = async (endpoint: string, label: string) => {
@@ -148,9 +147,6 @@ export function QuestsPanel({
   const completedFarmerCount = farmer?.conditions?.filter((c) => c.isDone).length ?? 0;
   const totalFarmerCount = farmer?.conditions?.length ?? 0;
 
-  const completedFishermanCount = fisherman?.conditions?.filter((c) => c.isDone).length ?? 0;
-  const totalFishermanCount = fisherman?.conditions?.length ?? 0;
-
   return (
     <section className="card drawer-panel quests-panel">
       <header className="quests-header">
@@ -208,18 +204,6 @@ export function QuestsPanel({
           {farmer && totalFarmerCount > 0 && (
             <span className={`tab-badge ${completedFarmerCount >= totalFarmerCount ? 'tab-badge--done' : ''}`}>
               {completedFarmerCount}/{totalFarmerCount}
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          className={`quests-tab-btn ${activeTab === 'fisherman' ? 'active' : ''}`}
-          onClick={() => setActiveTab('fisherman')}
-        >
-          🎣 Thợ Câu
-          {fisherman && totalFishermanCount > 0 && (
-            <span className={`tab-badge ${completedFishermanCount >= totalFishermanCount ? 'tab-badge--done' : ''}`}>
-              {completedFishermanCount}/{totalFishermanCount}
             </span>
           )}
         </button>
@@ -447,18 +431,7 @@ export function QuestsPanel({
           />
         )}
 
-        {/* TAB 4: NHIỆM VỤ THỢ CÂU */}
-        {activeTab === 'fisherman' && (
-          <ProgressQuestSection
-            heading="Nhiệm Vụ Thợ Câu"
-            icon="🎣"
-            quest={fisherman}
-            busy={busy}
-            onRefresh={handleRefreshProgress}
-          />
-        )}
-
-        {/* TAB 5: YÊU CẦU NÂNG CẤP NÔNG TRẠI */}
+        {/* TAB 4: YÊU CẦU NÂNG CẤP NÔNG TRẠI */}
         {SHOW_UPGRADE_TAB && activeTab === 'upgrade' && (
           <UpgradeRequirementsSection requirements={upgrade} busy={busy} onRefresh={handleRefreshProgress} />
         )}
