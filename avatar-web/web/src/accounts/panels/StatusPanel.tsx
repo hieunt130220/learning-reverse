@@ -5,6 +5,7 @@ import { ModeChip, StatusBadge } from '../AccountStatus.js';
 import { StatusBanner } from '../StatusBanner.js';
 import type { AutomationSnapshot, AutoConfigResponse, AutoConfigStateDto, SessionSnapshot } from '../../types.js';
 import { formatFishingStatus } from './FishingPanel.js';
+import { MiningTargetModal } from '../MiningTargetModal.js';
 
 type StatusAutomationMode =
   | 'auto_farm'
@@ -38,6 +39,7 @@ export function StatusPanel({
   const [autoAction, setAutoAction] = useState<'start' | 'stop' | null>(null);
   const [autoErr, setAutoErr] = useState('');
   const [selectedMode, setSelectedMode] = useState<StatusAutomationMode>('auto_farm');
+  const [showMiningModal, setShowMiningModal] = useState(false);
   const [logoutAfterCycle, setLogoutAfterCycle] = useState(true);
   const [loadingOpt, setLoadingOpt] = useState(false);
   const [savingOpt, setSavingOpt] = useState(false);
@@ -173,6 +175,10 @@ export function StatusPanel({
 
   async function startAuto() {
     if (autoActive || mutationBusy) return;
+    if (selectedMode === 'auto_mining') {
+      setShowMiningModal(true);
+      return;
+    }
     setAutoAction('start');
     onAutomationMutationBusyChange(true);
     setAutoErr('');
@@ -368,6 +374,15 @@ export function StatusPanel({
         </StatusBanner>
       )}
       {snap?.lastError && <StatusBanner tone="error">{snap.lastError}</StatusBanner>}
+      <MiningTargetModal
+        open={showMiningModal}
+        accountId={accountId}
+        onClose={() => setShowMiningModal(false)}
+        onSuccess={(snapshot) => {
+          if (snapshot) onAutomationChange?.(snapshot);
+          onChanged();
+        }}
+      />
     </section>
   );
 }

@@ -57,8 +57,30 @@ const onlineSnapshot = makeSnapshot({
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.apiPost.mockResolvedValue(makeAutomation());
-  mocks.apiGet.mockResolvedValue({ revision: 0, config: { logoutAfterCycle: true } });
-  mocks.apiPut.mockResolvedValue({ revision: 1, config: { logoutAfterCycle: true } });
+  mocks.apiGet.mockImplementation((url: string) => {
+    if (url.includes('/automation/mining/config')) {
+      return Promise.resolve({
+        revision: 1,
+        config: {
+          target: 'diamond',
+          startArea: 0,
+          switchAreaWhenDepleted: true,
+          maxAreasToScan: 10,
+          delayBetweenActionsMs: 3000,
+        },
+      });
+    }
+    return Promise.resolve({ revision: 0, config: { logoutAfterCycle: true } });
+  });
+  mocks.apiPut.mockImplementation((url: string, body: any) => {
+    if (url.includes('/automation/mining/config')) {
+      return Promise.resolve({
+        revision: 2,
+        config: body?.config,
+      });
+    }
+    return Promise.resolve({ revision: 1, config: { logoutAfterCycle: true } });
+  });
 });
 
 test('hiển thị trạng thái và các nút điều khiển auto', () => {
@@ -157,4 +179,52 @@ test('hiển thị lỗi khi gọi bật auto thất bại', async () => {
 
   await userEvent.click(screen.getByRole('button', { name: 'Bắt đầu' }));
   expect(await screen.findByText('Máy chủ từ chối')).toBeInTheDocument();
+});
+
+test('bật auto Khai thác gỗ/đá mở popup chọn loại và kích hoạt auto', async () => {
+  const onChanged = vi.fn();
+  render(
+    <StatusPanel
+      accountId={1}
+      snap={idleSnapshot}
+      gameUser="user123"
+      onChanged={onChanged}
+    />,
+  );
+
+  // Chọn mode khai thác gỗ/đá
+  const miningModeBtn = screen.getByRole('button', { name: '⛏️ Khai thác gỗ/đá' });
+  await userEvent.click(miningModeBtn);
+
+  // Bấm Bắt đầu
+  const startBtn = screen.getByRole('button', { name: 'Bắt đầu' });
+  await userEvent.click(startBtn);
+
+  // Modal phải xuất hiện
+  expect(await screen.findByRole('dialog', { name: /Chọn Loại Khai Thác/ })).toBeInTheDocument();
+  expect(screen.getByText(/Khai thác Gỗ \(Củi khô\)/)).toBeInTheDocument();
+  expect(screen.getByText(/Tuần Tra Cả Hai/)).toBeInTheDocument();
+
+  // Chọn Khai thác Gỗ
+  const woodRadio = screen.getByDisplayValue('wood');
+  await userEvent.click(woodRadio);
+
+  // Bấm Bắt đầu khai thác trong modal
+  const submitMiningBtn = screen.getByRole('button', { name: 'Bắt đầu khai thác' });
+  await userEvent.click(submitMiningBtn);
+
+  await waitFor(() => {
+    // Phải lưu config gỗ trước
+    expect(mocks.apiPut).toHaveBeenCalledWith(
+      '/api/accounts/1/automation/mining/config',
+      expect.objectContaining({
+        config: expect.objectContaining({ target: 'wood' }),
+      }),
+    );
+    // Sau đó kích hoạt auto_mining
+    expect(mocks.apiPost).toHaveBeenCalledWith('/api/accounts/1/automation/start', {
+      mode: 'auto_mining',
+    });
+    expect(onChanged).toHaveBeenCalled();
+  });
 });
