@@ -2,9 +2,11 @@
  * Probe thử sử dụng item (Part 6383: Hộp bánh Trung Thu)
  *
  * Cú pháp:
- *   npx tsx --env-file=.env src/tools/use-item-probe.ts [accountId] [partId] [times]
+ *   npx tsx --env-file=.env src/tools/use-item-probe.ts [accountId] [partId] [times] [chestPass]
  *   Ví dụ:
  *     npx tsx --env-file=.env src/tools/use-item-probe.ts 1 6383 5
+ *     npx tsx --env-file=.env src/tools/use-item-probe.ts 1 6383 5 123456
+ *   Hoặc qua biến môi trường: CHEST_PASS=123456
  *
  * Wire protocol TX -18 (USING_PART / GlobalService.doUsingItem @0x69B264):
  *   i16 idIndex (vị trí trong hành trang / container)
@@ -23,6 +25,7 @@ import { resolvePartInfo } from '../game/partCatalog.js';
 const accountId = Number(process.argv[2] ?? 1);
 const targetPartId = Number(process.argv[3] ?? 6383);
 const requestedTimes = Number(process.argv[4] ?? 1);
+const chestPass = (process.argv[5] ?? process.env.CHEST_PASS ?? '').trim();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const cfg = loadConfig();
@@ -34,6 +37,17 @@ if (!row) {
 }
 
 const client = new GameClient();
+
+function sendChestPass(pass: string) {
+  console.log(`>>> [TX -87] Gửi mật khẩu rương để kiểm tra (subCmd=8, subCmd2=0)...`);
+  const msg = Message.create(-87);
+  msg.writer!.writeByte(8);
+  msg.writer!.writeByte(0);
+  msg.writer!.writeUTF('');
+  msg.writer!.writeUTF(pass);
+  client.session.send(msg);
+}
+
 let targetIndex = -1;
 let targetQty = 0;
 const rewards: string[] = [];
@@ -86,6 +100,57 @@ client.session.on('message', (msg: Message) => {
     }
   }
 
+  if (msg.command === -87) {
+    // CUSTOM_CHEST
+    try {
+      const r = new MyReader(data);
+      const subCmd = r.readByte();
+      if (subCmd === 8) {
+        const subCmd2 = r.readByte();
+        if (subCmd2 === 0) {
+          const countBox = r.readShort();
+          console.log(`\n  --- 📦 KIỂM TRA RƯƠNG ĐỒ (count: ${countBox}) ---`);
+          for (let i = 0; i < countBox; i++) {
+            const index = r.readShort();
+            const id = r.readShort();
+            const date = r.readUTF();
+            const info = resolvePartInfo(id);
+            console.log(
+              `    [Slot ${String(index).padStart(2, ' ')}] ID: ${String(id).padStart(4, ' ')} | [${info.slot.padEnd(10, ' ')}] ${info.name.padEnd(20, ' ')} | Hạn: "${date}"`,
+            );
+          }
+          const countInven = r.readShort();
+          for (let i = 0; i < countInven; i++) {
+            r.readShort(); // index
+            r.readShort(); // id
+            r.readUTF(); // date
+          }
+          r.readShort(); // discarded
+          const slot = r.readShort();
+          const maxSlot = r.readShort();
+          console.log(`  --- ℹ️ Ô rương: ${slot}/${maxSlot} ---\n`);
+        } else if (subCmd2 === 3) {
+          console.log(`  🔒 Rương có mật khẩu.`);
+          if (chestPass) {
+            sendChestPass(chestPass);
+          } else {
+            console.log(`  ℹ️ Không truyền chestPass, bỏ qua mở rương kiểm tra.`);
+          }
+        } else if (subCmd2 === 4) {
+          const flag = r.readByte();
+          let msgText = '';
+          if (flag === 1) msgText = r.readUTF();
+          console.log(`  ⚠️ Phản hồi từ rương (subCmd2=4): flag=${flag} msg="${msgText}"`);
+          if (flag === 0 || msgText.toLowerCase().includes('mật khẩu') || msgText.toLowerCase().includes('pass')) {
+            console.log(`  ❌ Mật khẩu rương không chính xác!`);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('  Lỗi giải mã RX -87 (CUSTOM_CHEST):', err);
+    }
+  }
+
   if (msg.command === -17) {
     // CONTAINER
     try {
@@ -132,6 +197,14 @@ await client.login({
 
 console.log('[PROBE] Chờ login hoàn tất...');
 await sleep(3000);
+
+console.log('\n>>> [TX -87] Gửi yêu cầu kiểm tra rương đồ (subCmd=8, subCmd2=3)...');
+const reqChestInfo = Message.create(-87);
+reqChestInfo.writer!.writeByte(8);
+reqChestInfo.writer!.writeByte(3);
+client.session.send(reqChestInfo);
+
+await sleep(2000);
 
 console.log(`>>> [TX -17] Yêu cầu CONTAINER để xác định slot của Part ${targetPartId}...`);
 const reqContainer = Message.create(-17);
