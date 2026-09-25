@@ -3,6 +3,7 @@
 .env.*
 account
 data/
+*.db
 
 # --- phụ thuộc & build ---
 node_modules/

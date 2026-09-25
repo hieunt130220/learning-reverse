@@ -37,7 +37,7 @@ export const SUBCMD_ENDCARD = 4;
 export const SUBCMD_OUTCARD = 5;
 
 export type TrucXanhPacket =
-  | { type: 'JOIN'; gameId: number; subAction: number; playerId: number; playerName: string; rawHex: string }
+  | { type: 'JOIN'; gameId: number; subAction: number; playerId: number; playerName: string; rawBuffer: Buffer; rawHex: string }
   | { type: 'START'; gameId: number; subAction: number; turn: number; isMyTurn: boolean; time: number; rawHex: string }
   | {
       type: 'OPENCARD';
@@ -66,6 +66,23 @@ export type TrucXanhPacket =
   | { type: 'OUTCARD'; gameId: number; subAction: number; iddb: number; rawHex: string }
   | { type: 'UNKNOWN'; gameId: number; subAction: number; rawHex: string };
 
+export function findMyPositionInJoin(body: Buffer, myName: string): number {
+  if (body.length < 8) return 0;
+  try {
+    const name0Len = body.readUInt16BE(6);
+    if (name0Len > 0 && name0Len <= 50 && body.length >= 8 + name0Len) {
+      const name0 = body.subarray(8, 8 + name0Len).toString('utf8');
+      if (name0.toLowerCase() === myName.toLowerCase()) {
+        return 0;
+      }
+      return 1;
+    }
+  } catch {
+    // fallback
+  }
+  return 0;
+}
+
 export function decodeTrucXanhPacket(body: Buffer): TrucXanhPacket {
   const r = new MyReader(body);
   const rawHex = body.toString('hex');
@@ -80,7 +97,7 @@ export function decodeTrucXanhPacket(body: Buffer): TrucXanhPacket {
     case SUBCMD_JOIN: {
       const playerId = r.readInt();
       const playerName = r.readUTF();
-      return { type: 'JOIN', gameId, subAction, playerId, playerName, rawHex };
+      return { type: 'JOIN', gameId, subAction, playerId, playerName, rawBuffer: body, rawHex };
     }
     case SUBCMD_START: {
       const turn = r.readByte();
@@ -238,6 +255,7 @@ export class TrucXanhGameRunner {
   isPlaying = false;
   turnCount = 0;
   matchCount = 0;
+  myPos = 0; // 0 hoặc 1
 
   private turnLock = false;
   private pendingCardResolvers: Array<{
@@ -272,46 +290,53 @@ export class TrucXanhGameRunner {
   async handlePacket(pkt: TrucXanhPacket): Promise<boolean> {
     switch (pkt.type) {
       case 'JOIN':
-        console.log(`👤 [BÀN CHƠI] Người chơi trên bàn: ${pkt.playerName} (ID: ${pkt.playerId})`);
+        if (pkt.rawBuffer) {
+          const username = this.client.user?.username ?? '';
+          this.myPos = findMyPositionInJoin(pkt.rawBuffer, username);
+        }
+        console.log(`👤 [BÀN CHƠI] Người chơi trên bàn: ${pkt.playerName} (ID: ${pkt.playerId}) | Vị trí của bạn: Player #${this.myPos}`);
         break;
 
       case 'START':
         this.isPlaying = true;
-        this.isMyTurn = pkt.isMyTurn;
-        console.log(`\n🎮 [BẮT ĐẦU VÁN ĐẤU] Lượt đầu: ${this.isMyTurn ? 'CỦA BẠN' : 'ĐỐI THỦ'} | Thời gian lượt: ${pkt.time}s`);
+        this.isMyTurn = pkt.turn === this.myPos;
+        console.log(`\n🎮 [BẮT ĐẦU VÁN ĐẤU] Lượt đầu: ${this.isMyTurn ? '👉 CỦA BẠN' : '⏳ ĐỐI THỦ'} (Turn #${pkt.turn}, myPos #${this.myPos}) | Thời gian lượt: ${pkt.time}s`);
         if (this.isMyTurn) {
-          void this.scheduleTurn();
+          void this.executeTurn();
         }
         break;
 
       case 'OPENCARD':
         this.onOpenCardPacket(pkt);
-        // Nếu vừa ghép đúng và vẫn là lượt của mình, tiếp tục đánh
-        if (pkt.isMatch && this.isMyTurn && this.isPlaying) {
-          void this.scheduleTurn();
-        }
         break;
 
       case 'SETTURN':
-        this.isMyTurn = pkt.isMyTurn;
-        console.log(`🔄 [ĐỔI LƯỢT] Quyền đi tiếp theo: ${this.isMyTurn ? '👉 CỦA BẠN' : '⏳ ĐỐI THỦ'}`);
+        this.isMyTurn = pkt.turn === this.myPos;
+        console.log(`🔄 [ĐỔI LƯỢT] Quyền đi tiếp theo: ${this.isMyTurn ? '👉 CỦA BẠN' : '⏳ ĐỐI THỦ'} (Turn #${pkt.turn}, myPos #${this.myPos})`);
         if (this.isMyTurn && this.isPlaying) {
-          void this.scheduleTurn();
+          void this.executeTurn();
         }
         break;
 
-      case 'ENDCARD':
+      case 'ENDCARD': {
         this.isPlaying = false;
-        const winLabel = pkt.win === 1 ? '🏆 CHIẾN THẮNG' : pkt.win === 2 ? '❌ THẤT BẠI' : '🤝 HÒA';
+        this.isMyTurn = false;
+        this.pendingCardResolvers = [];
+        const isWin = pkt.win === (this.myPos === 0 ? 1 : 2);
+        const isDraw = pkt.win === 0;
+        const winLabel = isDraw ? '🤝 HÒA' : isWin ? '🏆 CHIẾN THẮNG' : '❌ THẤT BẠI';
+        const myScore = this.myPos === 0 ? pkt.score1 : pkt.score2;
+        const oppScore = this.myPos === 0 ? pkt.score2 : pkt.score1;
         console.log(`\n=================== TỔNG KẾT VÁN ĐẤU ===================`);
-        console.log(`Kết quả: ${winLabel} (mã: ${pkt.win})`);
-        console.log(`Điểm số: Bạn = ${pkt.score1} | Đối thủ = ${pkt.score2}`);
-        console.log(`Số cặp ghép đúng: ${this.matchCount}/12 cặp`);
+        console.log(`Kết quả: ${winLabel} (mã server: ${pkt.win}, myPos: ${this.myPos})`);
+        console.log(`Điểm số: Bạn = ${myScore} | Đối thủ = ${oppScore}`);
+        console.log(`Số cặp ghép đúng trong ván: ${this.matchCount}/12 cặp`);
         if (pkt.giftBoxId !== undefined && pkt.giftBoxId !== -1) {
           console.log(`🎁 Hộp quà phần thưởng: ID #${pkt.giftBoxId}`);
         }
         console.log(`========================================================\n`);
         return true;
+      }
 
       case 'OUTCARD':
         console.log(`🚪 [RỜI BÀN] Người chơi (iddb=${pkt.iddb}) đã rời bàn`);
@@ -321,53 +346,61 @@ export class TrucXanhGameRunner {
     return false;
   }
 
-  private async scheduleTurn(): Promise<void> {
-    if (this.turnLock) return;
+  private async executeTurn(): Promise<void> {
+    if (this.turnLock || !this.isPlaying || !this.isMyTurn) return;
     this.turnLock = true;
     try {
-      await new Promise((r) => setTimeout(r, this.delayMs));
-      if (!this.isPlaying || !this.isMyTurn) return;
-      this.turnCount++;
-      console.log(`\n👉 --- [LƯỢT #${this.turnCount}] ĐẾN LƯỢT BẠN ĐI ---`);
-
-      // 1. Kiểm tra cặp thẻ đã biết trong bộ nhớ
-      const pair = this.memory.findKnownPair();
-      if (pair) {
-        console.log(`🧠 [PERFECT MEMORY] Đã nhớ cặp giống nhau: Ô #${pair[0]} và Ô #${pair[1]}! Lật ngay!`);
-        await this.flipCard(pair[0]);
+      while (this.isPlaying && this.isMyTurn) {
+        this.turnCount++;
+        console.log(`\n👉 --- [LƯỢT #${this.turnCount}] ĐẾN LƯỢT BẠN ĐI ---`);
         await new Promise((r) => setTimeout(r, this.delayMs));
-        await this.flipCard(pair[1]);
-        return;
+        if (!this.isPlaying || !this.isMyTurn) break;
+
+        // 1. Kiểm tra cặp thẻ đã biết trong bộ nhớ
+        const pair = this.memory.findKnownPair();
+        if (pair) {
+          console.log(`🧠 [PERFECT MEMORY] Đã nhớ cặp giống nhau: Ô #${pair[0]} và Ô #${pair[1]}! Lật ngay!`);
+          await this.flipCard(pair[0]);
+          await new Promise((r) => setTimeout(r, this.delayMs));
+          if (!this.isPlaying) break;
+          const opened2 = await this.flipCard(pair[1]);
+          if (!opened2.isMatch) break;
+          continue; // Ghép đúng -> Giữ lượt, tiếp tục vòng lặp!
+        }
+
+        // 2. Chưa có cặp biết trước -> Lật thăm dò thẻ 1
+        const card1 = this.memory.pickUnknownCard();
+        if (card1 === null) {
+          console.log('⚠️ Không còn thẻ nào khả dụng trên bàn');
+          break;
+        }
+
+        console.log(`🔍 [THĂM DÒ] Lật thẻ thứ 1: Ô #${card1}`);
+        const opened1 = await this.flipCard(card1);
+        await new Promise((r) => setTimeout(r, this.delayMs));
+        if (!this.isPlaying) break;
+
+        // 3. Sau khi thẻ 1 mở ra, kiểm tra xem hình này đã từng xuất hiện ở ô khác chưa
+        const matchCard = this.memory.findMatchFor(card1, opened1.img);
+        if (matchCard !== null) {
+          console.log(`🎯 [TRÚNG CẶP] Thẻ 1 (Hình #${opened1.img}) khớp với Ô #${matchCard} đã nhớ! Lật thẻ 2!`);
+          const opened2 = await this.flipCard(matchCard);
+          if (!opened2.isMatch) break;
+          continue; // Ghép đúng -> Giữ lượt, tiếp tục vòng lặp!
+        }
+
+        // 4. Nếu chưa từng thấy hình này, lật thăm dò tiếp thẻ 2
+        const card2 = this.memory.pickUnknownCard(card1);
+        if (card2 === null) {
+          console.log('⚠️ Không tìm được thẻ thứ 2 hợp lệ');
+          break;
+        }
+
+        console.log(`🔍 [THĂM DÒ] Lật thẻ thứ 2: Ô #${card2}`);
+        const opened2 = await this.flipCard(card2);
+        if (!opened2.isMatch) break;
+        // Nếu ngẫu nhiên trúng cặp, continue tiếp tục lượt
       }
-
-      // 2. Chưa có cặp biết trước -> Lật thăm dò thẻ 1
-      const card1 = this.memory.pickUnknownCard();
-      if (card1 === null) {
-        console.log('⚠️ Không còn thẻ nào khả dụng trên bàn');
-        return;
-      }
-
-      console.log(`🔍 [THĂM DÒ] Lật thẻ thứ 1: Ô #${card1}`);
-      const opened1 = await this.flipCard(card1);
-      await new Promise((r) => setTimeout(r, this.delayMs));
-
-      // 3. Sau khi thẻ 1 mở ra, kiểm tra xem hình này đã từng xuất hiện ở ô khác chưa
-      const matchCard = this.memory.findMatchFor(card1, opened1.img);
-      if (matchCard !== null) {
-        console.log(`🎯 [TRÚNG CẶP] Thẻ 1 (Hình #${opened1.img}) khớp với Ô #${matchCard} đã nhớ! Lật thẻ 2!`);
-        await this.flipCard(matchCard);
-        return;
-      }
-
-      // 4. Nếu chưa từng thấy hình này, lật thăm dò tiếp thẻ 2
-      const card2 = this.memory.pickUnknownCard(card1);
-      if (card2 === null) {
-        console.log('⚠️ Không tìm được thẻ thứ 2 hợp lệ');
-        return;
-      }
-
-      console.log(`🔍 [THĂM DÒ] Lật thẻ thứ 2: Ô #${card2}`);
-      await this.flipCard(card2);
     } catch (err) {
       console.error(`❌ Lỗi thực thi lượt: ${(err as Error).message}`);
     } finally {
@@ -377,6 +410,10 @@ export class TrucXanhGameRunner {
 
   private flipCard(cardId: number, timeoutMs = 7000): Promise<Extract<TrucXanhPacket, { type: 'OPENCARD' }>> {
     return new Promise((resolve, reject) => {
+      if (!this.isPlaying || !this.isMyTurn) {
+        reject(new Error('Ván đấu hoặc lượt đi đã kết thúc'));
+        return;
+      }
       const timer = setTimeout(() => {
         const idx = this.pendingCardResolvers.findIndex((r) => r.cardId === cardId);
         if (idx !== -1) this.pendingCardResolvers.splice(idx, 1);
@@ -411,7 +448,7 @@ export function parseArgs(argv: string[]): TrucXanhProbeArgs {
   let accountId = 1;
   let accountId2: number | undefined;
   let delayMs = 900;
-  let timeoutSec = 180;
+  let timeoutSec = 300;
 
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i];
@@ -642,14 +679,33 @@ export async function runTrucXanhProbe(args: TrucXanhProbeArgs): Promise<void> {
     const runner = new TrucXanhGameRunner(client1, args.delayMs);
     let gameFinished = false;
 
-    // Lắng nghe RX -90 trên client 1
+    // Lắng nghe tất cả RX trên client 1
     client1.session.on('message', (msg: Message) => {
-      if (msg.command !== MINIGAME_CMD) return;
       const body = msg.getData();
-      const pkt = decodeTrucXanhPacket(body);
-      void runner.handlePacket(pkt).then((done) => {
-        if (done) gameFinished = true;
-      });
+      if (msg.command === MINIGAME_CMD) {
+        console.log(`[RAW RX -90] (${body.length}b): ${body.toString('hex')}`);
+        const pkt = decodeTrucXanhPacket(body);
+        void runner.handlePacket(pkt).then((done) => {
+          if (done) gameFinished = true;
+        });
+      } else if (msg.command === -40) {
+        const r = new MyReader(body);
+        const text = r.available() >= 2 ? r.readUTF() : body.toString('utf8');
+        console.log(`[GAME DIALOG -40] ${text}`);
+        const match = text.match(/sau\s+(\d+):(\d+)/);
+        if (match) {
+          const mins = Number(match[1]);
+          const secs = Number(match[2]);
+          const waitSecs = mins * 60 + secs + 3;
+          console.log(`⏳ Đang bị phạt thoát bàn: còn ${mins}m ${secs}s. Tự động chờ ${waitSecs}s rồi vào lại...`);
+          setTimeout(() => {
+            console.log('🔄 Hết thời gian phạt! Thử tham gia bàn Trúc Xanh lại...');
+            sendJoinGame(client1);
+          }, waitSecs * 1000);
+        }
+      } else if (msg.command !== 84 && msg.command !== 48) {
+        console.log(`[RAW RX ${msg.command}] (${body.length}b): ${body.subarray(0, 32).toString('hex')}`);
+      }
     });
 
     // Nếu có client 2, lắng nghe log từ client 2 và tự động gửi JOIN
@@ -688,11 +744,13 @@ export async function runTrucXanhProbe(args: TrucXanhProbeArgs): Promise<void> {
       console.log(`\n⏳ Hết thời gian chờ ván đấu (${args.timeoutSec}s)`);
     }
 
-    // Rời bàn chơi an toàn
-    console.log('🚪 Gửi TX -90 [1, 5] rời bàn chơi...');
-    sendOutGame(client1);
-    if (client2) sendOutGame(client2);
-    await new Promise((r) => setTimeout(r, 500));
+    // Rời bàn chơi an toàn nếu ván đấu đang diễn ra dở
+    if (runner.isPlaying) {
+      console.log('🚪 Gửi TX -90 [1, 5] rời bàn chơi...');
+      sendOutGame(client1);
+      if (client2) sendOutGame(client2);
+      await new Promise((r) => setTimeout(r, 500));
+    }
   } finally {
     try {
       client1.logout();

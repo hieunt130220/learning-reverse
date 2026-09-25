@@ -27,7 +27,7 @@
 - Consumes: `openDb`, `loadConfig`, `getAccountById`, `readGamePass`, `GameClient`, `NATIVE_PARK_JOIN_POSITIONS`.
 - Produces: CLI script nhận đối số `--account-id`, `--delay`, `--timeout`, thực hiện đăng nhập và gia nhập Map 7 Khu 0 thành công.
 
-- [ ] **Step 1: Viết khung CLI và hàm xử lý tham số dòng lệnh**
+- [x] **Step 1: Viết khung CLI và hàm xử lý tham số dòng lệnh**
 
 ```typescript
 import { get as httpGet } from 'node:http';
@@ -61,7 +61,7 @@ export function parseArgs(argv: string[]): TrucXanhProbeArgs {
 }
 ```
 
-- [ ] **Step 2: Viết logic kiểm tra port web server, kết nối game và vào Map 7**
+- [x] **Step 2: Viết logic kiểm tra port web server, kết nối game và vào Map 7**
 
 ```typescript
 function assertAvatarWebStopped(port: number): Promise<void> {
@@ -78,7 +78,7 @@ function assertAvatarWebStopped(port: number): Promise<void> {
 }
 ```
 
-- [ ] **Step 3: Commit Task 1**
+- [x] **Step 3: Commit Task 1**
 
 ```bash
 git add avatar-web/server/src/tools/trucxanh-probe.ts
@@ -96,7 +96,7 @@ git commit -m "feat(probe): scaffold trucxanh probe CLI with login and map7 navi
 - Consumes: `MyReader`, `Message`.
 - Produces: `decodeTrucXanhPacket`, `sendJoinGame`, `sendOpenCard`, `sendOutGame`.
 
-- [ ] **Step 1: Định nghĩa các kiểu dữ liệu và hằng số Opcode -90**
+- [x] **Step 1: Định nghĩa các kiểu dữ liệu và hằng số Opcode -90**
 
 ```typescript
 export const MINIGAME_CMD = -90;
@@ -130,7 +130,7 @@ export type TrucXanhPacket =
   | { type: 'UNKNOWN'; gameId: number; subAction: number; hex: string };
 ```
 
-- [ ] **Step 2: Viết hàm decodeTrucXanhPacket bóc tách chính xác từng trường byte**
+- [x] **Step 2: Viết hàm decodeTrucXanhPacket bóc tách chính xác từng trường byte**
 
 ```typescript
 export function decodeTrucXanhPacket(body: Buffer): TrucXanhPacket {
@@ -211,7 +211,7 @@ export function decodeTrucXanhPacket(body: Buffer): TrucXanhPacket {
 }
 ```
 
-- [ ] **Step 3: Viết các hàm gửi lệnh TX -90**
+- [x] **Step 3: Viết các hàm gửi lệnh TX -90**
 
 ```typescript
 export function sendJoinGame(client: GameClient): void {
@@ -233,7 +233,7 @@ export function sendOutGame(client: GameClient): void {
 }
 ```
 
-- [ ] **Step 4: Commit Task 2**
+- [x] **Step 4: Commit Task 2**
 
 ```bash
 git add avatar-web/server/src/tools/trucxanh-probe.ts
@@ -251,7 +251,7 @@ git commit -m "feat(probe): implement trucxanh packet decoder and TX command sen
 - Consumes: `TrucXanhPacket`, `sendOpenCard`, `sendOutGame`.
 - Produces: `TrucXanhGameRunner` điều khiển vòng lặp chơi hoàn thành ván đấu.
 
-- [ ] **Step 1: Viết lớp quản lý bộ nhớ và chiến thuật lật bài**
+- [x] **Step 1: Viết lớp quản lý bộ nhớ và chiến thuật lật bài**
 
 ```typescript
 export class TrucXanhMemory {
@@ -314,7 +314,7 @@ export class TrucXanhMemory {
 }
 ```
 
-- [ ] **Step 2: Viết lớp vòng lặp điều khiển ván đấu TrucXanhGameRunner**
+- [x] **Step 2: Viết lớp vòng lặp điều khiển ván đấu TrucXanhGameRunner**
 
 ```typescript
 export class TrucXanhGameRunner {
@@ -421,7 +421,7 @@ export class TrucXanhGameRunner {
 }
 ```
 
-- [ ] **Step 3: Commit Task 3**
+- [x] **Step 3: Commit Task 3**
 
 ```bash
 git add avatar-web/server/src/tools/trucxanh-probe.ts
@@ -435,15 +435,15 @@ git commit -m "feat(probe): implement perfect memory solver and automated full-g
 **Files:**
 - Execute: `avatar-web/server/src/tools/trucxanh-probe.ts`
 
-- [ ] **Step 1: Khởi chạy lệnh probe trên live server**
+- [x] **Step 1: Khởi chạy lệnh probe trên live server**
 
 ```bash
 npx tsx --env-file=avatar-web/server/.env avatar-web/server/src/tools/trucxanh-probe.ts --account-id 1
 ```
 
-- [ ] **Step 2: Ghi nhận nhật ký ván đấu và kết quả kết thúc ván**
+- [x] **Step 2: Ghi nhận nhật ký ván đấu và kết quả kết thúc ván**
 
-- [ ] **Step 3: Cập nhật tài liệu kết quả kiểm chứng vào memory/doc nếu có phát hiện mới**
+- [x] **Step 3: Cập nhật tài liệu kết quả kiểm chứng vào memory/doc nếu có phát hiện mới**
 
 ```bash
 git add docs/protocol/avatar-map7-castle-minigame-protocol.md
