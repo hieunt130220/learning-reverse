@@ -27,7 +27,7 @@
 - Consumes: `process.argv[3]`, `process.env.CHEST_PASS`, `Message.create(-87)`, `MyReader`
 - Produces: Hàm `sendChestPass(pass: string)` và xử lý phản hồi `subCmd2 === 3`, `subCmd2 === 4`, `subCmd2 === 0` có mật khẩu
 
-- [ ] **Step 1: Khai báo nhận tham số `chestPass` và hàm `sendChestPass`**
+- [x] **Step 1: Khai báo nhận tham số `chestPass` và hàm `sendChestPass`**
 Cập nhật `avatar-web/server/src/tools/chest-probe.ts`:
 ```ts
 const chestPass = (process.argv[3] ?? process.env.CHEST_PASS ?? '').trim();
@@ -43,7 +43,7 @@ function sendChestPass(pass: string) {
 }
 ```
 
-- [ ] **Step 2: Cập nhật xử lý sự kiện RX -87 cho `subCmd2 === 3` và `subCmd2 === 4`**
+- [x] **Step 2: Cập nhật xử lý sự kiện RX -87 cho `subCmd2 === 3` và `subCmd2 === 4`**
 Trong handler `msg.command === -87`:
 ```ts
 } else if (subCmd2 === 3) {
@@ -66,7 +66,7 @@ Trong handler `msg.command === -87`:
 }
 ```
 
-- [ ] **Step 3: Cập nhật bước gửi `reqChestItems` ban đầu**
+- [x] **Step 3: Cập nhật bước gửi `reqChestItems` ban đầu**
 Thay thế đoạn gửi `reqChestItems` rỗng:
 ```ts
 if (chestPass) {
@@ -80,11 +80,11 @@ if (chestPass) {
 }
 ```
 
-- [ ] **Step 4: Kiểm tra biên dịch**
+- [x] **Step 4: Kiểm tra biên dịch**
 Run: `npm run build` trong `avatar-web/server`
 Expected: Biên dịch thành công, không phát sinh lỗi TypeScript.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add avatar-web/server/src/tools/chest-probe.ts
 git commit -m "feat(probe): add chest password support to chest-probe
@@ -103,7 +103,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Consumes: `process.argv[5]`, `process.env.CHEST_PASS`, `Message.create(-87)`
 - Produces: Mở rương kiểm tra trước khi sử dụng item
 
-- [ ] **Step 1: Khai báo nhận tham số `chestPass`**
+- [x] **Step 1: Khai báo nhận tham số `chestPass`**
 Cập nhật `avatar-web/server/src/tools/use-item-probe.ts`:
 ```ts
 const chestPass = (process.argv[5] ?? process.env.CHEST_PASS ?? '').trim();
@@ -119,7 +119,7 @@ function sendChestPass(pass: string) {
 }
 ```
 
-- [ ] **Step 2: Thêm listener xử lý `msg.command === -87` (`CUSTOM_CHEST`)**
+- [x] **Step 2: Thêm listener xử lý `msg.command === -87` (`CUSTOM_CHEST`)**
 Bổ sung vào `client.session.on('message', ...)`:
 ```ts
 if (msg.command === -87) {
@@ -168,7 +168,7 @@ if (msg.command === -87) {
 }
 ```
 
-- [ ] **Step 3: Bổ sung bước yêu cầu kiểm tra rương trước khi đọc `CONTAINER`**
+- [x] **Step 3: Bổ sung bước yêu cầu kiểm tra rương trước khi đọc `CONTAINER`**
 Sau khi login xong (sau `await sleep(3000)`):
 ```ts
 console.log('>>> [TX -87] Gửi yêu cầu kiểm tra rương đồ (subCmd=8, subCmd2=3)...');
@@ -180,11 +180,11 @@ client.session.send(reqChestInfo);
 await sleep(2000);
 ```
 
-- [ ] **Step 4: Kiểm tra biên dịch**
+- [x] **Step 4: Kiểm tra biên dịch**
 Run: `npm run build` trong `avatar-web/server`
 Expected: Biên dịch thành công, không phát sinh lỗi TypeScript.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add avatar-web/server/src/tools/use-item-probe.ts
 git commit -m "feat(probe): add chest password support and chest inspection to use-item-probe
@@ -199,10 +199,10 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 **Files:**
 - Readonly verification: `avatar-web/server/src/tools/chest-probe.ts`, `avatar-web/server/src/tools/use-item-probe.ts`
 
-- [ ] **Step 1: Chạy build toàn dự án**
+- [x] **Step 1: Chạy build toàn dự án**
 Run: `npm run build` trong `avatar-web/server`
 Expected: Build thành công không có warning/error.
 
-- [ ] **Step 2: Chạy git status và git diff kiểm tra tính toàn vẹn**
+- [x] **Step 2: Chạy git status và git diff kiểm tra tính toàn vẹn**
 Run: `git status`
 Expected: Working tree clean sau khi các commit đã được hoàn thành.
