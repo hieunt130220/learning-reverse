@@ -10,16 +10,17 @@
 
 Minigame **Trúc Xanh** (Lật hình - `TRUCXANH`) tại Lâu đài Map 7 Khu 0 được điều khiển qua opcode `-90` (0xA6). Các phân tích dịch ngược từ IL2CPP (`TrucXanhMsgHandler`, `TrucXanhService`, `TrucXanhGameScr`) đã xác định cấu trúc các gói tin:
 - `TX -90 [1, 0]`: Tham gia bàn chơi (`JOIN_TRUCXANH`).
-- `TX -90 [1, 2, idCard]`: Lật lá bài (`OPENCARD_TRUCXANH`), với `idCard` từ `0..23` (lưới 6×4).
+- `TX -90 [1, 2, idCard]`: Lật lá bài (`OPENCARD_TRUCXANH`), với `idCard` từ `0..23` (lưới 6×4 gồm 12 cặp).
 - `TX -90 [1, 5]`: Thoát bàn chơi (`OUTCARD_TRUCXANH`).
 
 Mục tiêu của công cụ probe là:
-1. Đăng nhập tài khoản thật vào live server và di chuyển tới Map 7 Khu 0.
-2. Tham gia bàn Trúc Xanh (`TX -90 [1, 0]`).
-3. Kiểm chứng phản hồi live từ máy chủ:
-   - Máy chủ có tự động bắt đầu ván đấu cho 1 người chơi (`START_TRUCXANH`) hay cần người chơi thứ 2?
-   - Khi có lượt (`turn == 0`), probe tự động gửi lệnh lật bài (`TX -90 [1, 2, id]`) để quan sát phản hồi `OPENCARD_TRUCXANH`, `img`, cờ khớp thẻ (`isMatch`), điểm số và đổi lượt.
-4. Ghi nhận log chi tiết toàn bộ hex payload để phục vụ xây dựng module Auto Farm / Minigame hoàn chỉnh.
+1. Đăng nhập tài khoản vào live server và di chuyển tới Map 7 Khu 0.
+2. Tham gia bàn Trúc Xanh (`TX -90 [1, 0]`), hỗ trợ cả chế độ 1 tài khoản (solo/chờ đối thủ) và 2 tài khoản (`--account-id-2`).
+3. Tự động chơi hoàn thành trọn vẹn 1 ván đấu (Full Game Loop) bằng thuật toán Trí nhớ Hoàn hảo (Perfect Memory Solver):
+   - Lưu trữ `memory[idCard] = img` mỗi khi có lá bài mở ra.
+   - Khi có lượt: ưu tiên mở cặp bài đã biết hình giống nhau; nếu chưa biết thì mở thăm dò thẻ mới và kết nối với thẻ đã nhớ.
+   - Tiếp tục chơi qua từng lượt cho đến khi toàn bộ 12 cặp bài được lật hết và máy chủ gửi gói `ENDCARD_TRUCXANH`.
+4. In thống kê toàn bộ ván đấu: số lượt lật, các cặp ghép đúng, điểm số cuối cùng, kết quả thắng/thua và phần thưởng hộp quà.
 
 ---
 
@@ -28,27 +29,33 @@ Mục tiêu của công cụ probe là:
 ### In-Scope
 - **File công cụ mới:** `avatar-web/server/src/tools/trucxanh-probe.ts`.
 - **Kịch bản hoạt động:**
-  1. `login`: Đăng nhập tài khoản qua `GameClient` (sử dụng `--account-id`).
+  1. `login`: Đăng nhập tài khoản qua `GameClient` (sử dụng `--account-id`). Nếu có `--account-id-2`, đăng nhập tài khoản thứ 2 song song để đối kháng trực tiếp.
   2. `enter-map7`: Chuyển sang ngữ cảnh Park (`TX -1 [9]`), xin danh sách khu (`TX 90 [7]`), và vào Map 7 Khu 0 (`TX 80 [7, 0, 524, 423]`).
   3. `join-game`: Gửi `TX -90 [1, 0]` để ngồi vào bàn Trúc Xanh.
-  4. `game-loop`:
-     - Lắng nghe `RX -90` với các subActions:
-       - `0` (`JOIN_TRUCXANH`): Ghi nhận người tham gia.
-       - `1` (`START_TRUCXANH`): Ghi nhận lượt đi đầu tiên (`turn`) và thời gian đếm ngược (`time`).
-       - `2` (`OPENCARD_TRUCXANH`): Giải mã `idCard`, `img`, `isMatch`, cặp thẻ trùng, điểm số.
-       - `3` (`SETTURN_TRUCXANH`): Đổi lượt người chơi.
-       - `4` (`ENDCARD_TRUCXANH`): Kết thúc ván, ghi nhận kết quả thắng/thua, điểm, hộp quà thưởng.
-     - Khi đến lượt probe: tự động lật 2 lá bài liên tiếp (ví dụ thẻ `0` và `1`, hoặc các thẻ chưa mở) với khoảng delay an toàn (1000ms) để quan sát gói tin.
-  5. `cleanup`: Khi kết thúc ván hoặc sau timeout 60 giây, gửi `TX -90 [1, 5]` và ngắt kết nối an toàn.
+  4. `full-game-loop` (Vòng lặp hoàn thành ván đấu):
+     - Duy trì bảng trạng thái bàn cờ 24 ô (`cardStates`: `unopened` | `revealed` | `removed`), bộ nhớ hình ảnh (`cardImages: Map<cardId, imgId>`), và danh sách các cặp đã phát hiện (`knownPairs: Array<[number, number]>`).
+     - Lắng nghe `RX -90` liên tục:
+       - `0` (`JOIN_TRUCXANH`): Cập nhật người chơi trên bàn.
+       - `1` (`START_TRUCXANH`): Khởi tạo ván mới, xác định ai đi trước (`isMyTurn = (turn == 0)`).
+       - `2` (`OPENCARD_TRUCXANH`): Cập nhật `imgId` của thẻ vừa mở vào `cardImages`. Nếu `isMatch == true`: đánh dấu cặp thẻ `(cardId, cardId2)` là `removed`, cập nhật điểm số.
+       - `3` (`SETTURN_TRUCXANH`): Cập nhật quyền đi tiếp (`isMyTurn = (turn == 0)`).
+       - `4` (`ENDCARD_TRUCXANH`): Ván đấu hoàn thành, in bảng kết quả (thắng/thua, điểm số, hộp quà) và kết thúc vòng lặp.
+     - **Thuật toán tự động lật bài trong lượt:**
+       - Bước 1: Nếu trong `knownPairs` có cặp thẻ chưa loại bỏ $\rightarrow$ lật liên tiếp 2 thẻ đó (ăn điểm 100%).
+       - Bước 2: Nếu chưa có cặp nào biết trước $\rightarrow$ chọn ngẫu nhiên 1 thẻ `unopened` chưa từng biết hình $\rightarrow$ gửi lật thẻ 1.
+       - Bước 3: Chờ máy chủ trả về `imgId` của thẻ 1:
+         - Nếu `imgId` này trùng với một thẻ khác đã nhớ trong bộ nhớ $\rightarrow$ lật ngay thẻ đó làm thẻ 2 (ăn điểm).
+         - Nếu chưa từng thấy $\rightarrow$ chọn tiếp 1 thẻ `unopened` khác làm thẻ 2.
+       - Bước 4: Delay giữa các nước đi: 800ms - 1000ms để mô phỏng nhịp độ người chơi tự nhiên.
+  5. `cleanup`: Khi ván đấu kết thúc (`ENDCARD_TRUCXANH`), gửi `TX -90 [1, 5]` và đăng xuất an toàn.
 - **CLI Arguments:**
-  - `--account-id <number>`: ID tài khoản trong SQLite DB (mặc định: `1`).
-  - `--card1 <number>`: Thẻ bài đầu tiên lật thử (mặc định: `0`).
-  - `--card2 <number>`: Thẻ bài thứ hai lật thử (mặc định: `1`).
-  - `--timeout <number>`: Thời gian tối đa chạy probe tính bằng giây (mặc định: `60`).
+  - `--account-id <number>`: ID tài khoản chính trong SQLite DB (mặc định: `1`).
+  - `--account-id-2 <number>`: ID tài khoản phụ nếu cần 2 người chơi đấu với nhau (tùy chọn).
+  - `--delay <number>`: Thời gian chờ giữa 2 lần lật thẻ tính bằng ms (mặc định: `900`).
+  - `--timeout <number>`: Thời gian tối đa cho toàn bộ ván đấu tính bằng giây (mặc định: `180`).
 
 ### Out-of-Scope
 - Không can thiệp vào các minigame khác (Cờ caro, Aincrad).
-- Không viết logic auto chơi thông minh tối ưu (chỉ lật bài cơ bản để verify giao thức).
 - Không tạo unit test file (tuân thủ nguyên tắc **KHÔNG TDD** của project).
 
 ---
@@ -119,6 +126,8 @@ interface TrucXanhMessage {
    - Đăng nhập thành công tài khoản `0975720501` (`xinkn01`).
    - Vào Map 7 Khu 0 nhận `RX 80`.
    - Gửi `TX -90 [1, 0]`, nhận `RX -90` subAction `0`.
-   - Bắt gói `START_TRUCXANH` hoặc thông báo chờ đối thủ.
-   - Thao tác gửi lật thẻ `TX -90 [1, 2, id]` và ghi nhận `RX -90` subAction `2`.
-   - Thoát game `TX -90 [1, 5]` và ngắt kết nối sạch.
+   - Bắt gói `START_TRUCXANH` (bắt đầu ván đấu).
+   - Tự động thực hiện các lượt lật thẻ thông minh qua `TX -90 [1, 2, id]` với thuật toán Perfect Memory.
+   - Nhận diện toàn bộ các cặp thẻ mở và cập nhật điểm số.
+   - Nhận gói `ENDCARD_TRUCXANH` (kết thúc ván đấu, in điểm số và kết quả).
+   - Gửi `TX -90 [1, 5]` và đăng xuất an toàn.
