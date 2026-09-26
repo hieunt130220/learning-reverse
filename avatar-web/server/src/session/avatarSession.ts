@@ -1756,8 +1756,9 @@ export class AvatarSession {
       onRequestStop: (_reason, message) => {
         if (this.findNpc !== finder) return;
         if (message) this.pushLog(`[tìm NPC] ${message}`);
+        this.pushLog('[tìm NPC] chuyển sang chế độ tự động nông trại.');
         void this.switchAutomationMode({
-          desiredMode: 'off',
+          desiredMode: 'auto_farm',
           findNpcConfig: this.findNpcConfig,
           fishingConfig: this.fishingConfig,
           miningConfig: this.miningConfig,
@@ -1773,23 +1774,21 @@ export class AvatarSession {
           || !this.isCurrent(client, epoch)
         ) return;
         this.findNpc = undefined;
-        this.findNpcRuntime = finder.state();
-        this.activeMode = 'off';
-        this.desiredMode = 'off';
-        this.transitionState = 'stable';
         this.automationLocation = null;
-        this.emitAutomation();
-        this.pushLog(`Find NPC đã dừng do lỗi: ${error.message}`);
         try {
           this.opts.onAutomationLocation(null);
         } catch {
-          /* tiếp tục persist mode off ngay cả khi xóa location lỗi */
+          /* tiếp tục chuyển mode ngay cả khi xóa location lỗi */
         }
-        try {
-          this.opts.onAutomationFailure?.(error.message);
-        } catch {
-          /* callback persistence không được tạo unhandled rejection */
-        }
+        this.pushLog(`[tìm NPC] lỗi: ${error.message} — chuyển sang chế độ tự động nông trại.`);
+        void this.switchAutomationMode({
+          desiredMode: 'auto_farm',
+          findNpcConfig: this.findNpcConfig,
+          fishingConfig: this.fishingConfig,
+          miningConfig: this.miningConfig,
+          mazeConfig: this.mazeConfig,
+          location: null,
+        });
       },
       now: this.now,
       setTimeoutFn: this.setTimeoutFn,
@@ -1908,8 +1907,9 @@ export class AvatarSession {
         },
         onRequestStop: (_reason, message) => {
           if (message) this.pushLog(`[mê cung] ${message}`);
+          this.pushLog('[mê cung] chuyển sang chế độ tự động nông trại.');
           void this.switchAutomationMode({
-            desiredMode: 'off',
+            desiredMode: 'auto_farm',
             findNpcConfig: this.findNpcConfig,
             fishingConfig: this.fishingConfig,
             miningConfig: this.miningConfig,
