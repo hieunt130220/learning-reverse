@@ -18,6 +18,8 @@ import { Rx79CaptureRegistry } from './fishing/rx79Capture.js';
 import { rx79CaptureRouter } from './fishing/rx79CaptureRoutes.js';
 import { LiveReviewCaptureRegistry } from './fishing/liveReviewCapture.js';
 import { liveReviewCaptureRouter } from './fishing/liveReviewCaptureRoutes.js';
+import { MonitoringCollector } from './monitoring/collector.js';
+import { monitoringRouter } from './monitoring/routes.js';
 
 // Ném ngay nếu thiếu MASTER_KEY / INVITE_CODE — dừng còn hơn lặng lẽ chạy bằng
 // khoá mặc định rồi ghi cả DB bằng nó.
@@ -56,6 +58,12 @@ const sessions = new SessionManager({
 });
 
 app.use('/api/auth', authRouter({ db, inviteCode: config.inviteCode, isProduction: config.isProduction }));
+const monitoringCollector = new MonitoringCollector(db, sessions);
+app.use('/api/monitoring', monitoringRouter({
+  db,
+  isProduction: config.isProduction,
+  collector: monitoringCollector,
+}));
 app.use(
   '/api/accounts',
   accountsRouter({ db, masterKey: config.masterKey, isProduction: config.isProduction, sessions }),

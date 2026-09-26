@@ -482,6 +482,31 @@ button.ghost {
   order: 3;
 }
 
+.button-link { display: inline-flex; align-items: center; text-decoration: none; }
+.monitoring-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.monitoring-metric { display: flex; flex-direction: column; gap: 4px; }
+.monitoring-metric span, .monitoring-metric small { color: var(--muted); }
+.monitoring-metric strong { font-size: 24px; }
+.monitoring-number--error { color: var(--err); }
+.monitoring-section { margin-bottom: 16px; }
+.monitoring-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.monitoring-section-head h2 { margin-bottom: 0; }
+.monitoring-dependencies { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.monitoring-dependency { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card-inset); }
+.monitoring-dependency .hint { margin: 0; }
+.monitoring-dependency .err { grid-column: 1 / -1; }
+.monitoring-status { display: inline-flex; width: fit-content; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.monitoring-status--ok { color: var(--ok); border-color: var(--ok-line); background: var(--ok-dim); }
+.monitoring-status--warn { color: var(--warn-ink); border-color: var(--warn-line); background: var(--warn-dim); }
+.monitoring-status--error { color: var(--err); border-color: var(--err-line); background: var(--err-dim); }
+.monitoring-table-wrap { overflow-x: auto; margin-top: 10px; }
+.monitoring-table { width: 100%; border-collapse: collapse; min-width: 760px; }
+.monitoring-table th, .monitoring-table td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.monitoring-table th { color: var(--muted); font-size: 12px; font-weight: 500; }
+.monitoring-table td small { display: block; color: var(--muted); }
+.monitoring-table code { color: var(--muted); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.monitoring-warning { color: var(--warn-ink); }
+
 .accounts-grid {
   display: grid;
   grid-template-columns: 1fr;

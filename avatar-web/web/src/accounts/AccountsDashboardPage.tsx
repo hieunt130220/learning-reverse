@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Link, Outlet } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth.js';
 import { AccountCard } from './AccountCard.js';
@@ -16,6 +16,7 @@ export function AccountsDashboardPage() {
       <header className="dashboard-header">
         <div><p className="eyebrow">AVATAR WEB</p><h1>Tài khoản avatar</h1></div>
         <span className="hint">{user?.email}</span>
+        <Link className="button-link ghost" to="/admin/monitoring">Monitoring</Link>
         <button className="ghost" onClick={() => void logout()}>Đăng xuất</button>
       </header>
       {/* Còn card để xem thì lỗi reload chỉ là thông báo, không chặn dashboard. */}
