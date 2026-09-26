@@ -320,6 +320,13 @@ export class SessionManager {
       ),
       onMetrics: (patch) => updateCachedMetrics(db, accountId, patch),
       onAutomationLocation: (location) => saveFindNpcLocation(db, accountId, location),
+      onDesiredModeChange: (mode) => {
+        try {
+          setDesiredMode(db, accountId, mode);
+        } catch {
+          /* bỏ qua lỗi persist */
+        }
+      },
       onAutomationFailure: () => {
         setDesiredMode(db, accountId, 'off');
         broadcast(userId, accountId, 'auto-disabled', { accountId });

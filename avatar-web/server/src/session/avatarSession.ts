@@ -205,6 +205,7 @@ export interface AvatarSessionOptions {
   onPermanentFailure: (reason: string) => void;
   onAutomationFailure?: (reason: string) => void;
   onAutomationLocation: (location: NpcMapLocation | null) => void;
+  onDesiredModeChange?: (mode: AutomationMode) => void;
   onMetrics?: (patch: AccountMetricsPatch) => void;
   cachedMetrics?: CachedAccountMetrics;
   initialDailyFishingStatistics?: DailyFishingStatistics;
@@ -584,6 +585,11 @@ export class AvatarSession {
       let generation = enqueuedGeneration;
       try {
         this.desiredMode = intent.desiredMode;
+        try {
+          this.opts.onDesiredModeChange?.(intent.desiredMode);
+        } catch {
+          /* bỏ qua lỗi callback persistence */
+        }
         this.findNpcConfig = intent.findNpcConfig;
         if (intent.fishingConfig) {
           this.fishingConfig = intent.fishingConfig;
