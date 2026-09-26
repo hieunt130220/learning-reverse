@@ -214,11 +214,17 @@ export function StatusPanel({
         {},
       );
       if (loaded) onAutomationChange?.(loaded);
+      if (selectedMode === 'find_npc' || selectedMode === 'auto_maze') {
+        setSelectedMode('auto_farm');
+      }
       onChanged();
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         const loaded = (error.body as { snapshot?: AutomationSnapshot })?.snapshot;
         if (loaded) onAutomationChange?.(loaded);
+        if (selectedMode === 'find_npc' || selectedMode === 'auto_maze') {
+          setSelectedMode('auto_farm');
+        }
         onChanged();
       } else {
         setAutoErr((error as Error).message);
