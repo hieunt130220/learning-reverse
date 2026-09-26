@@ -1,11 +1,14 @@
 /**
  * Probe kiểm tra rương đồ (BoxScr / CUSTOM_CHEST) và hành trang (CONTAINER) của người chơi:
- *   npx tsx --env-file=.env src/tools/chest-probe.ts [accountId] [chestPass]
- *   Hoặc đặt biến môi trường: CHEST_PASS=123456
+ *   npx tsx --env-file=.env src/tools/chest-probe.ts [accountId] [pass]
+ *   Hoặc truyền rõ 2 pass riêng: [accountId] [passBag] [passChest]
+ *   Hoặc đặt biến môi trường: CHEST_PASS=123456 / BAG_PASS=123456
  *
  * Wire protocol (giải mã từ libil2cpp.so arm64):
  *   TX -87 (CUSTOM_CHEST):
  *     i8 8, i8 3 (GlobalService.doRequestOpenChestScr @0x69E1C4)
+ *   TX -87 gửi mật khẩu mở rương (GlobalService.doSendPassOpenChest @0x69E430):
+ *     i8 8, i8 0, utf passBag, utf passChest
  *   RX -87:
  *     i8 subCmd (8)
  *     i8 subCmd2:
@@ -46,7 +49,8 @@ import { loadConfig } from '../config.js';
 import { resolvePartInfo } from '../game/partCatalog.js';
 
 const accountId = Number(process.argv[2] ?? 1);
-const chestPass = (process.argv[3] ?? process.env.CHEST_PASS ?? '').trim();
+const rawPass1 = (process.argv[3] ?? process.env.CHEST_PASS ?? process.env.BAG_PASS ?? '').trim();
+const rawPass2 = (process.argv[4] ?? '').trim();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const cfg = loadConfig();
@@ -60,13 +64,15 @@ if (!row) {
 console.log(`[CHEST-PROBE] Đăng nhập tài khoản #${accountId} (${row.gameUser})...`);
 const client = new GameClient();
 
-function sendChestPass(pass: string) {
-  console.log(`>>> [TX -87] Gửi mật khẩu rương "${pass ? '******' : '(trống)'}" (subCmd=8, subCmd2=0)...`);
+function sendChestPass(passBag: string, passChest: string) {
+  console.log(
+    `>>> [TX -87] Gửi mật khẩu (giỏ đồ="${passBag ? '******' : '(trống)'}", rương="${passChest ? '******' : '(trống)'}") [subCmd=8, subCmd2=0]...`,
+  );
   const msg = Message.create(-87);
   msg.writer!.writeByte(8);
   msg.writer!.writeByte(0);
-  msg.writer!.writeUTF('');
-  msg.writer!.writeUTF(pass);
+  msg.writer!.writeUTF(passBag);
+  msg.writer!.writeUTF(passChest);
   client.session.send(msg);
 }
 
@@ -146,11 +152,48 @@ client.session.on('message', (msg: Message) => {
             console.log(`    Byte dư thừa  : ${r.rest().toString('hex')}`);
           }
         } else if (subCmd2 === 3) {
-          console.log(`  🔒 RƯƠNG ĐÃ ĐƯỢC CÀI MẬT KHẨU!`);
-          if (chestPass) {
-            sendChestPass(chestPass);
+          let info = '';
+          let hasPassBag = false;
+          let hasPassChest = false;
+          try {
+            if (r.available() > 0) info = r.readUTF();
+            if (r.available() > 0) hasPassBag = r.readBoolean();
+            if (r.available() > 0) hasPassChest = r.readBoolean();
+          } catch (e) {
+            // ignore
+          }
+
+          console.log(`  🔒 RƯƠNG YÊU CẦU MẬT KHẨU!`);
+          if (info) console.log(`     Thông tin   : "${info}"`);
+          console.log(`     Khóa giỏ đồ : ${hasPassBag ? '🔐 CÓ' : '🔓 Không'}`);
+          console.log(`     Khóa rương  : ${hasPassChest ? '🔐 CÓ' : '🔓 Không'}`);
+
+          if (rawPass1) {
+            let finalPassBag = '';
+            let finalPassChest = '';
+
+            if (rawPass2) {
+              finalPassBag = rawPass1;
+              finalPassChest = rawPass2;
+            } else {
+              // Tự động map thông minh theo cờ yêu cầu của Server
+              if (hasPassBag && !hasPassChest) {
+                finalPassBag = rawPass1;
+                finalPassChest = '';
+              } else if (!hasPassBag && hasPassChest) {
+                finalPassBag = '';
+                finalPassChest = rawPass1;
+              } else {
+                finalPassBag = rawPass1;
+                finalPassChest = rawPass1;
+              }
+            }
+
+            sendChestPass(finalPassBag, finalPassChest);
           } else {
-            console.log(`  ⚠️ Chưa cấu hình mật khẩu rương. Hãy truyền tham số: npx tsx --env-file=.env src/tools/chest-probe.ts ${accountId} <mat_khau_ruong>`);
+            console.log(
+              `  ⚠️ Chưa cấu hình mật khẩu. Hãy truyền tham số: npx tsx --env-file=.env src/tools/chest-probe.ts ${accountId} <mat_khau>`,
+            );
           }
         } else if (subCmd2 === 4) {
           const flag = r.readByte();
@@ -160,7 +203,7 @@ client.session.on('message', (msg: Message) => {
           }
           console.log(`  ⚠️ Phản hồi từ rương (subCmd2=4): flag=${flag} msg="${msgText}"`);
           if (flag === 0 || msgText.toLowerCase().includes('mật khẩu') || msgText.toLowerCase().includes('pass')) {
-            console.log(`  ❌ Mật khẩu rương không chính xác hoặc có lỗi đóng rương!`);
+            console.log(`  ❌ Mật khẩu không chính xác hoặc có lỗi đóng rương!`);
           }
         } else {
           console.log(`  subCmd2 chưa biết: ${subCmd2} (rest: ${r.rest().toString('hex')})`);
@@ -253,9 +296,7 @@ client.session.send(reqChestInfo);
 await sleep(1500);
 
 // Gửi yêu cầu mở danh sách item trong rương (CUSTOM_CHEST, subCmd 8, subCmd 0: doBoxContain)
-if (chestPass) {
-  sendChestPass(chestPass);
-} else {
+if (!chestReceived && !rawPass1) {
   console.log('>>> [TX -87] Gửi yêu cầu mở danh sách item trong rương đồ (subCmd=8, subCmd2=0)...');
   const reqChestItems = Message.create(-87);
   reqChestItems.writer!.writeByte(8);
@@ -286,10 +327,7 @@ if (!chestReceived) {
   client.session.send(reqChest2);
 
   await sleep(1500);
-  if (chestPass) {
-    sendChestPass(chestPass);
-  }
-  await sleep(3500);
+  await sleep(2500);
 }
 
 console.log('\n[CHEST-PROBE] Hoàn tất quá trình probe.');

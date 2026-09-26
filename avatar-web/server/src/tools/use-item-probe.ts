@@ -25,7 +25,8 @@ import { resolvePartInfo } from '../game/partCatalog.js';
 const accountId = Number(process.argv[2] ?? 1);
 const targetPartId = Number(process.argv[3] ?? 6383);
 const requestedTimes = Number(process.argv[4] ?? 1);
-const chestPass = (process.argv[5] ?? process.env.CHEST_PASS ?? '').trim();
+const rawPass1 = (process.argv[5] ?? process.env.CHEST_PASS ?? process.env.BAG_PASS ?? '').trim();
+const rawPass2 = (process.argv[6] ?? '').trim();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const cfg = loadConfig();
@@ -38,13 +39,15 @@ if (!row) {
 
 const client = new GameClient();
 
-function sendChestPass(pass: string) {
-  console.log(`>>> [TX -87] Gửi mật khẩu rương để kiểm tra (subCmd=8, subCmd2=0)...`);
+function sendChestPass(passBag: string, passChest: string) {
+  console.log(
+    `>>> [TX -87] Gửi mật khẩu kiểm tra rương/giỏ (giỏ="${passBag ? '******' : '(trống)'}", rương="${passChest ? '******' : '(trống)'}")...`,
+  );
   const msg = Message.create(-87);
   msg.writer!.writeByte(8);
   msg.writer!.writeByte(0);
-  msg.writer!.writeUTF('');
-  msg.writer!.writeUTF(pass);
+  msg.writer!.writeUTF(passBag);
+  msg.writer!.writeUTF(passChest);
   client.session.send(msg);
 }
 
@@ -130,11 +133,39 @@ client.session.on('message', (msg: Message) => {
           const maxSlot = r.readShort();
           console.log(`  --- ℹ️ Ô rương: ${slot}/${maxSlot} ---\n`);
         } else if (subCmd2 === 3) {
-          console.log(`  🔒 Rương có mật khẩu.`);
-          if (chestPass) {
-            sendChestPass(chestPass);
+          let info = '';
+          let hasPassBag = false;
+          let hasPassChest = false;
+          try {
+            if (r.available() > 0) info = r.readUTF();
+            if (r.available() > 0) hasPassBag = r.readBoolean();
+            if (r.available() > 0) hasPassChest = r.readBoolean();
+          } catch (e) {
+            // ignore
+          }
+
+          console.log(`  🔒 RƯƠNG YÊU CẦU MẬT KHẨU! (Giỏ đồ: ${hasPassBag ? '🔐 CÓ' : '🔓 Không'}, Rương: ${hasPassChest ? '🔐 CÓ' : '🔓 Không'})`);
+          if (rawPass1) {
+            let finalPassBag = '';
+            let finalPassChest = '';
+            if (rawPass2) {
+              finalPassBag = rawPass1;
+              finalPassChest = rawPass2;
+            } else {
+              if (hasPassBag && !hasPassChest) {
+                finalPassBag = rawPass1;
+                finalPassChest = '';
+              } else if (!hasPassBag && hasPassChest) {
+                finalPassBag = '';
+                finalPassChest = rawPass1;
+              } else {
+                finalPassBag = rawPass1;
+                finalPassChest = rawPass1;
+              }
+            }
+            sendChestPass(finalPassBag, finalPassChest);
           } else {
-            console.log(`  ℹ️ Không truyền chestPass, bỏ qua mở rương kiểm tra.`);
+            console.log(`  ℹ️ Không truyền mật khẩu, bỏ qua mở rương kiểm tra.`);
           }
         } else if (subCmd2 === 4) {
           const flag = r.readByte();
