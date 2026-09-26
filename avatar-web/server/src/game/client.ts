@@ -293,6 +293,31 @@ export function isMissingFishingTicketDialog(reason: string): boolean {
   return false;
 }
 
+/**
+ * Nhận diện loại mồi câu cụ thể được server yêu cầu từ thông báo từ chối.
+ * Ví dụ: "Bạn cần sử dụng mồi câu cá trâm để câu cá trong khu vực này" -> 4875 (Mồi câu cá trâm).
+ */
+export function detectRequiredBaitId(reason: string): number | null {
+  const normalized = reason.trim().toLowerCase();
+  if (
+    normalized.includes('cá trâm')
+    || normalized.includes('mồi câu cá trâm')
+    || normalized.includes('mồi cá trâm')
+  ) {
+    return 4875; // Mồi câu cá trâm
+  }
+  if (normalized.includes('trứng kiến')) {
+    return 448; // Trứng kiến
+  }
+  if (normalized.includes('mồi trùng') || normalized.includes('trùng')) {
+    return 447; // Mồi trùng
+  }
+  if (normalized.includes('mồi cơm')) {
+    return 443; // Mồi cơm
+  }
+  return null;
+}
+
 export function parseTemporaryLoginRejection(text: string): TemporaryLoginRejection | null {
   const isThrottle = /đang đăng nhập|đăng nhập quá nhanh|đăng nhập lại sau\s+\d+\s*s|quá tải/i.test(text);
   if (!isThrottle) return null;

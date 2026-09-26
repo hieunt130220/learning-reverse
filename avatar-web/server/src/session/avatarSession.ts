@@ -14,6 +14,7 @@ import {
   isRewardDialog,
   isInformationalDialog,
   isMissingFishingTicketDialog,
+  detectRequiredBaitId,
   type CaptchaEvent,
   type ClientStatus,
   type DeviceProfile,
@@ -2830,6 +2831,7 @@ export class AvatarSession {
     epoch: number,
     signal: AbortSignal,
     missingType: 'ticket' | 'rod' | 'bait',
+    overrideBaitId?: number,
   ): Promise<boolean> {
     if (
       signal.aborted
@@ -2876,20 +2878,29 @@ export class AvatarSession {
       }
       this.pushLog(`[câu cá] Đang di chuyển sang Khu sinh thái (Map 13) để mua ${rod.name}…`);
     } else if (missingType === 'bait') {
-      if (cfg.baitType <= 0) {
+      const targetBaitId = overrideBaitId ?? cfg.baitType;
+      if (targetBaitId <= 0) {
         const msg = 'Thiếu mồi câu nhưng cấu hình Không tự mua mồi';
         this.pushLog(`[câu cá] ${msg} — Dừng câu`);
         this.fishingRuntime.lastError = msg;
         return false;
       }
-      const bait = FISHING_BAITS.find((b) => b.id === cfg.baitType);
+      const bait = FISHING_BAITS.find((b) => b.id === targetBaitId);
       if (!bait) {
-        const msg = `Không tìm thấy loại mồi câu ID ${cfg.baitType}`;
+        const msg = `Không tìm thấy loại mồi câu ID ${targetBaitId}`;
         this.pushLog(`[câu cá] ${msg} — Dừng câu`);
         this.fishingRuntime.lastError = msg;
         return false;
       }
-      this.pushLog(`[câu cá] Đang di chuyển sang Khu sinh thái (Map 13) để mua ${bait.name} (×${cfg.baitQuantity})…`);
+      const quantity = Math.max(1, Math.min(cfg.baitQuantity || 50, 999));
+      if (overrideBaitId && overrideBaitId !== cfg.baitType) {
+        const currentBaitName = FISHING_BAITS.find((b) => b.id === cfg.baitType)?.name ?? `ID ${cfg.baitType}`;
+        this.pushLog(
+          `[câu cá] Server yêu cầu ${bait.name} (cấu hình hiện tại: ${currentBaitName}) — tự động chuyển sang mua ${bait.name} (×${quantity})…`,
+        );
+      } else {
+        this.pushLog(`[câu cá] Đang di chuyển sang Khu sinh thái (Map 13) để mua ${bait.name} (×${cfg.baitQuantity})…`);
+      }
     }
 
     // 1. Di chuyển sang Map 13 (Khu sinh thái, tọa độ NPC 364, 64)
@@ -3058,7 +3069,8 @@ export class AvatarSession {
       }
       await this.delayCancellable(1000, signal);
     } else if (missingType === 'bait') {
-      const bait = FISHING_BAITS.find((b) => b.id === cfg.baitType)!;
+      const targetBaitId = overrideBaitId ?? cfg.baitType;
+      const bait = FISHING_BAITS.find((b) => b.id === targetBaitId)!;
       const quantity = Math.max(1, Math.min(cfg.baitQuantity || 50, 999));
       this.pushLog(`[câu cá] Đang gửi lệnh mua ${bait.name} (x${quantity})…`);
       let settled = false;
@@ -3154,6 +3166,20 @@ export class AvatarSession {
       }
 
       this.pushLog(`[câu cá] Đã mua thành công ${bait.name} (x${quantity})`);
+
+      if (overrideBaitId && this.fishingConfig.config.baitType !== overrideBaitId) {
+        this.fishingConfig = {
+          ...this.fishingConfig,
+          config: {
+            ...this.fishingConfig.config,
+            baitType: overrideBaitId,
+            baitQuantity: quantity,
+          },
+        };
+        this.emitAutomation();
+        this.pushLog(`[câu cá] Đã đồng bộ cấu hình mồi câu sang: ${bait.name}`);
+      }
+
       await this.delayCancellable(1000, signal);
     }
 
@@ -3441,7 +3467,7 @@ export class AvatarSession {
     this.pushLog(`[câu cá] gửi TX45 startFishing — handler=${client.currentHandlerContext}`);
 
     let consecutiveFailures = 0;
-    let lastMissingType: 'ticket' | 'rod' | 'bait' | null = null;
+    let lastMissingKey: string | null = null;
     let timeoutRetries = 0;
     const MAX_TIMEOUT_RETRIES = 2;
 
@@ -3547,11 +3573,13 @@ export class AvatarSession {
         }
 
         let missingType: 'ticket' | 'rod' | 'bait' | null = null;
+        let requiredBaitId: number | null = null;
         if (isMissingFishingTicketDialog(errText)) {
           missingType = 'ticket';
           this.pushLog(`[câu cá] Server từ chối vì thiếu vé câu: "${reason}"`);
-        } else if (errText.includes('mồi')) {
+        } else if (errText.includes('mồi') || errText.includes('cá trâm')) {
           missingType = 'bait';
+          requiredBaitId = detectRequiredBaitId(errText);
         } else if (
           errText.includes('cần câu')
           || errText.includes('sử dụng cần')
@@ -3565,8 +3593,12 @@ export class AvatarSession {
         }
 
         if (missingType) {
-          if (missingType !== lastMissingType) {
-            lastMissingType = missingType;
+          const missingKey = missingType === 'bait'
+            ? `bait:${requiredBaitId ?? this.fishingConfig.config.baitType}`
+            : missingType;
+
+          if (missingKey !== lastMissingKey) {
+            lastMissingKey = missingKey;
             consecutiveFailures = 0;
           }
 
@@ -3580,7 +3612,13 @@ export class AvatarSession {
             return false;
           }
 
-          const bought = await this.executeParkPurchase(client, epoch, signal, missingType);
+          const bought = await this.executeParkPurchase(
+            client,
+            epoch,
+            signal,
+            missingType,
+            requiredBaitId ?? undefined,
+          );
           if (bought) {
             consecutiveFailures++;
             continue;
@@ -3851,8 +3889,10 @@ export class AvatarSession {
           }
 
           let castMissingType: 'rod' | 'bait' | null = null;
-          if (castErrText.includes('mồi')) {
+          let castRequiredBaitId: number | null = null;
+          if (castErrText.includes('mồi') || castErrText.includes('cá trâm')) {
             castMissingType = 'bait';
+            castRequiredBaitId = detectRequiredBaitId(castErrText);
           } else if (
             castErrText.includes('cần câu')
             || castErrText.includes('sử dụng cần')
@@ -3885,7 +3925,13 @@ export class AvatarSession {
             continue;
           }
           if (castMissingType) {
-            const bought = await this.executeParkPurchase(client, epoch, signal, castMissingType);
+            const bought = await this.executeParkPurchase(
+              client,
+              epoch,
+              signal,
+              castMissingType,
+              castRequiredBaitId ?? undefined,
+            );
             if (!bought) return;
             // Sau khi mua, gửi cauCaXong để kết thúc session câu cũ
             // rồi bắt đầu lại từ startFishing qua startFishingSession
