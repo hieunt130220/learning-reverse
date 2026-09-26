@@ -28,7 +28,7 @@
 - Consumes: `setDesiredMode(db, accountId, mode)` từ `avatar-web/server/src/accounts/automationRepo.ts`
 - Produces: `onDesiredModeChange?: (mode: AutomationMode) => void` trên `AvatarSessionOptions`
 
-- [ ] **Step 1: Thêm `onDesiredModeChange` vào `AvatarSessionOptions` và gọi trong `switchAutomationMode`**
+- [x] **Step 1: Thêm `onDesiredModeChange` vào `AvatarSessionOptions` và gọi trong `switchAutomationMode`**
 
 Trong `avatar-web/server/src/session/avatarSession.ts`:
 1. Bổ sung trường `onDesiredModeChange` vào `AvatarSessionOptions`:
@@ -56,7 +56,7 @@ Sau khi gán `this.desiredMode = intent.desiredMode;`:
         }
 ```
 
-- [ ] **Step 2: Đăng ký `onDesiredModeChange` trong `SessionManager`**
+- [x] **Step 2: Đăng ký `onDesiredModeChange` trong `SessionManager`**
 
 Trong `avatar-web/server/src/session/manager.ts`, hàm `getOrCreate`:
 Bổ sung `onDesiredModeChange` vào `opts`:
@@ -74,12 +74,12 @@ Bổ sung `onDesiredModeChange` vào `opts`:
       onMetrics: (patch) => {
 ```
 
-- [ ] **Step 3: Kiểm tra biên dịch server**
+- [x] **Step 3: Kiểm tra biên dịch server**
 
 Run: `cd avatar-web/server && npm run build`
 Expected: Biên dịch TypeScript thành công, không có lỗi type error.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 ```bash
@@ -100,7 +100,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Consumes: `this.switchAutomationMode({ desiredMode: 'auto_farm', ... })`
 - Produces: Luồng chuyển tiếp tự động sang Nông trại khi runner hoàn thành nhiệm vụ hoặc gặp lỗi
 
-- [ ] **Step 1: Cập nhật `onRequestStop` và `onTerminalFailure` trong `startFindNpc`**
+- [x] **Step 1: Cập nhật `onRequestStop` và `onTerminalFailure` trong `startFindNpc`**
 
 Trong `avatar-web/server/src/session/avatarSession.ts`:
 Tìm `startFindNpc`, cập nhật callback `onRequestStop`:
@@ -141,7 +141,7 @@ Cập nhật `onTerminalFailure`:
       },
 ```
 
-- [ ] **Step 2: Cập nhật `onRequestStop` của AutoMazeRunner trong `startDesiredAutomation`**
+- [x] **Step 2: Cập nhật `onRequestStop` của AutoMazeRunner trong `startDesiredAutomation`**
 
 Trong `avatar-web/server/src/session/avatarSession.ts`:
 Tìm khối `if (this.desiredMode === 'auto_maze')`, cập nhật callback `onRequestStop`:
@@ -160,12 +160,12 @@ Tìm khối `if (this.desiredMode === 'auto_maze')`, cập nhật callback `onRe
         },
 ```
 
-- [ ] **Step 3: Kiểm tra biên dịch server và chạy unit tests**
+- [x] **Step 3: Kiểm tra biên dịch server và chạy unit tests**
 
 Run: `cd avatar-web/server && npm run build && npm test`
 Expected: Biên dịch và các test hiện có vượt qua (PASS).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 ```bash
@@ -186,7 +186,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Consumes: `selectedMode`, `setSelectedMode('auto_farm')`
 - Produces: UI tự động chuyển mode đã chọn sang `auto_farm` khi bấm Dừng thủ công từ mode tìm NPC hoặc mê cung
 
-- [ ] **Step 1: Cập nhật `stopAuto()` trong `StatusPanel.tsx`**
+- [x] **Step 1: Cập nhật `stopAuto()` trong `StatusPanel.tsx`**
 
 Trong `avatar-web/web/src/accounts/panels/StatusPanel.tsx`:
 Trong hàm `stopAuto()`:
@@ -224,12 +224,12 @@ Trong hàm `stopAuto()`:
   }
 ```
 
-- [ ] **Step 2: Kiểm tra biên dịch frontend web**
+- [x] **Step 2: Kiểm tra biên dịch frontend web**
 
 Run: `cd avatar-web/web && npm run build`
 Expected: Frontend build thành công, không có lỗi syntax/type error.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 Run:
 ```bash
@@ -246,12 +246,12 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 **Files:**
 - Kiểm tra toàn bộ các file đã chỉnh sửa.
 
-- [ ] **Step 1: Chạy build toàn bộ project**
+- [x] **Step 1: Chạy build toàn bộ project**
 
 Run: `cd avatar-web/server && npm run build && cd ../web && npm run build`
 Expected: Cả server và web frontend build thành công.
 
-- [ ] **Step 2: Chạy kiểm tra GitNexus detect_changes**
+- [x] **Step 2: Chạy kiểm tra GitNexus detect_changes**
 
 Run: `detect_changes({scope: "all"})`
 Expected: Phân tích các thay đổi trên graph, không có rủi ro nghiêm trọng chưa được xử lý.
