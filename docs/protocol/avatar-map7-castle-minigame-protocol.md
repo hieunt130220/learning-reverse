@@ -77,7 +77,7 @@ Cả 2 minigame đều đã được **kiểm chứng trực tiếp trên live s
 1. **Tham gia bàn (`JOIN` - SubAction 0):**
    - **TX -90:** `[i8 gameId=1, i8 subAction=0]`
    - **RX -90:** `[i8 1, i8 0, Avatar player0, Avatar player1]`
-   - Bóc tách vị trí: Avatar đầu tiên tương ứng Player Index 0, Avatar thứ hai tương ứng Player Index 1. Người chơi có `myPos = 0` nếu tên nằm ở Avatar 0, hoặc `myPos = 1` nếu tên nằm ở Avatar 1.
+   - Bóc tách vị trí: Avatar đầu tiên tương ứng Player Index 0 (offset byte 2..5 là `playerId0`), Avatar thứ hai tương ứng Player Index 1. Nếu `client.playerId === playerId0` thì `myPos = 0`, ngược lại `myPos = 1`.
 
 2. **Bắt đầu ván đấu (`START` - SubAction 1):**
    - **RX -90:** `[i8 1, i8 1, i8 turn, i8 time]`
@@ -94,6 +94,7 @@ Cả 2 minigame đều đã được **kiểm chứng trực tiếp trên live s
      - `score1`: Tổng điểm hiện tại của Player 0.
      - `score2`: Tổng điểm hiện tại của Player 1.
      - Người ghép đúng tiếp tục giữ lượt đánh (không đổi lượt).
+     - *Lưu ý về gói Reveal cuối trận:* Khi ván đấu kết thúc, server broadcast mở các thẻ còn lại với `cardId2 = -2` (`0xfe`). Client cần lọc `cardId2 >= 0` để tránh đếm sai số cặp ghép.
 
 4. **Đổi lượt (`SETTURN` - SubAction 3):**
    - **RX -90:** `[i8 1, i8 3, i8 turn]` (`turn` là player index `0` hoặc `1`).
@@ -102,6 +103,11 @@ Cả 2 minigame đều đã được **kiểm chứng trực tiếp trên live s
    - **RX -90:** `[i8 1, i8 4, i8 win, i32 score1, i32 score2, i16 giftBoxId?]`
    - `win`: `0` = Hòa, `1` = Player 0 chiến thắng, `2` = Player 1 chiến thắng.
    - `giftBoxId`: ID hộp quà phần thưởng ngẫu nhiên sau trận (ví dụ: `#4494`).
+
+6. **Chế độ 2 tài khoản chơi cùng nhau (Co-op / Đối kháng):**
+   - Công cụ probe hỗ trợ flag `--two-players` hoặc `--account-id <id1> --account-id-2 <id2>`.
+   - Cả 2 tài khoản cùng gia nhập Map 7 Khu 0, lần lượt ngồi vào 2 ghế trên bàn Trúc Xanh.
+   - Sử dụng chung bộ nhớ `TrucXanhMemory` (shared memory): khi P1 thăm dò thẻ nào thì P2 đều tự động biết vị trí thẻ đó và ngược lại, giúp giải trọn vẹn bàn cờ nhanh gấp đôi mà không lãng phí lượt thăm dò lặp lại.
 
 6. **Án phạt thoát bàn (Server Penalty):**
    - Nếu client thoát bàn khi ván đang diễn ra, server chặn tham gia ~5 phút qua hộp thoại `RX -40`: `Bạn đang bị phạt vì thoát bàn khi đang chơi. Vui lòng quay lại sau M:SS`.
