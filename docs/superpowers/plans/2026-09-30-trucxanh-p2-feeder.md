@@ -27,7 +27,7 @@
 - Consumes: `this.cardImages`, `this.removedCards`.
 - Produces: `findKnownDifferentCard(excludeCardId: number, diffImg: number): number | null`.
 
-- [ ] **Step 1: Viết phương thức findKnownDifferentCard trong TrucXanhMemory**
+- [x] **Step 1: Viết phương thức findKnownDifferentCard trong TrucXanhMemory**
 
 ```typescript
   findKnownDifferentCard(excludeCardId: number, diffImg: number): number | null {
@@ -40,7 +40,7 @@
   }
 ```
 
-- [ ] **Step 2: Commit Task 1**
+- [x] **Step 2: Commit Task 1**
 
 ```bash
 git add avatar-web/server/src/tools/trucxanh-probe.ts
@@ -58,7 +58,7 @@ git commit -m "feat(probe): add findKnownDifferentCard to TrucXanhMemory"
 - Consumes: `findKnownDifferentCard`, `pickUnknownCard`, `flipCard`.
 - Produces: `executeFeederTurn(): Promise<void>`, thuộc tính `role: 'winner' | 'feeder'`.
 
-- [ ] **Step 1: Thêm thuộc tính role và nhánh rẽ executeTurn**
+- [x] **Step 1: Thêm thuộc tính role và nhánh rẽ executeTurn**
 
 Cập nhật constructor của `TrucXanhGameRunner`:
 ```typescript
@@ -85,7 +85,7 @@ Trong `executeTurn()`:
   }
 ```
 
-- [ ] **Step 2: Viết hàm executeFeederTurn thực hiện mở thăm dò và cố ý trượt cặp**
+- [x] **Step 2: Viết hàm executeFeederTurn thực hiện mở thăm dò và cố ý trượt cặp**
 
 ```typescript
   private async executeFeederTurn(): Promise<void> {
@@ -148,7 +148,7 @@ Trong `executeTurn()`:
   }
 ```
 
-- [ ] **Step 3: Commit Task 2**
+- [x] **Step 3: Commit Task 2**
 
 ```bash
 git add avatar-web/server/src/tools/trucxanh-probe.ts
@@ -166,7 +166,7 @@ git commit -m "feat(probe): implement feeder turn logic to guarantee P2 loses"
 - Consumes: `args.twoPlayers`, `args.accountId2`, `TrucXanhGameRunner`.
 - Produces: Gán `role: 'feeder'` cho `runner2`.
 
-- [ ] **Step 1: Khởi tạo runner2 với role = 'feeder'**
+- [x] **Step 1: Khởi tạo runner2 với role = 'feeder'**
 
 ```typescript
     const runner1 = new TrucXanhGameRunner(client1, args.delayMs, account1.gameUser, sharedMemory, 'P1', 'winner');
@@ -176,7 +176,7 @@ git commit -m "feat(probe): implement feeder turn logic to guarantee P2 loses"
     }
 ```
 
-- [ ] **Step 2: Commit Task 3**
+- [x] **Step 2: Commit Task 3**
 
 ```bash
 git add avatar-web/server/src/tools/trucxanh-probe.ts
@@ -190,15 +190,15 @@ git commit -m "feat(probe): wire feeder role to P2 runner in probe entry point"
 **Files:**
 - Execute: `avatar-web/server/src/tools/trucxanh-probe.ts`
 
-- [ ] **Step 1: Chạy lệnh probe với cờ --two-players**
+- [x] **Step 1: Chạy lệnh probe với cờ --two-players**
 
 ```bash
 npx --prefix avatar-web/server tsx --env-file=avatar-web/server/.env avatar-web/server/src/tools/trucxanh-probe.ts --two-players
 ```
 
-- [ ] **Step 2: Ghi nhận nhật ký ván đấu, kiểm tra kết quả P1 thắng và P2 thua**
+- [x] **Step 2: Ghi nhận nhật ký ván đấu, kiểm tra kết quả P1 thắng và P2 thua**
 
-- [ ] **Step 3: Cập nhật tài liệu protocol và kế hoạch**
+- [x] **Step 3: Cập nhật tài liệu protocol và kế hoạch**
 
 ```bash
 git add docs/protocol/avatar-map7-castle-minigame-protocol.md docs/superpowers/plans/2026-09-30-trucxanh-p2-feeder.md

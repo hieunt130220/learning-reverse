@@ -280,6 +280,8 @@ export class TrucXanhGameRunner {
   private pendingCardResolvers: Array<{
     cardId: number;
     resolve: (pkt: Extract<TrucXanhPacket, { type: 'OPENCARD' }>) => void;
+    reject: (err: Error) => void;
+    timer: NodeJS.Timeout;
   }> = [];
 
   constructor(
@@ -308,6 +310,7 @@ export class TrucXanhGameRunner {
     if (idx !== -1) {
       const resolver = this.pendingCardResolvers[idx];
       this.pendingCardResolvers.splice(idx, 1);
+      clearTimeout(resolver.timer);
       resolver.resolve(pkt);
     }
   }
@@ -345,6 +348,10 @@ export class TrucXanhGameRunner {
       case 'ENDCARD': {
         this.isPlaying = false;
         this.isMyTurn = false;
+        for (const resolver of this.pendingCardResolvers) {
+          clearTimeout(resolver.timer);
+          resolver.reject(new Error('Ván đấu đã kết thúc'));
+        }
         this.pendingCardResolvers = [];
         const isWin = pkt.win === (this.myPos === 0 ? 1 : 2);
         const isDraw = pkt.win === 0;
@@ -380,7 +387,10 @@ export class TrucXanhGameRunner {
         await this.executeWinnerTurn();
       }
     } catch (err) {
-      console.error(`❌ [${this.tag}] Lỗi thực thi lượt (${this.role}): ${(err as Error).message}`);
+      const msg = (err as Error).message;
+      if (!msg.includes('kết thúc')) {
+        console.error(`❌ [${this.tag}] Lỗi thực thi lượt (${this.role}): ${msg}`);
+      }
     } finally {
       this.turnLock = false;
     }
@@ -503,20 +513,26 @@ export class TrucXanhGameRunner {
         reject(new Error('Ván đấu hoặc lượt đi đã kết thúc'));
         return;
       }
-      const timer = setTimeout(() => {
-        const idx = this.pendingCardResolvers.findIndex((r) => r.cardId === cardId);
-        if (idx !== -1) this.pendingCardResolvers.splice(idx, 1);
-        reject(new Error(`[${this.tag}] Hết giờ chờ phản hồi lật thẻ #${cardId}`));
-      }, timeoutMs);
-
-      this.pendingCardResolvers.push({
+      const entry: {
+        cardId: number;
+        resolve: (pkt: Extract<TrucXanhPacket, { type: 'OPENCARD' }>) => void;
+        reject: (err: Error) => void;
+        timer: NodeJS.Timeout;
+      } = {
         cardId,
         resolve: (pkt) => {
-          clearTimeout(timer);
+          clearTimeout(entry.timer);
           resolve(pkt);
         },
-      });
+        reject,
+        timer: setTimeout(() => {
+          const idx = this.pendingCardResolvers.findIndex((r) => r.cardId === cardId);
+          if (idx !== -1) this.pendingCardResolvers.splice(idx, 1);
+          reject(new Error(`[${this.tag}] Hết giờ chờ phản hồi lật thẻ #${cardId}`));
+        }, timeoutMs),
+      };
 
+      this.pendingCardResolvers.push(entry);
       sendOpenCard(this.client, cardId);
     });
   }
@@ -532,6 +548,7 @@ export interface TrucXanhProbeArgs {
   twoPlayers?: boolean;
   delayMs: number;
   timeoutSec: number;
+  zone: number;
 }
 
 export function parseArgs(argv: string[]): TrucXanhProbeArgs {
@@ -540,6 +557,7 @@ export function parseArgs(argv: string[]): TrucXanhProbeArgs {
   let twoPlayers = false;
   let delayMs = 900;
   let timeoutSec = 300;
+  let customZone: number | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i];
@@ -554,6 +572,9 @@ export function parseArgs(argv: string[]): TrucXanhProbeArgs {
       accountId2 = Number(nextVal);
       twoPlayers = true;
       i++;
+    } else if ((key === '--zone' || key === '-z') && nextVal) {
+      customZone = Number(nextVal);
+      i++;
     } else if ((key === '--delay' || key === '-d') && nextVal) {
       delayMs = Number(nextVal);
       i++;
@@ -567,7 +588,9 @@ export function parseArgs(argv: string[]): TrucXanhProbeArgs {
     accountId2 = accountId === 1 ? 2 : 1;
   }
 
-  return { accountId, accountId2, twoPlayers, delayMs, timeoutSec };
+  const zone = customZone ?? (twoPlayers ? 15 : 0);
+
+  return { accountId, accountId2, twoPlayers, delayMs, timeoutSec, zone };
 }
 
 function assertAvatarWebStopped(port: number): Promise<void> {
@@ -719,7 +742,11 @@ async function preparePlayerInMap7(
   client: GameClient,
   account: { host: string; port: number; gameUser: string; device?: unknown },
   gamePass: string,
+  zone: number = 0,
 ): Promise<void> {
+  client.on('log', (msg) => console.log(`[CLIENT LOG] ${msg}`));
+  client.on('dialog', (dlg: { text: string }) => console.log(`[CLIENT DIALOG] ${dlg.text}`));
+
   // 1. Login
   console.log(`[LOGIN] Đang kết nối tài khoản ${account.gameUser}...`);
   await loginWithTimeout(
@@ -742,18 +769,18 @@ async function preparePlayerInMap7(
   client.enterParkContext();
   await parkAck;
 
-  // 3. Gia nhập Map 7 Khu 0
+  // 3. Gia nhập Map 7 Khu `zone`
   const pos = NATIVE_PARK_JOIN_POSITIONS[7] ?? { x: 524, y: 423 };
-  console.log(`[MAP 7] Vào Map 7 Khu 0 (tọa độ native ${pos.x}, ${pos.y})...`);
-  const joinParkAck = waitForParkJoinResponse(client, 5_000, 7, 0);
+  console.log(`[MAP 7] Vào Map 7 Khu ${zone} (tọa độ native ${pos.x}, ${pos.y})...`);
+  const joinParkAck = waitForParkJoinResponse(client, 5_000, 7, zone);
   client.sendRaw(80, [
     { t: 'i8', v: '7' },
-    { t: 'i8', v: '0' },
+    { t: 'i8', v: String(zone) },
     { t: 'i16', v: String(pos.x) },
     { t: 'i16', v: String(pos.y) },
   ]);
   await joinParkAck;
-  console.log('[MAP 7] Đã vào Map 7 Khu 0 thành công!');
+  console.log(`[MAP 7] Đã vào Map 7 Khu ${zone} thành công!`);
 }
 
 export async function runTrucXanhProbe(args: TrucXanhProbeArgs): Promise<void> {
@@ -782,11 +809,11 @@ export async function runTrucXanhProbe(args: TrucXanhProbeArgs): Promise<void> {
 
   try {
     console.log(`\n=================== CHUẨN BỊ TÀI KHOẢN 1 (#${args.accountId} - ${account1.gameUser}) ===================`);
-    await preparePlayerInMap7(client1, account1, pass1);
+    await preparePlayerInMap7(client1, account1, pass1, args.zone);
 
     if (client2 && account2 && pass2) {
       console.log(`\n=================== CHUẨN BỊ TÀI KHOẢN 2 (#${args.accountId2} - ${account2.gameUser}) ===================`);
-      await preparePlayerInMap7(client2, account2, pass2);
+      await preparePlayerInMap7(client2, account2, pass2, args.zone);
     }
 
     // Khởi tạo Bộ nhớ chung & Runner cho các người chơi (P1 Winner ăn điểm, P2 Feeder nhường điểm)
@@ -866,7 +893,7 @@ export async function runTrucXanhProbe(args: TrucXanhProbeArgs): Promise<void> {
     sendJoinGame(client1);
 
     if (client2) {
-      await new Promise((r) => setTimeout(r, 1200));
+      await new Promise((r) => setTimeout(r, 400));
       console.log('🎲 [TRÚC XANH P2] Gửi TX -90 [1, 0] tham gia bàn chơi...');
       sendJoinGame(client2);
     }
@@ -879,7 +906,10 @@ export async function runTrucXanhProbe(args: TrucXanhProbeArgs): Promise<void> {
       await new Promise((r) => setTimeout(r, 500));
     }
 
-    if (!gameFinished) {
+    if (gameFinished) {
+      // Chờ các log và tổng kết ván từ cả 2 phía hiển thị hoàn tất
+      await new Promise((r) => setTimeout(r, 1500));
+    } else {
       console.log(`\n⏳ Hết thời gian chờ ván đấu (${args.timeoutSec}s)`);
     }
 

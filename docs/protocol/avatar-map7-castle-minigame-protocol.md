@@ -124,3 +124,17 @@ Cả 2 minigame đều đã được **kiểm chứng trực tiếp trên live s
   - Ván đấu kết thúc với gói `RX -90` (13b): `0104010000000c00000004118e`
     - Điểm số chung cuộc: `DungBaVi9x` = 12, `xinkn01` = 4.
     - Hộp quà nhận được: ID `#4494`.
+
+### 5.3 Bằng chứng thực tế Chế độ 2 Tài khoản: P1 Winner vs P2 Feeder (2026-09-30)
+- **Tài khoản 1 (P1 - Winner):** `0975720501` (`xinkn01`, ID: `136826058`, vị trí `Player #0`).
+- **Tài khoản 2 (P2 - Feeder):** `0979198175` (`Yeuanhlinh`, ID: `1005161`, vị trí `Player #1`).
+- **Cơ chế chiến thuật Feeder của P2:**
+  - Thẻ 1: Lật ô chưa biết hình để thăm dò và đồng bộ ảnh vào `sharedMemory`.
+  - Thẻ 2: Tìm thẻ đã biết có hình KHÁC (`findKnownDifferentCard`), cố tình lật lệch thẻ để 100% trượt cặp (`isMatch = false`).
+  - Lượt chơi lập tức chuyển về cho P1; P1 dùng Perfect Memory thu hoạch trọn vẹn điểm số.
+- **Kết quả ván đấu thực tế:**
+  - P1 (Winner): **12 điểm** — 🏆 **CHIẾN THẮNG** (mã server: 1, `win = 1`).
+  - P2 (Feeder): **2 điểm** (chỉ có điểm do 2 thẻ lượt đầu ngẫu nhiên trùng) — ❌ **THẤT BẠI**.
+  - Phần thưởng nhận về cho P1: 🎁 **Hộp quà ID #4494**.
+  - Kết thúc trận an toàn, cả 2 tài khoản logout sạch sẽ, không bị án phạt thoát bàn.
+
