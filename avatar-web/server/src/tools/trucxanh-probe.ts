@@ -235,6 +235,15 @@ export class TrucXanhMemory {
     return null;
   }
 
+  findKnownDifferentCard(excludeCardId: number, diffImg: number): number | null {
+    for (const [cId, img] of this.cardImages.entries()) {
+      if (cId !== excludeCardId && img !== diffImg && !this.isRemoved(cId)) {
+        return cId;
+      }
+    }
+    return null;
+  }
+
   pickUnknownCard(excludeCard?: number): number | null {
     const candidates: number[] = [];
     for (let i = 0; i < this.totalCards; i++) {
@@ -279,6 +288,7 @@ export class TrucXanhGameRunner {
     private readonly username: string = '',
     memory?: TrucXanhMemory,
     readonly tag: string = 'P1',
+    readonly role: 'winner' | 'feeder' = 'winner',
   ) {
     this.memory = memory ?? new TrucXanhMemory();
   }
@@ -364,61 +374,126 @@ export class TrucXanhGameRunner {
     if (this.turnLock || !this.isPlaying || !this.isMyTurn) return;
     this.turnLock = true;
     try {
-      while (this.isPlaying && this.isMyTurn) {
-        this.turnCount++;
-        console.log(`\n👉 --- [${this.tag} LƯỢT #${this.turnCount}] ĐẾN LƯỢT BẠN ĐI ---`);
-        await new Promise((r) => setTimeout(r, this.delayMs));
-        if (!this.isPlaying || !this.isMyTurn) break;
-
-        // 1. Kiểm tra cặp thẻ đã biết trong bộ nhớ
-        const pair = this.memory.findKnownPair();
-        if (pair) {
-          console.log(`🧠 [${this.tag} PERFECT MEMORY] Đã nhớ cặp giống nhau: Ô #${pair[0]} và Ô #${pair[1]}! Lật ngay!`);
-          await this.flipCard(pair[0]);
-          await new Promise((r) => setTimeout(r, this.delayMs));
-          if (!this.isPlaying) break;
-          const opened2 = await this.flipCard(pair[1]);
-          if (!opened2.isMatch) break;
-          continue; // Ghép đúng -> Giữ lượt, tiếp tục vòng lặp!
-        }
-
-        // 2. Chưa có cặp biết trước -> Lật thăm dò thẻ 1
-        const card1 = this.memory.pickUnknownCard();
-        if (card1 === null) {
-          console.log(`⚠️ [${this.tag}] Không còn thẻ nào khả dụng trên bàn`);
-          break;
-        }
-
-        console.log(`🔍 [${this.tag} THĂM DÒ] Lật thẻ thứ 1: Ô #${card1}`);
-        const opened1 = await this.flipCard(card1);
-        await new Promise((r) => setTimeout(r, this.delayMs));
-        if (!this.isPlaying) break;
-
-        // 3. Sau khi thẻ 1 mở ra, kiểm tra xem hình này đã từng xuất hiện ở ô khác chưa
-        const matchCard = this.memory.findMatchFor(card1, opened1.img);
-        if (matchCard !== null) {
-          console.log(`🎯 [${this.tag} TRÚNG CẶP] Thẻ 1 (Hình #${opened1.img}) khớp với Ô #${matchCard} đã nhớ! Lật thẻ 2!`);
-          const opened2 = await this.flipCard(matchCard);
-          if (!opened2.isMatch) break;
-          continue; // Ghép đúng -> Giữ lượt, tiếp tục vòng lặp!
-        }
-
-        // 4. Nếu chưa từng thấy hình này, lật thăm dò tiếp thẻ 2
-        const card2 = this.memory.pickUnknownCard(card1);
-        if (card2 === null) {
-          console.log(`⚠️ [${this.tag}] Không tìm được thẻ thứ 2 hợp lệ`);
-          break;
-        }
-
-        console.log(`🔍 [${this.tag} THĂM DÒ] Lật thẻ thứ 2: Ô #${card2}`);
-        const opened2 = await this.flipCard(card2);
-        if (!opened2.isMatch) break;
-        // Nếu ngẫu nhiên trúng cặp, continue tiếp tục lượt
+      if (this.role === 'feeder') {
+        await this.executeFeederTurn();
+      } else {
+        await this.executeWinnerTurn();
       }
     } catch (err) {
-      console.error(`❌ [${this.tag}] Lỗi thực thi lượt: ${(err as Error).message}`);
+      console.error(`❌ [${this.tag}] Lỗi thực thi lượt (${this.role}): ${(err as Error).message}`);
     } finally {
       this.turnLock = false;
+    }
+  }
+
+  private async executeWinnerTurn(): Promise<void> {
+    while (this.isPlaying && this.isMyTurn) {
+      this.turnCount++;
+      console.log(`\n👉 --- [${this.tag} LƯỢT #${this.turnCount}] ĐẾN LƯỢT BẠN ĐI ---`);
+      await new Promise((r) => setTimeout(r, this.delayMs));
+      if (!this.isPlaying || !this.isMyTurn) break;
+
+      // 1. Kiểm tra cặp thẻ đã biết trong bộ nhớ
+      const pair = this.memory.findKnownPair();
+      if (pair) {
+        console.log(`🧠 [${this.tag} PERFECT MEMORY] Đã nhớ cặp giống nhau: Ô #${pair[0]} và Ô #${pair[1]}! Lật ngay!`);
+        await this.flipCard(pair[0]);
+        await new Promise((r) => setTimeout(r, this.delayMs));
+        if (!this.isPlaying) break;
+        const opened2 = await this.flipCard(pair[1]);
+        if (!opened2.isMatch) break;
+        continue; // Ghép đúng -> Giữ lượt, tiếp tục vòng lặp!
+      }
+
+      // 2. Chưa có cặp biết trước -> Lật thăm dò thẻ 1
+      const card1 = this.memory.pickUnknownCard();
+      if (card1 === null) {
+        console.log(`⚠️ [${this.tag}] Không còn thẻ nào khả dụng trên bàn`);
+        break;
+      }
+
+      console.log(`🔍 [${this.tag} THĂM DÒ] Lật thẻ thứ 1: Ô #${card1}`);
+      const opened1 = await this.flipCard(card1);
+      await new Promise((r) => setTimeout(r, this.delayMs));
+      if (!this.isPlaying) break;
+
+      // 3. Sau khi thẻ 1 mở ra, kiểm tra xem hình này đã từng xuất hiện ở ô khác chưa
+      const matchCard = this.memory.findMatchFor(card1, opened1.img);
+      if (matchCard !== null) {
+        console.log(`🎯 [${this.tag} TRÚNG CẶP] Thẻ 1 (Hình #${opened1.img}) khớp với Ô #${matchCard} đã nhớ! Lật thẻ 2!`);
+        const opened2 = await this.flipCard(matchCard);
+        if (!opened2.isMatch) break;
+        continue; // Ghép đúng -> Giữ lượt, tiếp tục vòng lặp!
+      }
+
+      // 4. Nếu chưa từng thấy hình này, lật thăm dò tiếp thẻ 2
+      const card2 = this.memory.pickUnknownCard(card1);
+      if (card2 === null) {
+        console.log(`⚠️ [${this.tag}] Không tìm được thẻ thứ 2 hợp lệ`);
+        break;
+      }
+
+      console.log(`🔍 [${this.tag} THĂM DÒ] Lật thẻ thứ 2: Ô #${card2}`);
+      const opened2 = await this.flipCard(card2);
+      if (!opened2.isMatch) break;
+      // Nếu ngẫu nhiên trúng cặp, continue tiếp tục lượt
+    }
+  }
+
+  private async executeFeederTurn(): Promise<void> {
+    while (this.isPlaying && this.isMyTurn) {
+      this.turnCount++;
+      console.log(`\n👉 --- [${this.tag} FEEDER LƯỢT #${this.turnCount}] ĐẾN LƯỢT P2 (NHƯỜNG ĐIỂM) ---`);
+      await new Promise((r) => setTimeout(r, this.delayMs));
+      if (!this.isPlaying || !this.isMyTurn) break;
+
+      // 1. Thẻ 1: Mở ô chưa biết để lấy thông tin hình ảnh cho P1
+      let card1 = this.memory.pickUnknownCard();
+      if (card1 === null) {
+        // Nếu toàn bộ ô đều đã biết hình, chọn ô bất kỳ chưa bị removed
+        for (let i = 0; i < this.memory.totalCards; i++) {
+          if (!this.memory.isRemoved(i)) {
+            card1 = i;
+            break;
+          }
+        }
+      }
+      if (card1 === null) {
+        console.log(`⚠️ [${this.tag} FEEDER] Không còn thẻ nào khả dụng trên bàn`);
+        break;
+      }
+
+      console.log(`🔍 [${this.tag} FEEDER] Mở thăm dò thẻ 1: Ô #${card1}`);
+      const opened1 = await this.flipCard(card1);
+      await new Promise((r) => setTimeout(r, this.delayMs));
+      if (!this.isPlaying) break;
+
+      // 2. Thẻ 2: Tìm thẻ CỐ TÌNH KHÁC HÌNH để trượt điểm 100%
+      let card2 = this.memory.findKnownDifferentCard(card1, opened1.img);
+      if (card2 === null) {
+        // Chưa có thẻ nào khác hình được biết (chỉ xảy ra ở lượt đầu tiên)
+        card2 = this.memory.pickUnknownCard(card1);
+      }
+      if (card2 === null) {
+        for (let i = 0; i < this.memory.totalCards; i++) {
+          if (i !== card1 && !this.memory.isRemoved(i)) {
+            card2 = i;
+            break;
+          }
+        }
+      }
+      if (card2 === null) {
+        console.log(`⚠️ [${this.tag} FEEDER] Không tìm được thẻ thứ 2 hợp lệ`);
+        break;
+      }
+
+      console.log(`🎯 [${this.tag} FEEDER] Chọn thẻ 2 lệch hình để nhường lượt: Ô #${card2}`);
+      const opened2 = await this.flipCard(card2);
+      if (!opened2.isMatch) {
+        console.log(`✅ [${this.tag} FEEDER] Đã cố tình trượt cặp thành công! Chuyển lượt về cho P1.`);
+        break; // Trượt cặp thành công -> Chuyển lượt về cho P1
+      }
+      // Nếu ngẫu nhiên trùng ở lượt 1, tiếp tục vòng lặp nhường
     }
   }
 
@@ -714,12 +789,12 @@ export async function runTrucXanhProbe(args: TrucXanhProbeArgs): Promise<void> {
       await preparePlayerInMap7(client2, account2, pass2);
     }
 
-    // Khởi tạo Bộ nhớ chung & Runner cho các người chơi
+    // Khởi tạo Bộ nhớ chung & Runner cho các người chơi (P1 Winner ăn điểm, P2 Feeder nhường điểm)
     const sharedMemory = new TrucXanhMemory();
-    const runner1 = new TrucXanhGameRunner(client1, args.delayMs, account1.gameUser, sharedMemory, 'P1');
+    const runner1 = new TrucXanhGameRunner(client1, args.delayMs, account1.gameUser, sharedMemory, 'P1', 'winner');
     let runner2: TrucXanhGameRunner | undefined;
     if (client2 && account2) {
-      runner2 = new TrucXanhGameRunner(client2, args.delayMs, account2.gameUser, sharedMemory, 'P2');
+      runner2 = new TrucXanhGameRunner(client2, args.delayMs, account2.gameUser, sharedMemory, 'P2', 'feeder');
     }
 
     let gameFinished = false;
