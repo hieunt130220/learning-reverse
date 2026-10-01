@@ -5,7 +5,7 @@ Với mỗi target, disasm vài lệnh để lấy lời gọi named đầu tiê
 import struct, json
 import capstone
 from capstone import Cs, CS_MODE_ARM
-CS_ARCH_ARM64 = capstone.CS_ARCH_AARCH64
+CS_ARCH_ARM64 = capstone.CS_ARCH_ARM64
 
 WS = "/Users/devios/learning-reverse/avatar-re"
 SO = f"{WS}/apk_extracted/lib/arm64-v8a/libil2cpp.so"
