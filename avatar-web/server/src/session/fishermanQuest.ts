@@ -35,6 +35,12 @@ export const FISHERMAN_QUEST_FISH_MAP: Readonly<Record<string, FishermanQuestFis
     'ca he': { fishId: 4506, map: 27, ticketId: 4876 },
     he: { fishId: 4506, map: 27, ticketId: 4876 },
     'ca vang': { fishId: 4507, map: 27, ticketId: 4876 },
+    nhai: { fishId: 4508, map: 27, ticketId: 4876 },
+    'chang hiu': { fishId: 4509, map: 27, ticketId: 4876 },
+    ech: { fishId: 4510, map: 27, ticketId: 4876 },
+    sua: { fishId: 4511, map: 27, ticketId: 4876 },
+    'ca heo': { fishId: 4515, map: 27, ticketId: 4876 },
+    muc: { fishId: 4516, map: 27, ticketId: 4876 },
   });
 
 /** Lowercase + bỏ dấu tiếng Việt + trim + gộp khoảng trắng. */

@@ -77,21 +77,36 @@ export type FishingStatus =
   | 'resting';
 
 export const FISH_NAMES: Record<number, string> = {
+  // Map 14: Hồ cá rô
   444: 'Cá rô',
   449: 'Cá lòng tong',
   450: 'Cá chép vàng',
+
+  // Map 15: Hồ cá lóc
   451: 'Cá lóc',
   452: 'Cá nóc',
   453: 'Con cua',
+
+  // Map 16: Hồ cá mập
   454: 'Cá chim',
   455: 'Cá đuối',
   456: 'Cá ngựa',
   457: 'Cá mập',
+
+  // Map 27: Bến tàu / Biển Hawai
+  4503: 'Cá voi trắng',
   4504: 'Cá lia thia',
   4505: 'Cá chép',
   4506: 'Cá hề',
   4507: 'Cá vàng',
-  4510: 'Cá biển (4510)',
+  4508: 'Nhái',
+  4509: 'Chàng hiu',
+  4510: 'Ếch',
+  4511: 'Sứa',
+  4512: 'Lợn biển',
+  4513: 'Cá voi sát thủ',
+  4515: 'Cá heo',
+  4516: 'Mực',
 };
 
 export function getFishName(id: number): string {
