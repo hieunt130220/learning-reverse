@@ -9,11 +9,11 @@
 import { openDb } from '../db/index.js';
 import { getAccountById, readGamePass } from '../accounts/repo.js';
 import { GameClient } from '../game/client.js';
-import { decodeInventory } from '../game/farmData.js';
+import { decodeInventory, getProduceOrItemName } from '../game/farmData.js';
 import { loadConfig } from '../config.js';
 
 const accountId = Number(process.argv[2] ?? 1);
-const cellIdx = Number(process.argv[3] ?? 43);
+const cellIdx = Number(process.argv[3] ?? 0);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const cfg = loadConfig();
@@ -48,10 +48,17 @@ if (raw) {
   console.log(`đuôi chưa map        : ${d.restHex}`);
 }
 
-const x = c.farmState!.cells[cellIdx]!;
-console.log(
-  `\nô ${cellIdx}: idTree=${x.idTree} time=${x.time} vitality=${x.vitalityPer} hervestPer=${x.hervestPer}`,
-);
+console.log('\n--- 🌾 KHO NÔNG SẢN TỔNG HỢP (GameClient.produce = Section 3 + 4) ---');
+c.produce.forEach((i, idx) => {
+  console.log(`  #${String(idx + 1).padStart(2, ' ')}: ${getProduceOrItemName(i.id)} (#${i.id}) × ${i.num}`);
+});
+
+const cell = c.farmState?.cells[cellIdx];
+if (cell) {
+  console.log(
+    `\nô ${cellIdx}: idTree=${cell.idTree} time=${cell.time} vitality=${cell.vitalityPer} hervestPer=${cell.hervestPer}`,
+  );
+}
 
 c.logout();
 process.exit(0);
