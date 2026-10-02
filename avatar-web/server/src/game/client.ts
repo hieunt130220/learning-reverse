@@ -1487,8 +1487,10 @@ export class GameClient extends EventEmitter {
         // section 4 riêng: ID hạt giống có thể trùng ID nông sản (ví dụ #4 Nho),
         // nên gộp section 1 vào kho nguyên liệu bếp sẽ đếm hạt thành nông sản.
         this.inventory = [...inv.seeds, ...inv.items];
-        this.produce = inv.other[0] ?? [];
-        this.cookingMaterials = inv.other[1] ?? [];
+        const section3 = inv.other[0] ?? [];
+        const section4 = inv.other[1] ?? [];
+        this.produce = [...section3, ...section4];
+        this.cookingMaterials = section4;
         if (inv.xu !== undefined && inv.xu >= 0) {
           this.money = inv.xu;
           this.emit('money', { type: 1, balance: inv.xu, delta: 0 });

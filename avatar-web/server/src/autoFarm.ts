@@ -1413,10 +1413,10 @@ export class AutoFarm extends EventEmitter {
               (cfg.cookingSlotPlan ?? []).map((entry) => [entry.slotIndex, entry]),
             );
 
-            // Nguyên liệu bếp chỉ đến từ Cmd70 section 3 (nông sản) và section 4
-            // (vật phẩm đặc biệt); không tính section 1 vì hạt có ID trùng nông sản.
+            // Nguyên liệu bếp lấy từ kho nông sản (Cmd70 section 3 và section 4);
+            // không tính section 1 vì hạt có ID trùng nông sản.
             const availableMaterials = new Map<number, number>();
-            for (const item of [...(this.client.produce ?? []), ...(this.client.cookingMaterials ?? [])]) {
+            for (const item of (this.client.produce ?? [])) {
               availableMaterials.set(item.id, (availableMaterials.get(item.id) ?? 0) + item.num);
             }
             const hasMaterials = (recipe: FoodRecipe): boolean =>
