@@ -1988,6 +1988,23 @@ export const KNOWN_PRODUCE_NAME_MAP: Record<number, string> = {
   124: 'Thuốc trừ sâu',
   125: 'Thuốc diệt cỏ',
   126: 'Thức ăn gia súc',
+  200: 'Bắp hạt',
+  202: 'Dưa leo',
+  204: 'Đậu nành',
+  249: 'Chuối xanh',
+  266: 'Hoa cúc khô',
+  270: 'Bí ngô',
+  271: 'Khoai tây cô đặc',
+  272: 'Dưa hấu cô đặc',
+  276: 'Thịt gà sống',
+  277: 'Gà luộc',
+  279: 'Mai rùa / Ba ba',
+  282: 'Thịt heo tươi',
+  283: 'Cá chép tươi sống',
+  286: 'Ớt xay',
+  289: 'Táo đỏ',
+  295: 'Thịt trâu tươi',
+  297: 'Vịt tươi sống',
 };
 
 // Daily quest packets use the animal species id for livestock targets
