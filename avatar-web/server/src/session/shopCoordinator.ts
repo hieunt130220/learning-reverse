@@ -5,10 +5,11 @@ import type { ShopPolicy } from '../config.js';
 import type { GameClient } from '../game/client.js';
 import type { InventoryItem } from '../game/farmData.js';
 import type { FarmService } from '../game/farmService.js';
-import type {
-  DecodedShopPacket,
-  OwnShopSlot,
-  ShopProtocolEvent,
+import {
+  resolveEffectivePriceRules,
+  type DecodedShopPacket,
+  type OwnShopSlot,
+  type ShopProtocolEvent,
 } from '../game/shopProtocol.js';
 import {
   ShopRepository,
@@ -258,7 +259,12 @@ export class ShopCoordinator {
       syncStatus: cache ? 'stale' : 'idle',
       own: cache?.own ?? null,
       market: cache?.market ?? null,
-      priceRules: cache?.priceRules ?? null,
+      priceRules: cache?.priceRules
+        ? {
+            ...cache.priceRules,
+            data: resolveEffectivePriceRules(cache.priceRules.data),
+          }
+        : null,
       activeTransaction: null,
       recentTransactions: this.repository.listTransactions(this.accountId, 20),
       capabilities,
@@ -1367,7 +1373,7 @@ export class ShopCoordinator {
           revision: (next.priceRules?.revision ?? 0) + 1,
           connectionEpoch: epoch,
           capturedAt,
-          data: event.rules.map((rule) => ({ ...rule })),
+          data: resolveEffectivePriceRules(event.rules),
         },
       };
     }
