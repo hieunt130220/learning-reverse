@@ -261,7 +261,7 @@ if (targetIndex >= 0) {
     msgUse.writer!.writeBoolean(true);
     client.session.send(msgUse);
     successCount++;
-    await sleep(1500);
+    await sleep(150);
   }
 
   await sleep(1500);
