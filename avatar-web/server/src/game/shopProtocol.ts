@@ -292,3 +292,72 @@ export function decodeShopPacket(body: Buffer): DecodedShopPacket {
     ? { event, warning: { code: 'TRAILING_BYTES', remaining } }
     : { event };
 }
+
+export interface StallInnerLimit {
+  innerMin: number;
+  innerMax: number;
+}
+
+/**
+ * Giới hạn đơn giá nghiệp vụ thực tế trên game server AvatarHD (Live-verified 100%).
+ * Server game kiểm tra giá qua 2 tầng:
+ * - Tầng 1 (Protocol cmd 103 sub 8): Khoảng giá kỹ thuật cũ (30-500 xu).
+ * - Tầng 2 (Inner Server Limit): Chặn cứng theo giá thị trường động.
+ * Khoảng giá thực tế có thể bán được là giao giữa 2 tầng:
+ * minPrice = Math.max(protocolMin, innerMin)
+ * maxPrice = Math.min(protocolMax, innerMax)
+ */
+export const STALL_INNER_PRICE_LIMITS: Readonly<Record<number, StallInnerLimit>> = Object.freeze({
+  // Cây trồng cơ bản (#0 – #10)
+  0: { innerMin: 1, innerMax: 10 },   // Cà chua
+  1: { innerMin: 1, innerMax: 10 },   // Cà rốt
+  2: { innerMin: 1, innerMax: 10 },   // Khóm (Dứa)
+  3: { innerMin: 1, innerMax: 10 },   // Dưa Hấu
+  4: { innerMin: 1, innerMax: 10 },   // Nho
+  5: { innerMin: 1, innerMax: 10 },   // Hoa Hồng
+  6: { innerMin: 1, innerMax: 10 },   // Lúa
+  7: { innerMin: 1, innerMax: 10 },   // Xoài
+  8: { innerMin: 1, innerMax: 10 },   // Thanh long
+  9: { innerMin: 1, innerMax: 10 },   // Hoa hướng dương
+  10: { innerMin: 1, innerMax: 10 },  // Hoa tulip
+
+  // Sản phẩm chăn nuôi
+  50: { innerMin: 8, innerMax: 30 },  // Trứng Gà (protocol min 10 -> 10 - 30 xu)
+  51: { innerMin: 16, innerMax: 40 }, // Sữa Bò (protocol min 20 -> 20 - 40 xu)
+  55: { innerMin: 8, innerMax: 30 },  // Trứng Vịt (protocol min 30 -> đúng 30 xu)
+  56: { innerMin: 72, innerMax: 110 },// Lông Cừu (72 - 110 xu)
+  60: { innerMin: 48, innerMax: 80 }, // Sữa Dê (protocol min 60 -> 60 - 80 xu)
+
+  // Cây vụ mùa / cao cấp
+  200: { innerMin: 1, innerMax: 20 }, // Bắp (protocol min 3 -> 3 - 20 xu)
+  201: { innerMin: 1, innerMax: 20 }, // Nha đam (protocol min 3 -> 3 - 20 xu)
+  202: { innerMin: 1, innerMax: 10 }, // Dưa Leo (2 - 10 xu)
+  204: { innerMin: 1, innerMax: 10 }, // Tỏi (2 - 10 xu)
+  248: { innerMin: 1, innerMax: 10 }, // Dâu Tây (2 - 10 xu)
+  249: { innerMin: 1, innerMax: 10 }, // Chuối (2 - 10 xu)
+  270: { innerMin: 1, innerMax: 10 }, // Bí Ngô (2 - 10 xu)
+  271: { innerMin: 3, innerMax: 30 }, // Khoai Tây (protocol min 6 -> 6 - 30 xu)
+  286: { innerMin: 1, innerMax: 10 }, // Ớt hiểm (1 - 10 xu)
+  288: { innerMin: 1, innerMax: 10 }, // Cải Thảo (3 - 10 xu)
+});
+
+/**
+ * Chuẩn hoá danh sách giá sạp thô từ server (cmd 103 sub 8) theo khoảng giá thực tế
+ * mà server chấp nhận trên wire (giao giữa protocol limits và inner server limits).
+ */
+export function resolveEffectivePriceRules(rules: readonly ShopPriceRule[]): ShopPriceRule[] {
+  return rules.map((rule) => {
+    const inner = STALL_INNER_PRICE_LIMITS[rule.itemId];
+    if (!inner) return { ...rule };
+
+    const minPrice = Math.max(rule.minPrice, inner.innerMin);
+    const maxPrice = Math.min(rule.maxPrice, inner.innerMax);
+
+    return {
+      itemId: rule.itemId,
+      minPrice: Math.min(minPrice, maxPrice),
+      maxPrice: Math.max(minPrice, maxPrice),
+    };
+  });
+}
+
