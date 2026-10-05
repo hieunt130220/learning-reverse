@@ -1976,7 +1976,7 @@ export const KNOWN_PRODUCE_NAME_MAP: Record<number, string> = {
   57: 'Mật ong',
   58: 'Thịt trâu',
   59: 'Rùa / Ba ba',
-  60: 'Cua',
+  60: 'Sữa dê',
   61: 'Tôm',
   100: 'Bình nước',
   111: 'Ớt hiểm',

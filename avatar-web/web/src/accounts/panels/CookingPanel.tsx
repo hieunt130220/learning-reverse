@@ -49,6 +49,7 @@ export const ANIMAL_PRODUCT_NAMES: Record<number, string> = {
   55: 'Thịt vịt',
   57: 'Thịt trâu',
   59: 'Thịt ba ba',
+  60: 'Sữa dê',
   200: 'Bắp hạt',
   202: 'Dưa leo',
   204: 'Đậu nành',
