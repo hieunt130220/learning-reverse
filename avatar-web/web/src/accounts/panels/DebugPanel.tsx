@@ -55,12 +55,13 @@ function ActionPanel({ accountId }: { accountId: number }) {
 }
 
 function ActionRow({ def, accountId }: { def: ActionDef; accountId: number }) {
-  const [args, setArgs] = useState<number[]>(def.args.map((a) => a.default));
+  const [args, setArgs] = useState<(number | '')[]>(def.args.map((a) => a.default));
   const [flash, setFlash] = useState('');
 
   async function run() {
     try {
-      await apiPost(`/api/accounts/${accountId}/farm`, { name: def.action, args });
+      const resolvedArgs = args.map((a, i) => (a === '' || isNaN(Number(a)) ? def.args[i]?.default ?? 0 : Number(a)));
+      await apiPost(`/api/accounts/${accountId}/farm`, { name: def.action, args: resolvedArgs });
       setFlash('đã gửi');
     } catch (e) {
       setFlash((e as Error).message);
@@ -80,8 +81,15 @@ function ActionRow({ def, accountId }: { def: ActionDef; accountId: number }) {
               value={args[i]}
               onChange={(e) => {
                 const next = [...args];
-                next[i] = Number(e.target.value);
+                next[i] = e.target.value === '' ? '' : Number(e.target.value);
                 setArgs(next);
+              }}
+              onBlur={() => {
+                if (args[i] === '' || isNaN(Number(args[i]))) {
+                  const next = [...args];
+                  next[i] = def.args[i]?.default ?? 0;
+                  setArgs(next);
+                }
               }}
             />
           </label>
@@ -159,13 +167,14 @@ function MacroPanel({ accountId, macro }: { accountId: number; macro: MacroState
 }
 
 function RawPanel({ accountId }: { accountId: number }) {
-  const [cmd, setCmd] = useState(76);
+  const [cmd, setCmd] = useState<number | ''>(76);
   const [fields, setFields] = useState<{ t: string; v: string }[]>([]);
   const [flash, setFlash] = useState('');
 
   async function send() {
     try {
-      await apiPost(`/api/accounts/${accountId}/raw`, { cmd, fields });
+      const resolvedCmd = cmd === '' || isNaN(Number(cmd)) ? 76 : Number(cmd);
+      await apiPost(`/api/accounts/${accountId}/raw`, { cmd: resolvedCmd, fields });
       setFlash('đã gửi');
     } catch (e) {
       setFlash((e as Error).message);
@@ -179,7 +188,14 @@ function RawPanel({ accountId }: { accountId: number }) {
       <p className="hint">Dò các opcode chưa chốt: chọn cmd + tự ghép field theo đúng thứ tự trên wire.</p>
       <label className="inline">
         cmd
-        <input type="number" value={cmd} onChange={(e) => setCmd(Number(e.target.value))} />
+        <input
+          type="number"
+          value={cmd}
+          onChange={(e) => setCmd(e.target.value === '' ? '' : Number(e.target.value))}
+          onBlur={() => {
+            if (cmd === '' || isNaN(Number(cmd))) setCmd(76);
+          }}
+        />
       </label>
       {fields.map((f, i) => (
         <div key={i} className="row">

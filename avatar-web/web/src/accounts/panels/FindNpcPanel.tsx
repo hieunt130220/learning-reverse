@@ -16,15 +16,29 @@ const EMPTY_CONFIG: StoredFindNpcConfigState = {
 const NOOP_BUSY = (_busy: boolean): void => {};
 const NOOP_CAPABILITY = (_supported: boolean, _snapshot?: AutomationSnapshot): void => {};
 
-function isConfigEqual(a: FindNpcConfig, b: FindNpcConfig): boolean {
+type FindNpcDraft = Omit<FindNpcConfig, 'fromMap' | 'toMap' | 'fromBoard' | 'toBoard' | 'cycleDelaySeconds'> & {
+  fromMap?: number | '';
+  toMap?: number | '';
+  fromBoard?: number | '';
+  toBoard?: number | '';
+  cycleDelaySeconds?: number | '';
+};
+
+function isConfigEqual(a: FindNpcDraft, b: FindNpcConfig): boolean {
+  const aFromMap = a.fromMap === '' ? DEFAULT_FIND_NPC_CONFIG.fromMap : (a.fromMap ?? 1);
+  const aToMap = a.toMap === '' ? DEFAULT_FIND_NPC_CONFIG.toMap : (a.toMap ?? 8);
+  const aFromBoard = a.fromBoard === '' ? DEFAULT_FIND_NPC_CONFIG.fromBoard : (a.fromBoard ?? 0);
+  const aToBoard = a.toBoard === '' ? DEFAULT_FIND_NPC_CONFIG.toBoard : (a.toBoard ?? 19);
+  const aCycleDelay = a.cycleDelaySeconds === '' ? DEFAULT_FIND_NPC_CONFIG.cycleDelaySeconds : (a.cycleDelaySeconds ?? 30);
+
   return (
     a.npcName === b.npcName &&
-    (a.fromMap ?? 1) === (b.fromMap ?? 1) &&
-    (a.toMap ?? 8) === (b.toMap ?? 8) &&
-    (a.fromBoard ?? 0) === (b.fromBoard ?? 0) &&
-    (a.toBoard ?? 19) === (b.toBoard ?? 19) &&
+    aFromMap === (b.fromMap ?? 1) &&
+    aToMap === (b.toMap ?? 8) &&
+    aFromBoard === (b.fromBoard ?? 0) &&
+    aToBoard === (b.toBoard ?? 19) &&
     (a.stopOnMaxQuantity ?? true) === (b.stopOnMaxQuantity ?? true) &&
-    (a.cycleDelaySeconds ?? 30) === (b.cycleDelaySeconds ?? 30)
+    aCycleDelay === (b.cycleDelaySeconds ?? 30)
   );
 }
 
@@ -67,7 +81,7 @@ export function FindNpcPanel({
     : undefined;
 
   const [editBase, setEditBase] = useState<StoredFindNpcConfigState>(serverConfig);
-  const [draft, setDraft] = useState<FindNpcConfig>({ ...DEFAULT_FIND_NPC_CONFIG, ...serverConfig.config });
+  const [draft, setDraft] = useState<FindNpcDraft>({ ...DEFAULT_FIND_NPC_CONFIG, ...serverConfig.config });
   const [busy, setBusy] = useState<'save' | 'start' | 'stop' | null>(null);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState<StoredFindNpcConfigState | null>(null);
@@ -79,6 +93,26 @@ export function FindNpcPanel({
   const trimmedName = draft.npcName.trim();
   const valid = [...trimmedName].length >= 1 && [...trimmedName].length <= 80;
   const dirty = !isConfigEqual(draft, editBase.config);
+
+  const handleNumberChange = (field: keyof FindNpcDraft) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setDraft((prev) => ({
+      ...prev,
+      [field]: val === '' ? '' : parseInt(val, 10),
+    }));
+    setError('');
+  };
+
+  const handleNumberBlur = (field: keyof FindNpcDraft, defaultVal: number, min: number, max: number) => () => {
+    setDraft((prev) => {
+      const cur = prev[field];
+      const num = typeof cur === 'number' && !isNaN(cur) ? cur : defaultVal;
+      return {
+        ...prev,
+        [field]: Math.max(min, Math.min(max, num)),
+      };
+    });
+  };
 
   useEffect(() => {
     if (dirty || (editBase.revision === serverConfig.revision && isConfigEqual(editBase.config, serverConfig.config))) {
@@ -143,15 +177,21 @@ export function FindNpcPanel({
     const submittedAccountId = accountId;
     setBusy('save');
     setError('');
+    const sanitizedConfig: FindNpcConfig = {
+      ...submittedDraft,
+      npcName: submittedDraft.npcName.trim(),
+      fromMap: typeof submittedDraft.fromMap === 'number' && !isNaN(submittedDraft.fromMap) ? submittedDraft.fromMap : DEFAULT_FIND_NPC_CONFIG.fromMap,
+      toMap: typeof submittedDraft.toMap === 'number' && !isNaN(submittedDraft.toMap) ? submittedDraft.toMap : DEFAULT_FIND_NPC_CONFIG.toMap,
+      fromBoard: typeof submittedDraft.fromBoard === 'number' && !isNaN(submittedDraft.fromBoard) ? submittedDraft.fromBoard : DEFAULT_FIND_NPC_CONFIG.fromBoard,
+      toBoard: typeof submittedDraft.toBoard === 'number' && !isNaN(submittedDraft.toBoard) ? submittedDraft.toBoard : DEFAULT_FIND_NPC_CONFIG.toBoard,
+      cycleDelaySeconds: typeof submittedDraft.cycleDelaySeconds === 'number' && !isNaN(submittedDraft.cycleDelaySeconds) ? submittedDraft.cycleDelaySeconds : DEFAULT_FIND_NPC_CONFIG.cycleDelaySeconds,
+    };
     try {
       const saved = await apiPut<StoredFindNpcConfigState>(
         `/api/accounts/${accountId}/automation/find-npc/config`,
         {
           expectedRevision: editBase.revision,
-          config: {
-            ...submittedDraft,
-            npcName: submittedDraft.npcName.trim(),
-          },
+          config: sanitizedConfig,
         },
       );
       if (accountRef.current !== submittedAccountId) return;
@@ -350,8 +390,9 @@ export function FindNpcPanel({
               min={0}
               max={100}
               style={{ width: '100%' }}
-              value={draft.fromMap ?? 1}
-              onChange={(e) => setDraft((prev) => ({ ...prev, fromMap: parseInt(e.target.value, 10) || 1 }))}
+              value={draft.fromMap ?? ''}
+              onChange={handleNumberChange('fromMap')}
+              onBlur={handleNumberBlur('fromMap', 1, 0, 100)}
             />
           </div>
           <div>
@@ -364,8 +405,9 @@ export function FindNpcPanel({
               min={0}
               max={100}
               style={{ width: '100%' }}
-              value={draft.toMap ?? 8}
-              onChange={(e) => setDraft((prev) => ({ ...prev, toMap: parseInt(e.target.value, 10) || 8 }))}
+              value={draft.toMap ?? ''}
+              onChange={handleNumberChange('toMap')}
+              onBlur={handleNumberBlur('toMap', 8, 0, 100)}
             />
           </div>
         </div>
@@ -381,8 +423,9 @@ export function FindNpcPanel({
               min={0}
               max={50}
               style={{ width: '100%' }}
-              value={draft.fromBoard ?? 0}
-              onChange={(e) => setDraft((prev) => ({ ...prev, fromBoard: parseInt(e.target.value, 10) || 0 }))}
+              value={draft.fromBoard ?? ''}
+              onChange={handleNumberChange('fromBoard')}
+              onBlur={handleNumberBlur('fromBoard', 0, 0, 50)}
             />
           </div>
           <div>
@@ -395,8 +438,9 @@ export function FindNpcPanel({
               min={0}
               max={50}
               style={{ width: '100%' }}
-              value={draft.toBoard ?? 19}
-              onChange={(e) => setDraft((prev) => ({ ...prev, toBoard: parseInt(e.target.value, 10) || 19 }))}
+              value={draft.toBoard ?? ''}
+              onChange={handleNumberChange('toBoard')}
+              onBlur={handleNumberBlur('toBoard', 19, 0, 50)}
             />
           </div>
         </div>
@@ -422,8 +466,9 @@ export function FindNpcPanel({
             min={5}
             max={3600}
             style={{ width: '120px' }}
-            value={draft.cycleDelaySeconds ?? 30}
-            onChange={(e) => setDraft((prev) => ({ ...prev, cycleDelaySeconds: parseInt(e.target.value, 10) || 30 }))}
+            value={draft.cycleDelaySeconds ?? ''}
+            onChange={handleNumberChange('cycleDelaySeconds')}
+            onBlur={handleNumberBlur('cycleDelaySeconds', 30, 5, 3600)}
           />
         </div>
       </div>

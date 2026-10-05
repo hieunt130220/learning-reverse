@@ -54,12 +54,12 @@ export function FishingSettingsPanel({
   const initialConfig = automation?.fishingConfig?.config ?? DEFAULT_FISHING_CONFIG;
 
   const [selectedMap, setSelectedMap] = useState<number>(initialConfig.map ?? DEFAULT_FISHING_CONFIG.map);
-  const [area, setArea] = useState<number>(initialConfig.area ?? DEFAULT_FISHING_CONFIG.area);
-  const [delayMs, setDelayMs] = useState<number>(initialConfig.castDelayMs ?? DEFAULT_FISHING_CONFIG.castDelayMs);
+  const [area, setArea] = useState<number | ''>(initialConfig.area ?? DEFAULT_FISHING_CONFIG.area);
+  const [delayMs, setDelayMs] = useState<number | ''>(initialConfig.castDelayMs ?? DEFAULT_FISHING_CONFIG.castDelayMs);
   const [autoBuyTicket, setAutoBuyTicket] = useState<boolean>(initialConfig.autoBuyTicket ?? DEFAULT_FISHING_CONFIG.autoBuyTicket);
   const [rodType, setRodType] = useState<number>(initialConfig.rodType ?? DEFAULT_FISHING_CONFIG.rodType);
   const [baitType, setBaitType] = useState<number>(initialConfig.baitType ?? DEFAULT_FISHING_CONFIG.baitType);
-  const [baitQuantity, setBaitQuantity] = useState<number>(initialConfig.baitQuantity ?? DEFAULT_FISHING_CONFIG.baitQuantity);
+  const [baitQuantity, setBaitQuantity] = useState<number | ''>(initialConfig.baitQuantity ?? DEFAULT_FISHING_CONFIG.baitQuantity);
 
   const [savingConfig, setSavingConfig] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -100,16 +100,20 @@ export function FishingSettingsPanel({
     setSaveSuccess(false);
 
     try {
+      const resolvedArea = typeof area === 'number' && !isNaN(area) ? Math.max(0, Math.min(15, area)) : DEFAULT_FISHING_CONFIG.area;
+      const resolvedDelayMs = typeof delayMs === 'number' && !isNaN(delayMs) ? Math.max(1000, delayMs) : DEFAULT_FISHING_CONFIG.castDelayMs;
+      const resolvedBaitQuantity = typeof baitQuantity === 'number' && !isNaN(baitQuantity) ? Math.max(1, Math.min(200, baitQuantity)) : DEFAULT_FISHING_CONFIG.baitQuantity;
+
       const payload = {
         expectedRevision: automation?.fishingConfig?.revision ?? 0,
         config: {
           map: selectedMap,
-          area,
-          castDelayMs: delayMs,
+          area: resolvedArea,
+          castDelayMs: resolvedDelayMs,
           autoBuyTicket,
           rodType,
           baitType,
-          baitQuantity,
+          baitQuantity: resolvedBaitQuantity,
         },
       };
 
@@ -196,7 +200,11 @@ export function FishingSettingsPanel({
                 min={0}
                 max={15}
                 value={area}
-                onChange={(e) => setArea(Number(e.target.value))}
+                onChange={(e) => setArea(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                onBlur={() => {
+                  if (area === '' || isNaN(Number(area))) setArea(DEFAULT_FISHING_CONFIG.area);
+                  else setArea(Math.max(0, Math.min(15, Number(area))));
+                }}
                 disabled={isFishing}
               />
             </div>
@@ -208,7 +216,11 @@ export function FishingSettingsPanel({
                 min={1000}
                 step={500}
                 value={delayMs}
-                onChange={(e) => setDelayMs(Number(e.target.value))}
+                onChange={(e) => setDelayMs(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                onBlur={() => {
+                  if (delayMs === '' || isNaN(Number(delayMs))) setDelayMs(DEFAULT_FISHING_CONFIG.castDelayMs);
+                  else setDelayMs(Math.max(1000, Number(delayMs)));
+                }}
                 disabled={isFishing}
               />
             </div>
@@ -284,8 +296,11 @@ export function FishingSettingsPanel({
                 min={1}
                 max={200}
                 value={baitQuantity}
-                onChange={(e) => setBaitQuantity(Number(e.target.value))}
-                onBlur={() => setBaitQuantity((prev) => Math.max(1, Math.min(200, Number(prev) || 50)))}
+                onChange={(e) => setBaitQuantity(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                onBlur={() => {
+                  if (baitQuantity === '' || isNaN(Number(baitQuantity))) setBaitQuantity(DEFAULT_FISHING_CONFIG.baitQuantity);
+                  else setBaitQuantity(Math.max(1, Math.min(200, Number(baitQuantity))));
+                }}
                 disabled={isFishing}
               />
             </div>
