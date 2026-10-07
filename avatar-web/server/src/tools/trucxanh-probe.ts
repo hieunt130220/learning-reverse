@@ -16,6 +16,9 @@
  *   npx tsx --env-file=avatar-web/server/.env avatar-web/server/src/tools/trucxanh-probe.ts --two-players
  *   hoặc:
  *   npx tsx --env-file=avatar-web/server/.env avatar-web/server/src/tools/trucxanh-probe.ts --account-id 1 --account-id-2 2
+ *
+ * Chơi nhiều ván liên tiếp:
+ *   npx tsx --env-file=avatar-web/server/.env avatar-web/server/src/tools/trucxanh-probe.ts --two-players --rounds 5
  */
 
 import { get as httpGet } from 'node:http';
@@ -235,6 +238,11 @@ export class TrucXanhMemory {
     return null;
   }
 
+  reset(): void {
+    this.cardImages.clear();
+    this.removedCards.clear();
+  }
+
   findKnownDifferentCard(excludeCardId: number, diffImg: number): number | null {
     for (const [cId, img] of this.cardImages.entries()) {
       if (cId !== excludeCardId && img !== diffImg && !this.isRemoved(cId)) {
@@ -293,6 +301,19 @@ export class TrucXanhGameRunner {
     readonly role: 'winner' | 'feeder' = 'winner',
   ) {
     this.memory = memory ?? new TrucXanhMemory();
+  }
+
+  reset(): void {
+    this.isMyTurn = false;
+    this.isPlaying = false;
+    this.turnCount = 0;
+    this.matchCount = 0;
+    this.myPos = 0;
+    this.turnLock = false;
+    for (const resolver of this.pendingCardResolvers) {
+      clearTimeout(resolver.timer);
+    }
+    this.pendingCardResolvers = [];
   }
 
   onOpenCardPacket(pkt: Extract<TrucXanhPacket, { type: 'OPENCARD' }>): void {
@@ -549,6 +570,7 @@ export interface TrucXanhProbeArgs {
   delayMs: number;
   timeoutSec: number;
   zone: number;
+  rounds: number;
 }
 
 export function parseArgs(argv: string[]): TrucXanhProbeArgs {
@@ -558,6 +580,7 @@ export function parseArgs(argv: string[]): TrucXanhProbeArgs {
   let delayMs = 900;
   let timeoutSec = 300;
   let customZone: number | undefined;
+  let rounds = 1;
 
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i];
@@ -581,6 +604,9 @@ export function parseArgs(argv: string[]): TrucXanhProbeArgs {
     } else if ((key === '--timeout' || key === '-t') && nextVal) {
       timeoutSec = Number(nextVal);
       i++;
+    } else if ((key === '--rounds' || key === '-r') && nextVal) {
+      rounds = Math.max(1, Number(nextVal));
+      i++;
     }
   }
 
@@ -590,7 +616,7 @@ export function parseArgs(argv: string[]): TrucXanhProbeArgs {
 
   const zone = customZone ?? (twoPlayers ? 15 : 0);
 
-  return { accountId, accountId2, twoPlayers, delayMs, timeoutSec, zone };
+  return { accountId, accountId2, twoPlayers, delayMs, timeoutSec, zone, rounds };
 }
 
 function assertAvatarWebStopped(port: number): Promise<void> {
@@ -825,6 +851,7 @@ export async function runTrucXanhProbe(args: TrucXanhProbeArgs): Promise<void> {
     }
 
     let gameFinished = false;
+    const roundStats: Array<{ round: number; p1Score: number; p2Score: number; p1Win: boolean; timedOut: boolean }> = [];
 
     // Lắng nghe tất cả RX trên client 1
     client1.session.on('message', (msg: Message) => {
@@ -886,39 +913,76 @@ export async function runTrucXanhProbe(args: TrucXanhProbeArgs): Promise<void> {
       });
     }
 
-    // Tham gia bàn Trúc Xanh
-    console.log('\n======================================================');
-    console.log('🎲 [TRÚC XANH P1] Gửi TX -90 [1, 0] tham gia bàn chơi...');
-    console.log('======================================================');
-    sendJoinGame(client1);
+    // === VÒNG LẶP CHƠI NHIỀU VÁN ===
+    const totalRounds = args.rounds;
+    for (let round = 1; round <= totalRounds; round++) {
+      if (round > 1) {
+        // Reset trạng thái giữa các ván
+        sharedMemory.reset();
+        runner1.reset();
+        runner2?.reset();
+        gameFinished = false;
+        console.log(`\n💤 Chờ 2s trước khi bắt đầu ván ${round}/${totalRounds}...`);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
 
-    if (client2) {
-      await new Promise((r) => setTimeout(r, 400));
-      console.log('🎲 [TRÚC XANH P2] Gửi TX -90 [1, 0] tham gia bàn chơi...');
-      sendJoinGame(client2);
+      // Tham gia bàn Trúc Xanh
+      console.log(`\n======================================================`);
+      console.log(`🎲 [VÁN ${round}/${totalRounds}] [TRÚC XANH P1] Gửi TX -90 [1, 0] tham gia bàn chơi...`);
+      console.log('======================================================');
+      sendJoinGame(client1);
+
+      if (client2) {
+        await new Promise((r) => setTimeout(r, 400));
+        console.log(`🎲 [VÁN ${round}/${totalRounds}] [TRÚC XANH P2] Gửi TX -90 [1, 0] tham gia bàn chơi...`);
+        sendJoinGame(client2);
+      }
+
+      // Chờ ván đấu hoàn thành hoặc timeout
+      const startTime = Date.now();
+      const maxMs = args.timeoutSec * 1000;
+
+      while (!gameFinished && Date.now() - startTime < maxMs) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+
+      if (gameFinished) {
+        // Chờ các log và tổng kết ván từ cả 2 phía hiển thị hoàn tất
+        await new Promise((r) => setTimeout(r, 1500));
+        // Ghi nhận kết quả ván
+        roundStats.push({
+          round,
+          p1Score: runner1.myPos === 0 ? runner1.matchCount : 0,
+          p2Score: runner2 ? (runner2.myPos === 0 ? runner2.matchCount : 0) : 0,
+          p1Win: true, // Nếu gameFinished=true thì ENDCARD handler đã in kết quả
+          timedOut: false,
+        });
+      } else {
+        console.log(`\n⏳ [VÁN ${round}/${totalRounds}] Hết thời gian chờ ván đấu (${args.timeoutSec}s)`);
+        roundStats.push({ round, p1Score: 0, p2Score: 0, p1Win: false, timedOut: true });
+      }
+
+      // Rời bàn chơi an toàn nếu ván đấu đang diễn ra dở
+      if (runner1.isPlaying || (runner2 && runner2.isPlaying)) {
+        console.log('🚪 Gửi TX -90 [1, 5] rời bàn chơi...');
+        sendOutGame(client1);
+        if (client2) sendOutGame(client2);
+        await new Promise((r) => setTimeout(r, 500));
+      }
     }
 
-    // Chờ ván đấu hoàn thành hoặc timeout
-    const startTime = Date.now();
-    const maxMs = args.timeoutSec * 1000;
-
-    while (!gameFinished && Date.now() - startTime < maxMs) {
-      await new Promise((r) => setTimeout(r, 500));
-    }
-
-    if (gameFinished) {
-      // Chờ các log và tổng kết ván từ cả 2 phía hiển thị hoàn tất
-      await new Promise((r) => setTimeout(r, 1500));
-    } else {
-      console.log(`\n⏳ Hết thời gian chờ ván đấu (${args.timeoutSec}s)`);
-    }
-
-    // Rời bàn chơi an toàn nếu ván đấu đang diễn ra dở
-    if (runner1.isPlaying || (runner2 && runner2.isPlaying)) {
-      console.log('🚪 Gửi TX -90 [1, 5] rời bàn chơi...');
-      sendOutGame(client1);
-      if (client2) sendOutGame(client2);
-      await new Promise((r) => setTimeout(r, 500));
+    // === TỔNG KẾT TẤT CẢ CÁC VÁN ===
+    if (totalRounds > 1) {
+      const completed = roundStats.filter((s) => !s.timedOut).length;
+      const timedOut = roundStats.filter((s) => s.timedOut).length;
+      console.log(`\n=================== TỔNG KẾT ${totalRounds} VÁN ĐẤU ===================`);
+      console.log(`Hoàn thành: ${completed}/${totalRounds} ván`);
+      if (timedOut > 0) console.log(`Hết giờ: ${timedOut} ván`);
+      for (const s of roundStats) {
+        const status = s.timedOut ? '⏳ HẾT GIỜ' : '✅ XONG';
+        console.log(`  Ván ${s.round}: ${status}`);
+      }
+      console.log('========================================================\n');
     }
   } finally {
     try {
