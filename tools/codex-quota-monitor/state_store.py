@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 
@@ -49,8 +49,29 @@ class StateStore:
                     pass
             raise
 
-    def is_turn_processed(self, turn_id: str) -> bool:
-        return turn_id in self.state.get("processed_turns", {})
+    def is_turn_processed(self, turn_id: str, reset_time: Optional[datetime] = None) -> bool:
+        info = self.state.get("processed_turns", {}).get(turn_id)
+        if not info:
+            return False
+
+        # If reset_time is provided, check whether this turn was triggered prematurely
+        if reset_time is not None:
+            processed_at_str = info.get("processed_at")
+            if processed_at_str:
+                try:
+                    processed_at = datetime.fromisoformat(processed_at_str)
+                    # If recorded more than 60s before quota reset, it was triggered prematurely
+                    if processed_at < reset_time - timedelta(seconds=60):
+                        return False
+                except Exception:
+                    pass
+
+        return True
+
+    def remove_turn_processed(self, turn_id: str) -> None:
+        if "processed_turns" in self.state and turn_id in self.state["processed_turns"]:
+            del self.state["processed_turns"][turn_id]
+            self._save()
 
     def get_processed_info(self, turn_id: str) -> Optional[Dict[str, Any]]:
         return self.state.get("processed_turns", {}).get(turn_id)

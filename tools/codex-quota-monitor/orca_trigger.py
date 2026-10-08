@@ -29,9 +29,16 @@ def trigger_orca_continue(
     message: str = "tiếp tục",
     dry_run: bool = False,
     delay_sec: float = 0.5,
+    switch_pane: bool = False,
 ) -> bool:
+    prefix = "[DRY-RUN] [SWITCH-PANE] " if (dry_run and switch_pane) else ("[DRY-RUN] " if dry_run else "")
+    if switch_pane:
+        action_desc = f"Chuyển pane (Cmd + ]) và gửi: '{message}' + Enter"
+    else:
+        action_desc = f"Gửi phím vào pane hiện tại: '{message}' + Enter"
+
     if dry_run:
-        print(f"[DRY-RUN] Sẽ activate Orca và gửi phím: '{message}' + Enter")
+        print(f"{prefix}Sẽ activate Orca, {action_desc}")
         return True
 
     if not is_orca_running():
@@ -39,12 +46,19 @@ def trigger_orca_continue(
         send_notification("Codex Quota Monitor", "Orca không chạy! Vui lòng mở Orca để tiếp tục.")
         return False
 
-    # AppleScript to activate Orca, delay briefly, and send keystroke followed by return
-    # key code 36 is Return / Enter in macOS
     escaped_msg = message.replace('"', '\\"')
+    switch_script = """
+    tell application "System Events"
+        -- Switch to next pane in Orca (Cmd + ])
+        key code 30 using command down
+        delay 0.5
+    end tell
+    """ if switch_pane else ""
+
     apple_script = f"""
     tell application "Orca" to activate
     delay {delay_sec}
+    {switch_script}
     tell application "System Events"
         keystroke "{escaped_msg}"
         key code 36
@@ -58,7 +72,7 @@ def trigger_orca_continue(
             text=True,
         )
         if res.returncode == 0:
-            print(f"[SUCCESS] Đã gửi lệnh '{message}' vào Orca thành công.")
+            print(f"[SUCCESS] Đã kích hoạt Orca ({action_desc}) thành công.")
             return True
         else:
             print(f"[ERROR] Lỗi khi thực thi AppleScript: {res.stderr.strip()}")

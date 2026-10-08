@@ -43,12 +43,12 @@ def cmd_status(args: argparse.Namespace) -> None:
         return
 
     print(f"Tìm thấy {len(sessions)} session(s) có turn kết thúc với usageLimitExceeded:\n")
-    header = f"{'Thread ID':<38} | {'Reset Time':<22} | {'Remaining':<18} | {'Status':<16} | {'Title'}"
+    header = f"{'Thread ID':<38} | {'Reset Time':<22} | {'Remaining':<18} | {'Status':<14} | {'Runtime Home':<16} | {'Title'}"
     print(header)
-    print("-" * 125)
+    print("-" * 145)
 
     for s in sessions:
-        is_processed = state_store.is_turn_processed(s.turn_id)
+        is_processed = state_store.is_turn_processed(s.turn_id, reset_time=s.reset_time)
         if s.reset_time:
             reset_str = s.reset_time.strftime("%Y-%m-%d %H:%M:%S")
             remaining_str = format_remaining(s.reset_time, now)
@@ -68,10 +68,11 @@ def cmd_status(args: argparse.Namespace) -> None:
             status_str = "Resumed" if is_processed else "Unknown Time"
 
         title_display = s.title.replace("\n", " ").strip()
-        if len(title_display) > 30:
-            title_display = title_display[:27] + "..."
+        if len(title_display) > 28:
+            title_display = title_display[:25] + "..."
 
-        row = f"{s.thread_id:<38} | {reset_str:<22} | {remaining_str:<18} | {status_str:<16} | {title_display}"
+        home_label = "Orca-Shared" if "orca" in s.home_dir.lower() else "Codex-Default"
+        row = f"{s.thread_id:<38} | {reset_str:<22} | {remaining_str:<18} | {status_str:<14} | {home_label:<16} | {title_display}"
         print(row)
     print()
 
@@ -124,13 +125,13 @@ def cmd_watch(args: argparse.Namespace) -> None:
             sessions = get_blocked_sessions()
 
             # Filter for sessions that:
-            # 1. Have NOT been processed yet
+            # 1. Have NOT been validly resumed yet (respecting reset_time)
             # 2. Have a known reset time
             # 3. Failed recently (within max_age_hours) or whose reset time is in the future
             recent_pending = [
                 s
                 for s in sessions
-                if not state_store.is_turn_processed(s.turn_id)
+                if not state_store.is_turn_processed(s.turn_id, reset_time=s.reset_time)
                 and s.reset_time
                 and (
                     s.reset_time > now  # upcoming reset
@@ -149,24 +150,29 @@ def cmd_watch(args: argparse.Namespace) -> None:
                     upcoming.append(s)
 
             if ready_to_trigger:
-                print(f"[{now.strftime('%H:%M:%S')}] Phát hiện {len(ready_to_trigger)} session sẵn sàng reset!")
-                for s in ready_to_trigger:
+                print(f"\n[{now.strftime('%H:%M:%S')}] Phát hiện {len(ready_to_trigger)} session sẵn sàng reset!")
+                for i, s in enumerate(ready_to_trigger):
                     title_short = s.title.replace('\n', ' ')[:35]
-                    print(f" -> Kích hoạt: {s.thread_id} ({title_short})...")
+                    switch_pane = (i > 0)
+                    print(f" -> Kích hoạt ({i+1}/{len(ready_to_trigger)}): {s.thread_id} ({title_short})...")
 
-                    ok = trigger_orca_continue(message=message, dry_run=dry_run)
+                    ok = trigger_orca_continue(
+                        message=message,
+                        dry_run=dry_run,
+                        switch_pane=switch_pane,
+                    )
                     if ok and not dry_run:
                         state_store.mark_turn_processed(
                             turn_id=s.turn_id,
                             thread_id=s.thread_id,
-                            metadata={"title": s.title, "reset_time": str(s.reset_time)},
+                            metadata={"title": s.title, "reset_time": str(s.reset_time), "home": s.home_dir},
                         )
                         send_notification(
                             "Codex Quota Monitor",
                             f"Quota đã reset! Đã gửi '{message}' vào Orca cho session: {title_short}",
                         )
-                    # Small delay between multiple triggers to avoid keystroke race condition
-                    time.sleep(2)
+                    # Delay to ensure keystrokes settle
+                    time.sleep(1.5)
 
             if upcoming:
                 earliest_reset = min(s.reset_time for s in upcoming)
