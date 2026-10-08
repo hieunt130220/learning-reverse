@@ -33,9 +33,9 @@ def trigger_orca_continue(
 ) -> bool:
     prefix = "[DRY-RUN] [SWITCH-PANE] " if (dry_run and switch_pane) else ("[DRY-RUN] " if dry_run else "")
     if switch_pane:
-        action_desc = f"Chuyển pane (Cmd + ]) và gửi: '{message}' + Enter"
+        action_desc = f"Chuyển pane (Cmd + ]), dán '{message}' (Cmd + V) và ấn Enter"
     else:
-        action_desc = f"Gửi phím vào pane hiện tại: '{message}' + Enter"
+        action_desc = f"Dán vào pane hiện tại '{message}' (Cmd + V) và ấn Enter"
 
     if dry_run:
         print(f"{prefix}Sẽ activate Orca, {action_desc}")
@@ -51,18 +51,42 @@ def trigger_orca_continue(
     tell application "System Events"
         -- Switch to next pane in Orca (Cmd + ])
         key code 30 using command down
-        delay 0.5
+        delay 0.4
     end tell
     """ if switch_pane else ""
 
+    # Use clipboard paste (Cmd + V) instead of keystroke:
+    # 1. Bypasses Vietnamese Telex/VNI IME mangling (e.g. 'tiếp tục' -> 'tiap tac').
+    # 2. Avoids IME composing state that swallows the Enter key.
+    # 3. Ctrl + U clears any existing draft text in the prompt before pasting.
     apple_script = f"""
+    set savedClip to ""
+    try
+        set savedClip to the clipboard
+    end try
+
+    set the clipboard to "{escaped_msg}"
+
     tell application "Orca" to activate
     delay {delay_sec}
     {switch_script}
     tell application "System Events"
-        keystroke "{escaped_msg}"
+        -- Clear any partial/stray text in current input line (Ctrl + U)
+        keystroke "u" using control down
+        delay 0.1
+        -- Paste clean UTF-8 text directly via clipboard (Cmd + V)
+        keystroke "v" using command down
+        delay 0.25
+        -- Submit prompt
         key code 36
     end tell
+
+    delay 0.4
+    try
+        if savedClip is not "" then
+            set the clipboard to savedClip
+        end if
+    end try
     """
 
     try:
