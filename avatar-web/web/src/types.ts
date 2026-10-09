@@ -418,6 +418,7 @@ export interface MiningConfig {
   readonly switchAreaWhenDepleted: boolean;
   readonly maxAreasToScan: number;
   readonly delayBetweenActionsMs: number;
+  readonly returnToFarm?: boolean;
 }
 
 export interface StoredMiningConfigState {

@@ -191,6 +191,7 @@ export interface MiningConfig {
   readonly switchAreaWhenDepleted: boolean;
   readonly maxAreasToScan: number;
   readonly delayBetweenActionsMs: number;
+  readonly returnToFarm?: boolean;
 }
 
 export const DEFAULT_MINING_CONFIG: MiningConfig = Object.freeze({
@@ -199,6 +200,7 @@ export const DEFAULT_MINING_CONFIG: MiningConfig = Object.freeze({
   switchAreaWhenDepleted: true,
   maxAreasToScan: 10,
   delayBetweenActionsMs: 3000,
+  returnToFarm: true,
 });
 
 export interface StoredMiningConfigState {
