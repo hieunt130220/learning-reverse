@@ -34,7 +34,7 @@
 - Consumes: `this.isAutomationGenerationCurrent`, `this.isCurrent`, `this.stopActiveAutomation`, `this.startDesiredAutomation`, `this.switchAutomationMode`, `this.pushLog`, `this.sleepAbortable`
 - Produces: `private fishingRetryCount: number`, `private static readonly MAX_FISHING_RETRIES: number`, `private handleFishingFailure(client, generation, epoch, reason, mode): Promise<void>`
 
-- [ ] **Step 1: Khai báo thuộc tính và hằng số retry trong class `AvatarSession`**
+- [x] **Step 1: Khai báo thuộc tính và hằng số retry trong class `AvatarSession`**
 
 Tại vùng khai báo private field của `AvatarSession` (quanh dòng 385):
 ```typescript
@@ -42,7 +42,7 @@ Tại vùng khai báo private field của `AvatarSession` (quanh dòng 385):
   private static readonly MAX_FISHING_RETRIES = 3;
 ```
 
-- [ ] **Step 2: Thêm reset `fishingRetryCount = 0` tại các điểm mốc thành công và chuyển mode**
+- [x] **Step 2: Thêm reset `fishingRetryCount = 0` tại các điểm mốc thành công và chuyển mode**
 
 1. Trong `switchAutomationMode`: Khi người dùng chủ động kích hoạt chuyển mode:
 ```typescript
@@ -57,7 +57,7 @@ this.fishingRetryCount = 0;
 this.fishingRetryCount = 0;
 ```
 
-- [ ] **Step 3: Cài đặt phương thức `handleFishingFailure`**
+- [x] **Step 3: Cài đặt phương thức `handleFishingFailure`**
 
 Thêm phương thức xử lý lỗi tập trung vào `AvatarSession`:
 ```typescript
@@ -129,12 +129,12 @@ Thêm phương thức xử lý lỗi tập trung vào `AvatarSession`:
   }
 ```
 
-- [ ] **Step 4: Verify syntax & build**
+- [x] **Step 4: Verify syntax & build**
 
 Run: `cd avatar-web/server && npm run build`  
 Expected: Build thành công không có lỗi type error.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add avatar-web/server/src/session/avatarSession.ts
@@ -152,7 +152,7 @@ git commit -m "feat(session): add fishing retry counter and failure handler"
 - Consumes: `this.startFishingLoop`, `this.runFishingLoop`, `this.handleFishingFailure`
 - Produces: Phát hiện lỗi dừng câu trong `startFishingLoop` và kích hoạt `handleFishingFailure` khi ở `auto_fishing`.
 
-- [ ] **Step 1: Cập nhật `startFishingLoop` để bắt lỗi và phát hiện dừng bất thường**
+- [x] **Step 1: Cập nhật `startFishingLoop` để bắt lỗi và phát hiện dừng bất thường**
 
 Trong `startFishingLoop` (quanh dòng 2640-2665):
 Ghi nhận `failureReason`:
@@ -203,12 +203,12 @@ Ghi nhận `failureReason`:
   }
 ```
 
-- [ ] **Step 2: Verify build**
+- [x] **Step 2: Verify build**
 
 Run: `cd avatar-web/server && npm run build`  
 Expected: Build thành công không có lỗi type error.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add avatar-web/server/src/session/avatarSession.ts
@@ -226,7 +226,7 @@ git commit -m "feat(session): trigger retry and fallback on auto_fishing failure
 - Consumes: `this.startFishermanQuestLoop`, `this.runFishermanQuestLoop`, `this.handleFishingFailure`
 - Produces: Phát hiện lỗi dừng câu hoặc lỗi quest trong `runFishermanQuestLoop`/`startFishermanQuestLoop` và kích hoạt `handleFishingFailure`.
 
-- [ ] **Step 1: Phát hiện lỗi vòng lặp câu cá con và lỗi giải mã quest trong `runFishermanQuestLoop`**
+- [x] **Step 1: Phát hiện lỗi vòng lặp câu cá con và lỗi giải mã quest trong `runFishermanQuestLoop`**
 
 1. Tại vòng lặp `for (;;)` trong `runFishermanQuestLoop` (quanh dòng 2810):
 Kiểm tra nếu `this.fishingRuntime.status === 'rejected'`:
@@ -259,7 +259,7 @@ Khi không nhận diện được cá:
       }
 ```
 
-- [ ] **Step 2: Cập nhật `startFishermanQuestLoop` để kích hoạt `handleFishingFailure`**
+- [x] **Step 2: Cập nhật `startFishermanQuestLoop` để kích hoạt `handleFishingFailure`**
 
 Trong `startFishermanQuestLoop` (quanh dòng 2705):
 ```typescript
@@ -305,12 +305,12 @@ Trong `startFishermanQuestLoop` (quanh dòng 2705):
   }
 ```
 
-- [ ] **Step 3: Verify build**
+- [x] **Step 3: Verify build**
 
 Run: `cd avatar-web/server && npm run build`  
 Expected: Build thành công không có lỗi type error.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add avatar-web/server/src/session/avatarSession.ts
@@ -327,14 +327,14 @@ git commit -m "feat(session): trigger retry and fallback on auto_fisherman_quest
 **Interfaces:**
 - Consumes: Test suites hiện tại, GitNexus CLI/MCP
 
-- [ ] **Step 1: Chạy toàn bộ test suites hiện tại của `avatarSession.test.ts`**
+- [x] **Step 1: Chạy toàn bộ test suites hiện tại của `avatarSession.test.ts`**
 
 Run: `cd avatar-web/server && npm test -- src/session/avatarSession.test.ts`  
 Expected: Toàn bộ 275 tests PASS, 0 fail.
 
-- [ ] **Step 2: Phân tích thay đổi đồ thị GitNexus trước khi hoàn tất**
+- [x] **Step 2: Phân tích thay đổi đồ thị GitNexus trước khi hoàn tất**
 
 Run GitNexus tool `detect_changes({ scope: "all" })`  
 Expected: Không có cycle mới, quan sát các execution flow bị tác động (`startFishingLoop`, `startFishermanQuestLoop`).
 
-- [ ] **Step 3: Cập nhật tài liệu / checklist hoàn tất plan**
+- [x] **Step 3: Cập nhật tài liệu / checklist hoàn tất plan**
