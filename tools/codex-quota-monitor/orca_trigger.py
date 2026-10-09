@@ -76,8 +76,10 @@ def trigger_orca_continue(
         delay 0.1
         -- Paste clean UTF-8 text directly via clipboard (Cmd + V)
         keystroke "v" using command down
-        delay 0.25
-        -- Submit prompt
+        delay 0.6
+        -- Submit prompt (double Return ensures submission if first keycode resolves focus)
+        key code 36
+        delay 0.3
         key code 36
     end tell
 
