@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from db_reader import BlockedSession, get_blocked_sessions
-from orca_trigger import send_notification, trigger_orca_continue
+from orca_trigger import send_notification, trigger_orca_continue, trigger_session_continue
 from state_store import StateStore
 
 
@@ -88,7 +88,12 @@ def cmd_resume(args: argparse.Namespace) -> None:
     title = target_session.title if target_session else thread_id
     print(f"[RESUME] Bắt đầu kích hoạt cho session: {thread_id} ({title})")
 
-    success = trigger_orca_continue(message=args.message, dry_run=args.dry_run)
+    success = trigger_session_continue(
+        thread_id=target_session.thread_id if target_session else thread_id,
+        message=args.message,
+        home_dir=target_session.home_dir if target_session else None,
+        dry_run=args.dry_run,
+    )
     if success:
         if not args.dry_run and target_session:
             state_store.mark_turn_processed(
@@ -156,8 +161,10 @@ def cmd_watch(args: argparse.Namespace) -> None:
                     switch_pane = (i > 0)
                     print(f" -> Kích hoạt ({i+1}/{len(ready_to_trigger)}): {s.thread_id} ({title_short})...")
 
-                    ok = trigger_orca_continue(
+                    ok = trigger_session_continue(
+                        thread_id=s.thread_id,
                         message=message,
+                        home_dir=s.home_dir,
                         dry_run=dry_run,
                         switch_pane=switch_pane,
                     )

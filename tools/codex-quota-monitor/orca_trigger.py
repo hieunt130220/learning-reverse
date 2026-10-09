@@ -1,6 +1,46 @@
+import os
 import shutil
 import subprocess
 from typing import Optional
+
+
+def trigger_codex_queue(
+    thread_id: str,
+    message: str = "tiếp tục",
+    home_dir: Optional[str] = None,
+    dry_run: bool = False,
+) -> bool:
+    """Gửi message trực tiếp vào queue IPC của Codex CLI thông qua 'codex queue'.
+
+    Cơ chế này hoàn toàn không phụ thuộc GUI, không cần Orca focus hay activate,
+    không bị ảnh hưởng bởi màn hình khoá/tắt hay bộ gõ tiếng Việt.
+    """
+    if dry_run:
+        print(f"[DRY-RUN] Sẽ gửi message '{message}' trực tiếp vào session {thread_id} qua codex queue (home={home_dir})")
+        return True
+
+    env = os.environ.copy()
+    if home_dir:
+        env["CODEX_HOME"] = os.path.abspath(os.path.expanduser(home_dir))
+
+    try:
+        res = subprocess.run(
+            ["codex", "queue", "--thread", thread_id, "--message", message],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if res.returncode == 0:
+            print(f"[SUCCESS] Đã gửi message '{message}' trực tiếp vào session {thread_id} qua native IPC (codex queue).")
+            return True
+        else:
+            err_msg = res.stderr.strip() or res.stdout.strip()
+            print(f"[WARN] codex queue trả về lỗi: {err_msg}")
+            return False
+    except Exception as e:
+        print(f"[WARN] Ngoại lệ khi gọi codex queue: {e}")
+        return False
 
 
 def is_orca_running() -> bool:
@@ -106,3 +146,34 @@ def trigger_orca_continue(
     except Exception as e:
         print(f"[ERROR] Ngoại lệ khi kích hoạt Orca: {e}")
         return False
+
+
+def trigger_session_continue(
+    thread_id: Optional[str] = None,
+    message: str = "tiếp tục",
+    home_dir: Optional[str] = None,
+    dry_run: bool = False,
+    switch_pane: bool = False,
+) -> bool:
+    """Trigger tiếp tục session.
+
+    Chiến lược ưu tiên:
+    1. Native IPC (codex queue): Độc lập GUI, chạy chuẩn xác khi màn hình khoá/tắt/không focus.
+    2. Fallback AppleScript GUI: Chỉ dùng khi native IPC không thực hiện được (hoặc thread_id thiếu).
+    """
+    if thread_id:
+        ok = trigger_codex_queue(
+            thread_id=thread_id,
+            message=message,
+            home_dir=home_dir,
+            dry_run=dry_run,
+        )
+        if ok:
+            return True
+        print("[INFO] Fallback sang kích hoạt giao diện Orca qua AppleScript...")
+
+    return trigger_orca_continue(
+        message=message,
+        dry_run=dry_run,
+        switch_pane=switch_pane,
+    )
