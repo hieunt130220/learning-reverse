@@ -383,6 +383,8 @@ export class AvatarSession {
   private fishingChallengeGeneration = 0;
   private readonly consumedFishingChallenges = new Set<number>();
   private fishingInferenceClient?: ProductionInferenceClient;
+  private fishingRetryCount = 0;
+  private static readonly MAX_FISHING_RETRIES = 3;
 
   private readonly logs: LogLine[] = [];
   private readonly traffic: TrafficEntry[] = [];
@@ -604,6 +606,7 @@ export class AvatarSession {
       let generation = enqueuedGeneration;
       try {
         this.desiredMode = intent.desiredMode;
+        this.fishingRetryCount = 0;
         try {
           this.opts.onDesiredModeChange?.(intent.desiredMode);
         } catch {
@@ -1287,6 +1290,7 @@ export class AvatarSession {
       this.cancelPendingFishingChallenge();
       this.recordMlResult(ev.idFish >= 0);
       if (ev.idFish >= 0) {
+        this.fishingRetryCount = 0;
         const fishName = getFishName(ev.idFish);
         const caughtAt = this.now();
         this.fishingRuntime.totalCatches += 1;
@@ -2637,6 +2641,73 @@ export class AvatarSession {
     return true;
   }
 
+  /**
+   * Xử lý khi auto câu cá hoặc nhiệm vụ thợ câu gặp lỗi khiến dừng câu.
+   * Dừng auto hiện tại, khởi động lại từ đầu tối đa 3 lần. Nếu vẫn lỗi thì chuyển sang auto_farm.
+   */
+  private async handleFishingFailure(
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    reason: string,
+    mode: 'auto_fishing' | 'auto_fisherman_quest',
+  ): Promise<void> {
+    if (
+      !this.isAutomationGenerationCurrent(generation)
+      || !this.isCurrent(client, epoch)
+      || client.status !== 'online'
+      || this.desiredMode !== mode
+    ) {
+      return;
+    }
+
+    const modeTag = mode === 'auto_fishing' ? '[câu cá]' : '[thợ câu]';
+
+    if (this.fishingRetryCount < AvatarSession.MAX_FISHING_RETRIES) {
+      this.fishingRetryCount += 1;
+      this.pushLog(
+        `${modeTag} Gặp lỗi khiến dừng câu: ${reason}. Đã dừng auto, khởi động lại từ đầu (lần ${this.fishingRetryCount}/${AvatarSession.MAX_FISHING_RETRIES}) sau 5s...`,
+      );
+
+      // BẮT BUỘC DỪNG AUTO TRƯỚC: hủy controller, timer, farm schedule, gửi cauCaXong()
+      await this.stopActiveAutomation(generation);
+
+      await this.sleepAbortable(5_000, new AbortController().signal);
+
+      if (
+        !this.isAutomationGenerationCurrent(generation)
+        || !this.isCurrent(client, epoch)
+        || client.status !== 'online'
+        || this.desiredMode !== mode
+      ) {
+        return;
+      }
+
+      this.pushLog(`${modeTag} Bắt đầu khởi động lại chế độ từ đầu (lần ${this.fishingRetryCount})...`);
+      this.fishingRuntime.status = 'idle';
+      this.fishingRuntime.lastError = null;
+
+      await this.startDesiredAutomation(client, generation, epoch);
+    } else {
+      this.pushLog(
+        `${modeTag} Đã thử lại ${AvatarSession.MAX_FISHING_RETRIES} lần nhưng vẫn gặp lỗi ("${reason}"). Chuyển sang chế độ tự động nông trại.`,
+      );
+      this.fishingRetryCount = 0;
+      this.fishingRuntime.status = 'idle';
+      this.fishingRuntime.lastError = null;
+
+      void this.switchAutomationMode({
+        desiredMode: 'auto_farm',
+        findNpcConfig: this.findNpcConfig,
+        fishingConfig: this.fishingConfig,
+        miningConfig: this.miningConfig,
+        mazeConfig: this.mazeConfig,
+        schoolConfig: this.schoolConfig,
+        location: this.automationLocation,
+      });
+    }
+  }
+
   private startFishingLoop(client: GameClient, generation: number, epoch: number): void {
     this.cancelFishingFarmSchedule();
     if (this.fishingAbortController) {
@@ -2646,21 +2717,36 @@ export class AvatarSession {
     this.fishingAbortController = abort;
 
     void (async () => {
+      let failureReason: string | null = null;
       try {
         await this.runFishingLoop(client, generation, epoch, abort.signal);
       } catch (err) {
+        failureReason = (err as Error).message;
         if (
           !abort.signal.aborted
           && this.fishingAbortController === abort
           && this.isAutomationGenerationCurrent(generation)
           && this.isCurrent(client, epoch)
         ) {
-          this.pushLog(`[câu cá] lỗi vòng lặp: ${(err as Error).message}`);
+          this.pushLog(`[câu cá] lỗi vòng lặp: ${failureReason}`);
         }
       } finally {
         if (this.fishingAbortController === abort) {
           this.cancelFishingFarmSchedule();
           this.fishingAbortController = undefined;
+        }
+      }
+
+      if (
+        !abort.signal.aborted
+        && this.desiredMode === 'auto_fishing'
+        && this.isAutomationGenerationCurrent(generation)
+        && this.isCurrent(client, epoch)
+        && client.status === 'online'
+      ) {
+        if (this.fishingRuntime.status === 'rejected' || failureReason !== null) {
+          const reason = failureReason ?? this.fishingRuntime.lastError ?? 'Lỗi không xác định';
+          void this.handleFishingFailure(client, generation, epoch, reason, 'auto_fishing');
         }
       }
     })();
@@ -2708,22 +2794,36 @@ export class AvatarSession {
     const abort = new AbortController();
     this.fishermanQuestAbort = abort;
     void (async () => {
+      let questError: string | null = null;
       try {
         await this.runFishermanQuestLoop(client, generation, epoch, abort.signal);
       } catch (err) {
+        questError = (err as Error).message;
         if (
           !abort.signal.aborted
           && this.fishermanQuestAbort === abort
           && this.isAutomationGenerationCurrent(generation)
           && this.isCurrent(client, epoch)
         ) {
-          const message = (err as Error).message;
-          this.pushLog(`[thợ câu] lỗi vòng lặp: ${message}`);
-          this.updateFishermanQuest({ phase: 'stopped', lastError: message });
+          this.pushLog(`[thợ câu] lỗi vòng lặp: ${questError}`);
+          this.updateFishermanQuest({ phase: 'stopped', lastError: questError });
           this.emitAutomation();
         }
       } finally {
         if (this.fishermanQuestAbort === abort) this.fishermanQuestAbort = undefined;
+      }
+
+      if (
+        !abort.signal.aborted
+        && this.desiredMode === 'auto_fisherman_quest'
+        && this.isAutomationGenerationCurrent(generation)
+        && this.isCurrent(client, epoch)
+        && client.status === 'online'
+      ) {
+        if (this.fishermanQuestRuntime.phase === 'stopped' || questError !== null) {
+          const reason = questError ?? this.fishermanQuestRuntime.lastError ?? 'Lỗi không xác định';
+          void this.handleFishingFailure(client, generation, epoch, reason, 'auto_fisherman_quest');
+        }
       }
     })();
   }
@@ -2782,7 +2882,7 @@ export class AvatarSession {
           targetMap: null,
         });
         this.emitAutomation();
-        return;
+        throw new Error(message);
       }
       const needed = Math.max(0, next.total - next.current);
       this.updateFishermanQuest({
@@ -2809,6 +2909,15 @@ export class AvatarSession {
       for (;;) {
         await this.sleepOrQuestWake(5_000, signal);
         if (!alive()) return;
+
+        // 0. Kiểm tra nếu vòng lặp câu cá bên dưới bị lỗi dừng lại (status === 'rejected')
+        if (this.fishingRuntime.status === 'rejected') {
+          const reason = this.fishingRuntime.lastError ?? 'Vòng lặp câu cá bị từ chối';
+          this.pushLog(`[thợ câu] phát hiện vòng lặp câu cá bị lỗi: ${reason}`);
+          this.updateFishermanQuest({ phase: 'stopped', lastError: reason });
+          this.emitAutomation();
+          throw new Error(reason);
+        }
 
         // 1. Kiểm tra ngay trong RAM: nếu quest title hoặc step đã đổi -> break ngay
         const fresh = client.fishermanQuestState;
@@ -2854,6 +2963,7 @@ export class AvatarSession {
           break;
         }
         if (freshCondAfterSync.current > next.current) {
+          this.fishingRetryCount = 0;
           this.pushLog(`[thợ câu] tiến độ server: ${freshCondAfterSync.current}/${freshCondAfterSync.total}.`);
         }
         this.updateFishermanQuest({ phase: 'fishing' });
@@ -4058,7 +4168,11 @@ export class AvatarSession {
               castMissingType,
               castRequiredBaitId ?? undefined,
             );
-            if (!bought) return;
+            if (!bought) {
+              this.fishingRuntime.status = 'rejected';
+              this.emitAutomation();
+              return;
+            }
             // Sau khi mua, gửi cauCaXong để kết thúc session câu cũ
             // rồi bắt đầu lại từ startFishing qua startFishingSession
             try { client.cauCaXong(); } catch { /* bỏ qua */ }
