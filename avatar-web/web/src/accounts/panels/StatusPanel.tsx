@@ -6,6 +6,7 @@ import { StatusBanner } from '../StatusBanner.js';
 import type { AutomationSnapshot, AutoConfigResponse, AutoConfigStateDto, SessionSnapshot } from '../../types.js';
 import { formatFishingStatus } from './FishingPanel.js';
 import { MiningTargetModal } from '../MiningTargetModal.js';
+import { SchoolConfigModal } from '../SchoolConfigModal.js';
 
 type StatusAutomationMode =
   | 'auto_farm'
@@ -13,6 +14,7 @@ type StatusAutomationMode =
   | 'auto_fisherman_quest'
   | 'auto_mining'
   | 'auto_maze'
+  | 'auto_school'
   | 'find_npc';
 
 export function StatusPanel({
@@ -40,6 +42,7 @@ export function StatusPanel({
   const [autoErr, setAutoErr] = useState('');
   const [selectedMode, setSelectedMode] = useState<StatusAutomationMode>('auto_farm');
   const [showMiningModal, setShowMiningModal] = useState(false);
+  const [showSchoolModal, setShowSchoolModal] = useState(false);
   const [logoutAfterCycle, setLogoutAfterCycle] = useState(true);
   const [loadingOpt, setLoadingOpt] = useState(false);
   const [savingOpt, setSavingOpt] = useState(false);
@@ -70,6 +73,7 @@ export function StatusPanel({
       snapshotMode === 'auto_fisherman_quest' ||
       snapshotMode === 'auto_mining' ||
       snapshotMode === 'auto_maze' ||
+      snapshotMode === 'auto_school' ||
       snapshotMode === 'find_npc'
     ) {
       setSelectedMode(snapshotMode);
@@ -114,6 +118,13 @@ export function StatusPanel({
           : '';
       const openedStr = mz?.sessionChestsOpened ? ` · đã mở: ${mz.sessionChestsOpened} rương` : '';
       return `mê cung: ${areaStr}${statusStr}${openedStr}`;
+    }
+    if (progressMode === 'auto_school') {
+      const s = automation.schoolRuntime;
+      const subName = s?.subject === 'en' ? 'Lớp Tiếng Anh' : 'Lớp Tiếng Việt';
+      const boardStr = s?.currentArea !== null && s?.currentArea !== undefined ? ` (Khu ${s.currentArea})` : '';
+      const targetStr = s?.targetWins && s.targetWins > 0 ? `/${s.targetWins}` : '';
+      return `trường học: ${subName}${boardStr} · Đúng: ${s?.correctCount ?? 0}${targetStr} câu`;
     }
     if (progressMode === 'auto_mining') {
       const m = automation.miningRuntime;
@@ -177,6 +188,10 @@ export function StatusPanel({
     if (autoActive || mutationBusy) return;
     if (selectedMode === 'auto_mining') {
       setShowMiningModal(true);
+      return;
+    }
+    if (selectedMode === 'auto_school') {
+      setShowSchoolModal(true);
       return;
     }
     setAutoAction('start');
@@ -315,6 +330,15 @@ export function StatusPanel({
         </button>
         <button
           type="button"
+          className={`automation-mode-button${selectedMode === 'auto_school' ? ' active' : ''}`}
+          aria-pressed={selectedMode === 'auto_school'}
+          disabled={controlsLocked}
+          onClick={() => setSelectedMode('auto_school')}
+        >
+          🎓 Trường học
+        </button>
+        <button
+          type="button"
           className={`automation-mode-button${selectedMode === 'find_npc' ? ' active' : ''}`}
           aria-pressed={selectedMode === 'find_npc'}
           disabled={controlsLocked}
@@ -384,6 +408,15 @@ export function StatusPanel({
         open={showMiningModal}
         accountId={accountId}
         onClose={() => setShowMiningModal(false)}
+        onSuccess={(snapshot) => {
+          if (snapshot) onAutomationChange?.(snapshot);
+          onChanged();
+        }}
+      />
+      <SchoolConfigModal
+        open={showSchoolModal}
+        accountId={accountId}
+        onClose={() => setShowSchoolModal(false)}
         onSuccess={(snapshot) => {
           if (snapshot) onAutomationChange?.(snapshot);
           onChanged();

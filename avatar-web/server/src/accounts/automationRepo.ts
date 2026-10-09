@@ -4,6 +4,7 @@ import {
   DEFAULT_FISHING_CONFIG,
   DEFAULT_MAZE_CONFIG,
   DEFAULT_MINING_CONFIG,
+  DEFAULT_SCHOOL_CONFIG,
   FISHING_BAITS,
   FISHING_RODS,
   idleFindNpcRuntime,
@@ -11,6 +12,7 @@ import {
   idleFishingRuntime,
   idleMazeRuntime,
   idleMiningRuntime,
+  idleSchoolRuntime,
   type AutomationLocation,
   type AutomationMode,
   type AutomationSnapshot,
@@ -20,10 +22,13 @@ import {
   type MazeConfig,
   type MiningConfig,
   type MiningTarget,
+  type SchoolConfig,
+  type SchoolSubject,
   type StoredFindNpcConfigState,
   type StoredFishingConfigState,
   type StoredMazeConfigState,
   type StoredMiningConfigState,
+  type StoredSchoolConfigState,
 } from '../session/automationTypes.js';
 
 export class FindNpcConfigError extends Error {
@@ -50,6 +55,14 @@ export class MazeConfigError extends Error {
   readonly code = 'invalid-maze-config' as const;
 }
 
+export class SchoolConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SchoolConfigError';
+  }
+  readonly code = 'invalid-school-config' as const;
+}
+
 interface AutomationRow {
   account_id: number;
   desired_mode: AutomationMode;
@@ -57,6 +70,7 @@ interface AutomationRow {
   fishing_config_json: string | null;
   mining_config_json: string | null;
   maze_config_json: string | null;
+  school_config_json: string | null;
   current_map: number | null;
   current_area: number | null;
   location_observed_at: number | null;
@@ -263,6 +277,54 @@ function defaultMazeConfig(): StoredMazeConfigState {
   };
 }
 
+export function defaultSchoolConfig(): StoredSchoolConfigState {
+  return {
+    revision: 0,
+    config: DEFAULT_SCHOOL_CONFIG,
+  };
+}
+
+export function normalizeSchoolConfig(input: unknown): SchoolConfig {
+  if (typeof input !== 'object' || input === null) {
+    throw new SchoolConfigError('Cấu hình Trường học phải là một object');
+  }
+  const obj = input as Record<string, unknown>;
+  const subject: SchoolSubject = obj.subject === 'vi' ? 'vi' : 'en';
+  const targetWins =
+    typeof obj.targetWins === 'number' && obj.targetWins >= 0 && obj.targetWins <= 1000
+      ? Math.floor(obj.targetWins)
+      : 0;
+  const returnToFarm = typeof obj.returnToFarm === 'boolean' ? obj.returnToFarm : true;
+
+  return {
+    subject,
+    targetWins,
+    returnToFarm,
+  };
+}
+
+function storedSchoolConfig(raw: string | null): StoredSchoolConfigState {
+  if (!raw) return defaultSchoolConfig();
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      (parsed as Record<string, unknown>).version === 1 &&
+      typeof (parsed as Record<string, unknown>).revision === 'number'
+    ) {
+      const envelope = parsed as { version: 1; revision: number; config: unknown };
+      return {
+        revision: envelope.revision,
+        config: normalizeSchoolConfig(envelope.config),
+      };
+    }
+  } catch {
+    /* JSON hỏng -> mặc định */
+  }
+  return defaultSchoolConfig();
+}
+
 export function normalizeMazeConfig(input: unknown): MazeConfig {
   if (typeof input !== 'object' || input === null) {
     throw new MazeConfigError('Cấu hình Mê cung phải là một object');
@@ -327,6 +389,7 @@ function rowToState(row: AutomationRow) {
     fishingConfig: storedFishingConfig(row.fishing_config_json),
     miningConfig: storedMiningConfig(row.mining_config_json),
     mazeConfig: storedMazeConfig(row.maze_config_json),
+    schoolConfig: storedSchoolConfig(row.school_config_json),
     location,
   };
 }
@@ -337,7 +400,7 @@ export type StoredAutomationState = ReturnType<typeof rowToState>;
 export function readAutomationState(db: Db, accountId: number): StoredAutomationState {
   const row = db
     .prepare<[number], AutomationRow>(
-      `SELECT desired_mode, find_npc_config_json, fishing_config_json, mining_config_json, maze_config_json, current_map, current_area, location_observed_at
+      `SELECT desired_mode, find_npc_config_json, fishing_config_json, mining_config_json, maze_config_json, school_config_json, current_map, current_area, location_observed_at
          FROM avatar_automation_state WHERE account_id = ?`,
     )
     .get(accountId);
@@ -348,6 +411,7 @@ export function readAutomationState(db: Db, accountId: number): StoredAutomation
       fishingConfig: defaultFishingConfig(),
       miningConfig: defaultMiningConfig(),
       mazeConfig: defaultMazeConfig(),
+      schoolConfig: defaultSchoolConfig(),
       location: null,
     };
   }
@@ -566,6 +630,57 @@ export function saveMazeConfig(
   })();
 }
 
+export type SaveSchoolConfigResult =
+  | { status: 'saved'; state: StoredSchoolConfigState }
+  | { status: 'conflict'; current: StoredSchoolConfigState }
+  | { status: 'missing' };
+
+export function saveSchoolConfig(
+  db: Db,
+  accountId: number,
+  expectedRevision: number,
+  config: SchoolConfig,
+  now = Date.now(),
+): SaveSchoolConfigResult {
+  return db.transaction((): SaveSchoolConfigResult => {
+    const owned = db
+      .prepare<[number], { user_id: number }>('SELECT user_id FROM avatar_accounts WHERE id = ?')
+      .get(accountId);
+    if (!owned) return { status: 'missing' };
+
+    const current = readAutomationState(db, accountId).schoolConfig;
+    if (
+      current.revision === expectedRevision &&
+      current.revision === 0 &&
+      !db.prepare<[number], { account_id: number }>(
+        'SELECT account_id FROM avatar_automation_state WHERE account_id = ?',
+      ).get(accountId)
+    ) {
+      db.prepare(
+        `INSERT INTO avatar_automation_state (account_id, desired_mode, updated_at)
+           VALUES (?, 'off', ?)`,
+      ).run(accountId, now);
+    } else if (current.revision !== expectedRevision) {
+      return { status: 'conflict', current };
+    }
+
+    const nextRevision = current.revision + 1;
+    const json = JSON.stringify({
+      version: 1,
+      revision: nextRevision,
+      config,
+    });
+
+    db.prepare(
+      `UPDATE avatar_automation_state
+         SET school_config_json = ?, updated_at = ?
+       WHERE account_id = ?`,
+    ).run(json, now, accountId);
+
+    return { status: 'saved', state: { revision: nextRevision, config } };
+  })();
+}
+
 /** Ghi/xóa location nguyên tử: cả ba cột cùng giá trị hoặc cùng NULL. */
 export function saveFindNpcLocation(
   db: Db,
@@ -598,10 +713,10 @@ export function listDesiredAutomation(db: Db): DesiredAutomationEntry[] {
   const rows = db
     .prepare<[], AutomationRow>(
       `SELECT account_id, desired_mode, find_npc_config_json, fishing_config_json,
-              mining_config_json, maze_config_json,
+              mining_config_json, maze_config_json, school_config_json,
               current_map, current_area, location_observed_at
          FROM avatar_automation_state
-        WHERE desired_mode IN ('auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest', 'auto_mining', 'auto_maze')
+        WHERE desired_mode IN ('auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest', 'auto_mining', 'auto_maze', 'auto_school')
         ORDER BY account_id`,
     )
     .all();
@@ -615,6 +730,7 @@ export function listDesiredAutomation(db: Db): DesiredAutomationEntry[] {
         fishingConfig: state.fishingConfig,
         miningConfig: state.miningConfig,
         mazeConfig: state.mazeConfig,
+        schoolConfig: state.schoolConfig,
         location: state.location,
       },
     };
@@ -636,6 +752,8 @@ export function offlineAutomationSnapshot(state: StoredAutomationState): Automat
     miningRuntime: idleMiningRuntime(),
     mazeConfig: state.mazeConfig,
     mazeRuntime: idleMazeRuntime(),
+    schoolConfig: state.schoolConfig,
+    schoolRuntime: idleSchoolRuntime(),
     location: state.location,
   };
 }

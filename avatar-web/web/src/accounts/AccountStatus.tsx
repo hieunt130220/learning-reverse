@@ -21,6 +21,7 @@ const MODE_LABEL: Record<AutomationMode, string> = {
   auto_fisherman_quest: 'Nhiệm vụ thợ câu',
   auto_mining: 'Khai thác',
   auto_maze: 'Mê cung',
+  auto_school: 'Trường học',
 };
 
 export function automationModeLabel(mode: AutomationMode): string {

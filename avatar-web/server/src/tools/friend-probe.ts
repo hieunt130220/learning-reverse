@@ -33,26 +33,15 @@ interface ParkUser {
   dir: number;
 }
 
-function readNativeCount(reader: MyReader, section: string): number {
-  if (reader.available() < 1) throw new Error(`Thiếu count ${section}`);
-  const raw = reader.readByte();
-  return raw < 0 ? 0 : raw;
-}
-
-function readNativeUtf(reader: MyReader, section: string): string {
-  if (reader.available() < 2) throw new Error(`Thiếu độ dài UTF ${section}`);
-  const len = reader.readUnsignedShort();
-  return reader.readBytes(len).toString('utf8');
-}
-
-function readNativeBytes(reader: MyReader, n: number, section: string): Buffer {
-  if (n < 0 || reader.available() < n) {
-    throw new Error(`Thiếu ${n} bytes ${section} (còn ${reader.available()})`);
-  }
-  return reader.readBytes(n);
-}
-
 function decodeParkUsers(body: Buffer): { roomId: number; boardId: number; users: ParkUser[] } {
+  if (body.length < 6) {
+    return {
+      roomId: body.length > 0 ? body.readInt8(0) : 0,
+      boardId: body.length > 1 ? body.readInt8(1) : 0,
+      users: [],
+    };
+  }
+
   const reader = new MyReader(body);
   const roomId = reader.readByte();
   const boardId = reader.readByte();
@@ -60,20 +49,44 @@ function decodeParkUsers(body: Buffer): { roomId: number; boardId: number; users
   const y = reader.readShort();
 
   const users: ParkUser[] = [];
-  const playerCount = readNativeCount(reader, 'listPlayer');
+  if (reader.available() < 1) {
+    return { roomId, boardId, users };
+  }
+
+  const rawCount = reader.readByte();
+  const playerCount = rawCount <= 0 || rawCount > 64 ? 0 : rawCount;
+
   for (let i = 0; i < playerCount; i += 1) {
-    const id = reader.readInt();
-    const name = readNativeUtf(reader, `player[${i}].name`);
-    const partCount = readNativeCount(reader, `player[${i}].parts`);
-    readNativeBytes(reader, partCount * 2, `player[${i}].parts`);
+    try {
+      if (reader.available() < 4) break;
+      const id = reader.readInt();
 
-    const px = reader.readShort();
-    const py = reader.readShort();
-    const dir = reader.readByte();
-    readNativeBytes(reader, 13, `player[${i}].stateTail`);
+      if (reader.available() < 2) break;
+      const nameLen = reader.readUnsignedShort();
+      if (nameLen < 0 || nameLen > 256 || reader.available() < nameLen) break;
+      const name = reader.readBytes(nameLen).toString('utf8');
 
-    if (id < 2_000_000_000 && id > 0) {
-      users.push({ id, name, x: px, y: py, dir });
+      if (reader.available() < 1) break;
+      const rawPart = reader.readByte();
+      const partCount = rawPart <= 0 || rawPart > 64 ? 0 : rawPart;
+      if (reader.available() < partCount * 2) break;
+      reader.readBytes(partCount * 2);
+
+      if (reader.available() < 5) break;
+      const px = reader.readShort();
+      const py = reader.readShort();
+      const dir = reader.readByte();
+
+      const tailLen = Math.min(reader.available(), 13);
+      if (tailLen > 0) {
+        reader.readBytes(tailLen);
+      }
+
+      if (id < 2_000_000_000 && id > 0) {
+        users.push({ id, name, x: px, y: py, dir });
+      }
+    } catch {
+      break;
     }
   }
   return { roomId, boardId, users };
@@ -355,20 +368,26 @@ async function main() {
         console.log(`\n[Client 1] >>> Vào Map ${m}, Khu ${a}...`);
 
         const parkJoinPromise = new Promise<{ roomId: number; boardId: number; users: ParkUser[] }>((resolve) => {
+          let timer: NodeJS.Timeout | undefined;
+          const cleanup = () => {
+            if (timer) clearTimeout(timer);
+            client1.session.removeListener('message', onMsg);
+          };
           const onMsg = (msg: Message) => {
             if (msg.command === 80) {
-              client1.session.removeListener('message', onMsg);
-              try {
-                resolve(decodeParkUsers(msg.getData()));
-              } catch (e) {
-                console.error('Lỗi giải mã gói 80:', e);
-                resolve({ roomId: m, boardId: a, users: [] });
+              const decoded = decodeParkUsers(msg.getData());
+              if (decoded.roomId === m && decoded.boardId === a) {
+                cleanup();
+                resolve(decoded);
               }
+            } else if (msg.command === -40) {
+              cleanup();
+              resolve({ roomId: m, boardId: a, users: [] });
             }
           };
           client1.session.on('message', onMsg);
-          setTimeout(() => {
-            client1.session.removeListener('message', onMsg);
+          timer = setTimeout(() => {
+            cleanup();
             resolve({ roomId: m, boardId: a, users: [] });
           }, 3500);
         });

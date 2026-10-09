@@ -5,12 +5,14 @@ import {
   normalizeFindNpcConfig,
   normalizeMazeConfig,
   normalizeMiningConfig,
+  normalizeSchoolConfig,
   parseFishingConfig,
   readAutomationState,
   saveFindNpcConfig,
   saveFishingConfig,
   saveMazeConfig,
   saveMiningConfig,
+  saveSchoolConfig,
   setDesiredMode,
 } from '../accounts/automationRepo.js';
 import { DEFAULT_SEED_CATALOG } from '../accounts/defaultSeedCatalog.js';
@@ -401,6 +403,56 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     res.json({ ...saved.state, application: 'immediate' });
   });
 
+  router.get('/:id/automation/school/config', owned, (req, res) => {
+    const state = readAutomationState(db, accountId(req)).schoolConfig;
+    res.json(state);
+  });
+
+  router.put('/:id/automation/school/config', owned, (req, res) => {
+    if (
+      !exactObject(req.body, ['expectedRevision', 'config'])
+      || !Number.isInteger(req.body.expectedRevision)
+      || (req.body.expectedRevision as number) < 0
+    ) {
+      automationError(res, 400, 'invalid-school-config', 'payload cấu hình Trường học không hợp lệ');
+      return;
+    }
+    let config;
+    try {
+      config = normalizeSchoolConfig(req.body.config);
+    } catch (err) {
+      automationError(res, 400, 'invalid-school-config', (err as Error).message);
+      return;
+    }
+
+    let saved;
+    try {
+      saved = saveSchoolConfig(
+        db,
+        accountId(req),
+        req.body.expectedRevision as number,
+        config,
+      );
+    } catch {
+      automationError(res, 500, 'automation-save-failed', 'không lưu được cấu hình Trường học');
+      return;
+    }
+    if (saved.status === 'missing') {
+      res.status(404).json({ error: 'không có tài khoản này' });
+      return;
+    }
+    if (saved.status === 'conflict') {
+      automationError(res, 409, 'revision-conflict', 'revision cấu hình đã thay đổi', {
+        current: saved.current,
+      });
+      return;
+    }
+
+    // Cập nhật cấu hình ngay cho session đang chạy nếu có
+    sessions.updateSchoolConfig(accountId(req), saved.state);
+    res.json({ ...saved.state, application: 'immediate' });
+  });
+
   router.post('/:id/automation/start', owned, async (req, res) => {
     if (
       !exactObject(req.body, ['mode'])
@@ -411,6 +463,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
         && req.body.mode !== 'auto_fisherman_quest'
         && req.body.mode !== 'auto_mining'
         && req.body.mode !== 'auto_maze'
+        && req.body.mode !== 'auto_school'
       )
     ) {
       automationError(res, 400, 'invalid-automation-mode', 'mode automation không hợp lệ');
@@ -452,6 +505,7 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
             fishingConfig: stored.fishingConfig,
             miningConfig: stored.miningConfig,
             mazeConfig: stored.mazeConfig,
+            schoolConfig: stored.schoolConfig,
             location: stored.location,
           };
           const outcome = await sessions.switchAutomationMode(id, intent);

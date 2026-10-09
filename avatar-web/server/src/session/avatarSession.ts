@@ -45,6 +45,7 @@ import {
   DEFAULT_FISHING_CONFIG,
   DEFAULT_MAZE_CONFIG,
   DEFAULT_MINING_CONFIG,
+  DEFAULT_SCHOOL_CONFIG,
   FISHING_BAITS,
   FISHING_RODS,
   FISHING_TICKETS,
@@ -54,6 +55,7 @@ import {
   idleFishingRuntime,
   idleMazeRuntime,
   idleMiningRuntime,
+  idleSchoolRuntime,
   type AutomationLocation,
   type AutomationMode,
   type AutomationSnapshot,
@@ -68,14 +70,18 @@ import {
   type MiningRuntimeState,
   type MlFishingStatistics,
   type NpcMapLocation,
+  type SchoolConfig,
+  type SchoolRuntimeState,
   type StoredFindNpcConfigState,
   type StoredFishingConfigState,
   type StoredMazeConfigState,
   type StoredMiningConfigState,
+  type StoredSchoolConfigState,
 } from './automationTypes.js';
-import { defaultFishingConfig, defaultMiningConfig } from '../accounts/automationRepo.js';
+import { defaultFishingConfig, defaultMiningConfig, defaultSchoolConfig } from '../accounts/automationRepo.js';
 import { AutoMiningRunner } from '../mining/autoMining.js';
 import { AutoMazeRunner } from '../maze/autoMaze.js';
+import { AutoSchoolRunner } from '../school/autoSchool.js';
 import { pickNextFishTarget, resolveFishQuestTarget } from './fishermanQuest.js';
 import {
   emptyRuntimeSnapshot,
@@ -328,6 +334,7 @@ export class AvatarSession {
   private fishingConfig: StoredFishingConfigState = defaultFishingConfig();
   private miningConfig: StoredMiningConfigState = defaultMiningConfig();
   private mazeConfig: StoredMazeConfigState = { revision: 0, config: DEFAULT_MAZE_CONFIG };
+  private schoolConfig: StoredSchoolConfigState = defaultSchoolConfig();
   private automationLocation: AutomationLocation | null = null;
   private findNpc?: AutoFindNpc;
   private findNpcRuntime: AutoFindNpcState = idleFindNpcRuntime(DEFAULT_FIND_NPC_CONFIG.npcName);
@@ -336,6 +343,9 @@ export class AvatarSession {
   private miningRunner?: AutoMiningRunner;
   private mazeRuntime: MazeRuntimeState = idleMazeRuntime();
   private mazeRunner?: AutoMazeRunner;
+  private schoolRuntime: SchoolRuntimeState = idleSchoolRuntime();
+  private schoolRunner?: AutoSchoolRunner;
+  private gameUser?: string;
   private fishermanQuestAbort?: AbortController;
   private fishermanQuestRuntime: FishermanQuestRuntimeState = idleFishermanQuestRuntime();
   private dailyFishingStatistics: DailyFishingStatistics;
@@ -556,6 +566,14 @@ export class AvatarSession {
     this.emitAutomation();
   }
 
+  setSchoolConfig(state: StoredSchoolConfigState): void {
+    this.schoolConfig = state;
+    if (this.schoolRunner) {
+      this.schoolRunner.updateConfig(state.config);
+    }
+    this.emitAutomation();
+  }
+
   async stopAutomation(): Promise<void> {
     await this.switchAutomationMode({
       desiredMode: 'off',
@@ -601,6 +619,9 @@ export class AvatarSession {
         if (intent.mazeConfig) {
           this.mazeConfig = intent.mazeConfig;
         }
+        if (intent.schoolConfig) {
+          this.schoolConfig = intent.schoolConfig;
+        }
         this.automationLocation = intent.location;
         if (intent.desiredMode === 'find_npc') this.cancelAutoSyncKickoff();
         this.transitionState = 'switching';
@@ -637,6 +658,9 @@ export class AvatarSession {
         }
         if (intent.mazeConfig) {
           this.mazeConfig = intent.mazeConfig;
+        }
+        if (intent.schoolConfig) {
+          this.schoolConfig = intent.schoolConfig;
         }
         this.automationLocation = intent.location;
         this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
@@ -841,12 +865,17 @@ export class AvatarSession {
     return this.desiredMode === 'auto_maze' || this.activeMode === 'auto_maze';
   }
 
+  private schoolOwnsOrTargetsContext(): boolean {
+    return this.desiredMode === 'auto_school' || this.activeMode === 'auto_school';
+  }
+
   private parkOwnsOrTargetsContext(): boolean {
     return (
       this.findNpcOwnsOrTargetsContext() ||
       this.fishingOwnsOrTargetsContext() ||
       this.miningOwnsOrTargetsContext() ||
-      this.mazeOwnsOrTargetsContext()
+      this.mazeOwnsOrTargetsContext() ||
+      this.schoolOwnsOrTargetsContext()
     );
   }
 
@@ -862,6 +891,9 @@ export class AvatarSession {
     }
     if (this.mazeOwnsOrTargetsContext()) {
       throw new Error('Auto Maze đang sở hữu ngữ cảnh Park; không thể chuyển sang farm');
+    }
+    if (this.schoolOwnsOrTargetsContext()) {
+      throw new Error('Auto School đang sở hữu ngữ cảnh Park; không thể chuyển sang farm');
     }
   }
 
@@ -885,6 +917,8 @@ export class AvatarSession {
       miningRuntime: this.miningRuntime,
       mazeConfig: this.mazeConfig,
       mazeRuntime: this.mazeRuntime,
+      schoolConfig: this.schoolConfig,
+      schoolRuntime: this.schoolRuntime,
       location: this.automationLocation,
     };
   }
@@ -1006,6 +1040,10 @@ export class AvatarSession {
     if (creds.automation.mazeConfig) {
       this.mazeConfig = creds.automation.mazeConfig;
     }
+    if (creds.automation.schoolConfig) {
+      this.schoolConfig = creds.automation.schoolConfig;
+    }
+    this.gameUser = creds.user;
     this.automationLocation = creds.automation.location;
     this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
     this.lastAutoConfig = creds.autoConfig ?? {};
@@ -1703,6 +1741,13 @@ export class AvatarSession {
       this.pushLog('[mê cung] đã dừng tự động Mê cung.');
     }
     this.mazeRuntime = idleMazeRuntime();
+    if (this.activeMode === 'auto_school' || this.schoolRunner) {
+      const runner = this.schoolRunner;
+      this.schoolRunner = undefined;
+      if (runner) runner.stop();
+      this.pushLog('[trường học] đã dừng tự động trường học.');
+    }
+    this.schoolRuntime = idleSchoolRuntime();
     this.fishingRuntime.status = 'idle';
     this.fishermanQuestRuntime = idleFishermanQuestRuntime();
     if (!this.isAutomationGenerationCurrent(generation)) return false;
@@ -1915,12 +1960,52 @@ export class AvatarSession {
             fishingConfig: this.fishingConfig,
             miningConfig: this.miningConfig,
             mazeConfig: this.mazeConfig,
+            schoolConfig: this.schoolConfig,
             location: this.automationLocation,
           });
         },
         onLog: (msg) => this.pushLog(msg),
       });
       void this.mazeRunner.start(this.mazeConfig.config);
+      return true;
+    }
+    if (this.desiredMode === 'auto_school') {
+      if (
+        !this.isAutomationGenerationCurrent(generation)
+        || !this.isCurrent(client, epoch)
+        || client.status !== 'online'
+      ) return false;
+      this.activeMode = 'auto_school';
+      const subName = this.schoolConfig.config.subject === 'en' ? 'Tiếng Anh' : 'Tiếng Việt';
+      this.pushLog(`[trường học] bắt đầu tự động trường học (Lớp ${subName}).`);
+      this.schoolRunner = new AutoSchoolRunner(client, this.schoolConfig.config, {
+        accountId: this.opts.accountId,
+        gameUser: this.gameUser,
+        onStateChange: (state) => {
+          this.schoolRuntime = state;
+          this.emitAutomation();
+        },
+        onRequestStop: (_reason, message) => {
+          if (message) this.pushLog(`[trường học] ${message}`);
+          if (this.schoolConfig.config.returnToFarm) {
+            this.pushLog('[trường học] chuyển sang chế độ tự động nông trại.');
+            void this.switchAutomationMode({
+              desiredMode: 'auto_farm',
+              findNpcConfig: this.findNpcConfig,
+              fishingConfig: this.fishingConfig,
+              miningConfig: this.miningConfig,
+              mazeConfig: this.mazeConfig,
+              schoolConfig: this.schoolConfig,
+              location: this.automationLocation,
+            });
+          } else {
+            this.pushLog('[trường học] hoàn thành và dừng tự động.');
+            void this.stopAutomation();
+          }
+        },
+        onLog: (msg) => this.pushLog(msg),
+      });
+      void this.schoolRunner.start();
       return true;
     }
     return true;
@@ -2053,6 +2138,11 @@ export class AvatarSession {
       this.mazeRunner = undefined;
     }
     this.mazeRuntime = idleMazeRuntime();
+    if (this.schoolRunner) {
+      this.schoolRunner.stop();
+      this.schoolRunner = undefined;
+    }
+    this.schoolRuntime = idleSchoolRuntime();
     this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
     this.emitAutomation();
     this.pushLog(reason);
@@ -2086,6 +2176,11 @@ export class AvatarSession {
       this.mazeRunner = undefined;
     }
     this.mazeRuntime = idleMazeRuntime();
+    if (this.schoolRunner) {
+      this.schoolRunner.stop();
+      this.schoolRunner = undefined;
+    }
+    this.schoolRuntime = idleSchoolRuntime();
     this.activeMode = 'off';
     this.findNpcRuntime = idleFindNpcRuntime(this.findNpcConfig.config.npcName);
     this.emitAutomation();
@@ -2154,6 +2249,18 @@ export class AvatarSession {
     const finder = this.findNpc;
     this.findNpc = undefined;
     if (finder) void finder.stop();
+    if (this.miningRunner) {
+      void this.miningRunner.stop();
+      this.miningRunner = undefined;
+    }
+    if (this.mazeRunner) {
+      void this.mazeRunner.stop();
+      this.mazeRunner = undefined;
+    }
+    if (this.schoolRunner) {
+      this.schoolRunner.stop();
+      this.schoolRunner = undefined;
+    }
     if (this.fishingAbortController) {
       this.fishingAbortController.abort();
       this.fishingAbortController = undefined;

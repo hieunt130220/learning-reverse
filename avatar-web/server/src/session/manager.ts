@@ -33,6 +33,7 @@ import type {
   StoredFishingConfigState,
   StoredMazeConfigState,
   StoredMiningConfigState,
+  StoredSchoolConfigState,
 } from './automationTypes.js';
 import { FIND_NPC_DISABLED } from './featureFlags.js';
 import { runtimeSnapshotPatchFromEvent } from './runtimeCache.js';
@@ -227,6 +228,10 @@ export class SessionManager {
 
   updateMazeConfig(accountId: number, state: StoredMazeConfigState): void {
     this.sessions.get(accountId)?.setMazeConfig?.(state);
+  }
+
+  updateSchoolConfig(accountId: number, state: StoredSchoolConfigState): void {
+    this.sessions.get(accountId)?.setSchoolConfig?.(state);
   }
 
   async stopAutomation(accountId: number): Promise<void> {

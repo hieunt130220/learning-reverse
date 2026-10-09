@@ -10,8 +10,56 @@ export type AutomationMode =
   | 'auto_fishing'
   | 'auto_fisherman_quest'
   | 'auto_mining'
-  | 'auto_maze';
+  | 'auto_maze'
+  | 'auto_school';
 export type AutomationTransitionState = 'stable' | 'switching';
+
+export type SchoolSubject = 'en' | 'vi';
+
+export interface SchoolConfig {
+  readonly subject: SchoolSubject;
+  readonly targetWins: number; // 0 = không giới hạn
+  readonly returnToFarm: boolean; // mặc định true
+}
+
+export const DEFAULT_SCHOOL_CONFIG: SchoolConfig = Object.freeze({
+  subject: 'en',
+  targetWins: 0,
+  returnToFarm: true,
+});
+
+export interface StoredSchoolConfigState {
+  revision: number;
+  config: SchoolConfig;
+}
+
+export interface SchoolRuntimeState {
+  readonly phase: 'idle' | 'moving' | 'waiting_students' | 'answering' | 'finished';
+  readonly subject: SchoolSubject;
+  readonly currentMap: number | null;
+  readonly currentArea: number | null;
+  readonly correctCount: number;
+  readonly targetWins: number;
+  readonly lastQuestion: string | null;
+  readonly lastAnswer: string | null;
+  readonly lastWinner: string | null;
+  readonly lastError: string | null;
+}
+
+export function idleSchoolRuntime(): SchoolRuntimeState {
+  return {
+    phase: 'idle',
+    subject: 'en',
+    currentMap: null,
+    currentArea: null,
+    correctCount: 0,
+    targetWins: 0,
+    lastQuestion: null,
+    lastAnswer: null,
+    lastWinner: null,
+    lastError: null,
+  };
+}
 
 export interface FishingConfig {
   readonly map: number;
@@ -287,6 +335,7 @@ export interface LoadedAutomationIntent {
   fishingConfig?: StoredFishingConfigState;
   miningConfig?: StoredMiningConfigState;
   mazeConfig?: StoredMazeConfigState;
+  schoolConfig?: StoredSchoolConfigState;
   location: AutomationLocation | null;
 }
 
@@ -366,6 +415,8 @@ export interface AutomationSnapshot {
   miningRuntime?: MiningRuntimeState;
   mazeConfig?: StoredMazeConfigState;
   mazeRuntime?: MazeRuntimeState;
+  schoolConfig?: StoredSchoolConfigState;
+  schoolRuntime?: SchoolRuntimeState;
   location: AutomationLocation | null;
 }
 
@@ -413,6 +464,7 @@ export type AutomationApiErrorCode =
   | 'invalid-fishing-config'
   | 'invalid-mining-config'
   | 'invalid-maze-config'
+  | 'invalid-school-config'
   | 'automation-save-failed';
 
 export function idleFindNpcRuntime(targetName = 'Chú Cuội'): AutoFindNpcState {

@@ -24,7 +24,7 @@ import { GameClient } from '../game/client.js';
 import { Message } from '../proto/message.js';
 import { MyReader } from '../proto/reader.js';
 import { loadConfig } from '../config.js';
-import { FarmState } from '../game/farmTypes.js';
+import { FarmState } from '../game/farmData.js';
 
 interface FriendEntry {
   id: number;

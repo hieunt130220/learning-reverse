@@ -50,6 +50,10 @@ avatar-web/server/captcha-dataset/
 # Python venv
 .venv-captcha312/
 
+# --- teacher dictionary ---
+!avatar-web/server/data/
+!avatar-web/server/data/teacher-dict-*.json
+
 # --- captcha resolver production runtime ---
 !captcha-solver/data/
 captcha-solver/data/*

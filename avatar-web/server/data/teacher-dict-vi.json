@@ -1,0 +1,4220 @@
+[
+  {
+    "question": "tròng trành như nón không ..., như thuyền không lái, như gái không chồng.",
+    "prefix": "tròng trành như nón không",
+    "suffix": ", như thuyền không lái, như gái không chồng.",
+    "answer": "quai"
+  },
+  {
+    "question": "cau không buồng ra tuồng cau đực, ... không vợ cực lắm anh ơi!",
+    "prefix": "cau không buồng ra tuồng cau đực,",
+    "suffix": "không vợ cực lắm anh ơi!",
+    "answer": "trai"
+  },
+  {
+    "question": "nhớ ai dãi nắng dầm sương, nhớ ai ... nước bên đường hôm mai.",
+    "prefix": "nhớ ai dãi nắng dầm sương, nhớ ai",
+    "suffix": "nước bên đường hôm mai.",
+    "answer": "tát"
+  },
+  {
+    "question": "mười quan tiền công không bằng một ... tiền thưởng.",
+    "prefix": "mười quan tiền công không bằng một",
+    "suffix": "tiền thưởng.",
+    "answer": "đồng"
+  },
+  {
+    "question": "trâu bò ... nhau ruồi muỗi chết.",
+    "prefix": "trâu bò",
+    "suffix": "nhau ruồi muỗi chết.",
+    "answer": "húc"
+  },
+  {
+    "question": "trên trời có ông sao thần, bốn ... chỉ lối cho dân ăn làm.",
+    "prefix": "trên trời có ông sao thần, bốn",
+    "suffix": "chỉ lối cho dân ăn làm.",
+    "answer": "mùa"
+  },
+  {
+    "question": "mặt trời tang tảng rạng ..., chàng ơi, trở dậy ra đồng kẻo trưa!",
+    "prefix": "mặt trời tang tảng rạng",
+    "suffix": ", chàng ơi, trở dậy ra đồng kẻo trưa!",
+    "answer": "đông"
+  },
+  {
+    "question": "bán anh em xa ... láng giềng gần.",
+    "prefix": "bán anh em xa",
+    "suffix": "láng giềng gần.",
+    "answer": "mua"
+  },
+  {
+    "question": "muốn ăn ... súng mắm kho, thì vô đồng tháp ăn no đã thèm.",
+    "prefix": "muốn ăn",
+    "suffix": "súng mắm kho, thì vô đồng tháp ăn no đã thèm.",
+    "answer": "bông"
+  },
+  {
+    "question": "một miếng lộc thánh bằng một ... lộc trần.",
+    "prefix": "một miếng lộc thánh bằng một",
+    "suffix": "lộc trần.",
+    "answer": "gánh"
+  },
+  {
+    "question": "anh em như thể ... chân.",
+    "prefix": "anh em như thể",
+    "suffix": "chân.",
+    "answer": "tay"
+  },
+  {
+    "question": "mẹ dạy thì con ..., bố dạy thì con khôn.",
+    "prefix": "mẹ dạy thì con",
+    "suffix": ", bố dạy thì con khôn.",
+    "answer": "khéo"
+  },
+  {
+    "question": "ốc chẳng mang nổi ... ốc, ốc lại còn mang cọc cho rêu.",
+    "prefix": "ốc chẳng mang nổi",
+    "suffix": "ốc, ốc lại còn mang cọc cho rêu.",
+    "answer": "mình"
+  },
+  {
+    "question": "lợn giò, bò ..., vịt già, gà tơ.",
+    "prefix": "lợn giò, bò",
+    "suffix": ", vịt già, gà tơ.",
+    "answer": "bắp"
+  },
+  {
+    "question": "gái tham tài, ... tham sắc.",
+    "prefix": "gái tham tài,",
+    "suffix": "tham sắc.",
+    "answer": "trai"
+  },
+  {
+    "question": "được chim bẻ ná, được ... quên nơm.",
+    "prefix": "được chim bẻ ná, được",
+    "suffix": "quên nơm.",
+    "answer": "cá"
+  },
+  {
+    "question": "sông lở ... bồi.",
+    "prefix": "sông lở",
+    "suffix": "bồi.",
+    "answer": "cát"
+  },
+  {
+    "question": "ở xa nghe tiếng em ..., trong tay cầm nén vàng mười cũng trao.",
+    "prefix": "ở xa nghe tiếng em",
+    "suffix": ", trong tay cầm nén vàng mười cũng trao.",
+    "answer": "cười"
+  },
+  {
+    "question": "làm thân con ... phải lo, mùa đông rét mướt ai cho mượn chồng.",
+    "prefix": "làm thân con",
+    "suffix": "phải lo, mùa đông rét mướt ai cho mượn chồng.",
+    "answer": "gái"
+  },
+  {
+    "question": "chớ bán gà ngày gió, chớ ... chó ngày mưa.",
+    "prefix": "chớ bán gà ngày gió, chớ",
+    "suffix": "chó ngày mưa.",
+    "answer": "bán"
+  },
+  {
+    "question": "ao sâu ... cá, nước cả cá to.",
+    "prefix": "ao sâu",
+    "suffix": "cá, nước cả cá to.",
+    "answer": "tốt"
+  },
+  {
+    "question": "của làm ăn no, của ... ăn thèm.",
+    "prefix": "của làm ăn no, của",
+    "suffix": "ăn thèm.",
+    "answer": "cho"
+  },
+  {
+    "question": "tay nâng chén muối đĩa gừng, gừng ... muối mặn, xin đừng quên nhau.",
+    "prefix": "tay nâng chén muối đĩa gừng, gừng",
+    "suffix": "muối mặn, xin đừng quên nhau.",
+    "answer": "cay"
+  },
+  {
+    "question": "lúa khô nước cạn ai ơi! rủ nhau tát ..., chờ trời còn lâu.",
+    "prefix": "lúa khô nước cạn ai ơi! rủ nhau tát",
+    "suffix": ", chờ trời còn lâu.",
+    "answer": "nước"
+  },
+  {
+    "question": "tháng chạp mà cấy mạ ..., thà rằng công ấy ẵm con ở nhà.",
+    "prefix": "tháng chạp mà cấy mạ",
+    "suffix": ", thà rằng công ấy ẵm con ở nhà.",
+    "answer": "non"
+  },
+  {
+    "question": "người khôn dồn ra ...",
+    "prefix": "người khôn dồn ra",
+    "suffix": "",
+    "answer": "mặt"
+  },
+  {
+    "question": "sớm khuya hòa thuận đôi ta, hơn ai gác tía, lầu ... một mình.",
+    "prefix": "sớm khuya hòa thuận đôi ta, hơn ai gác tía, lầu",
+    "suffix": "một mình.",
+    "answer": "hoa"
+  },
+  {
+    "question": "nhớ ai bổi hổi bồi hồi, như đứng đống ..., như ngồi đống than.",
+    "prefix": "nhớ ai bổi hổi bồi hồi, như đứng đống",
+    "suffix": ", như ngồi đống than.",
+    "answer": "lửa"
+  },
+  {
+    "question": "cho dù cha mắng, mẹ treo, em ... bỏ hội chùa keo hôm rằm.",
+    "prefix": "cho dù cha mắng, mẹ treo, em",
+    "suffix": "bỏ hội chùa keo hôm rằm.",
+    "answer": "không"
+  },
+  {
+    "question": "ra đi là sự đã liều, mưa mai cũng chịu, ... chiều cũng cam.",
+    "prefix": "ra đi là sự đã liều, mưa mai cũng chịu,",
+    "suffix": "chiều cũng cam.",
+    "answer": "nắng"
+  },
+  {
+    "question": "mưa tránh chỗ trắng, nắng tránh chỗ ...",
+    "prefix": "mưa tránh chỗ trắng, nắng tránh chỗ",
+    "suffix": "",
+    "answer": "đen"
+  },
+  {
+    "question": "môi hở ... lạnh.",
+    "prefix": "môi hở",
+    "suffix": "lạnh.",
+    "answer": "răng"
+  },
+  {
+    "question": "vợ hiền hòa, nhà hướng ...",
+    "prefix": "vợ hiền hòa, nhà hướng",
+    "suffix": "",
+    "answer": "nam"
+  },
+  {
+    "question": "có bệnh thì vái tứ ...",
+    "prefix": "có bệnh thì vái tứ",
+    "suffix": "",
+    "answer": "phương"
+  },
+  {
+    "question": "lá lành đùm lá ...",
+    "prefix": "lá lành đùm lá",
+    "suffix": "",
+    "answer": "rách"
+  },
+  {
+    "question": "em ơi ... ngọt đã từng, non xanh nước bạc ta đừng quên nhau.",
+    "prefix": "em ơi",
+    "suffix": "ngọt đã từng, non xanh nước bạc ta đừng quên nhau.",
+    "answer": "chua"
+  },
+  {
+    "question": "điếc hay ngóng, ... hay nói.",
+    "prefix": "điếc hay ngóng,",
+    "suffix": "hay nói.",
+    "answer": "ngọng"
+  },
+  {
+    "question": "con chẳng chê cha mẹ khó, \rchó chẳng chê ... nhà nghèo.",
+    "prefix": "con chẳng chê cha mẹ khó, \rchó chẳng chê",
+    "suffix": "nhà nghèo.",
+    "answer": "chủ"
+  },
+  {
+    "question": "có gan ăn cắp, có gan chịu ...",
+    "prefix": "có gan ăn cắp, có gan chịu",
+    "suffix": "",
+    "answer": "đòn"
+  },
+  {
+    "question": "hoa thơm hoa ở trên ..., đôi mắt em lúng liếng, dạ anh say lừ đừ.",
+    "prefix": "hoa thơm hoa ở trên",
+    "suffix": ", đôi mắt em lúng liếng, dạ anh say lừ đừ.",
+    "answer": "cây"
+  },
+  {
+    "question": "ai về phú thọ cùng ta, vui ngày giổ tổ ... ba mùng mười.",
+    "prefix": "ai về phú thọ cùng ta, vui ngày giổ tổ",
+    "suffix": "ba mùng mười.",
+    "answer": "tháng"
+  },
+  {
+    "question": "một sông dễ bắc mấy cầu, thiếp là phận ... biết hầu mấy nơi?",
+    "prefix": "một sông dễ bắc mấy cầu, thiếp là phận",
+    "suffix": "biết hầu mấy nơi?",
+    "answer": "gái"
+  },
+  {
+    "question": "một lời nói ..., sám hối bảy ngày.",
+    "prefix": "một lời nói",
+    "suffix": ", sám hối bảy ngày.",
+    "answer": "dối"
+  },
+  {
+    "question": "tưởng giếng ... nối dây dài, ai ngờ giếng cạn tiếc hoài sợi dây.",
+    "prefix": "tưởng giếng",
+    "suffix": "nối dây dài, ai ngờ giếng cạn tiếc hoài sợi dây.",
+    "answer": "sâu"
+  },
+  {
+    "question": "nồi đồng lại úp ... đồng, con gái xứ bắc lấy chồng đồng nai.",
+    "prefix": "nồi đồng lại úp",
+    "suffix": "đồng, con gái xứ bắc lấy chồng đồng nai.",
+    "answer": "vung"
+  },
+  {
+    "question": "đôi ta như lúa đòng đòng, đẹp ... nhưng chẳng được lòng mẹ cha.",
+    "prefix": "đôi ta như lúa đòng đòng, đẹp",
+    "suffix": "nhưng chẳng được lòng mẹ cha.",
+    "answer": "duyên"
+  },
+  {
+    "question": "thuyền ai thấp ... bên sông, đưa câu mái đẩy chạnh lòng nước non",
+    "prefix": "thuyền ai thấp",
+    "suffix": "bên sông, đưa câu mái đẩy chạnh lòng nước non",
+    "answer": "thoáng"
+  },
+  {
+    "question": "người vụng đan ... giữa đường.",
+    "prefix": "người vụng đan",
+    "suffix": "giữa đường.",
+    "answer": "thúng"
+  },
+  {
+    "question": "kén ... thì dễ, kén rể thì khó.",
+    "prefix": "kén",
+    "suffix": "thì dễ, kén rể thì khó.",
+    "answer": "dâu"
+  },
+  {
+    "question": "thấy em anh cũng muốn chào, sợ lòng bác mẹ cây ... lá dài.",
+    "prefix": "thấy em anh cũng muốn chào, sợ lòng bác mẹ cây",
+    "suffix": "lá dài.",
+    "answer": "cao"
+  },
+  {
+    "question": "ai ơi! chớ bỏ ruộng ..., bao nhiêu tấc đất tấc vàng bấy nhiêu.",
+    "prefix": "ai ơi! chớ bỏ ruộng",
+    "suffix": ", bao nhiêu tấc đất tấc vàng bấy nhiêu.",
+    "answer": "hoang"
+  },
+  {
+    "question": "cháy nhà hàng xóm bình ... như vại.",
+    "prefix": "cháy nhà hàng xóm bình",
+    "suffix": "như vại.",
+    "answer": "chân"
+  },
+  {
+    "question": "nắng chóng trưa, mưa chóng ...",
+    "prefix": "nắng chóng trưa, mưa chóng",
+    "suffix": "",
+    "answer": "tối"
+  },
+  {
+    "question": "chưa chi họ đồn quẩn, đồn quanh, đồn em là vợ, đồn anh là ...",
+    "prefix": "chưa chi họ đồn quẩn, đồn quanh, đồn em là vợ, đồn anh là",
+    "suffix": "",
+    "answer": "chồng"
+  },
+  {
+    "question": "chọn ... gửi vàng.",
+    "prefix": "chọn",
+    "suffix": "gửi vàng.",
+    "answer": "mặt"
+  },
+  {
+    "question": "thấy anh như thấy mặt ..., chói chang khó ngó, trao lời khó trao.",
+    "prefix": "thấy anh như thấy mặt",
+    "suffix": ", chói chang khó ngó, trao lời khó trao.",
+    "answer": "trời"
+  },
+  {
+    "question": "con hát mẹ ... hay.",
+    "prefix": "con hát mẹ",
+    "suffix": "hay.",
+    "answer": "khen"
+  },
+  {
+    "question": "bình định có núi vọng phu, có đầm thị nại, có cù ... xanh",
+    "prefix": "bình định có núi vọng phu, có đầm thị nại, có cù",
+    "suffix": "xanh",
+    "answer": "lao"
+  },
+  {
+    "question": "chồng con là cái nợ nần, thà rằng ở vậy ... thân béo mầm!",
+    "prefix": "chồng con là cái nợ nần, thà rằng ở vậy",
+    "suffix": "thân béo mầm!",
+    "answer": "nuôi"
+  },
+  {
+    "question": "công anh bắt ... nuôi cò, cò ăn, cò lớn, cò dò lên cây.",
+    "prefix": "công anh bắt",
+    "suffix": "nuôi cò, cò ăn, cò lớn, cò dò lên cây.",
+    "answer": "tép"
+  },
+  {
+    "question": "thiếp ... chàng như rồng nọ xa mây, như con chèo bẻo xa cây măng vòi.",
+    "prefix": "thiếp",
+    "suffix": "chàng như rồng nọ xa mây, như con chèo bẻo xa cây măng vòi.",
+    "answer": "xa"
+  },
+  {
+    "question": "thân em như ớt ... cây, càng tươi ngoài vỏ, càng cay trong lòng.",
+    "prefix": "thân em như ớt",
+    "suffix": "cây, càng tươi ngoài vỏ, càng cay trong lòng.",
+    "answer": "chín"
+  },
+  {
+    "question": "khéo ăn thì ..., khéo co thì ấm.",
+    "prefix": "khéo ăn thì",
+    "suffix": ", khéo co thì ấm.",
+    "answer": "no"
+  },
+  {
+    "question": "cốc mò ... xơi.",
+    "prefix": "cốc mò",
+    "suffix": "xơi.",
+    "answer": "cò"
+  },
+  {
+    "question": "nhà tôi nghề giã, nghề sông, lặng thì ... cá đầy trong, đầy ngoài.",
+    "prefix": "nhà tôi nghề giã, nghề sông, lặng thì",
+    "suffix": "cá đầy trong, đầy ngoài.",
+    "answer": "tôm"
+  },
+  {
+    "question": "đêm qua trời sáng ... rằm, anh đi qua cửa, em nằm không yên.",
+    "prefix": "đêm qua trời sáng",
+    "suffix": "rằm, anh đi qua cửa, em nằm không yên.",
+    "answer": "trăng"
+  },
+  {
+    "question": "xem ... bếp biết nết đàn bà.",
+    "prefix": "xem",
+    "suffix": "bếp biết nết đàn bà.",
+    "answer": "trong"
+  },
+  {
+    "question": "chơi ... sắc có ngày đứt tay.",
+    "prefix": "chơi",
+    "suffix": "sắc có ngày đứt tay.",
+    "answer": "dao"
+  },
+  {
+    "question": "phận hèn bao quản nắng ..., cày sâu, bừa kỹ, được mùa có phen.",
+    "prefix": "phận hèn bao quản nắng",
+    "suffix": ", cày sâu, bừa kỹ, được mùa có phen.",
+    "answer": "mưa"
+  },
+  {
+    "question": "đời cha ăn ..., đời con khát nước.",
+    "prefix": "đời cha ăn",
+    "suffix": ", đời con khát nước.",
+    "answer": "mặn"
+  },
+  {
+    "question": "thấy em buôn bán anh chẳng vừa lòng, để anh làm ... kiếm đồng nuôi em.",
+    "prefix": "thấy em buôn bán anh chẳng vừa lòng, để anh làm",
+    "suffix": "kiếm đồng nuôi em.",
+    "answer": "mướn"
+  },
+  {
+    "question": "gái có ... chồng chẳng phụ.",
+    "prefix": "gái có",
+    "suffix": "chồng chẳng phụ.",
+    "answer": "công"
+  },
+  {
+    "question": "mật ngọt chết ..., những nơi cay đắng là nơi thật thà.",
+    "prefix": "mật ngọt chết",
+    "suffix": ", những nơi cay đắng là nơi thật thà.",
+    "answer": "ruồi"
+  },
+  {
+    "question": "ở trong chăn mới biết chăn có ...",
+    "prefix": "ở trong chăn mới biết chăn có",
+    "suffix": "",
+    "answer": "rận"
+  },
+  {
+    "question": "gặp anh em nở nụ ..., vắng anh em lại giọt vơi giọt đầy.",
+    "prefix": "gặp anh em nở nụ",
+    "suffix": ", vắng anh em lại giọt vơi giọt đầy.",
+    "answer": "cười"
+  },
+  {
+    "question": "trâu ơi, ta bảo trâu này! trâu ra ngoài ... trâu cày với ta",
+    "prefix": "trâu ơi, ta bảo trâu này! trâu ra ngoài",
+    "suffix": "trâu cày với ta",
+    "answer": "ruộng"
+  },
+  {
+    "question": "ăn kỹ no lâu, ... sâu tốt lúa.",
+    "prefix": "ăn kỹ no lâu,",
+    "suffix": "sâu tốt lúa.",
+    "answer": "cày"
+  },
+  {
+    "question": "trước lạ sau ...",
+    "prefix": "trước lạ sau",
+    "suffix": "",
+    "answer": "quen"
+  },
+  {
+    "question": "thương em anh cũng muốn ..., nước thì muốn chảy nhưng mương chẳng đào.",
+    "prefix": "thương em anh cũng muốn",
+    "suffix": ", nước thì muốn chảy nhưng mương chẳng đào.",
+    "answer": "thương"
+  },
+  {
+    "question": "bây giờ ... mới hỏi đào, vườn hồng đã có ai vào hay chưa?",
+    "prefix": "bây giờ",
+    "suffix": "mới hỏi đào, vườn hồng đã có ai vào hay chưa?",
+    "answer": "mận"
+  },
+  {
+    "question": "cuối ... trồng cải, trồng cần, ăn đong sáu tháng, cuối xuân thì tàn.",
+    "prefix": "cuối",
+    "suffix": "trồng cải, trồng cần, ăn đong sáu tháng, cuối xuân thì tàn.",
+    "answer": "thu"
+  },
+  {
+    "question": "chê tôm lại phải ăn tôm, ... rau muống héo lại ôm dưa già.",
+    "prefix": "chê tôm lại phải ăn tôm,",
+    "suffix": "rau muống héo lại ôm dưa già.",
+    "answer": "chê"
+  },
+  {
+    "question": "dịu dàng nết đất an dương, xưa nay là chốn văn ... nổi tài",
+    "prefix": "dịu dàng nết đất an dương, xưa nay là chốn văn",
+    "suffix": "nổi tài",
+    "answer": "chương"
+  },
+  {
+    "question": "ra về tay nắm lấy ..., mặt nhìn lấy mặt, lòng say lấy lòng.",
+    "prefix": "ra về tay nắm lấy",
+    "suffix": ", mặt nhìn lấy mặt, lòng say lấy lòng.",
+    "answer": "tay"
+  },
+  {
+    "question": "lấy anh thì sướng hơn vua, anh đi xúc giậm được ... kềnh càng.",
+    "prefix": "lấy anh thì sướng hơn vua, anh đi xúc giậm được",
+    "suffix": "kềnh càng.",
+    "answer": "cua"
+  },
+  {
+    "question": "kiếm ... ba năm thiêu một giờ.",
+    "prefix": "kiếm",
+    "suffix": "ba năm thiêu một giờ.",
+    "answer": "củi"
+  },
+  {
+    "question": "em ôm bó mạ xuống đồng, miệng ca, tay cấy mà lòng ... ai.",
+    "prefix": "em ôm bó mạ xuống đồng, miệng ca, tay cấy mà lòng",
+    "suffix": "ai.",
+    "answer": "nhớ"
+  },
+  {
+    "question": "hôm qua tát nước đầu đình, bỏ quên cái áo trên cành ... sen.",
+    "prefix": "hôm qua tát nước đầu đình, bỏ quên cái áo trên cành",
+    "suffix": "sen.",
+    "answer": "hoa"
+  },
+  {
+    "question": "rủ nhau xem cảnh kiếm hồ, xem ... thê húc, xem chùa ngọc sơn.",
+    "prefix": "rủ nhau xem cảnh kiếm hồ, xem",
+    "suffix": "thê húc, xem chùa ngọc sơn.",
+    "answer": "cầu"
+  },
+  {
+    "question": "chưa quen đi lại cho quen, chưa ... đi lại vài phen cho gần.",
+    "prefix": "chưa quen đi lại cho quen, chưa",
+    "suffix": "đi lại vài phen cho gần.",
+    "answer": "gần"
+  },
+  {
+    "question": "làm ruộng ăn cơm nằm, chăm tằm ăn cơm ...",
+    "prefix": "làm ruộng ăn cơm nằm, chăm tằm ăn cơm",
+    "suffix": "",
+    "answer": "đứng"
+  },
+  {
+    "question": "lá ... về cội.",
+    "prefix": "lá",
+    "suffix": "về cội.",
+    "answer": "rụng"
+  },
+  {
+    "question": "chết sông chết ..., không ai chết đuối đọi đèn.",
+    "prefix": "chết sông chết",
+    "suffix": ", không ai chết đuối đọi đèn.",
+    "answer": "suối"
+  },
+  {
+    "question": "cày đồng đang buổi ban trưa, mồ hôi thánh thót như ... ruộng cày.",
+    "prefix": "cày đồng đang buổi ban trưa, mồ hôi thánh thót như",
+    "suffix": "ruộng cày.",
+    "answer": "mưa"
+  },
+  {
+    "question": "phú quý ... lễ nghĩa.",
+    "prefix": "phú quý",
+    "suffix": "lễ nghĩa.",
+    "answer": "sinh"
+  },
+  {
+    "question": "miếng ... là đầu câu chuyện.",
+    "prefix": "miếng",
+    "suffix": "là đầu câu chuyện.",
+    "answer": "trầu"
+  },
+  {
+    "question": "ăn lấy chắc, mặc lấy ...",
+    "prefix": "ăn lấy chắc, mặc lấy",
+    "suffix": "",
+    "answer": "bền"
+  },
+  {
+    "question": "chiều chiều ra đứng ... mương, bên tình, bên hiếu, biết thương bên nào.",
+    "prefix": "chiều chiều ra đứng",
+    "suffix": "mương, bên tình, bên hiếu, biết thương bên nào.",
+    "answer": "bờ"
+  },
+  {
+    "question": "cờ đến ... ai người ấy phất.",
+    "prefix": "cờ đến",
+    "suffix": "ai người ấy phất.",
+    "answer": "tay"
+  },
+  {
+    "question": "yêu nhau gánh gạch về đây, chẳng đắp nên lũy cũng ... lên thành.",
+    "prefix": "yêu nhau gánh gạch về đây, chẳng đắp nên lũy cũng",
+    "suffix": "lên thành.",
+    "answer": "xây"
+  },
+  {
+    "question": "chẳng ốm chẳng ..., làm giầu mấy chốc.",
+    "prefix": "chẳng ốm chẳng",
+    "suffix": ", làm giầu mấy chốc.",
+    "answer": "đau"
+  },
+  {
+    "question": "mạnh về ... bạo về tiền.",
+    "prefix": "mạnh về",
+    "suffix": "bạo về tiền.",
+    "answer": "gạo"
+  },
+  {
+    "question": "muốn sang nhưng ngại vắng thuyền, muốn về bên nớ nhưng ... lỡ rồi!",
+    "prefix": "muốn sang nhưng ngại vắng thuyền, muốn về bên nớ nhưng",
+    "suffix": "lỡ rồi!",
+    "answer": "duyên"
+  },
+  {
+    "question": "bậu về kẻo mẹ bậu trông, kẻo con bậu khóc kẻo chồng bậu ...",
+    "prefix": "bậu về kẻo mẹ bậu trông, kẻo con bậu khóc kẻo chồng bậu",
+    "suffix": "",
+    "answer": "ghen"
+  },
+  {
+    "question": "thôi đừng bắt cá ... tay, cá thì xuống bể, chim bay về ngàn.",
+    "prefix": "thôi đừng bắt cá",
+    "suffix": "tay, cá thì xuống bể, chim bay về ngàn.",
+    "answer": "hai"
+  },
+  {
+    "question": "anh mong gởi cá cho chim, chim ... ngàn dặm, cá chìm biển đông.",
+    "prefix": "anh mong gởi cá cho chim, chim",
+    "suffix": "ngàn dặm, cá chìm biển đông.",
+    "answer": "bay"
+  },
+  {
+    "question": "mất cả chì lẫn ...",
+    "prefix": "mất cả chì lẫn",
+    "suffix": "",
+    "answer": "chài"
+  },
+  {
+    "question": "... sàng xuống nia.",
+    "prefix": "",
+    "suffix": "sàng xuống nia.",
+    "answer": "lọt"
+  },
+  {
+    "question": "ai uốn câu cho vừa miệng ...",
+    "prefix": "ai uốn câu cho vừa miệng",
+    "suffix": "",
+    "answer": "cá"
+  },
+  {
+    "question": "nắng tốt dưa, ... tốt lúa.",
+    "prefix": "nắng tốt dưa,",
+    "suffix": "tốt lúa.",
+    "answer": "mưa"
+  },
+  {
+    "question": "hoài thóc nuôi cò ...",
+    "prefix": "hoài thóc nuôi cò",
+    "suffix": "",
+    "answer": "rừng"
+  },
+  {
+    "question": "sai một ..., đi một dặm.",
+    "prefix": "sai một",
+    "suffix": ", đi một dặm.",
+    "answer": "ly"
+  },
+  {
+    "question": "... vỏ dưa, gặp vỏ dừa.",
+    "prefix": "",
+    "suffix": "vỏ dưa, gặp vỏ dừa.",
+    "answer": "tránh"
+  },
+  {
+    "question": "... gió bẻ măng",
+    "prefix": "",
+    "suffix": "gió bẻ măng",
+    "answer": "mượn"
+  },
+  {
+    "question": "trúc xinh trúc mọc đầu đình, em ... em đứng một mình cũng xinh.",
+    "prefix": "trúc xinh trúc mọc đầu đình, em",
+    "suffix": "em đứng một mình cũng xinh.",
+    "answer": "xinh"
+  },
+  {
+    "question": "sóng lừng, bụng biển ầm ì, bão mưa ta tránh chớ hề ra ...",
+    "prefix": "sóng lừng, bụng biển ầm ì, bão mưa ta tránh chớ hề ra",
+    "suffix": "",
+    "answer": "khơi"
+  },
+  {
+    "question": "ăn ... đá bát.",
+    "prefix": "ăn",
+    "suffix": "đá bát.",
+    "answer": "cháo"
+  },
+  {
+    "question": "ăn trông nồi, ... trông hướng.",
+    "prefix": "ăn trông nồi,",
+    "suffix": "trông hướng.",
+    "answer": "ngồi"
+  },
+  {
+    "question": "trâu đẻ tháng sáu, vợ đẻ tháng ...",
+    "prefix": "trâu đẻ tháng sáu, vợ đẻ tháng",
+    "suffix": "",
+    "answer": "mười"
+  },
+  {
+    "question": "có an cư mới lạc ...",
+    "prefix": "có an cư mới lạc",
+    "suffix": "",
+    "answer": "nghiệp"
+  },
+  {
+    "question": "không chồng trông dọc, trông ..., có chồng cứ thẳng một đàng mà đi.",
+    "prefix": "không chồng trông dọc, trông",
+    "suffix": ", có chồng cứ thẳng một đàng mà đi.",
+    "answer": "ngang"
+  },
+  {
+    "question": "mài dừa đạp cám cho nhanh, ép dầu mà ... tóc anh, tóc nàng",
+    "prefix": "mài dừa đạp cám cho nhanh, ép dầu mà",
+    "suffix": "tóc anh, tóc nàng",
+    "answer": "chải"
+  },
+  {
+    "question": "cơm chiên ăn với cá ve, anh về nốc biển mà ... câu hò.",
+    "prefix": "cơm chiên ăn với cá ve, anh về nốc biển mà",
+    "suffix": "câu hò.",
+    "answer": "nghe"
+  },
+  {
+    "question": "nhớ khi gánh ... anh chờ, qua cầu anh đợi, bây giờ em quên.",
+    "prefix": "nhớ khi gánh",
+    "suffix": "anh chờ, qua cầu anh đợi, bây giờ em quên.",
+    "answer": "nặng"
+  },
+  {
+    "question": "ra về lòng lại dặn lòng, chanh ... chớ phụ, ngọt bồng chớ ham.",
+    "prefix": "ra về lòng lại dặn lòng, chanh",
+    "suffix": "chớ phụ, ngọt bồng chớ ham.",
+    "answer": "chua"
+  },
+  {
+    "question": "năng ... chặt bị.",
+    "prefix": "năng",
+    "suffix": "chặt bị.",
+    "answer": "nhặt"
+  },
+  {
+    "question": "ngày ngày ra đứng mà ..., bạn chả thấy bạn, tình không thấy tình.",
+    "prefix": "ngày ngày ra đứng mà",
+    "suffix": ", bạn chả thấy bạn, tình không thấy tình.",
+    "answer": "trông"
+  },
+  {
+    "question": "nước chảy ... mòn.",
+    "prefix": "nước chảy",
+    "suffix": "mòn.",
+    "answer": "đá"
+  },
+  {
+    "question": "thương em như lá đài bi, ngày thì dãi nắng, đêm thì dầu ...",
+    "prefix": "thương em như lá đài bi, ngày thì dãi nắng, đêm thì dầu",
+    "suffix": "",
+    "answer": "sương"
+  },
+  {
+    "question": "cô kia ... đường với ta, trồng bông bông tốt, trồng cà cà sai.",
+    "prefix": "cô kia",
+    "suffix": "đường với ta, trồng bông bông tốt, trồng cà cà sai.",
+    "answer": "đi"
+  },
+  {
+    "question": "lòng em đã quyết thi hành, đã cấy thì gặt với ... một mùa.",
+    "prefix": "lòng em đã quyết thi hành, đã cấy thì gặt với",
+    "suffix": "một mùa.",
+    "answer": "anh"
+  },
+  {
+    "question": "giặc bên ngô không bằng ... cô bên chồng.",
+    "prefix": "giặc bên ngô không bằng",
+    "suffix": "cô bên chồng.",
+    "answer": "bà"
+  },
+  {
+    "question": "chiều chiều én liệng truông mây, cảm thương chú lía bị vây ... thành.",
+    "prefix": "chiều chiều én liệng truông mây, cảm thương chú lía bị vây",
+    "suffix": "thành.",
+    "answer": "cỏ"
+  },
+  {
+    "question": "ngó hoài ra tận biển ..., thấy mây, thấy nước sao không thấy nàng.",
+    "prefix": "ngó hoài ra tận biển",
+    "suffix": ", thấy mây, thấy nước sao không thấy nàng.",
+    "answer": "đông"
+  },
+  {
+    "question": "tháng tư đi tậu ... bò, để ta sắm sửa làm mùa tháng năm.",
+    "prefix": "tháng tư đi tậu",
+    "suffix": "bò, để ta sắm sửa làm mùa tháng năm.",
+    "answer": "trâu"
+  },
+  {
+    "question": "trên đồng cạn, dưới đồng sâu, chồng cày, vợ cấy, con ... đi bừa.",
+    "prefix": "trên đồng cạn, dưới đồng sâu, chồng cày, vợ cấy, con",
+    "suffix": "đi bừa.",
+    "answer": "trâu"
+  },
+  {
+    "question": "đầu năm sương ..., cuối năm gió nồm.",
+    "prefix": "đầu năm sương",
+    "suffix": ", cuối năm gió nồm.",
+    "answer": "muối"
+  },
+  {
+    "question": "nắng sớm thì đi trồng cà, \rmưa sớm ở nhà phơi ...",
+    "prefix": "nắng sớm thì đi trồng cà, \rmưa sớm ở nhà phơi",
+    "suffix": "",
+    "answer": "thóc"
+  },
+  {
+    "question": "trai ba mươi hãy đang xoan, gái ba ... tuổi đã toan về già.",
+    "prefix": "trai ba mươi hãy đang xoan, gái ba",
+    "suffix": "tuổi đã toan về già.",
+    "answer": "mươi"
+  },
+  {
+    "question": "vua thua thằng ...",
+    "prefix": "vua thua thằng",
+    "suffix": "",
+    "answer": "liều"
+  },
+  {
+    "question": "văn ... phú lục chẳng hay, trở về làng cũ học cày cho xong!",
+    "prefix": "văn",
+    "suffix": "phú lục chẳng hay, trở về làng cũ học cày cho xong!",
+    "answer": "chương"
+  },
+  {
+    "question": "ai ... nhớ vải định hòa, nhớ cau hổ bái, nhớ cà đan nê",
+    "prefix": "ai",
+    "suffix": "nhớ vải định hòa, nhớ cau hổ bái, nhớ cà đan nê",
+    "answer": "về"
+  },
+  {
+    "question": "tình anh như nước dâng cao, tình em như dải lụa ... tẩm hương.",
+    "prefix": "tình anh như nước dâng cao, tình em như dải lụa",
+    "suffix": "tẩm hương.",
+    "answer": "đào"
+  },
+  {
+    "question": "đầu năm ăn quả chanh yên, cuối năm ăn ... cho nên đèo bòng.",
+    "prefix": "đầu năm ăn quả chanh yên, cuối năm ăn",
+    "suffix": "cho nên đèo bòng.",
+    "answer": "bưởi"
+  },
+  {
+    "question": "mềm nắn, rắn ...",
+    "prefix": "mềm nắn, rắn",
+    "suffix": "",
+    "answer": "buông"
+  },
+  {
+    "question": "yêu nhau chẳng lọ chiếu giường, dẫu rằng tàu lá che ... cũng tình.",
+    "prefix": "yêu nhau chẳng lọ chiếu giường, dẫu rằng tàu lá che",
+    "suffix": "cũng tình.",
+    "answer": "sương"
+  },
+  {
+    "question": "ai về tuy phước ăn nem, ghé thăm hưng thạnh mà xem ... chàm.",
+    "prefix": "ai về tuy phước ăn nem, ghé thăm hưng thạnh mà xem",
+    "suffix": "chàm.",
+    "answer": "tháp"
+  },
+  {
+    "question": "xa xôi chi nữa mà lầm, phải hương hương bén, phải trầm trầm ...",
+    "prefix": "xa xôi chi nữa mà lầm, phải hương hương bén, phải trầm trầm",
+    "suffix": "",
+    "answer": "thơm"
+  },
+  {
+    "question": "nhà bè ... chảy chia hai, ai về gia định, đồng nai thì về.",
+    "prefix": "nhà bè",
+    "suffix": "chảy chia hai, ai về gia định, đồng nai thì về.",
+    "answer": "nước"
+  },
+  {
+    "question": "chuồn chuồn mắc phải tơ ..., nào ai quấn quýt thì thương nhau cùng.",
+    "prefix": "chuồn chuồn mắc phải tơ",
+    "suffix": ", nào ai quấn quýt thì thương nhau cùng.",
+    "answer": "vương"
+  },
+  {
+    "question": "vải em em bán lấy tiền, em mua lụa liền ... áo cho anh",
+    "prefix": "vải em em bán lấy tiền, em mua lụa liền",
+    "suffix": "áo cho anh",
+    "answer": "may"
+  },
+  {
+    "question": "còn duyên buôn cậy bán hồng, hết duyên buôn ... cho chồng gặm xơ.",
+    "prefix": "còn duyên buôn cậy bán hồng, hết duyên buôn",
+    "suffix": "cho chồng gặm xơ.",
+    "answer": "mít"
+  },
+  {
+    "question": "cơm chín tới, cải ngồng ..., gái một con, gà gại ổ.",
+    "prefix": "cơm chín tới, cải ngồng",
+    "suffix": ", gái một con, gà gại ổ.",
+    "answer": "non"
+  },
+  {
+    "question": "bứt đi thì dạ không đành, cách xa nhân ngãi như chỉ ... thắt gan.",
+    "prefix": "bứt đi thì dạ không đành, cách xa nhân ngãi như chỉ",
+    "suffix": "thắt gan.",
+    "answer": "mành"
+  },
+  {
+    "question": "làm quan ăn lộc ..., ở chùa ăn lộc phật.",
+    "prefix": "làm quan ăn lộc",
+    "suffix": ", ở chùa ăn lộc phật.",
+    "answer": "vua"
+  },
+  {
+    "question": "tháng chạp là tháng trồng khoai, tháng giêng trồng đậu, tháng ... trồng cà.",
+    "prefix": "tháng chạp là tháng trồng khoai, tháng giêng trồng đậu, tháng",
+    "suffix": "trồng cà.",
+    "answer": "hai"
+  },
+  {
+    "question": "ở bầu thì ..., ở ống thì dài.",
+    "prefix": "ở bầu thì",
+    "suffix": ", ở ống thì dài.",
+    "answer": "tròn"
+  },
+  {
+    "question": "công lênh chẳng quản bao lâu, ngày nay nước bạc, ngày sau ... vàng.",
+    "prefix": "công lênh chẳng quản bao lâu, ngày nay nước bạc, ngày sau",
+    "suffix": "vàng.",
+    "answer": "cơm"
+  },
+  {
+    "question": "cả giận mất ...",
+    "prefix": "cả giận mất",
+    "suffix": "",
+    "answer": "khôn"
+  },
+  {
+    "question": "nghèo hèn giữa chợ ai chơi, giàu trong hang ... nhiều người hỏi thăm.",
+    "prefix": "nghèo hèn giữa chợ ai chơi, giàu trong hang",
+    "suffix": "nhiều người hỏi thăm.",
+    "answer": "núi"
+  },
+  {
+    "question": "một lòng chỉ quyết lấy anh, ... bay bướm lượn chung quanh mặc trời.",
+    "prefix": "một lòng chỉ quyết lấy anh,",
+    "suffix": "bay bướm lượn chung quanh mặc trời.",
+    "answer": "ong"
+  },
+  {
+    "question": "nhớ ... mồng bảy, tháng ba, trở về hội lãng, trở ra hội thầy.",
+    "prefix": "nhớ",
+    "suffix": "mồng bảy, tháng ba, trở về hội lãng, trở ra hội thầy.",
+    "answer": "ngày"
+  },
+  {
+    "question": "tránh ... chẳng xấu mặt.",
+    "prefix": "tránh",
+    "suffix": "chẳng xấu mặt.",
+    "answer": "voi"
+  },
+  {
+    "question": "con ... tức nhau tiếng gáy.",
+    "prefix": "con",
+    "suffix": "tức nhau tiếng gáy.",
+    "answer": "gà"
+  },
+  {
+    "question": "thân trâu trâu lo, ... bò bò liệu.",
+    "prefix": "thân trâu trâu lo,",
+    "suffix": "bò bò liệu.",
+    "answer": "thân"
+  },
+  {
+    "question": "có ..., nới cũ.",
+    "prefix": "có",
+    "suffix": ", nới cũ.",
+    "answer": "mới"
+  },
+  {
+    "question": "những người đi biển làm nghề, thấy dòng nước ... thì về đừng đi.",
+    "prefix": "những người đi biển làm nghề, thấy dòng nước",
+    "suffix": "thì về đừng đi.",
+    "answer": "nóng"
+  },
+  {
+    "question": "khi xưa một hẹn thì nên, bây giờ chín hẹn em quên cả ...",
+    "prefix": "khi xưa một hẹn thì nên, bây giờ chín hẹn em quên cả",
+    "suffix": "",
+    "answer": "mười"
+  },
+  {
+    "question": "tiền vào nhà khó như ... vào nhà trống.",
+    "prefix": "tiền vào nhà khó như",
+    "suffix": "vào nhà trống.",
+    "answer": "gió"
+  },
+  {
+    "question": "đàn ông cười ..., đàn bà cười nụ.",
+    "prefix": "đàn ông cười",
+    "suffix": ", đàn bà cười nụ.",
+    "answer": "hoa"
+  },
+  {
+    "question": "chim có tổ, ... có tông.",
+    "prefix": "chim có tổ,",
+    "suffix": "có tông.",
+    "answer": "người"
+  },
+  {
+    "question": "ăn ngay nói ..., mọi tật mọi lành.",
+    "prefix": "ăn ngay nói",
+    "suffix": ", mọi tật mọi lành.",
+    "answer": "thật"
+  },
+  {
+    "question": "ai đua ... trước thì đua, sông sau có miếu thờ vua thì đừng.",
+    "prefix": "ai đua",
+    "suffix": "trước thì đua, sông sau có miếu thờ vua thì đừng.",
+    "answer": "sông"
+  },
+  {
+    "question": "tốt đẹp phô ra, ... xa đậy lại.",
+    "prefix": "tốt đẹp phô ra,",
+    "suffix": "xa đậy lại.",
+    "answer": "xấu"
+  },
+  {
+    "question": "ra ... thấy vỏ thị rơi, tua rua quặt lại thì thôi cấy mùa.",
+    "prefix": "ra",
+    "suffix": "thấy vỏ thị rơi, tua rua quặt lại thì thôi cấy mùa.",
+    "answer": "đường"
+  },
+  {
+    "question": "nhiều sao thì nắng, ... sao thì mưa.",
+    "prefix": "nhiều sao thì nắng,",
+    "suffix": "sao thì mưa.",
+    "answer": "vắng"
+  },
+  {
+    "question": "chó treo, mèo ...",
+    "prefix": "chó treo, mèo",
+    "suffix": "",
+    "answer": "đậy"
+  },
+  {
+    "question": "có thờ có thiêng, có ... có lành.",
+    "prefix": "có thờ có thiêng, có",
+    "suffix": "có lành.",
+    "answer": "kiêng"
+  },
+  {
+    "question": "trăng quầng thì ..., trăng tán thì mưa.",
+    "prefix": "trăng quầng thì",
+    "suffix": ", trăng tán thì mưa.",
+    "answer": "hạn"
+  },
+  {
+    "question": "đời cha vo tròn, đời ... bóp bẹp.",
+    "prefix": "đời cha vo tròn, đời",
+    "suffix": "bóp bẹp.",
+    "answer": "con"
+  },
+  {
+    "question": "... nhà tông chẳng giống lông cũng giống cánh",
+    "prefix": "",
+    "suffix": "nhà tông chẳng giống lông cũng giống cánh",
+    "answer": "con"
+  },
+  {
+    "question": "cầu quan vui lắm ai ơi, trên thì họp chợ, dưới bơi thuyền ...",
+    "prefix": "cầu quan vui lắm ai ơi, trên thì họp chợ, dưới bơi thuyền",
+    "suffix": "",
+    "answer": "rồng"
+  },
+  {
+    "question": "con có ... mẹ mới cho bú.",
+    "prefix": "con có",
+    "suffix": "mẹ mới cho bú.",
+    "answer": "khóc"
+  },
+  {
+    "question": "trăm ... không bằng một thấy.",
+    "prefix": "trăm",
+    "suffix": "không bằng một thấy.",
+    "answer": "nghe"
+  },
+  {
+    "question": "khi ... thì quế chưa trồng, khi về quế đã đơm bông trổ ngành.",
+    "prefix": "khi",
+    "suffix": "thì quế chưa trồng, khi về quế đã đơm bông trổ ngành.",
+    "answer": "đi"
+  },
+  {
+    "question": "gió đưa cành trúc la đà, tiếng ... trấn vũ, canh gà thọ xương",
+    "prefix": "gió đưa cành trúc la đà, tiếng",
+    "suffix": "trấn vũ, canh gà thọ xương",
+    "answer": "chuông"
+  },
+  {
+    "question": "áo đen ai nhuộm cho mình, cho ... mình đậm, cho tình anh thương.",
+    "prefix": "áo đen ai nhuộm cho mình, cho",
+    "suffix": "mình đậm, cho tình anh thương.",
+    "answer": "duyên"
+  },
+  {
+    "question": "ăn cỗ đi trước, lội ... đi sau.",
+    "prefix": "ăn cỗ đi trước, lội",
+    "suffix": "đi sau.",
+    "answer": "nước"
+  },
+  {
+    "question": "bóng trăng em tưởng bóng ..., bóng cây em tưởng bóng thuyền anh sang.",
+    "prefix": "bóng trăng em tưởng bóng",
+    "suffix": ", bóng cây em tưởng bóng thuyền anh sang.",
+    "answer": "đèn"
+  },
+  {
+    "question": "chẳng có dại nào ... dại nào.",
+    "prefix": "chẳng có dại nào",
+    "suffix": "dại nào.",
+    "answer": "giống"
+  },
+  {
+    "question": "thiếp như cam, quýt, bưởi, bòng, đắng the ngoài ..., trong lòng ngọt thanh.",
+    "prefix": "thiếp như cam, quýt, bưởi, bòng, đắng the ngoài",
+    "suffix": ", trong lòng ngọt thanh.",
+    "answer": "vỏ"
+  },
+  {
+    "question": "trầu xanh, cau trắng, chay vàng, cơi trầu bịt bạc, thiếp chàng ăn ...",
+    "prefix": "trầu xanh, cau trắng, chay vàng, cơi trầu bịt bạc, thiếp chàng ăn",
+    "suffix": "",
+    "answer": "chung"
+  },
+  {
+    "question": "muốn về hòa đại, hiệp luông, sợ khe nước ..., sợ chuông ba gò.",
+    "prefix": "muốn về hòa đại, hiệp luông, sợ khe nước",
+    "suffix": ", sợ chuông ba gò.",
+    "answer": "nóng"
+  },
+  {
+    "question": "chưa học bò đã lo học ...",
+    "prefix": "chưa học bò đã lo học",
+    "suffix": "",
+    "answer": "chạy"
+  },
+  {
+    "question": "nhong nhong ngựa ông lại về, cắt cỏ bồ đề cho ngựa ... ăn.",
+    "prefix": "nhong nhong ngựa ông lại về, cắt cỏ bồ đề cho ngựa",
+    "suffix": "ăn.",
+    "answer": "ông"
+  },
+  {
+    "question": "thằng dại làm ... thằng khôn.",
+    "prefix": "thằng dại làm",
+    "suffix": "thằng khôn.",
+    "answer": "hại"
+  },
+  {
+    "question": "đôi ta như đũa trong kho, không tề, không tiện, không ... cũng bằng.",
+    "prefix": "đôi ta như đũa trong kho, không tề, không tiện, không",
+    "suffix": "cũng bằng.",
+    "answer": "so"
+  },
+  {
+    "question": "một người thì kín, hai người thì ...",
+    "prefix": "một người thì kín, hai người thì",
+    "suffix": "",
+    "answer": "hở"
+  },
+  {
+    "question": "đứng núi này ... núi nọ.",
+    "prefix": "đứng núi này",
+    "suffix": "núi nọ.",
+    "answer": "trông"
+  },
+  {
+    "question": "đi đêm lắm có ngày gặp ...",
+    "prefix": "đi đêm lắm có ngày gặp",
+    "suffix": "",
+    "answer": "ma"
+  },
+  {
+    "question": "vạn sự khởi đầu ...",
+    "prefix": "vạn sự khởi đầu",
+    "suffix": "",
+    "answer": "nan"
+  },
+  {
+    "question": "tháng bảy heo may, chuồn chuồn ... thì bão.",
+    "prefix": "tháng bảy heo may, chuồn chuồn",
+    "suffix": "thì bão.",
+    "answer": "bay"
+  },
+  {
+    "question": "bạc ... chưa hết dại.",
+    "prefix": "bạc",
+    "suffix": "chưa hết dại.",
+    "answer": "đầu"
+  },
+  {
+    "question": "bữa ăn có cá cùng ..., anh chưa mát dạ bằng anh thấy nàng.",
+    "prefix": "bữa ăn có cá cùng",
+    "suffix": ", anh chưa mát dạ bằng anh thấy nàng.",
+    "answer": "canh"
+  },
+  {
+    "question": "được một bữa cơm người, mất mười bữa cơm ...",
+    "prefix": "được một bữa cơm người, mất mười bữa cơm",
+    "suffix": "",
+    "answer": "nhà"
+  },
+  {
+    "question": "... không sợ súng.",
+    "prefix": "",
+    "suffix": "không sợ súng.",
+    "answer": "điếc"
+  },
+  {
+    "question": "thế gian chuộng của, chuộng công, \rnào ai có chuộng ... không bao giờ.",
+    "prefix": "thế gian chuộng của, chuộng công, \rnào ai có chuộng",
+    "suffix": "không bao giờ.",
+    "answer": "người"
+  },
+  {
+    "question": "ở tinh gặp ma, ở ... gặp quái, gian tà gặp nhau.",
+    "prefix": "ở tinh gặp ma, ở",
+    "suffix": "gặp quái, gian tà gặp nhau.",
+    "answer": "quỷ"
+  },
+  {
+    "question": "đục nước ... cò.",
+    "prefix": "đục nước",
+    "suffix": "cò.",
+    "answer": "béo"
+  },
+  {
+    "question": "chó cậy gần ..., gà cậy gần chuồng.",
+    "prefix": "chó cậy gần",
+    "suffix": ", gà cậy gần chuồng.",
+    "answer": "nhà"
+  },
+  {
+    "question": "chiều chiều ra ngõ đứng trông, ngõ thì thấy ngõ, người ... thấy người.",
+    "prefix": "chiều chiều ra ngõ đứng trông, ngõ thì thấy ngõ, người",
+    "suffix": "thấy người.",
+    "answer": "không"
+  },
+  {
+    "question": "vỏ quýt dày có ... tay nhọn.",
+    "prefix": "vỏ quýt dày có",
+    "suffix": "tay nhọn.",
+    "answer": "móng"
+  },
+  {
+    "question": "trầu này trầu quế, trầu hồi, trầu loan, trầu ..., trầu tôi, trầu mình.",
+    "prefix": "trầu này trầu quế, trầu hồi, trầu loan, trầu",
+    "suffix": ", trầu tôi, trầu mình.",
+    "answer": "phượng"
+  },
+  {
+    "question": "nhỏ còn thơ dại biết chi, lớn rồi đi học, ... thì phải siêng.",
+    "prefix": "nhỏ còn thơ dại biết chi, lớn rồi đi học,",
+    "suffix": "thì phải siêng.",
+    "answer": "học"
+  },
+  {
+    "question": "nồi đồng dễ ..., chồng xấu dễ sai.",
+    "prefix": "nồi đồng dễ",
+    "suffix": ", chồng xấu dễ sai.",
+    "answer": "nấu"
+  },
+  {
+    "question": "đắng ... cũng thể ruột rà, ngọt ngào cho lắm cũng là người dưng.",
+    "prefix": "đắng",
+    "suffix": "cũng thể ruột rà, ngọt ngào cho lắm cũng là người dưng.",
+    "answer": "cay"
+  },
+  {
+    "question": "người khôn con mắt ... sì, người dại con mắt nửa chì nửa thau.",
+    "prefix": "người khôn con mắt",
+    "suffix": "sì, người dại con mắt nửa chì nửa thau.",
+    "answer": "đen"
+  },
+  {
+    "question": "chẳng được con trắm, con chép cũng được mớ tép, mớ ...",
+    "prefix": "chẳng được con trắm, con chép cũng được mớ tép, mớ",
+    "suffix": "",
+    "answer": "tôm"
+  },
+  {
+    "question": "cầm lược lại nhớ đến ..., cầm khăn nhớ túi, nằm giường nhớ nhau.",
+    "prefix": "cầm lược lại nhớ đến",
+    "suffix": ", cầm khăn nhớ túi, nằm giường nhớ nhau.",
+    "answer": "gương"
+  },
+  {
+    "question": "cơm đâu no chó, ... đâu no gà.",
+    "prefix": "cơm đâu no chó,",
+    "suffix": "đâu no gà.",
+    "answer": "thóc"
+  },
+  {
+    "question": "góp ... thành bão.",
+    "prefix": "góp",
+    "suffix": "thành bão.",
+    "answer": "gió"
+  },
+  {
+    "question": "gối mềm, gối chiếu không êm, gối lụa không mềm bằng gối ... em.",
+    "prefix": "gối mềm, gối chiếu không êm, gối lụa không mềm bằng gối",
+    "suffix": "em.",
+    "answer": "tay"
+  },
+  {
+    "question": "gần chùa gọi bụt bằng ...",
+    "prefix": "gần chùa gọi bụt bằng",
+    "suffix": "",
+    "answer": "anh"
+  },
+  {
+    "question": "yêu nhau xa mấy cũng gần, ghét nhau cách một bàn ... cũng lìa.",
+    "prefix": "yêu nhau xa mấy cũng gần, ghét nhau cách một bàn",
+    "suffix": "cũng lìa.",
+    "answer": "chân"
+  },
+  {
+    "question": "nữa mai lúa chín đầy đồng, gặt về, đập, sẩy, bõ công cấy ...",
+    "prefix": "nữa mai lúa chín đầy đồng, gặt về, đập, sẩy, bõ công cấy",
+    "suffix": "",
+    "answer": "cày"
+  },
+  {
+    "question": "đêm tháng năm chưa nằm đã sáng, \rngày tháng mười chưa ... đã tối.",
+    "prefix": "đêm tháng năm chưa nằm đã sáng, \rngày tháng mười chưa",
+    "suffix": "đã tối.",
+    "answer": "cười"
+  },
+  {
+    "question": "ai về cho em về theo, ngó truông truông rậm, ngó đèo đèo ...",
+    "prefix": "ai về cho em về theo, ngó truông truông rậm, ngó đèo đèo",
+    "suffix": "",
+    "answer": "cao"
+  },
+  {
+    "question": "cây ngay chẳng sợ chết ...",
+    "prefix": "cây ngay chẳng sợ chết",
+    "suffix": "",
+    "answer": "đứng"
+  },
+  {
+    "question": "đói ăn ..., túng làm liều.",
+    "prefix": "đói ăn",
+    "suffix": ", túng làm liều.",
+    "answer": "vụng"
+  },
+  {
+    "question": "giã gạo thì ốm, giã cốm thì ...",
+    "prefix": "giã gạo thì ốm, giã cốm thì",
+    "suffix": "",
+    "answer": "khỏe"
+  },
+  {
+    "question": "núi ... chi lắm núi ơi!, núi che mặt trời không thấy người thương.",
+    "prefix": "núi",
+    "suffix": "chi lắm núi ơi!, núi che mặt trời không thấy người thương.",
+    "answer": "cao"
+  },
+  {
+    "question": "nói ... lọt đến xương.",
+    "prefix": "nói",
+    "suffix": "lọt đến xương.",
+    "answer": "ngọt"
+  },
+  {
+    "question": "cau già khéo bổ thì ..., nạ dòng trang điểm lại giòn hơn xưa.",
+    "prefix": "cau già khéo bổ thì",
+    "suffix": ", nạ dòng trang điểm lại giòn hơn xưa.",
+    "answer": "ngon"
+  },
+  {
+    "question": "ghét của nào ... trao của ấy.",
+    "prefix": "ghét của nào",
+    "suffix": "trao của ấy.",
+    "answer": "trời"
+  },
+  {
+    "question": "chị ... em nâng.",
+    "prefix": "chị",
+    "suffix": "em nâng.",
+    "answer": "ngã"
+  },
+  {
+    "question": "... thì thâm, nhầm thì thiệt.",
+    "prefix": "",
+    "suffix": "thì thâm, nhầm thì thiệt.",
+    "answer": "tham"
+  },
+  {
+    "question": "giàu nhà quê không bằng kéo lê kẻ ...",
+    "prefix": "giàu nhà quê không bằng kéo lê kẻ",
+    "suffix": "",
+    "answer": "chợ"
+  },
+  {
+    "question": "tháng ba thì đậu đã già, ta đi ta hái về nhà phơi ...",
+    "prefix": "tháng ba thì đậu đã già, ta đi ta hái về nhà phơi",
+    "suffix": "",
+    "answer": "khô"
+  },
+  {
+    "question": "có ... xông, tình phụ lá nốt.",
+    "prefix": "có",
+    "suffix": "xông, tình phụ lá nốt.",
+    "answer": "xương"
+  },
+  {
+    "question": "yêu cho roi cho ..., ghét cho ngọt cho bùi.",
+    "prefix": "yêu cho roi cho",
+    "suffix": ", ghét cho ngọt cho bùi.",
+    "answer": "vọt"
+  },
+  {
+    "question": "tháng giêng trồng trúc, tháng lục trồng tiêu, nắng đan đó, mưa gió ... gầu.",
+    "prefix": "tháng giêng trồng trúc, tháng lục trồng tiêu, nắng đan đó, mưa gió",
+    "suffix": "gầu.",
+    "answer": "đan"
+  },
+  {
+    "question": "anh đi anh nhớ quê nhà, nhớ canh rau ..., nhớ cà dầm tương.",
+    "prefix": "anh đi anh nhớ quê nhà, nhớ canh rau",
+    "suffix": ", nhớ cà dầm tương.",
+    "answer": "muống"
+  },
+  {
+    "question": "còn duyên kén cá, chọn ..., hết duyên ếch đực, cua kềnh cũng vơ.",
+    "prefix": "còn duyên kén cá, chọn",
+    "suffix": ", hết duyên ếch đực, cua kềnh cũng vơ.",
+    "answer": "canh"
+  },
+  {
+    "question": "ai ơi bưng bát ... đầy, biết công kẻ cấy, người cày mấy nao!",
+    "prefix": "ai ơi bưng bát",
+    "suffix": "đầy, biết công kẻ cấy, người cày mấy nao!",
+    "answer": "cơm"
+  },
+  {
+    "question": "bốn chín chưa qua, ... ba đã tới.",
+    "prefix": "bốn chín chưa qua,",
+    "suffix": "ba đã tới.",
+    "answer": "năm"
+  },
+  {
+    "question": "biết sự đời, mười đời chẳng ...",
+    "prefix": "biết sự đời, mười đời chẳng",
+    "suffix": "",
+    "answer": "khó"
+  },
+  {
+    "question": "thà rằng chẳng biết cho xong, biết ra như xúc như ... lấy sầu.",
+    "prefix": "thà rằng chẳng biết cho xong, biết ra như xúc như",
+    "suffix": "lấy sầu.",
+    "answer": "đong"
+  },
+  {
+    "question": "người ba đấng, của ba ...",
+    "prefix": "người ba đấng, của ba",
+    "suffix": "",
+    "answer": "loài"
+  },
+  {
+    "question": "mình em như ... giữa rào, kẻ chài, người lưới biết vào tay ai.",
+    "prefix": "mình em như",
+    "suffix": "giữa rào, kẻ chài, người lưới biết vào tay ai.",
+    "answer": "cá"
+  },
+  {
+    "question": "đói cho ..., rách cho thơm.",
+    "prefix": "đói cho",
+    "suffix": ", rách cho thơm.",
+    "answer": "sạch"
+  },
+  {
+    "question": "đường vô xứ huế quanh quanh, non ... nước biếc như tranh họa đồ",
+    "prefix": "đường vô xứ huế quanh quanh, non",
+    "suffix": "nước biếc như tranh họa đồ",
+    "answer": "xanh"
+  },
+  {
+    "question": "cây chạm lá, cá chạm ...",
+    "prefix": "cây chạm lá, cá chạm",
+    "suffix": "",
+    "answer": "vây"
+  },
+  {
+    "question": "vì tình anh phải đi đêm, ngã năm, bảy cái, đất ... hơn giường.",
+    "prefix": "vì tình anh phải đi đêm, ngã năm, bảy cái, đất",
+    "suffix": "hơn giường.",
+    "answer": "êm"
+  },
+  {
+    "question": "tẩm ngẩm mà ... chết voi.",
+    "prefix": "tẩm ngẩm mà",
+    "suffix": "chết voi.",
+    "answer": "đấm"
+  },
+  {
+    "question": "thứ nhất sợ kẻ anh ..., thứ nhì sợ kẻ bần cùng cố thây.",
+    "prefix": "thứ nhất sợ kẻ anh",
+    "suffix": ", thứ nhì sợ kẻ bần cùng cố thây.",
+    "answer": "hùng"
+  },
+  {
+    "question": "đi với phật mặc áo cà sa, đi với ... mặc áo giấy.",
+    "prefix": "đi với phật mặc áo cà sa, đi với",
+    "suffix": "mặc áo giấy.",
+    "answer": "ma"
+  },
+  {
+    "question": "thương ai da diết diết da, áo em hai vạt trải ra anh ...",
+    "prefix": "thương ai da diết diết da, áo em hai vạt trải ra anh",
+    "suffix": "",
+    "answer": "nằm"
+  },
+  {
+    "question": "suy bụng ta ra bụng ...",
+    "prefix": "suy bụng ta ra bụng",
+    "suffix": "",
+    "answer": "người"
+  },
+  {
+    "question": "ai về hà tĩnh thì về, mặc lụa chợ hạ, uống ... chè hương sơn.",
+    "prefix": "ai về hà tĩnh thì về, mặc lụa chợ hạ, uống",
+    "suffix": "chè hương sơn.",
+    "answer": "nước"
+  },
+  {
+    "question": "gặp nhau một chút nên ..., xin mời bên đó cất lên cùng hò.",
+    "prefix": "gặp nhau một chút nên",
+    "suffix": ", xin mời bên đó cất lên cùng hò.",
+    "answer": "duyên"
+  },
+  {
+    "question": "sớm ngày đem lúa ra ..., bao giờ mọc mầm ta sẽ vớt ra.",
+    "prefix": "sớm ngày đem lúa ra",
+    "suffix": ", bao giờ mọc mầm ta sẽ vớt ra.",
+    "answer": "ngâm"
+  },
+  {
+    "question": "tay bưng đĩa muối tay bợ sàng rau, thủy ... như nhất, sang giầu mặc ai.",
+    "prefix": "tay bưng đĩa muối tay bợ sàng rau, thủy",
+    "suffix": "như nhất, sang giầu mặc ai.",
+    "answer": "chung"
+  },
+  {
+    "question": "được lòng ta xót xa ... người.",
+    "prefix": "được lòng ta xót xa",
+    "suffix": "người.",
+    "answer": "lòng"
+  },
+  {
+    "question": "ếch ngồi đáy giếng coi trời bằng ...",
+    "prefix": "ếch ngồi đáy giếng coi trời bằng",
+    "suffix": "",
+    "answer": "vung"
+  },
+  {
+    "question": "có tiền mua ... cũng được.",
+    "prefix": "có tiền mua",
+    "suffix": "cũng được.",
+    "answer": "tiên"
+  },
+  {
+    "question": "cô kia đứng ở bên ..., muốn sang anh ngỏ cành hồng cho sang.",
+    "prefix": "cô kia đứng ở bên",
+    "suffix": ", muốn sang anh ngỏ cành hồng cho sang.",
+    "answer": "sông"
+  },
+  {
+    "question": "quanh năm cấy hái, cày ..., vụ chiêm thì hạ, vụ mùa thì đông",
+    "prefix": "quanh năm cấy hái, cày",
+    "suffix": ", vụ chiêm thì hạ, vụ mùa thì đông",
+    "answer": "bừa"
+  },
+  {
+    "question": "chạy trời không khỏi ...",
+    "prefix": "chạy trời không khỏi",
+    "suffix": "",
+    "answer": "nắng"
+  },
+  {
+    "question": "con ... làm rầu nồi canh.",
+    "prefix": "con",
+    "suffix": "làm rầu nồi canh.",
+    "answer": "sâu"
+  },
+  {
+    "question": "vàng thật không sợ ...",
+    "prefix": "vàng thật không sợ",
+    "suffix": "",
+    "answer": "lửa"
+  },
+  {
+    "question": "hội chùa thầy có hang cắc cớ, trai chưa ... nhớ hội chùa thầy.",
+    "prefix": "hội chùa thầy có hang cắc cớ, trai chưa",
+    "suffix": "nhớ hội chùa thầy.",
+    "answer": "vợ"
+  },
+  {
+    "question": "ai xinh thì mặc ai xinh, ông ... chỉ quyết xe mình với ta.",
+    "prefix": "ai xinh thì mặc ai xinh, ông",
+    "suffix": "chỉ quyết xe mình với ta.",
+    "answer": "tơ"
+  },
+  {
+    "question": "môi dày ăn vụng đã xong, môi mỏng hay hớt, môi ... hay hờn.",
+    "prefix": "môi dày ăn vụng đã xong, môi mỏng hay hớt, môi",
+    "suffix": "hay hờn.",
+    "answer": "cong"
+  },
+  {
+    "question": "trông ... mà bắt hình dong",
+    "prefix": "trông",
+    "suffix": "mà bắt hình dong",
+    "answer": "mặt"
+  },
+  {
+    "question": "rủ nhau xuống bể mò ..., đem về nấu quả mơ chua trên rừng.",
+    "prefix": "rủ nhau xuống bể mò",
+    "suffix": ", đem về nấu quả mơ chua trên rừng.",
+    "answer": "cua"
+  },
+  {
+    "question": "trên trời có đám mây ..., ở giữa mây trắng, xung quanh mây vàng.",
+    "prefix": "trên trời có đám mây",
+    "suffix": ", ở giữa mây trắng, xung quanh mây vàng.",
+    "answer": "xanh"
+  },
+  {
+    "question": "vụng ... khéo chống.",
+    "prefix": "vụng",
+    "suffix": "khéo chống.",
+    "answer": "chèo"
+  },
+  {
+    "question": "miếng ... nhớ lâu, lời đau nhớ đời.",
+    "prefix": "miếng",
+    "suffix": "nhớ lâu, lời đau nhớ đời.",
+    "answer": "ngon"
+  },
+  {
+    "question": "cần câu bạc, cột chạc dây tơ, sáng ... không nhởi, trăng mờ không câu.",
+    "prefix": "cần câu bạc, cột chạc dây tơ, sáng",
+    "suffix": "không nhởi, trăng mờ không câu.",
+    "answer": "trăng"
+  },
+  {
+    "question": "phép ... thua lệ làng.",
+    "prefix": "phép",
+    "suffix": "thua lệ làng.",
+    "answer": "vua"
+  },
+  {
+    "question": "biết tội đâu mà tránh, biết ... đâu mà tìm.",
+    "prefix": "biết tội đâu mà tránh, biết",
+    "suffix": "đâu mà tìm.",
+    "answer": "phúc"
+  },
+  {
+    "question": "mâm cao đánh ngã ... đầy.",
+    "prefix": "mâm cao đánh ngã",
+    "suffix": "đầy.",
+    "answer": "bát"
+  },
+  {
+    "question": "cháy ... ra mặt chuột.",
+    "prefix": "cháy",
+    "suffix": "ra mặt chuột.",
+    "answer": "nhà"
+  },
+  {
+    "question": "mất ... mới lo làm chuồng.",
+    "prefix": "mất",
+    "suffix": "mới lo làm chuồng.",
+    "answer": "bò"
+  },
+  {
+    "question": "đồng tháp mười cò bay ... cánh, nước tháp mười lấp lánh cá tôm.",
+    "prefix": "đồng tháp mười cò bay",
+    "suffix": "cánh, nước tháp mười lấp lánh cá tôm.",
+    "answer": "thẳng"
+  },
+  {
+    "question": "miệng ăn ... lở.",
+    "prefix": "miệng ăn",
+    "suffix": "lở.",
+    "answer": "núi"
+  },
+  {
+    "question": "phải duyên thì bám như ..., trái duyên chổng chểnh như kèo đục vênh.",
+    "prefix": "phải duyên thì bám như",
+    "suffix": ", trái duyên chổng chểnh như kèo đục vênh.",
+    "answer": "keo"
+  },
+  {
+    "question": "xa xôi dịch lại cho gần, làm thân ... nhện mấy lần vương tơ.",
+    "prefix": "xa xôi dịch lại cho gần, làm thân",
+    "suffix": "nhện mấy lần vương tơ.",
+    "answer": "con"
+  },
+  {
+    "question": "con sông bên lở bên bồi, một con cá lội mấy người ... câu.",
+    "prefix": "con sông bên lở bên bồi, một con cá lội mấy người",
+    "suffix": "câu.",
+    "answer": "buông"
+  },
+  {
+    "question": "chim quyên xuống đất tha mồi, thấy em cực khổ anh đứng ngồi ... yên.",
+    "prefix": "chim quyên xuống đất tha mồi, thấy em cực khổ anh đứng ngồi",
+    "suffix": "yên.",
+    "answer": "không"
+  },
+  {
+    "question": "cái nết đánh chết cái ...",
+    "prefix": "cái nết đánh chết cái",
+    "suffix": "",
+    "answer": "đẹp"
+  },
+  {
+    "question": "... quá hóa ngu.",
+    "prefix": "",
+    "suffix": "quá hóa ngu.",
+    "answer": "hiền"
+  },
+  {
+    "question": "chín ... hóa nẫu.",
+    "prefix": "chín",
+    "suffix": "hóa nẫu.",
+    "answer": "quá"
+  },
+  {
+    "question": "đường ở cửa ...",
+    "prefix": "đường ở cửa",
+    "suffix": "",
+    "answer": "miệng"
+  },
+  {
+    "question": "hỡi anh làm thợ nơi ..., để em gánh đục, gánh bào đi theo.",
+    "prefix": "hỡi anh làm thợ nơi",
+    "suffix": ", để em gánh đục, gánh bào đi theo.",
+    "answer": "nao"
+  },
+  {
+    "question": "buôn tàu bán bè không bằng ăn dè, hà ...",
+    "prefix": "buôn tàu bán bè không bằng ăn dè, hà",
+    "suffix": "",
+    "answer": "tiện"
+  },
+  {
+    "question": "gió đông là trồng lúa chiêm, \rgió bấc là duyên lúa ...",
+    "prefix": "gió đông là trồng lúa chiêm, \rgió bấc là duyên lúa",
+    "suffix": "",
+    "answer": "mùa"
+  },
+  {
+    "question": "... da là bởi phấn dồi, da đen là bởi em ngồi chợ trưa.",
+    "prefix": "",
+    "suffix": "da là bởi phấn dồi, da đen là bởi em ngồi chợ trưa.",
+    "answer": "trắng"
+  },
+  {
+    "question": "chàng về thiếp cũng xin ..., qua sông nỉ nước, qua đèo nỉ non.",
+    "prefix": "chàng về thiếp cũng xin",
+    "suffix": ", qua sông nỉ nước, qua đèo nỉ non.",
+    "answer": "theo"
+  },
+  {
+    "question": "trăm ... không bằng tay quen.",
+    "prefix": "trăm",
+    "suffix": "không bằng tay quen.",
+    "answer": "hay"
+  },
+  {
+    "question": "khó khăn làm mấy tháng trời, lại còn mưa ... bất thời chờ trông.",
+    "prefix": "khó khăn làm mấy tháng trời, lại còn mưa",
+    "suffix": "bất thời chờ trông.",
+    "answer": "nắng"
+  },
+  {
+    "question": "nhớ ... như điếu thuốc lào, đã chôn điếu xuống lại đào điếu lên.",
+    "prefix": "nhớ",
+    "suffix": "như điếu thuốc lào, đã chôn điếu xuống lại đào điếu lên.",
+    "answer": "ai"
+  },
+  {
+    "question": "nhờ trời mưa ... gió hòa, nào cày, nào cấy, trẻ già đua nhau.",
+    "prefix": "nhờ trời mưa",
+    "suffix": "gió hòa, nào cày, nào cấy, trẻ già đua nhau.",
+    "answer": "thuận"
+  },
+  {
+    "question": "không ai giàu ba họ, không ai khó ba ...",
+    "prefix": "không ai giàu ba họ, không ai khó ba",
+    "suffix": "",
+    "answer": "đời"
+  },
+  {
+    "question": "vụng múa ... đất lệch.",
+    "prefix": "vụng múa",
+    "suffix": "đất lệch.",
+    "answer": "chê"
+  },
+  {
+    "question": "một con ngựa ... cả tàu bỏ cỏ.",
+    "prefix": "một con ngựa",
+    "suffix": "cả tàu bỏ cỏ.",
+    "answer": "đau"
+  },
+  {
+    "question": "tốt ... hơn lành áo.",
+    "prefix": "tốt",
+    "suffix": "hơn lành áo.",
+    "answer": "danh"
+  },
+  {
+    "question": "tiếc công lao đào ao ... cá, năm bảy tháng trời người lạ đến câu.",
+    "prefix": "tiếc công lao đào ao",
+    "suffix": "cá, năm bảy tháng trời người lạ đến câu.",
+    "answer": "thả"
+  },
+  {
+    "question": "sảy cha còn chú, sảy ... ấp vú dì.",
+    "prefix": "sảy cha còn chú, sảy",
+    "suffix": "ấp vú dì.",
+    "answer": "mẹ"
+  },
+  {
+    "question": "yêu nên tốt, ... nên xấu.",
+    "prefix": "yêu nên tốt,",
+    "suffix": "nên xấu.",
+    "answer": "ghét"
+  },
+  {
+    "question": "bán hàng thì bán sớm mai, chợ ... người vãn còn nài làm chi.",
+    "prefix": "bán hàng thì bán sớm mai, chợ",
+    "suffix": "người vãn còn nài làm chi.",
+    "answer": "trưa"
+  },
+  {
+    "question": "gió bấc hiu hiu sếu ... thì rét.",
+    "prefix": "gió bấc hiu hiu sếu",
+    "suffix": "thì rét.",
+    "answer": "kêu"
+  },
+  {
+    "question": "thương em vô giá quá chừng, trèo non quên mệt, ngậm gừng ... cay.",
+    "prefix": "thương em vô giá quá chừng, trèo non quên mệt, ngậm gừng",
+    "suffix": "cay.",
+    "answer": "quên"
+  },
+  {
+    "question": "dù ai buôn đâu, bán đâu, mồng mười tháng chín trọi ... thì về.",
+    "prefix": "dù ai buôn đâu, bán đâu, mồng mười tháng chín trọi",
+    "suffix": "thì về.",
+    "answer": "trâu"
+  },
+  {
+    "question": "hùm giết người hùm ngủ, người giết ... thức đủ năm canh.",
+    "prefix": "hùm giết người hùm ngủ, người giết",
+    "suffix": "thức đủ năm canh.",
+    "answer": "người"
+  },
+  {
+    "question": "yêu nhau chín bỏ làm ...",
+    "prefix": "yêu nhau chín bỏ làm",
+    "suffix": "",
+    "answer": "mười"
+  },
+  {
+    "question": "nong tằm, ao cá, nương dâu, đò xưa, ... cũ nhớ câu hẹn hò.",
+    "prefix": "nong tằm, ao cá, nương dâu, đò xưa,",
+    "suffix": "cũ nhớ câu hẹn hò.",
+    "answer": "bến"
+  },
+  {
+    "question": "trẻ cậy cha, già cậy ...",
+    "prefix": "trẻ cậy cha, già cậy",
+    "suffix": "",
+    "answer": "con"
+  },
+  {
+    "question": "thân em như hạt mưa ..., hạt vào đài các, hạt ra ruộng cày.",
+    "prefix": "thân em như hạt mưa",
+    "suffix": ", hạt vào đài các, hạt ra ruộng cày.",
+    "answer": "sa"
+  },
+  {
+    "question": "chim bay về ..., cá lội về rừng, muốn nên cơ nghiệp thì đừng bỏ em.",
+    "prefix": "chim bay về",
+    "suffix": ", cá lội về rừng, muốn nên cơ nghiệp thì đừng bỏ em.",
+    "answer": "cội"
+  },
+  {
+    "question": "đi hỏi già, về nhà hỏi ...",
+    "prefix": "đi hỏi già, về nhà hỏi",
+    "suffix": "",
+    "answer": "trẻ"
+  },
+  {
+    "question": "thuyền ơi có nhớ ... chăng? bến thì một dạ khăng khăng đợi thuyền.",
+    "prefix": "thuyền ơi có nhớ",
+    "suffix": "chăng? bến thì một dạ khăng khăng đợi thuyền.",
+    "answer": "bến"
+  },
+  {
+    "question": "có bạc em tình phụ tiền, có nhân ngãi mới em quên ... rồi.",
+    "prefix": "có bạc em tình phụ tiền, có nhân ngãi mới em quên",
+    "suffix": "rồi.",
+    "answer": "anh"
+  },
+  {
+    "question": "chắc rễ bền ...",
+    "prefix": "chắc rễ bền",
+    "suffix": "",
+    "answer": "cây"
+  },
+  {
+    "question": "chăn kia nửa đắp nửa hờ, gối kia nửa đợi, nửa chờ ... em.",
+    "prefix": "chăn kia nửa đắp nửa hờ, gối kia nửa đợi, nửa chờ",
+    "suffix": "em.",
+    "answer": "duyên"
+  },
+  {
+    "question": "mất lòng trước, ... lòng sau.",
+    "prefix": "mất lòng trước,",
+    "suffix": "lòng sau.",
+    "answer": "được"
+  },
+  {
+    "question": "tháng ba nô nức hội đền, nhớ ngày giỗ tổ bốn ... năm nay",
+    "prefix": "tháng ba nô nức hội đền, nhớ ngày giỗ tổ bốn",
+    "suffix": "năm nay",
+    "answer": "nghìn"
+  },
+  {
+    "question": "quen ... hay làm.",
+    "prefix": "quen",
+    "suffix": "hay làm.",
+    "answer": "tay"
+  },
+  {
+    "question": "đôi ta chung mẹ, chung thầy, đêm trăng chung võng vơi đầy thủy ...",
+    "prefix": "đôi ta chung mẹ, chung thầy, đêm trăng chung võng vơi đầy thủy",
+    "suffix": "",
+    "answer": "chung"
+  },
+  {
+    "question": "ruộng đầm nước cả, bùn sâu, suốt ngày cùng với con ... đi cày.",
+    "prefix": "ruộng đầm nước cả, bùn sâu, suốt ngày cùng với con",
+    "suffix": "đi cày.",
+    "answer": "trâu"
+  },
+  {
+    "question": "nước chảy xuôi, thuyền anh trôi ..., anh chống không được, anh bỏ sào xuôi.",
+    "prefix": "nước chảy xuôi, thuyền anh trôi",
+    "suffix": ", anh chống không được, anh bỏ sào xuôi.",
+    "answer": "ngược"
+  },
+  {
+    "question": "thèm trầu mà chẳng dám xin, thương em mà chẳng dám ... mặt em.",
+    "prefix": "thèm trầu mà chẳng dám xin, thương em mà chẳng dám",
+    "suffix": "mặt em.",
+    "answer": "nhìn"
+  },
+  {
+    "question": "việc nhà thì ..., việc chú bác thì siêng.",
+    "prefix": "việc nhà thì",
+    "suffix": ", việc chú bác thì siêng.",
+    "answer": "nhác"
+  },
+  {
+    "question": "... già măng mọc.",
+    "prefix": "",
+    "suffix": "già măng mọc.",
+    "answer": "tre"
+  },
+  {
+    "question": "chị em dâu như bầu ... lã.",
+    "prefix": "chị em dâu như bầu",
+    "suffix": "lã.",
+    "answer": "nước"
+  },
+  {
+    "question": "cha mẹ sinh con ... sinh tính.",
+    "prefix": "cha mẹ sinh con",
+    "suffix": "sinh tính.",
+    "answer": "trời"
+  },
+  {
+    "question": "một điều nhịn là ... điều lành.",
+    "prefix": "một điều nhịn là",
+    "suffix": "điều lành.",
+    "answer": "chín"
+  },
+  {
+    "question": "còn ..., còn tát.",
+    "prefix": "còn",
+    "suffix": ", còn tát.",
+    "answer": "nước"
+  },
+  {
+    "question": "... làm gáo, vỡ làm môi.",
+    "prefix": "",
+    "suffix": "làm gáo, vỡ làm môi.",
+    "answer": "lành"
+  },
+  {
+    "question": "nói hay hơn hay ...",
+    "prefix": "nói hay hơn hay",
+    "suffix": "",
+    "answer": "nói"
+  },
+  {
+    "question": "cá mè một ...",
+    "prefix": "cá mè một",
+    "suffix": "",
+    "answer": "lứa"
+  },
+  {
+    "question": "đức thọ gạo trắng nước trong, ai về đức thọ thong ... con người.",
+    "prefix": "đức thọ gạo trắng nước trong, ai về đức thọ thong",
+    "suffix": "con người.",
+    "answer": "dong"
+  },
+  {
+    "question": "rủ nhau đi cấy đi cày, bây giờ khó ..., có ngày phong lưu.",
+    "prefix": "rủ nhau đi cấy đi cày, bây giờ khó",
+    "suffix": ", có ngày phong lưu.",
+    "answer": "nhọc"
+  },
+  {
+    "question": "có ... thì nên.",
+    "prefix": "có",
+    "suffix": "thì nên.",
+    "answer": "chí"
+  },
+  {
+    "question": "đồng đăng có phố kỳ lừa, có ... tô thị, có chùa tam thanh",
+    "prefix": "đồng đăng có phố kỳ lừa, có",
+    "suffix": "tô thị, có chùa tam thanh",
+    "answer": "nàng"
+  },
+  {
+    "question": "rượu vào, ... ra.",
+    "prefix": "rượu vào,",
+    "suffix": "ra.",
+    "answer": "lời"
+  },
+  {
+    "question": "khôn cho người ta sợ, dại cho người ta ..., dở dở ương ương tổ người ta ghét.",
+    "prefix": "khôn cho người ta sợ, dại cho người ta",
+    "suffix": ", dở dở ương ương tổ người ta ghét.",
+    "answer": "thương"
+  },
+  {
+    "question": "thương em chẳng quản xa gần, cầu không ... vịn cũng lần mà sang.",
+    "prefix": "thương em chẳng quản xa gần, cầu không",
+    "suffix": "vịn cũng lần mà sang.",
+    "answer": "tay"
+  },
+  {
+    "question": "con ... là mặt đồng cân.",
+    "prefix": "con",
+    "suffix": "là mặt đồng cân.",
+    "answer": "mắt"
+  },
+  {
+    "question": "của không ngon ... nhiều con cũng hết.",
+    "prefix": "của không ngon",
+    "suffix": "nhiều con cũng hết.",
+    "answer": "nhà"
+  },
+  {
+    "question": "một cành tre, năm bảy cành tre, đẹp duyên thì lấy chớ ... họ hàng.",
+    "prefix": "một cành tre, năm bảy cành tre, đẹp duyên thì lấy chớ",
+    "suffix": "họ hàng.",
+    "answer": "nghe"
+  },
+  {
+    "question": "đêm hè gió mát trăng ..., em ngồi canh cửi còn anh vá chài.",
+    "prefix": "đêm hè gió mát trăng",
+    "suffix": ", em ngồi canh cửi còn anh vá chài.",
+    "answer": "thanh"
+  },
+  {
+    "question": "kẻ cắp ... bà già.",
+    "prefix": "kẻ cắp",
+    "suffix": "bà già.",
+    "answer": "gặp"
+  },
+  {
+    "question": "nhớ ai con mắt lim dim, chân đi thất thểu như chim ... mồi.",
+    "prefix": "nhớ ai con mắt lim dim, chân đi thất thểu như chim",
+    "suffix": "mồi.",
+    "answer": "tha"
+  },
+  {
+    "question": "ép dầu ép ..., ai nỡ ép duyên.",
+    "prefix": "ép dầu ép",
+    "suffix": ", ai nỡ ép duyên.",
+    "answer": "mỡ"
+  },
+  {
+    "question": "ai về nhắn chị em cùng, muốn cho sung sướng nghề ... phải cần",
+    "prefix": "ai về nhắn chị em cùng, muốn cho sung sướng nghề",
+    "suffix": "phải cần",
+    "answer": "nông"
+  },
+  {
+    "question": "đông thành là mẹ là cha, đói cơm, rách ... thì ra đông thành.",
+    "prefix": "đông thành là mẹ là cha, đói cơm, rách",
+    "suffix": "thì ra đông thành.",
+    "answer": "áo"
+  },
+  {
+    "question": "cây cao mấy trượng cũng ..., đường xa mấy dặm cũng theo anh về.",
+    "prefix": "cây cao mấy trượng cũng",
+    "suffix": ", đường xa mấy dặm cũng theo anh về.",
+    "answer": "trèo"
+  },
+  {
+    "question": "miệng nhà giàu ... đâu ra đấy.",
+    "prefix": "miệng nhà giàu",
+    "suffix": "đâu ra đấy.",
+    "answer": "nói"
+  },
+  {
+    "question": "mẹ em khéo đẻ em ra, đẻ em gốc bưởi cho ta đèo ...",
+    "prefix": "mẹ em khéo đẻ em ra, đẻ em gốc bưởi cho ta đèo",
+    "suffix": "",
+    "answer": "bòng"
+  },
+  {
+    "question": "ước ao ăn ở một nhà, ra vào đụng chạm kẻo mà nhớ ...",
+    "prefix": "ước ao ăn ở một nhà, ra vào đụng chạm kẻo mà nhớ",
+    "suffix": "",
+    "answer": "thương"
+  },
+  {
+    "question": "già néo đứt ...",
+    "prefix": "già néo đứt",
+    "suffix": "",
+    "answer": "dây"
+  },
+  {
+    "question": "cây có cội, nước có ...",
+    "prefix": "cây có cội, nước có",
+    "suffix": "",
+    "answer": "nguồn"
+  },
+  {
+    "question": "chớ chê em xấu, em ..., em như nước đục, đánh phèn lại trong.",
+    "prefix": "chớ chê em xấu, em",
+    "suffix": ", em như nước đục, đánh phèn lại trong.",
+    "answer": "đen"
+  },
+  {
+    "question": "mây xanh thì nắng, mây trắng thì ...",
+    "prefix": "mây xanh thì nắng, mây trắng thì",
+    "suffix": "",
+    "answer": "mưa"
+  },
+  {
+    "question": "người làm sao, ... bao làm vậy.",
+    "prefix": "người làm sao,",
+    "suffix": "bao làm vậy.",
+    "answer": "chiêm"
+  },
+  {
+    "question": "bút sa, ... chết.",
+    "prefix": "bút sa,",
+    "suffix": "chết.",
+    "answer": "gà"
+  },
+  {
+    "question": "chẳng yêu nhau được thì thôi, xin chàng đừng tẩy ... vôi mà nồng.",
+    "prefix": "chẳng yêu nhau được thì thôi, xin chàng đừng tẩy",
+    "suffix": "vôi mà nồng.",
+    "answer": "nước"
+  },
+  {
+    "question": "ruộng sâu, trâu nái không bằng ... gái đầu lòng.",
+    "prefix": "ruộng sâu, trâu nái không bằng",
+    "suffix": "gái đầu lòng.",
+    "answer": "con"
+  },
+  {
+    "question": "cái khó bó cái ...",
+    "prefix": "cái khó bó cái",
+    "suffix": "",
+    "answer": "khôn"
+  },
+  {
+    "question": "đói thì thèm thịt thèm ..., \rhễ no cơm tẻ thì thôi mọi đường.",
+    "prefix": "đói thì thèm thịt thèm",
+    "suffix": ", \rhễ no cơm tẻ thì thôi mọi đường.",
+    "answer": "xôi"
+  },
+  {
+    "question": "đôi ta ... thác xuống ghềnh, em ra đứng mũi cho anh chịu sào.",
+    "prefix": "đôi ta",
+    "suffix": "thác xuống ghềnh, em ra đứng mũi cho anh chịu sào.",
+    "answer": "lên"
+  },
+  {
+    "question": "trăm năm đành lỗi hẹn hò, cây ..., bến cũ, con đò khác xưa.",
+    "prefix": "trăm năm đành lỗi hẹn hò, cây",
+    "suffix": ", bến cũ, con đò khác xưa.",
+    "answer": "đa"
+  },
+  {
+    "question": "lá này gọi lá xoan đào, tương ... gọi nó thế nào hở em?",
+    "prefix": "lá này gọi lá xoan đào, tương",
+    "suffix": "gọi nó thế nào hở em?",
+    "answer": "tư"
+  },
+  {
+    "question": "em về dệt cửi trên khung, để anh đọc ... cùng chung một đèn",
+    "prefix": "em về dệt cửi trên khung, để anh đọc",
+    "suffix": "cùng chung một đèn",
+    "answer": "sách"
+  },
+  {
+    "question": "thương em chẳng biết để ..., để vào tay áo, lâu lâu lại dòm.",
+    "prefix": "thương em chẳng biết để",
+    "suffix": ", để vào tay áo, lâu lâu lại dòm.",
+    "answer": "đâu"
+  },
+  {
+    "question": "cơm ăn mỗi bữa mỗi lưng, nước uống cầm chừng để dạ ... em.",
+    "prefix": "cơm ăn mỗi bữa mỗi lưng, nước uống cầm chừng để dạ",
+    "suffix": "em.",
+    "answer": "thương"
+  },
+  {
+    "question": "ba người đánh một, không ... cũng què.",
+    "prefix": "ba người đánh một, không",
+    "suffix": "cũng què.",
+    "answer": "chột"
+  },
+  {
+    "question": "mưu ... chẳng bằng chí dày.",
+    "prefix": "mưu",
+    "suffix": "chẳng bằng chí dày.",
+    "answer": "cao"
+  },
+  {
+    "question": "sông sâu mà biển cũng ..., muốn ăn cá lớn dong câu cho dài.",
+    "prefix": "sông sâu mà biển cũng",
+    "suffix": ", muốn ăn cá lớn dong câu cho dài.",
+    "answer": "sâu"
+  },
+  {
+    "question": "hòn ... ném đi, hòn chì ném lại.",
+    "prefix": "hòn",
+    "suffix": "ném đi, hòn chì ném lại.",
+    "answer": "đất"
+  },
+  {
+    "question": "lòng vả cũng như lòng ...",
+    "prefix": "lòng vả cũng như lòng",
+    "suffix": "",
+    "answer": "sung"
+  },
+  {
+    "question": "yêu nhau lắm, ... nhau đau.",
+    "prefix": "yêu nhau lắm,",
+    "suffix": "nhau đau.",
+    "answer": "cắn"
+  },
+  {
+    "question": "hỡi cô tát ... quang mây, cho anh một gáo tưới cây ngô đồng.",
+    "prefix": "hỡi cô tát",
+    "suffix": "quang mây, cho anh một gáo tưới cây ngô đồng.",
+    "answer": "nước"
+  },
+  {
+    "question": "sóng cả chớ ngã tay ...",
+    "prefix": "sóng cả chớ ngã tay",
+    "suffix": "",
+    "answer": "chèo"
+  },
+  {
+    "question": "một đời kiện, ... đời thù.",
+    "prefix": "một đời kiện,",
+    "suffix": "đời thù.",
+    "answer": "chín"
+  },
+  {
+    "question": "sông có ..., người có lúc.",
+    "prefix": "sông có",
+    "suffix": ", người có lúc.",
+    "answer": "khúc"
+  },
+  {
+    "question": "khôn ba năm, dại một ...",
+    "prefix": "khôn ba năm, dại một",
+    "suffix": "",
+    "answer": "giờ"
+  },
+  {
+    "question": "thuyền theo lái, ... theo chồng.",
+    "prefix": "thuyền theo lái,",
+    "suffix": "theo chồng.",
+    "answer": "gái"
+  },
+  {
+    "question": "đố ai quét sạch lá rừng, để ta khuyên gió gió đừng rung ...",
+    "prefix": "đố ai quét sạch lá rừng, để ta khuyên gió gió đừng rung",
+    "suffix": "",
+    "answer": "cây"
+  },
+  {
+    "question": "tơ tằm đã vấn thì ..., đã trót dan díu thì thương nhau cùng.",
+    "prefix": "tơ tằm đã vấn thì",
+    "suffix": ", đã trót dan díu thì thương nhau cùng.",
+    "answer": "vương"
+  },
+  {
+    "question": "mồm miệng đỡ ... tay.",
+    "prefix": "mồm miệng đỡ",
+    "suffix": "tay.",
+    "answer": "chân"
+  },
+  {
+    "question": "giàu ăn ba bữa, khó cũng đỏ ... ba lần.",
+    "prefix": "giàu ăn ba bữa, khó cũng đỏ",
+    "suffix": "ba lần.",
+    "answer": "lửa"
+  },
+  {
+    "question": "năng mưa thì giếng năng đầy, ... năng đi lại, mẹ thầy năng thương.",
+    "prefix": "năng mưa thì giếng năng đầy,",
+    "suffix": "năng đi lại, mẹ thầy năng thương.",
+    "answer": "anh"
+  },
+  {
+    "question": "tằm chăn ba lứa thuận hòa, tiền dư, thóc tích giữa nhà cao ...",
+    "prefix": "tằm chăn ba lứa thuận hòa, tiền dư, thóc tích giữa nhà cao",
+    "suffix": "",
+    "answer": "sang"
+  },
+  {
+    "question": "chàng về thời thiếp xin đưa, cầu trời đừng nắng, chớ ... trơn đường.",
+    "prefix": "chàng về thời thiếp xin đưa, cầu trời đừng nắng, chớ",
+    "suffix": "trơn đường.",
+    "answer": "mưa"
+  },
+  {
+    "question": "không ... đố mày làm nên.",
+    "prefix": "không",
+    "suffix": "đố mày làm nên.",
+    "answer": "thầy"
+  },
+  {
+    "question": "lưỡi sắc hơn ...",
+    "prefix": "lưỡi sắc hơn",
+    "suffix": "",
+    "answer": "gươm"
+  },
+  {
+    "question": "ước gì anh lấy được nàng, để anh mua ... bát tràng về xây",
+    "prefix": "ước gì anh lấy được nàng, để anh mua",
+    "suffix": "bát tràng về xây",
+    "answer": "con"
+  },
+  {
+    "question": "anh thương em ruột thắt ... bào, biết em có thương lại chút nào hay không?",
+    "prefix": "anh thương em ruột thắt",
+    "suffix": "bào, biết em có thương lại chút nào hay không?",
+    "answer": "gan"
+  },
+  {
+    "question": "lên non cho biết non cao, thương em đừng kể công ... em buồn.",
+    "prefix": "lên non cho biết non cao, thương em đừng kể công",
+    "suffix": "em buồn.",
+    "answer": "lao"
+  },
+  {
+    "question": "chiều chiều én liệng, cò bay, ... khuâng nhớ bạn, bạn rày nhớ ai?",
+    "prefix": "chiều chiều én liệng, cò bay,",
+    "suffix": "khuâng nhớ bạn, bạn rày nhớ ai?",
+    "answer": "bâng"
+  },
+  {
+    "question": "thắng không kiêu, ... không nản.",
+    "prefix": "thắng không kiêu,",
+    "suffix": "không nản.",
+    "answer": "bại"
+  },
+  {
+    "question": "đồng tiền đi trước là đồng tiền ..., đồng tiền đi sau là đồng tiền dại.",
+    "prefix": "đồng tiền đi trước là đồng tiền",
+    "suffix": ", đồng tiền đi sau là đồng tiền dại.",
+    "answer": "khôn"
+  },
+  {
+    "question": "lên ... thiếp cũng lên theo, tay vịn chân trèo, hái trái nuôi nhau.",
+    "prefix": "lên",
+    "suffix": "thiếp cũng lên theo, tay vịn chân trèo, hái trái nuôi nhau.",
+    "answer": "non"
+  },
+  {
+    "question": "ăn tùy nơi, ... tùy chỗ.",
+    "prefix": "ăn tùy nơi,",
+    "suffix": "tùy chỗ.",
+    "answer": "chơi"
+  },
+  {
+    "question": "khen nết hay làm, ai khen nết hay ...",
+    "prefix": "khen nết hay làm, ai khen nết hay",
+    "suffix": "",
+    "answer": "ăn"
+  },
+  {
+    "question": "em đang vút nếp thổi xôi, nghe ... có vợ, thúng trôi, nếp chìm.",
+    "prefix": "em đang vút nếp thổi xôi, nghe",
+    "suffix": "có vợ, thúng trôi, nếp chìm.",
+    "answer": "anh"
+  },
+  {
+    "question": "thuận vợ thuận ... tát bể đông cũng cạn.",
+    "prefix": "thuận vợ thuận",
+    "suffix": "tát bể đông cũng cạn.",
+    "answer": "chồng"
+  },
+  {
+    "question": "hôm qua dệt cửi ... vàng, sực nhớ đến chàng, cửi lại dừng thoi.",
+    "prefix": "hôm qua dệt cửi",
+    "suffix": "vàng, sực nhớ đến chàng, cửi lại dừng thoi.",
+    "answer": "thoi"
+  },
+  {
+    "question": "hay làm thì đói, hay ... thì no.",
+    "prefix": "hay làm thì đói, hay",
+    "suffix": "thì no.",
+    "answer": "nói"
+  },
+  {
+    "question": "một giọt máu đào hơn ... nước lã.",
+    "prefix": "một giọt máu đào hơn",
+    "suffix": "nước lã.",
+    "answer": "ao"
+  },
+  {
+    "question": "tìm em như thể tìm chim, chim ăn bể ..., đi tìm bể đông.",
+    "prefix": "tìm em như thể tìm chim, chim ăn bể",
+    "suffix": ", đi tìm bể đông.",
+    "answer": "bắc"
+  },
+  {
+    "question": "lời nói không cánh mà ...",
+    "prefix": "lời nói không cánh mà",
+    "suffix": "",
+    "answer": "bay"
+  },
+  {
+    "question": "theo chi những thói gian ..., pha phôi thực giả tìm đường dối nhau.",
+    "prefix": "theo chi những thói gian",
+    "suffix": ", pha phôi thực giả tìm đường dối nhau.",
+    "answer": "tham"
+  },
+  {
+    "question": "đứt tay một chút còn đau, huống chi ... ngãi lìa nhau không đành.",
+    "prefix": "đứt tay một chút còn đau, huống chi",
+    "suffix": "ngãi lìa nhau không đành.",
+    "answer": "nhân"
+  },
+  {
+    "question": "một người làm ... cả họ được nhờ.",
+    "prefix": "một người làm",
+    "suffix": "cả họ được nhờ.",
+    "answer": "quan"
+  },
+  {
+    "question": "ấy ngày mồng sáu tháng ba, ăn ... với cà đi hội chùa tây",
+    "prefix": "ấy ngày mồng sáu tháng ba, ăn",
+    "suffix": "với cà đi hội chùa tây",
+    "answer": "cơm"
+  },
+  {
+    "question": "dù ai đi ngược về ..., nhớ ngày giỗ tổ mùng mười tháng ba.",
+    "prefix": "dù ai đi ngược về",
+    "suffix": ", nhớ ngày giỗ tổ mùng mười tháng ba.",
+    "answer": "xuôi"
+  },
+  {
+    "question": "đời vua thái tổ, thái ..., con bế, con dắt, con bồng, con mang.",
+    "prefix": "đời vua thái tổ, thái",
+    "suffix": ", con bế, con dắt, con bồng, con mang.",
+    "answer": "tông"
+  },
+  {
+    "question": "thắng làm vua, ... làm giặc.",
+    "prefix": "thắng làm vua,",
+    "suffix": "làm giặc.",
+    "answer": "thua"
+  },
+  {
+    "question": "buồn ngủ lại gặp chiếu ..., hay ăn làm biếng gặp anh đứng đường.",
+    "prefix": "buồn ngủ lại gặp chiếu",
+    "suffix": ", hay ăn làm biếng gặp anh đứng đường.",
+    "answer": "manh"
+  },
+  {
+    "question": "gái có chồng như ... đeo cổ, gái không chồng như phản gỗ long đanh.",
+    "prefix": "gái có chồng như",
+    "suffix": "đeo cổ, gái không chồng như phản gỗ long đanh.",
+    "answer": "gông"
+  },
+  {
+    "question": "mùa hè cá ..., mùa đông cá bè.",
+    "prefix": "mùa hè cá",
+    "suffix": ", mùa đông cá bè.",
+    "answer": "sông"
+  },
+  {
+    "question": "đẹp ... hơn đẹp người.",
+    "prefix": "đẹp",
+    "suffix": "hơn đẹp người.",
+    "answer": "nết"
+  },
+  {
+    "question": "thức khuya mới biết ... dài, đoạn trường ai có qua cầu mới hay.",
+    "prefix": "thức khuya mới biết",
+    "suffix": "dài, đoạn trường ai có qua cầu mới hay.",
+    "answer": "đêm"
+  },
+  {
+    "question": "đồng tiền đi liền ... ruột.",
+    "prefix": "đồng tiền đi liền",
+    "suffix": "ruột.",
+    "answer": "khúc"
+  },
+  {
+    "question": "dậu đổ bìm ...",
+    "prefix": "dậu đổ bìm",
+    "suffix": "",
+    "answer": "leo"
+  },
+  {
+    "question": "em về bình định cùng anh, được ăn bí đỏ nấu ... nước dừa.",
+    "prefix": "em về bình định cùng anh, được ăn bí đỏ nấu",
+    "suffix": "nước dừa.",
+    "answer": "canh"
+  },
+  {
+    "question": "đôi ta như lúa phai ..., đẹp duyên thì lấy, tham giàu làm chi.",
+    "prefix": "đôi ta như lúa phai",
+    "suffix": ", đẹp duyên thì lấy, tham giàu làm chi.",
+    "answer": "màu"
+  },
+  {
+    "question": "ăn cơm có ..., tu hành có vãi.",
+    "prefix": "ăn cơm có",
+    "suffix": ", tu hành có vãi.",
+    "answer": "canh"
+  },
+  {
+    "question": "vào vườn hái quả ... xanh, bổ ra làm sáu mời anh xơi trầu.",
+    "prefix": "vào vườn hái quả",
+    "suffix": "xanh, bổ ra làm sáu mời anh xơi trầu.",
+    "answer": "cau"
+  },
+  {
+    "question": "miệng nam mô, ... một bồ dao găm.",
+    "prefix": "miệng nam mô,",
+    "suffix": "một bồ dao găm.",
+    "answer": "bụng"
+  },
+  {
+    "question": "hỡi cô thắt lưng bao xanh, có về vạn phúc với anh thì về, vạn phúc có cội cây đề, có ... uốn khúc, có nghề quay tơ",
+    "prefix": "hỡi cô thắt lưng bao xanh, có về vạn phúc với anh thì về, vạn phúc có cội cây đề, có",
+    "suffix": "uốn khúc, có nghề quay tơ",
+    "answer": "sông"
+  },
+  {
+    "question": "rút dây động ...",
+    "prefix": "rút dây động",
+    "suffix": "",
+    "answer": "rừng"
+  },
+  {
+    "question": "em về cắt rạ, đánh ..., chặt tre, chẻ lạt cho anh lợp nhà",
+    "prefix": "em về cắt rạ, đánh",
+    "suffix": ", chặt tre, chẻ lạt cho anh lợp nhà",
+    "answer": "tranh"
+  },
+  {
+    "question": "đánh nhau chia gạo, chào nhau ăn ...",
+    "prefix": "đánh nhau chia gạo, chào nhau ăn",
+    "suffix": "",
+    "answer": "cơm"
+  },
+  {
+    "question": "có ... phụ đèn.",
+    "prefix": "có",
+    "suffix": "phụ đèn.",
+    "answer": "trăng"
+  },
+  {
+    "question": "tấc đất, tấc ...",
+    "prefix": "tấc đất, tấc",
+    "suffix": "",
+    "answer": "vàng"
+  },
+  {
+    "question": "em về dọn quán ... hàng, để anh là khách đi đàng trú chân.",
+    "prefix": "em về dọn quán",
+    "suffix": "hàng, để anh là khách đi đàng trú chân.",
+    "answer": "bán"
+  },
+  {
+    "question": "cá lớn ... cá bé.",
+    "prefix": "cá lớn",
+    "suffix": "cá bé.",
+    "answer": "nuốt"
+  },
+  {
+    "question": "thuốc đắng giã tật, nói thật mất ...",
+    "prefix": "thuốc đắng giã tật, nói thật mất",
+    "suffix": "",
+    "answer": "lòng"
+  },
+  {
+    "question": "con ... xéo lắm cũng quằn.",
+    "prefix": "con",
+    "suffix": "xéo lắm cũng quằn.",
+    "answer": "giun"
+  },
+  {
+    "question": "một đêm ..., một năm ở.",
+    "prefix": "một đêm",
+    "suffix": ", một năm ở.",
+    "answer": "nằm"
+  },
+  {
+    "question": "cách sông cách núi cho cam, cách một chỗ lội thiếp chàng ... nhau.",
+    "prefix": "cách sông cách núi cho cam, cách một chỗ lội thiếp chàng",
+    "suffix": "nhau.",
+    "answer": "xa"
+  },
+  {
+    "question": "muốn ăn thì ... vào bếp",
+    "prefix": "muốn ăn thì",
+    "suffix": "vào bếp",
+    "answer": "lăn"
+  },
+  {
+    "question": "ngựa ... đường cũ.",
+    "prefix": "ngựa",
+    "suffix": "đường cũ.",
+    "answer": "quen"
+  },
+  {
+    "question": "xa xôi ai có tỏ chừng, gian nan, tân khổ ta đừng ... nhau.",
+    "prefix": "xa xôi ai có tỏ chừng, gian nan, tân khổ ta đừng",
+    "suffix": "nhau.",
+    "answer": "quên"
+  },
+  {
+    "question": "học ăn, học ..., học gói, học mở.",
+    "prefix": "học ăn, học",
+    "suffix": ", học gói, học mở.",
+    "answer": "nói"
+  },
+  {
+    "question": "chàng về để áo lại đây, phòng khi em ..., cầm tay đỡ buồn.",
+    "prefix": "chàng về để áo lại đây, phòng khi em",
+    "suffix": ", cầm tay đỡ buồn.",
+    "answer": "nhớ"
+  },
+  {
+    "question": "cái răng, cái tóc là ... con người.",
+    "prefix": "cái răng, cái tóc là",
+    "suffix": "con người.",
+    "answer": "góc"
+  },
+  {
+    "question": "trẻ muối cà, ... muối dưa.",
+    "prefix": "trẻ muối cà,",
+    "suffix": "muối dưa.",
+    "answer": "già"
+  },
+  {
+    "question": "ngựa chạy có bầy, chim ... có bạn.",
+    "prefix": "ngựa chạy có bầy, chim",
+    "suffix": "có bạn.",
+    "answer": "bay"
+  },
+  {
+    "question": "sướng lắm ... nhiều.",
+    "prefix": "sướng lắm",
+    "suffix": "nhiều.",
+    "answer": "khổ"
+  },
+  {
+    "question": "bấy lâu sao chẳng ... năng, bây giờ năng nói thì trăng xế tà.",
+    "prefix": "bấy lâu sao chẳng",
+    "suffix": "năng, bây giờ năng nói thì trăng xế tà.",
+    "answer": "nói"
+  },
+  {
+    "question": "đài nghiên, tháp bút chưa mòn, hỏi ai xây ... nên non nước này.",
+    "prefix": "đài nghiên, tháp bút chưa mòn, hỏi ai xây",
+    "suffix": "nên non nước này.",
+    "answer": "dựng"
+  },
+  {
+    "question": "khôn làm văn tế, dại làm văn ...",
+    "prefix": "khôn làm văn tế, dại làm văn",
+    "suffix": "",
+    "answer": "bia"
+  },
+  {
+    "question": "nhất nước, nhì ..., tam cần tứ giống.",
+    "prefix": "nhất nước, nhì",
+    "suffix": ", tam cần tứ giống.",
+    "answer": "phân"
+  },
+  {
+    "question": "anh về đếm hết ... trời, em đây kết tóc, ở đời với anh.",
+    "prefix": "anh về đếm hết",
+    "suffix": "trời, em đây kết tóc, ở đời với anh.",
+    "answer": "sao"
+  },
+  {
+    "question": "anh ơi đi lại cho dày, thầy mẹ không gả em bày ... cho.",
+    "prefix": "anh ơi đi lại cho dày, thầy mẹ không gả em bày",
+    "suffix": "cho.",
+    "answer": "mưu"
+  },
+  {
+    "question": "mình ơi có nhớ ... chăng? ta như sao vượt chở trăng giữa trời.",
+    "prefix": "mình ơi có nhớ",
+    "suffix": "chăng? ta như sao vượt chở trăng giữa trời.",
+    "answer": "ta"
+  },
+  {
+    "question": "chẳng chua cũng thể là ..., chẳng ngọt cũng thể cam sành chín cây.",
+    "prefix": "chẳng chua cũng thể là",
+    "suffix": ", chẳng ngọt cũng thể cam sành chín cây.",
+    "answer": "chanh"
+  },
+  {
+    "question": "cơm không ăn, ... còn đó.",
+    "prefix": "cơm không ăn,",
+    "suffix": "còn đó.",
+    "answer": "gạo"
+  },
+  {
+    "question": "mua cá thì phải xem ..., người khôn xem lấy hai hàng tóc mai.",
+    "prefix": "mua cá thì phải xem",
+    "suffix": ", người khôn xem lấy hai hàng tóc mai.",
+    "answer": "mang"
+  },
+  {
+    "question": "lời ... cao hơn mâm cỗ.",
+    "prefix": "lời",
+    "suffix": "cao hơn mâm cỗ.",
+    "answer": "chào"
+  },
+  {
+    "question": "nom ra ngoài bể mù mờ, thấy anh câu đục, câu dù mà ...",
+    "prefix": "nom ra ngoài bể mù mờ, thấy anh câu đục, câu dù mà",
+    "suffix": "",
+    "answer": "thương"
+  },
+  {
+    "question": "đất có thổ công, ... có hà bá.",
+    "prefix": "đất có thổ công,",
+    "suffix": "có hà bá.",
+    "answer": "sông"
+  },
+  {
+    "question": "tháng sáu mà cấy mạ già, thà rằng công ấy ở nhà ẵm ...",
+    "prefix": "tháng sáu mà cấy mạ già, thà rằng công ấy ở nhà ẵm",
+    "suffix": "",
+    "answer": "con"
+  },
+  {
+    "question": "mèo tha miếng thịt xôn xao, kễnh ... con lợn thì nào thấy chi.",
+    "prefix": "mèo tha miếng thịt xôn xao, kễnh",
+    "suffix": "con lợn thì nào thấy chi.",
+    "answer": "tha"
+  },
+  {
+    "question": "dò sông, dò bể, dò nguồn, \rbiết sao được bụng lái ... mà dò.",
+    "prefix": "dò sông, dò bể, dò nguồn, \rbiết sao được bụng lái",
+    "suffix": "mà dò.",
+    "answer": "buôn"
+  },
+  {
+    "question": "muốn tròn phải có ..., muốn vuông phải có thước.",
+    "prefix": "muốn tròn phải có",
+    "suffix": ", muốn vuông phải có thước.",
+    "answer": "khuôn"
+  },
+  {
+    "question": "cổ ... em trắng như ngà, con mắt em liếc như là dao cau.",
+    "prefix": "cổ",
+    "suffix": "em trắng như ngà, con mắt em liếc như là dao cau.",
+    "answer": "tay"
+  },
+  {
+    "question": "đã tu thời tu cho ...",
+    "prefix": "đã tu thời tu cho",
+    "suffix": "",
+    "answer": "trót"
+  },
+  {
+    "question": "trèo lên cây ... hái hoa, bước xuống vườn cà hái nụ tầm xuân",
+    "prefix": "trèo lên cây",
+    "suffix": "hái hoa, bước xuống vườn cà hái nụ tầm xuân",
+    "answer": "bưởi"
+  },
+  {
+    "question": "người đẹp vì lụa, lúa ... về phân.",
+    "prefix": "người đẹp vì lụa, lúa",
+    "suffix": "về phân.",
+    "answer": "tốt"
+  },
+  {
+    "question": "thóc đâu bồ ... đấy.",
+    "prefix": "thóc đâu bồ",
+    "suffix": "đấy.",
+    "answer": "câu"
+  },
+  {
+    "question": "ở ... gặp lành.",
+    "prefix": "ở",
+    "suffix": "gặp lành.",
+    "answer": "hiền"
+  },
+  {
+    "question": "cô kia cắt cỏ một mình, cho anh cắt với ... tình làm đôi.",
+    "prefix": "cô kia cắt cỏ một mình, cho anh cắt với",
+    "suffix": "tình làm đôi.",
+    "answer": "chung"
+  },
+  {
+    "question": "tháng ba dâu trốn, tháng ... dâu về.",
+    "prefix": "tháng ba dâu trốn, tháng",
+    "suffix": "dâu về.",
+    "answer": "bốn"
+  },
+  {
+    "question": "cất tiếng than, hai hàng lệ nhỏ,anh nói ... em rồi lại bỏ em đây.",
+    "prefix": "cất tiếng than, hai hàng lệ nhỏ,anh nói",
+    "suffix": "em rồi lại bỏ em đây.",
+    "answer": "thương"
+  },
+  {
+    "question": "khi say một chén cũng ..., khi nên tình nghĩa một ngày cũng nên.",
+    "prefix": "khi say một chén cũng",
+    "suffix": ", khi nên tình nghĩa một ngày cũng nên.",
+    "answer": "say"
+  },
+  {
+    "question": "nhớ ai nhớ mãi thế này? nhớ ... quên ngủ, nhớ ngày quên ăn",
+    "prefix": "nhớ ai nhớ mãi thế này? nhớ",
+    "suffix": "quên ngủ, nhớ ngày quên ăn",
+    "answer": "đêm"
+  },
+  {
+    "question": "tỏ trăng mười bốn được tằm, \rtỏ trăng hôm ... thì được lúa chiêm.",
+    "prefix": "tỏ trăng mười bốn được tằm, \rtỏ trăng hôm",
+    "suffix": "thì được lúa chiêm.",
+    "answer": "rằm"
+  },
+  {
+    "question": "ai về thọ lão hát ..., có thương lấy phận nàng kiều thì thương.",
+    "prefix": "ai về thọ lão hát",
+    "suffix": ", có thương lấy phận nàng kiều thì thương.",
+    "answer": "chèo"
+  },
+  {
+    "question": "xấu đều hơn ... lỏi.",
+    "prefix": "xấu đều hơn",
+    "suffix": "lỏi.",
+    "answer": "tốt"
+  },
+  {
+    "question": "tay cầm bầu rượu, nắm nem, mải vui quên hết lời em dặn ...",
+    "prefix": "tay cầm bầu rượu, nắm nem, mải vui quên hết lời em dặn",
+    "suffix": "",
+    "answer": "dò"
+  },
+  {
+    "question": "thấy em anh cũng muốn thương, sợ lòng bác mẹ ... gương chẳng tường.",
+    "prefix": "thấy em anh cũng muốn thương, sợ lòng bác mẹ",
+    "suffix": "gương chẳng tường.",
+    "answer": "soi"
+  },
+  {
+    "question": "nghe tin anh có vợ rồi, như ai dội ... nước sôi trong lòng.",
+    "prefix": "nghe tin anh có vợ rồi, như ai dội",
+    "suffix": "nước sôi trong lòng.",
+    "answer": "bát"
+  },
+  {
+    "question": "nói thì dễ, làm thì ...",
+    "prefix": "nói thì dễ, làm thì",
+    "suffix": "",
+    "answer": "khó"
+  },
+  {
+    "question": "con ơi nhớ lấy lời ..., mồng năm tháng chín thật là bão rươi.",
+    "prefix": "con ơi nhớ lấy lời",
+    "suffix": ", mồng năm tháng chín thật là bão rươi.",
+    "answer": "cha"
+  },
+  {
+    "question": "con ... là đầu cơ nghiệp.",
+    "prefix": "con",
+    "suffix": "là đầu cơ nghiệp.",
+    "answer": "trâu"
+  },
+  {
+    "question": "ăn một miếng, tiếng một ...",
+    "prefix": "ăn một miếng, tiếng một",
+    "suffix": "",
+    "answer": "đời"
+  },
+  {
+    "question": "tắt đèn nhà ngói cũng như nhà ...",
+    "prefix": "tắt đèn nhà ngói cũng như nhà",
+    "suffix": "",
+    "answer": "tranh"
+  },
+  {
+    "question": "khi đi thì bóng đang dài, giờ ... bóng đã nghe ai bóng tròn.",
+    "prefix": "khi đi thì bóng đang dài, giờ",
+    "suffix": "bóng đã nghe ai bóng tròn.",
+    "answer": "về"
+  },
+  {
+    "question": "chọn bạn mà chơi, chọn ... mà ở.",
+    "prefix": "chọn bạn mà chơi, chọn",
+    "suffix": "mà ở.",
+    "answer": "nơi"
+  },
+  {
+    "question": "hỏi vợ thì cưới liền tay, chớ để lâu ... lắm kẻ gièm pha.",
+    "prefix": "hỏi vợ thì cưới liền tay, chớ để lâu",
+    "suffix": "lắm kẻ gièm pha.",
+    "answer": "ngày"
+  },
+  {
+    "question": "... tha lâu cũng đầy tổ.",
+    "prefix": "",
+    "suffix": "tha lâu cũng đầy tổ.",
+    "answer": "kiến"
+  },
+  {
+    "question": "làm trai cho ... nên trai, phú xuân cũng trải, đồng nai cũng từng.",
+    "prefix": "làm trai cho",
+    "suffix": "nên trai, phú xuân cũng trải, đồng nai cũng từng.",
+    "answer": "đáng"
+  },
+  {
+    "question": "ru con con ngủ ... lành, để mẹ gánh nước rửa bành ông voi.",
+    "prefix": "ru con con ngủ",
+    "suffix": "lành, để mẹ gánh nước rửa bành ông voi.",
+    "answer": "ngon"
+  },
+  {
+    "question": "rượu ngon cái cặn cũng ..., thương em chẳng luận chồng con mấy đời.",
+    "prefix": "rượu ngon cái cặn cũng",
+    "suffix": ", thương em chẳng luận chồng con mấy đời.",
+    "answer": "ngon"
+  },
+  {
+    "question": "sớm ngày vác cuốc thăm đồng, hết ... thì lấy gầu sòng tát lên.",
+    "prefix": "sớm ngày vác cuốc thăm đồng, hết",
+    "suffix": "thì lấy gầu sòng tát lên.",
+    "answer": "tuyệt"
+  },
+  {
+    "question": "... tiểu thành đại.",
+    "prefix": "",
+    "suffix": "tiểu thành đại.",
+    "answer": "tích"
+  },
+  {
+    "question": "một trăm đám cưới không bằng hàm ... cá trê.",
+    "prefix": "một trăm đám cưới không bằng hàm",
+    "suffix": "cá trê.",
+    "answer": "dưới"
+  },
+  {
+    "question": "trẻ lên ... cả nhà học nói.",
+    "prefix": "trẻ lên",
+    "suffix": "cả nhà học nói.",
+    "answer": "ba"
+  },
+  {
+    "question": "tre non dễ ...",
+    "prefix": "tre non dễ",
+    "suffix": "",
+    "answer": "uốn"
+  },
+  {
+    "question": "yêu nhau cởi áo cho nhau, về nhà dối mẹ ... cầu gió bay.",
+    "prefix": "yêu nhau cởi áo cho nhau, về nhà dối mẹ",
+    "suffix": "cầu gió bay.",
+    "answer": "qua"
+  },
+  {
+    "question": "ai về đến huyện đông anh, ghé thăm ... cảnh loa thành thục vương.",
+    "prefix": "ai về đến huyện đông anh, ghé thăm",
+    "suffix": "cảnh loa thành thục vương.",
+    "answer": "phong"
+  },
+  {
+    "question": "vĩnh long có cặp rồng ..., nhất bùi hữu nghĩa, nhì phan tuấn thần.",
+    "prefix": "vĩnh long có cặp rồng",
+    "suffix": ", nhất bùi hữu nghĩa, nhì phan tuấn thần.",
+    "answer": "vàng"
+  },
+  {
+    "question": "vì mây cho núi lên trời, vì cơn ... thổi hoa cười với trăng.",
+    "prefix": "vì mây cho núi lên trời, vì cơn",
+    "suffix": "thổi hoa cười với trăng.",
+    "answer": "gió"
+  },
+  {
+    "question": "có tật giật ...",
+    "prefix": "có tật giật",
+    "suffix": "",
+    "answer": "mình"
+  },
+  {
+    "question": "ai ơi! bưng bát cơm đầy, dẻo thơm một hạt, đắng ... muôn phần!",
+    "prefix": "ai ơi! bưng bát cơm đầy, dẻo thơm một hạt, đắng",
+    "suffix": "muôn phần!",
+    "answer": "cay"
+  },
+  {
+    "question": "trầu ..., cau trắng, chay hồng, vôi pha với nghĩa, thuốc nồng với duyên.",
+    "prefix": "trầu",
+    "suffix": ", cau trắng, chay hồng, vôi pha với nghĩa, thuốc nồng với duyên.",
+    "answer": "xanh"
+  },
+  {
+    "question": "trồng khoai đất lạ, ... mạ đất quen.",
+    "prefix": "trồng khoai đất lạ,",
+    "suffix": "mạ đất quen.",
+    "answer": "gieo"
+  },
+  {
+    "question": "thủy ... em giữ trọn lời, chết đi thì chịu, lìa đôi không lìa.",
+    "prefix": "thủy",
+    "suffix": "em giữ trọn lời, chết đi thì chịu, lìa đôi không lìa.",
+    "answer": "chung"
+  },
+  {
+    "question": "có mặt thì mắng, vắng mặt thì ...",
+    "prefix": "có mặt thì mắng, vắng mặt thì",
+    "suffix": "",
+    "answer": "thương"
+  },
+  {
+    "question": "yêu nhau xin quyết một lòng, đậu ngâm ra ... đãi đằng nhau chi?",
+    "prefix": "yêu nhau xin quyết một lòng, đậu ngâm ra",
+    "suffix": "đãi đằng nhau chi?",
+    "answer": "giá"
+  },
+  {
+    "question": "răng bừa tám cái còn ..., lưỡi cày tám tấc đã vừa luống to",
+    "prefix": "răng bừa tám cái còn",
+    "suffix": ", lưỡi cày tám tấc đã vừa luống to",
+    "answer": "thưa"
+  },
+  {
+    "question": "lênh đênh một chiếc thuyền ..., mười hai bến nước biết gửi mình vào đâu.",
+    "prefix": "lênh đênh một chiếc thuyền",
+    "suffix": ", mười hai bến nước biết gửi mình vào đâu.",
+    "answer": "tình"
+  },
+  {
+    "question": "làm khi lành để dành khi ...",
+    "prefix": "làm khi lành để dành khi",
+    "suffix": "",
+    "answer": "đau"
+  },
+  {
+    "question": "chết ... còn hơn sống đục.",
+    "prefix": "chết",
+    "suffix": "còn hơn sống đục.",
+    "answer": "trong"
+  },
+  {
+    "question": "làm chi dở đục dở trong, lờ đờ nước ... cho lòng tương tư.",
+    "prefix": "làm chi dở đục dở trong, lờ đờ nước",
+    "suffix": "cho lòng tương tư.",
+    "answer": "hến"
+  },
+  {
+    "question": "sông lam một dải nông sờ, nhớ người ... tử bơ vơ nổi chìm.",
+    "prefix": "sông lam một dải nông sờ, nhớ người",
+    "suffix": "tử bơ vơ nổi chìm.",
+    "answer": "quân"
+  },
+  {
+    "question": "hoa thơm xuống đất cũng ..., em giòn, rách áo, đói cơm cũng giòn.",
+    "prefix": "hoa thơm xuống đất cũng",
+    "suffix": ", em giòn, rách áo, đói cơm cũng giòn.",
+    "answer": "thơm"
+  },
+  {
+    "question": "nước to, ... cả khôn chừng, đã vào gian hiểm xin đừng non tay.",
+    "prefix": "nước to,",
+    "suffix": "cả khôn chừng, đã vào gian hiểm xin đừng non tay.",
+    "answer": "sóng"
+  },
+  {
+    "question": "ngó vô linh đồng mây mờ, nhớ ông nguyên ... dựng cờ đánh tây.",
+    "prefix": "ngó vô linh đồng mây mờ, nhớ ông nguyên",
+    "suffix": "dựng cờ đánh tây.",
+    "answer": "soái"
+  },
+  {
+    "question": "có dốt mới có ...",
+    "prefix": "có dốt mới có",
+    "suffix": "",
+    "answer": "khôn"
+  },
+  {
+    "question": "đánh chó ngó chủ ...",
+    "prefix": "đánh chó ngó chủ",
+    "suffix": "",
+    "answer": "nhà"
+  },
+  {
+    "question": "có chàng công tráng họ ..., dựng lũy ba đình chống đánh giặc tây.",
+    "prefix": "có chàng công tráng họ",
+    "suffix": ", dựng lũy ba đình chống đánh giặc tây.",
+    "answer": "đinh"
+  },
+  {
+    "question": "sông thao nước đục người đen, ai lên phố ẻn cũng quên ... về",
+    "prefix": "sông thao nước đục người đen, ai lên phố ẻn cũng quên",
+    "suffix": "về",
+    "answer": "đường"
+  },
+  {
+    "question": "gần mực thì ..., gần đèn thì rạng.",
+    "prefix": "gần mực thì",
+    "suffix": ", gần đèn thì rạng.",
+    "answer": "đen"
+  },
+  {
+    "question": "một lòng kết ... xe tơ, một niềm chỉ đợi chỉ chờ một anh.",
+    "prefix": "một lòng kết",
+    "suffix": "xe tơ, một niềm chỉ đợi chỉ chờ một anh.",
+    "answer": "tóc"
+  },
+  {
+    "question": "giàu vì bạn, sang vì ...",
+    "prefix": "giàu vì bạn, sang vì",
+    "suffix": "",
+    "answer": "vợ"
+  },
+  {
+    "question": "bắc cạn có suối đãi vàng, có hồ ... bể, có nàng áo xanh.",
+    "prefix": "bắc cạn có suối đãi vàng, có hồ",
+    "suffix": "bể, có nàng áo xanh.",
+    "answer": "ba"
+  },
+  {
+    "question": "chờ anh, em gắng sức chờ, chờ hồi ... bảy, bây giờ ba mươi.",
+    "prefix": "chờ anh, em gắng sức chờ, chờ hồi",
+    "suffix": "bảy, bây giờ ba mươi.",
+    "answer": "mười"
+  },
+  {
+    "question": "một tiền gà, ba tiền ...",
+    "prefix": "một tiền gà, ba tiền",
+    "suffix": "",
+    "answer": "thóc"
+  },
+  {
+    "question": "giết một con cò cứu trăm con ...",
+    "prefix": "giết một con cò cứu trăm con",
+    "suffix": "",
+    "answer": "tép"
+  },
+  {
+    "question": "muốn ăn ... ít lá gai, lấy chồng bình định sợ dài đường đi.",
+    "prefix": "muốn ăn",
+    "suffix": "ít lá gai, lấy chồng bình định sợ dài đường đi.",
+    "answer": "bánh"
+  },
+  {
+    "question": "đã khó, chó ... thêm.",
+    "prefix": "đã khó, chó",
+    "suffix": "thêm.",
+    "answer": "cắn"
+  },
+  {
+    "question": "con hơn cha là nhà có ...",
+    "prefix": "con hơn cha là nhà có",
+    "suffix": "",
+    "answer": "phúc"
+  },
+  {
+    "question": "mình về mình bỏ ta đây, như con ... rối gỡ ngày nào xong.",
+    "prefix": "mình về mình bỏ ta đây, như con",
+    "suffix": "rối gỡ ngày nào xong.",
+    "answer": "tơ"
+  },
+  {
+    "question": "có nuôi con mới biết ... cha mẹ.",
+    "prefix": "có nuôi con mới biết",
+    "suffix": "cha mẹ.",
+    "answer": "lòng"
+  },
+  {
+    "question": "chim ngói mùa thu, chim cu mùa ...",
+    "prefix": "chim ngói mùa thu, chim cu mùa",
+    "suffix": "",
+    "answer": "hè"
+  },
+  {
+    "question": "có hay không mùa đông mới biết, giàu hay... ba mươi tết mới hay.",
+    "prefix": "có hay không mùa đông mới biết, giàu hay",
+    "suffix": "ba mươi tết mới hay.",
+    "answer": "nghèo"
+  },
+  {
+    "question": "sông côn khi cạn, khi ..., khí thiêng đất nước, nơi này vẫn thiêng.",
+    "prefix": "sông côn khi cạn, khi",
+    "suffix": ", khí thiêng đất nước, nơi này vẫn thiêng.",
+    "answer": "đầy"
+  },
+  {
+    "question": "ước gì sông rộng một ..., bắc cầu dải yếm để chàng sang chơi.",
+    "prefix": "ước gì sông rộng một",
+    "suffix": ", bắc cầu dải yếm để chàng sang chơi.",
+    "answer": "gang"
+  },
+  {
+    "question": "có thực mới vực được ...",
+    "prefix": "có thực mới vực được",
+    "suffix": "",
+    "answer": "đạo"
+  },
+  {
+    "question": "ước gì anh hóa ra ..., để cho em cứ ngày thường em soi.",
+    "prefix": "ước gì anh hóa ra",
+    "suffix": ", để cho em cứ ngày thường em soi.",
+    "answer": "gương"
+  },
+  {
+    "question": "đi bộ thì khiếp hải vân, đi thuyền thì sợ ... thần hang giơi.",
+    "prefix": "đi bộ thì khiếp hải vân, đi thuyền thì sợ",
+    "suffix": "thần hang giơi.",
+    "answer": "sóng"
+  },
+  {
+    "question": "nhất cao là núi tản viên, nhất ... là vũng thủy tiên cửa vừng.",
+    "prefix": "nhất cao là núi tản viên, nhất",
+    "suffix": "là vũng thủy tiên cửa vừng.",
+    "answer": "sâu"
+  },
+  {
+    "question": "xấu hay làm tốt, dốt hay nói ...",
+    "prefix": "xấu hay làm tốt, dốt hay nói",
+    "suffix": "",
+    "answer": "chữ"
+  },
+  {
+    "question": "có quán tình phụ bóng đa, ba năm quán đổ, cây ... vẫn còn.",
+    "prefix": "có quán tình phụ bóng đa, ba năm quán đổ, cây",
+    "suffix": "vẫn còn.",
+    "answer": "đa"
+  },
+  {
+    "question": "thua keo này, ... keo khác.",
+    "prefix": "thua keo này,",
+    "suffix": "keo khác.",
+    "answer": "bày"
+  },
+  {
+    "question": "có công mài sắt có ngày nên ...",
+    "prefix": "có công mài sắt có ngày nên",
+    "suffix": "",
+    "answer": "kim"
+  },
+  {
+    "question": "bụng làm dạ ...",
+    "prefix": "bụng làm dạ",
+    "suffix": "",
+    "answer": "chịu"
+  },
+  {
+    "question": "người ... ăn nói nửa chừng, để cho kẻ dại nửa mừng nửa lo.",
+    "prefix": "người",
+    "suffix": "ăn nói nửa chừng, để cho kẻ dại nửa mừng nửa lo.",
+    "answer": "khôn"
+  },
+  {
+    "question": "... đến nhà đàn bà phải đánh.",
+    "prefix": "",
+    "suffix": "đến nhà đàn bà phải đánh.",
+    "answer": "giặc"
+  },
+  {
+    "question": "qua đình ngả ... trông đình, đình bao nhiêu ngói, thương mình bấy nhiêu.",
+    "prefix": "qua đình ngả",
+    "suffix": "trông đình, đình bao nhiêu ngói, thương mình bấy nhiêu.",
+    "answer": "nón"
+  },
+  {
+    "question": "ân cha nghĩa ... chưa đền, bậu mong ôm gối cuốn mềm theo ai?",
+    "prefix": "ân cha nghĩa",
+    "suffix": "chưa đền, bậu mong ôm gối cuốn mềm theo ai?",
+    "answer": "mẹ"
+  },
+  {
+    "question": "quân tử phòng thân, tiểu ... phòng bị gậy.",
+    "prefix": "quân tử phòng thân, tiểu",
+    "suffix": "phòng bị gậy.",
+    "answer": "nhân"
+  },
+  {
+    "question": "đôi ta như thể con ong, con quấn, con quýt, con ... con ngoài.",
+    "prefix": "đôi ta như thể con ong, con quấn, con quýt, con",
+    "suffix": "con ngoài.",
+    "answer": "trong"
+  },
+  {
+    "question": "đường mòn ân nghĩa không mòn, chanh chua chớ phụ, ... bòng chớ ham.",
+    "prefix": "đường mòn ân nghĩa không mòn, chanh chua chớ phụ,",
+    "suffix": "bòng chớ ham.",
+    "answer": "ngọt"
+  },
+  {
+    "question": "bước qua vườn ổi hái trầu, hỏi thăm lê, lựu, măng sầu ... chưa?",
+    "prefix": "bước qua vườn ổi hái trầu, hỏi thăm lê, lựu, măng sầu",
+    "suffix": "chưa?",
+    "answer": "chín"
+  },
+  {
+    "question": "ớt cay là ớt định công, nhãn ngon là loại nhãn ... làng quang.",
+    "prefix": "ớt cay là ớt định công, nhãn ngon là loại nhãn",
+    "suffix": "làng quang.",
+    "answer": "lồng"
+  },
+  {
+    "question": "thương người như thể thương ...",
+    "prefix": "thương người như thể thương",
+    "suffix": "",
+    "answer": "thân"
+  },
+  {
+    "question": "vì cam cho quýt đèo bòng, vì em nhan sắc cho lòng ... thương.",
+    "prefix": "vì cam cho quýt đèo bòng, vì em nhan sắc cho lòng",
+    "suffix": "thương.",
+    "answer": "anh"
+  },
+  {
+    "question": "phận em sao lắm dở dang, cầm tiêu tiêu gẫy, cầm đàn đứt ...",
+    "prefix": "phận em sao lắm dở dang, cầm tiêu tiêu gẫy, cầm đàn đứt",
+    "suffix": "",
+    "answer": "dây"
+  },
+  {
+    "question": "được mùa thầy chùa ... bụng.",
+    "prefix": "được mùa thầy chùa",
+    "suffix": "bụng.",
+    "answer": "no"
+  },
+  {
+    "question": "tiếng lành đồn ..., tiếng dữ đồn xa.",
+    "prefix": "tiếng lành đồn",
+    "suffix": ", tiếng dữ đồn xa.",
+    "answer": "gần"
+  },
+  {
+    "question": "há miệng mắc ...",
+    "prefix": "há miệng mắc",
+    "suffix": "",
+    "answer": "quai"
+  },
+  {
+    "question": "ngày lắm ..., tối nằm không.",
+    "prefix": "ngày lắm",
+    "suffix": ", tối nằm không.",
+    "answer": "mối"
+  },
+  {
+    "question": "tiền ... cháo múc.",
+    "prefix": "tiền",
+    "suffix": "cháo múc.",
+    "answer": "trao"
+  },
+  {
+    "question": "ăn có nhai, ... có nghĩ.",
+    "prefix": "ăn có nhai,",
+    "suffix": "có nghĩ.",
+    "answer": "nói"
+  },
+  {
+    "question": "nửa đêm trăng sáng mây cao, triệu trời nắng ..., nắng gào chẳng sai",
+    "prefix": "nửa đêm trăng sáng mây cao, triệu trời nắng",
+    "suffix": ", nắng gào chẳng sai",
+    "answer": "gắt"
+  },
+  {
+    "question": "dốt đến đâu, học ... cũng biết.",
+    "prefix": "dốt đến đâu, học",
+    "suffix": "cũng biết.",
+    "answer": "lâu"
+  },
+  {
+    "question": "bao giờ cây lúa còn ..., thì còn ngọn cỏ ngoài đồng trâu ăn.",
+    "prefix": "bao giờ cây lúa còn",
+    "suffix": ", thì còn ngọn cỏ ngoài đồng trâu ăn.",
+    "answer": "bông"
+  },
+  {
+    "question": "trâu đồng nào ăn ... đồng ấy.",
+    "prefix": "trâu đồng nào ăn",
+    "suffix": "đồng ấy.",
+    "answer": "cỏ"
+  },
+  {
+    "question": "thân em như hạt ... rào, hạt rơi xuống giếng, hạt vào vườn hoa.",
+    "prefix": "thân em như hạt",
+    "suffix": "rào, hạt rơi xuống giếng, hạt vào vườn hoa.",
+    "answer": "mưa"
+  },
+  {
+    "question": "ở chi hai dạ ba lòng, dạ cam thì ngọt, dạ bòng thì ...",
+    "prefix": "ở chi hai dạ ba lòng, dạ cam thì ngọt, dạ bòng thì",
+    "suffix": "",
+    "answer": "chua"
+  },
+  {
+    "question": "thắm ... phai nhiều.",
+    "prefix": "thắm",
+    "suffix": "phai nhiều.",
+    "answer": "lắm"
+  },
+  {
+    "question": "uống ... nhớ nguồn.",
+    "prefix": "uống",
+    "suffix": "nhớ nguồn.",
+    "answer": "nước"
+  },
+  {
+    "question": "con tằm nó ăn lá ..., có khi ăn mất cả trâu lẫn bò.",
+    "prefix": "con tằm nó ăn lá",
+    "suffix": ", có khi ăn mất cả trâu lẫn bò.",
+    "answer": "dâu"
+  },
+  {
+    "question": "một miệng thì kín, chín miệng thì ...",
+    "prefix": "một miệng thì kín, chín miệng thì",
+    "suffix": "",
+    "answer": "hở"
+  },
+  {
+    "question": "no ba ngày tết, đói ba tháng ...",
+    "prefix": "no ba ngày tết, đói ba tháng",
+    "suffix": "",
+    "answer": "hè"
+  },
+  {
+    "question": "con nhà tông chẳng giống lông ... giống cánh.",
+    "prefix": "con nhà tông chẳng giống lông",
+    "suffix": "giống cánh.",
+    "answer": "cũng"
+  },
+  {
+    "question": "đường đi những lách cùng lau, cha mẹ ... giàu ép uổng duyên con.",
+    "prefix": "đường đi những lách cùng lau, cha mẹ",
+    "suffix": "giàu ép uổng duyên con.",
+    "answer": "tham"
+  },
+  {
+    "question": "người có lúc vinh lúc nhục, nước có lúc đục lúc ...",
+    "prefix": "người có lúc vinh lúc nhục, nước có lúc đục lúc",
+    "suffix": "",
+    "answer": "trong"
+  },
+  {
+    "question": "sống ... biết nhiều sự lạ.",
+    "prefix": "sống",
+    "suffix": "biết nhiều sự lạ.",
+    "answer": "lâu"
+  },
+  {
+    "question": "muốn cho lúa mẩy, bông to, cày ..., bừa kỹ, phân gio cho nhiều.",
+    "prefix": "muốn cho lúa mẩy, bông to, cày",
+    "suffix": ", bừa kỹ, phân gio cho nhiều.",
+    "answer": "sâu"
+  },
+  {
+    "question": "ai lên biên thượng, lam sơn, nhớ ... thái tổ chặn đường quân minh.",
+    "prefix": "ai lên biên thượng, lam sơn, nhớ",
+    "suffix": "thái tổ chặn đường quân minh.",
+    "answer": "lê"
+  },
+  {
+    "question": "trâu kia gặm ... bờ ao, anh kia không vợ đời nào có con?",
+    "prefix": "trâu kia gặm",
+    "suffix": "bờ ao, anh kia không vợ đời nào có con?",
+    "answer": "cỏ"
+  },
+  {
+    "question": "rạng ngày vác ... ra đồng, tay cầm mồi lửa, tay dòng thừng trâu.",
+    "prefix": "rạng ngày vác",
+    "suffix": "ra đồng, tay cầm mồi lửa, tay dòng thừng trâu.",
+    "answer": "cuốc"
+  },
+  {
+    "question": "biết thì thưa thốt, không biết thì dựa ... mà nghe.",
+    "prefix": "biết thì thưa thốt, không biết thì dựa",
+    "suffix": "mà nghe.",
+    "answer": "cột"
+  },
+  {
+    "question": "trách ai ... phú phụ bần, tham xa mà bỏ nghĩa gần thủơ xưa.",
+    "prefix": "trách ai",
+    "suffix": "phú phụ bần, tham xa mà bỏ nghĩa gần thủơ xưa.",
+    "answer": "tham"
+  },
+  {
+    "question": "rượu cổ be, ... đầy ấm.",
+    "prefix": "rượu cổ be,",
+    "suffix": "đầy ấm.",
+    "answer": "chè"
+  },
+  {
+    "question": "thân em như tấm ... đào, dám đâu xé lẻ vuông nào cho ai.",
+    "prefix": "thân em như tấm",
+    "suffix": "đào, dám đâu xé lẻ vuông nào cho ai.",
+    "answer": "lụa"
+  },
+  {
+    "question": "một mình vừa chẻ, vừa đan, lỗi lầm thì chịu, ... nàn cùng ai.",
+    "prefix": "một mình vừa chẻ, vừa đan, lỗi lầm thì chịu,",
+    "suffix": "nàn cùng ai.",
+    "answer": "phàn"
+  },
+  {
+    "question": "một miếng khi đói bằng một ... khi no.",
+    "prefix": "một miếng khi đói bằng một",
+    "suffix": "khi no.",
+    "answer": "gói"
+  },
+  {
+    "question": "quan nhất thời, ... vạn đại.",
+    "prefix": "quan nhất thời,",
+    "suffix": "vạn đại.",
+    "answer": "dân"
+  },
+  {
+    "question": "đêm qua ra đứng bờ ..., trông cá cá lặn, trông sao sao mờ.",
+    "prefix": "đêm qua ra đứng bờ",
+    "suffix": ", trông cá cá lặn, trông sao sao mờ.",
+    "answer": "ao"
+  },
+  {
+    "question": "một đèn đọc sách, ngâm ..., một đèn anh để đợi chờ nàng đây.",
+    "prefix": "một đèn đọc sách, ngâm",
+    "suffix": ", một đèn anh để đợi chờ nàng đây.",
+    "answer": "thơ"
+  },
+  {
+    "question": "lửa gần ... lâu ngày cũng bén.",
+    "prefix": "lửa gần",
+    "suffix": "lâu ngày cũng bén.",
+    "answer": "rơm"
+  },
+  {
+    "question": "... lao thì phải theo lao.",
+    "prefix": "",
+    "suffix": "lao thì phải theo lao.",
+    "answer": "đâm"
+  },
+  {
+    "question": "... lừa ưa nặng.",
+    "prefix": "",
+    "suffix": "lừa ưa nặng.",
+    "answer": "cao"
+  },
+  {
+    "question": "em như cây quế trong rừng, thơm ... ai biết, ngát lừng ai hay!",
+    "prefix": "em như cây quế trong rừng, thơm",
+    "suffix": "ai biết, ngát lừng ai hay!",
+    "answer": "cay"
+  },
+  {
+    "question": "trách người quân ... bạc tình, chơi hoa rồi lại bẻ cành bán rao.",
+    "prefix": "trách người quân",
+    "suffix": "bạc tình, chơi hoa rồi lại bẻ cành bán rao.",
+    "answer": "tử"
+  },
+  {
+    "question": "dẫu mà ... lấy được em, anh về đóng cửa cài rèm đi tu.",
+    "prefix": "dẫu mà",
+    "suffix": "lấy được em, anh về đóng cửa cài rèm đi tu.",
+    "answer": "không"
+  },
+  {
+    "question": "răng ... nhoẻn miệng em cười, dẫu trời đương nực cũng nguôi cơn nồng.",
+    "prefix": "răng",
+    "suffix": "nhoẻn miệng em cười, dẫu trời đương nực cũng nguôi cơn nồng.",
+    "answer": "ngon"
+  },
+  {
+    "question": "trầu không ăn vôi ắt là trầu nhạt, ... không hạt ắt miếng cau già.",
+    "prefix": "trầu không ăn vôi ắt là trầu nhạt,",
+    "suffix": "không hạt ắt miếng cau già.",
+    "answer": "bông"
+  },
+  {
+    "question": "làm ruộng ba năm không bằng chăm ... một lứa.",
+    "prefix": "làm ruộng ba năm không bằng chăm",
+    "suffix": "một lứa.",
+    "answer": "tằm"
+  },
+  {
+    "question": "cóc có ... cóc, kiến có gan kiến.",
+    "prefix": "cóc có",
+    "suffix": "cóc, kiến có gan kiến.",
+    "answer": "gan"
+  },
+  {
+    "question": "thuốc chữa ..., chẳng chữa được mệnh.",
+    "prefix": "thuốc chữa",
+    "suffix": ", chẳng chữa được mệnh.",
+    "answer": "bệnh"
+  },
+  {
+    "question": "đi một ngày đàng ... một sàng khôn.",
+    "prefix": "đi một ngày đàng",
+    "suffix": "một sàng khôn.",
+    "answer": "học"
+  },
+  {
+    "question": "đất lành chim ...",
+    "prefix": "đất lành chim",
+    "suffix": "",
+    "answer": "đậu"
+  },
+  {
+    "question": "nọc người bằng ... nọc rắn.",
+    "prefix": "nọc người bằng",
+    "suffix": "nọc rắn.",
+    "answer": "mười"
+  },
+  {
+    "question": "dù ai xấu xí như ..., tắm nước đồng lãm cũng ra con người.",
+    "prefix": "dù ai xấu xí như",
+    "suffix": ", tắm nước đồng lãm cũng ra con người.",
+    "answer": "ma"
+  },
+  {
+    "question": "ăn cơm với cáy thì ngáy o o, ăn cơm thịt ... thì lo ngay ngáy.",
+    "prefix": "ăn cơm với cáy thì ngáy o o, ăn cơm thịt",
+    "suffix": "thì lo ngay ngáy.",
+    "answer": "bò"
+  },
+  {
+    "question": "ăn ... nào rào cây ấy.",
+    "prefix": "ăn",
+    "suffix": "nào rào cây ấy.",
+    "answer": "cây"
+  },
+  {
+    "question": "gò công anh dũng ... vời, ông trương đám lá tối trời đánh tây.",
+    "prefix": "gò công anh dũng",
+    "suffix": "vời, ông trương đám lá tối trời đánh tây.",
+    "answer": "tuyệt"
+  },
+  {
+    "question": "nghé ơi, ta bảo nghé này, nghé ăn cho ..., nghé cày cho sâu.",
+    "prefix": "nghé ơi, ta bảo nghé này, nghé ăn cho",
+    "suffix": ", nghé cày cho sâu.",
+    "answer": "béo"
+  },
+  {
+    "question": "con dao vàng dọc ... trầu vàng, mắt anh anh liếc, mắt nàng nàng đưa.",
+    "prefix": "con dao vàng dọc",
+    "suffix": "trầu vàng, mắt anh anh liếc, mắt nàng nàng đưa.",
+    "answer": "lá"
+  },
+  {
+    "question": "chăn ..., gối chiếc lạnh lùng, nửa mình thì đắp, nửa phòng tình nhân.",
+    "prefix": "chăn",
+    "suffix": ", gối chiếc lạnh lùng, nửa mình thì đắp, nửa phòng tình nhân.",
+    "answer": "đơn"
+  },
+  {
+    "question": "chim khôn chưa bắt đã bay, người ... ít nói, ít hay trả lời.",
+    "prefix": "chim khôn chưa bắt đã bay, người",
+    "suffix": "ít nói, ít hay trả lời.",
+    "answer": "khôn"
+  },
+  {
+    "question": "mình về có nhớ ta chăng? ta về ta nhớ hàm ... mình cười.",
+    "prefix": "mình về có nhớ ta chăng? ta về ta nhớ hàm",
+    "suffix": "mình cười.",
+    "answer": "răng"
+  },
+  {
+    "question": "tay làm hàm nhai, tay ... miệng trễ.",
+    "prefix": "tay làm hàm nhai, tay",
+    "suffix": "miệng trễ.",
+    "answer": "quai"
+  },
+  {
+    "question": "trèo ... ngã đau.",
+    "prefix": "trèo",
+    "suffix": "ngã đau.",
+    "answer": "cao"
+  },
+  {
+    "question": "cơm vào ... còn rơi",
+    "prefix": "cơm vào",
+    "suffix": "còn rơi",
+    "answer": "miệng"
+  },
+  {
+    "question": "em ơi ta nguyện nhau cùng, răng ..., tóc bạc ta đừng quên nhau.",
+    "prefix": "em ơi ta nguyện nhau cùng, răng",
+    "suffix": ", tóc bạc ta đừng quên nhau.",
+    "answer": "long"
+  },
+  {
+    "question": "thương ... nỏ (chẳng) biết mần răng, mười đêm ra đứng trông trăng cả mười.",
+    "prefix": "thương",
+    "suffix": "nỏ (chẳng) biết mần răng, mười đêm ra đứng trông trăng cả mười.",
+    "answer": "em"
+  },
+  {
+    "question": "gặp em thì gặp cho ..., đừng gặp một ít thêm sầu lòng em.",
+    "prefix": "gặp em thì gặp cho",
+    "suffix": ", đừng gặp một ít thêm sầu lòng em.",
+    "answer": "lâu"
+  },
+  {
+    "question": "giàu bán ló, khó bán ...",
+    "prefix": "giàu bán ló, khó bán",
+    "suffix": "",
+    "answer": "con"
+  },
+  {
+    "question": "liệu bề thương được thì thương, đừng trao gánh nặng giữa ... tội em.",
+    "prefix": "liệu bề thương được thì thương, đừng trao gánh nặng giữa",
+    "suffix": "tội em.",
+    "answer": "đường"
+  },
+  {
+    "question": "yêu ai yêu cả ... đi, ghét ai ghét cả tông chi, họ hàng.",
+    "prefix": "yêu ai yêu cả",
+    "suffix": "đi, ghét ai ghét cả tông chi, họ hàng.",
+    "answer": "đường"
+  },
+  {
+    "question": "lưỡi không ... nhiều đường lắt léo.",
+    "prefix": "lưỡi không",
+    "suffix": "nhiều đường lắt léo.",
+    "answer": "xương"
+  },
+  {
+    "question": "bói ra ma, quét nhà ra ...",
+    "prefix": "bói ra ma, quét nhà ra",
+    "suffix": "",
+    "answer": "rác"
+  },
+  {
+    "question": "ước gì anh hóa ra cơi, để cho em đựng ... tươi, trầu vàng.",
+    "prefix": "ước gì anh hóa ra cơi, để cho em đựng",
+    "suffix": "tươi, trầu vàng.",
+    "answer": "cau"
+  },
+  {
+    "question": "ruộng thấp đóng một gầu dai, ruộng ... thì phải đóng hai gầu sòng.",
+    "prefix": "ruộng thấp đóng một gầu dai, ruộng",
+    "suffix": "thì phải đóng hai gầu sòng.",
+    "answer": "cao"
+  },
+  {
+    "question": "trai có vợ như rợ buộc ...",
+    "prefix": "trai có vợ như rợ buộc",
+    "suffix": "",
+    "answer": "chân"
+  },
+  {
+    "question": "đôi ta như thể con tằm, cùng ăn một lá cùng nằm một ...",
+    "prefix": "đôi ta như thể con tằm, cùng ăn một lá cùng nằm một",
+    "suffix": "",
+    "answer": "nong"
+  },
+  {
+    "question": "đầu ... đuôi lọt.",
+    "prefix": "đầu",
+    "suffix": "đuôi lọt.",
+    "answer": "xuôi"
+  },
+  {
+    "question": "giỏ nhà ai, ... nhà ấy.",
+    "prefix": "giỏ nhà ai,",
+    "suffix": "nhà ấy.",
+    "answer": "quai"
+  },
+  {
+    "question": "có chí làm quan, có ... làm giầu.",
+    "prefix": "có chí làm quan, có",
+    "suffix": "làm giầu.",
+    "answer": "gan"
+  },
+  {
+    "question": "đã mang lấy cái thân tằm, không ... tơ nữa cũng nằm trong tơ.",
+    "prefix": "đã mang lấy cái thân tằm, không",
+    "suffix": "tơ nữa cũng nằm trong tơ.",
+    "answer": "vương"
+  },
+  {
+    "question": "hay thì ..., hèn thì chê.",
+    "prefix": "hay thì",
+    "suffix": ", hèn thì chê.",
+    "answer": "khen"
+  },
+  {
+    "question": "làm ruộng thì ra, làm ... thì tốn.",
+    "prefix": "làm ruộng thì ra, làm",
+    "suffix": "thì tốn.",
+    "answer": "nhà"
+  },
+  {
+    "question": "ở xứ ... anh chột làm vua.",
+    "prefix": "ở xứ",
+    "suffix": "anh chột làm vua.",
+    "answer": "mù"
+  },
+  {
+    "question": "gỗ kiền anh để đóng cày, gỗ ..., gỗ sến anh nay đóng bừa",
+    "prefix": "gỗ kiền anh để đóng cày, gỗ",
+    "suffix": ", gỗ sến anh nay đóng bừa",
+    "answer": "lim"
+  },
+  {
+    "question": "gặp người sao có một lần, để em ... nhớ tần ngần suốt năm.",
+    "prefix": "gặp người sao có một lần, để em",
+    "suffix": "nhớ tần ngần suốt năm.",
+    "answer": "thương"
+  },
+  {
+    "question": "muốn ăn cá bống kho ..., thì về kẻ mỹ đánh thừng với anh.",
+    "prefix": "muốn ăn cá bống kho",
+    "suffix": ", thì về kẻ mỹ đánh thừng với anh.",
+    "answer": "gừng"
+  },
+  {
+    "question": "có vay có ..., mới thỏa lòng nhau.",
+    "prefix": "có vay có",
+    "suffix": ", mới thỏa lòng nhau.",
+    "answer": "trả"
+  },
+  {
+    "question": "tức nước vỡ ...",
+    "prefix": "tức nước vỡ",
+    "suffix": "",
+    "answer": "bờ"
+  },
+  {
+    "question": "còn duyên kẻ đón ... đưa, hết duyên đi sớm, về trưa mặc lòng.",
+    "prefix": "còn duyên kẻ đón",
+    "suffix": "đưa, hết duyên đi sớm, về trưa mặc lòng.",
+    "answer": "người"
+  },
+  {
+    "question": "chiều chiều ra đứng bờ kinh, gặp ai ở góa anh ... về nhà.",
+    "prefix": "chiều chiều ra đứng bờ kinh, gặp ai ở góa anh",
+    "suffix": "về nhà.",
+    "answer": "rinh"
+  },
+  {
+    "question": "chưa đỗ ông nghè đã ... hàng tổng.",
+    "prefix": "chưa đỗ ông nghè đã",
+    "suffix": "hàng tổng.",
+    "answer": "đe"
+  },
+  {
+    "question": "khôn ngoan qua cửa sông la, dễ ai có ... bay qua lũy thầy.",
+    "prefix": "khôn ngoan qua cửa sông la, dễ ai có",
+    "suffix": "bay qua lũy thầy.",
+    "answer": "cánh"
+  },
+  {
+    "question": "đánh bạc quen tay, ngủ ngày quen ...",
+    "prefix": "đánh bạc quen tay, ngủ ngày quen",
+    "suffix": "",
+    "answer": "mắt"
+  },
+  {
+    "question": "sống thì chẳng cho ăn nào, chết thì cúng giỗ ... cao cỗ đầy.",
+    "prefix": "sống thì chẳng cho ăn nào, chết thì cúng giỗ",
+    "suffix": "cao cỗ đầy.",
+    "answer": "mâm"
+  },
+  {
+    "question": "có khó mới có miếng ..., không dưng ai dễ mang phần đến cho.",
+    "prefix": "có khó mới có miếng",
+    "suffix": ", không dưng ai dễ mang phần đến cho.",
+    "answer": "ăn"
+  },
+  {
+    "question": "lửa thử ..., gian nan thử sức.",
+    "prefix": "lửa thử",
+    "suffix": ", gian nan thử sức.",
+    "answer": "vàng"
+  },
+  {
+    "question": "còn trời, còn nước, còn non, còn câu ... họ em còn say sưa.",
+    "prefix": "còn trời, còn nước, còn non, còn câu",
+    "suffix": "họ em còn say sưa.",
+    "answer": "quan"
+  },
+  {
+    "question": "chuồng gà hướng đông cái ... chẳng còn.",
+    "prefix": "chuồng gà hướng đông cái",
+    "suffix": "chẳng còn.",
+    "answer": "lông"
+  },
+  {
+    "question": "lắm người yêu hơn nhiều người ...",
+    "prefix": "lắm người yêu hơn nhiều người",
+    "suffix": "",
+    "answer": "ghét"
+  },
+  {
+    "question": "đánh rắn phải ... dập đầu.",
+    "prefix": "đánh rắn phải",
+    "suffix": "dập đầu.",
+    "answer": "đánh"
+  },
+  {
+    "question": "nhớ ai nhớ mãi, nhớ hoài, nhớ người ... sĩ gươm mài dưới trăng.",
+    "prefix": "nhớ ai nhớ mãi, nhớ hoài, nhớ người",
+    "suffix": "sĩ gươm mài dưới trăng.",
+    "answer": "tráng"
+  },
+  {
+    "question": "còn gà trống, gà ... thì còn gà dò.",
+    "prefix": "còn gà trống, gà",
+    "suffix": "thì còn gà dò.",
+    "answer": "mái"
+  },
+  {
+    "question": "không có ... sao có khói.",
+    "prefix": "không có",
+    "suffix": "sao có khói.",
+    "answer": "lửa"
+  },
+  {
+    "question": "tháng tám đói qua, tháng ... đói chết.",
+    "prefix": "tháng tám đói qua, tháng",
+    "suffix": "đói chết.",
+    "answer": "ba"
+  },
+  {
+    "question": "sẩy chân còn hơn sẩy ...",
+    "prefix": "sẩy chân còn hơn sẩy",
+    "suffix": "",
+    "answer": "miệng"
+  },
+  {
+    "question": "giỏi giang chớ vội khoe tài, ... sâu sào ngắn, bể trời mênh mông",
+    "prefix": "giỏi giang chớ vội khoe tài,",
+    "suffix": "sâu sào ngắn, bể trời mênh mông",
+    "answer": "sông"
+  },
+  {
+    "question": "ai về hậu lộc, phú điền, nhớ đây bà ... trận tiền xung phong.",
+    "prefix": "ai về hậu lộc, phú điền, nhớ đây bà",
+    "suffix": "trận tiền xung phong.",
+    "answer": "triệu"
+  },
+  {
+    "question": "đôi ta như lửa mới nhen, như ... mới mọc, như đèn mới khêu.",
+    "prefix": "đôi ta như lửa mới nhen, như",
+    "suffix": "mới mọc, như đèn mới khêu.",
+    "answer": "trăng"
+  },
+  {
+    "question": "ai về bình định mà nghe, nói thơ chàng lía, ... vè quảng nam.",
+    "prefix": "ai về bình định mà nghe, nói thơ chàng lía,",
+    "suffix": "vè quảng nam.",
+    "answer": "hát"
+  },
+  {
+    "question": "câu cá cá chẳng ăn ..., đừng câu mà mệt, đừng ngồi mà trưa.",
+    "prefix": "câu cá cá chẳng ăn",
+    "suffix": ", đừng câu mà mệt, đừng ngồi mà trưa.",
+    "answer": "mồi"
+  },
+  {
+    "question": "một đời làm ..., bại hoại ba đời.",
+    "prefix": "một đời làm",
+    "suffix": ", bại hoại ba đời.",
+    "answer": "hại"
+  },
+  {
+    "question": "em ơi chớ lấy quân buôn, khi vui nó ở, khi ... nó đi.",
+    "prefix": "em ơi chớ lấy quân buôn, khi vui nó ở, khi",
+    "suffix": "nó đi.",
+    "answer": "buồn"
+  },
+  {
+    "question": "đói thì ăn ráy, ăn ..., chớ thấy lúa trỗ tháng hai mà mừng",
+    "prefix": "đói thì ăn ráy, ăn",
+    "suffix": ", chớ thấy lúa trỗ tháng hai mà mừng",
+    "answer": "khoai"
+  },
+  {
+    "question": "tương ... chẳng ốm cũng sầu, con ruồi đậu mép chẳng đau cũng buồn.",
+    "prefix": "tương",
+    "suffix": "chẳng ốm cũng sầu, con ruồi đậu mép chẳng đau cũng buồn.",
+    "answer": "tư"
+  },
+  {
+    "question": "tình thương quán cũng như nhà, lều ... có nghĩa hơn tòa ngói xây.",
+    "prefix": "tình thương quán cũng như nhà, lều",
+    "suffix": "có nghĩa hơn tòa ngói xây.",
+    "answer": "tranh"
+  },
+  {
+    "question": "nhất quỷ, nhì ..., thứ ba học trò.",
+    "prefix": "nhất quỷ, nhì",
+    "suffix": ", thứ ba học trò.",
+    "answer": "ma"
+  },
+  {
+    "question": "yêu nhau tam tứ núi cũng trèo, ngũ lục ... cũng lội, thất bát đèo cũng qua.",
+    "prefix": "yêu nhau tam tứ núi cũng trèo, ngũ lục",
+    "suffix": "cũng lội, thất bát đèo cũng qua.",
+    "answer": "sông"
+  },
+  {
+    "question": "tháng chín ăn rươi, tháng mười ăn ...",
+    "prefix": "tháng chín ăn rươi, tháng mười ăn",
+    "suffix": "",
+    "answer": "ruốc"
+  },
+  {
+    "question": "đất có lề, ... có thói.",
+    "prefix": "đất có lề,",
+    "suffix": "có thói.",
+    "answer": "quê"
+  },
+  {
+    "question": "gần nhà giàu đau răng ăn cốm, gần kẻ ... ốm lưng chịu đòn.",
+    "prefix": "gần nhà giàu đau răng ăn cốm, gần kẻ",
+    "suffix": "ốm lưng chịu đòn.",
+    "answer": "trộm"
+  },
+  {
+    "question": "chớp đông nháy nháy, gà ... thì mưa.",
+    "prefix": "chớp đông nháy nháy, gà",
+    "suffix": "thì mưa.",
+    "answer": "gáy"
+  },
+  {
+    "question": "ở đời khôn ... chi đâu, chẳng qua cũng chỉ hơn nhau chữ cần.",
+    "prefix": "ở đời khôn",
+    "suffix": "chi đâu, chẳng qua cũng chỉ hơn nhau chữ cần.",
+    "answer": "khéo"
+  },
+  {
+    "question": "thanh trì buôn ... mọi nơi, đồng nhân, thúy ái là nơi chăn tằm.",
+    "prefix": "thanh trì buôn",
+    "suffix": "mọi nơi, đồng nhân, thúy ái là nơi chăn tằm.",
+    "answer": "bán"
+  },
+  {
+    "question": "tằm đói một bữa bằng ... đói nửa năm.",
+    "prefix": "tằm đói một bữa bằng",
+    "suffix": "đói nửa năm.",
+    "answer": "người"
+  },
+  {
+    "question": "tháng giêng ăn tết ở nhà, tháng hai rỗi rãi quay ra ... tằm",
+    "prefix": "tháng giêng ăn tết ở nhà, tháng hai rỗi rãi quay ra",
+    "suffix": "tằm",
+    "answer": "nuôi"
+  },
+  {
+    "question": "hơi đâu mà ... người dưng",
+    "prefix": "hơi đâu mà",
+    "suffix": "người dưng",
+    "answer": "giận"
+  },
+  {
+    "question": "áo anh sứt chỉ đường tà, vợ ... chưa có, mẹ già chưa khâu.",
+    "prefix": "áo anh sứt chỉ đường tà, vợ",
+    "suffix": "chưa có, mẹ già chưa khâu.",
+    "answer": "anh"
+  },
+  {
+    "question": "chỉ điều ai khéo vấn ..., mỗi người một xứ mà thương nhau đời.",
+    "prefix": "chỉ điều ai khéo vấn",
+    "suffix": ", mỗi người một xứ mà thương nhau đời.",
+    "answer": "vương"
+  },
+  {
+    "question": "yêu trẻ - trẻ đến ..., yêu già - già để phúc.",
+    "prefix": "yêu trẻ - trẻ đến",
+    "suffix": ", yêu già - già để phúc.",
+    "answer": "nhà"
+  },
+  {
+    "question": "một tay ... trái khó bưng, muốn bưng trái nọ thì đừng trái kia.",
+    "prefix": "một tay",
+    "suffix": "trái khó bưng, muốn bưng trái nọ thì đừng trái kia.",
+    "answer": "hai"
+  },
+  {
+    "question": "quạ tắm thì ráo, sáo tắm thì ...",
+    "prefix": "quạ tắm thì ráo, sáo tắm thì",
+    "suffix": "",
+    "answer": "mưa"
+  },
+  {
+    "question": "đầu ..., mép trôi, môi mè, lườn trắm.",
+    "prefix": "đầu",
+    "suffix": ", mép trôi, môi mè, lườn trắm.",
+    "answer": "chép"
+  },
+  {
+    "question": "đôi ta như chỉ xe ba, thầy mẹ xe ít đôi ta xe ...",
+    "prefix": "đôi ta như chỉ xe ba, thầy mẹ xe ít đôi ta xe",
+    "suffix": "",
+    "answer": "nhiều"
+  },
+  {
+    "question": "ba tháng trông cây không bằng ... ngày trông quả.",
+    "prefix": "ba tháng trông cây không bằng",
+    "suffix": "ngày trông quả.",
+    "answer": "một"
+  },
+  {
+    "question": "cách sông nên phải lụy ..., tối trời nên phải lụy cô bán dầu.",
+    "prefix": "cách sông nên phải lụy",
+    "suffix": ", tối trời nên phải lụy cô bán dầu.",
+    "answer": "đò"
+  },
+  {
+    "question": "lấy vợ chọn ..., lấy chồng chọn giống.",
+    "prefix": "lấy vợ chọn",
+    "suffix": ", lấy chồng chọn giống.",
+    "answer": "tông"
+  },
+  {
+    "question": "anh còn son, em cũng còn son, ước gì ta được làm ... một nhà.",
+    "prefix": "anh còn son, em cũng còn son, ước gì ta được làm",
+    "suffix": "một nhà.",
+    "answer": "con"
+  },
+  {
+    "question": "hổ dữ không ăn ... con.",
+    "prefix": "hổ dữ không ăn",
+    "suffix": "con.",
+    "answer": "thịt"
+  },
+  {
+    "question": "người sống về gạo, ... bạo về nước.",
+    "prefix": "người sống về gạo,",
+    "suffix": "bạo về nước.",
+    "answer": "cá"
+  },
+  {
+    "question": "có ... mới dịch nên tuồng.",
+    "prefix": "có",
+    "suffix": "mới dịch nên tuồng.",
+    "answer": "tích"
+  },
+  {
+    "question": "thả con săn sắt, ... con cá rô.",
+    "prefix": "thả con săn sắt,",
+    "suffix": "con cá rô.",
+    "answer": "bắt"
+  }
+]

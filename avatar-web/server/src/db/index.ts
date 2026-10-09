@@ -51,21 +51,26 @@ export function openDb(file: string): Db {
     (!stateTable.sql.includes('auto_fishing') ||
       !stateTable.sql.includes('auto_fisherman_quest') ||
       !stateTable.sql.includes('auto_mining') ||
-      !stateTable.sql.includes('auto_maze'))
+      !stateTable.sql.includes('auto_maze') ||
+      !stateTable.sql.includes('auto_school') ||
+      !stateTable.sql.includes('school_config_json'))
   ) {
     db.pragma('foreign_keys = OFF');
     db.transaction(() => {
+      const hasSchoolCol = stateTable.sql.includes('school_config_json');
+      const schoolColExpr = hasSchoolCol ? 'school_config_json' : 'NULL';
       db.exec(`
         ALTER TABLE avatar_automation_state RENAME TO _avatar_automation_state_old;
         CREATE TABLE avatar_automation_state (
           account_id              INTEGER PRIMARY KEY
                                   REFERENCES avatar_accounts(id) ON DELETE CASCADE,
           desired_mode            TEXT NOT NULL DEFAULT 'off'
-                                  CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest', 'auto_mining', 'auto_maze')),
+                                  CHECK (desired_mode IN ('off', 'auto_farm', 'find_npc', 'auto_fishing', 'auto_fisherman_quest', 'auto_mining', 'auto_maze', 'auto_school')),
           find_npc_config_json    TEXT,
           fishing_config_json     TEXT,
           mining_config_json      TEXT,
           maze_config_json        TEXT,
+          school_config_json      TEXT,
           current_map             INTEGER,
           current_area            INTEGER,
           location_observed_at    INTEGER,
@@ -78,10 +83,10 @@ export function openDb(file: string): Db {
         );
         INSERT INTO avatar_automation_state (
           account_id, desired_mode, find_npc_config_json, fishing_config_json, mining_config_json, maze_config_json,
-          current_map, current_area, location_observed_at, updated_at
+          school_config_json, current_map, current_area, location_observed_at, updated_at
         ) SELECT
           account_id, desired_mode, find_npc_config_json, fishing_config_json, mining_config_json, maze_config_json,
-          current_map, current_area, location_observed_at, updated_at
+          ${schoolColExpr}, current_map, current_area, location_observed_at, updated_at
         FROM _avatar_automation_state_old;
         DROP TABLE _avatar_automation_state_old;
       `);
