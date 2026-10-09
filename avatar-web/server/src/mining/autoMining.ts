@@ -24,6 +24,17 @@ export interface MiningTargetNode {
   depleted: boolean;
 }
 
+export interface AutoMiningRunnerDeps {
+  accountId: number;
+  onStateChange?: (state: MiningRuntimeState) => void;
+  onRequestStop?: (reason: 'no_tool' | 'low_energy' | 'depleted' | 'error' | 'stopped', message?: string) => void;
+  onLog?: (message: string) => void;
+}
+
+export function isNoToolDialog(text: string): boolean {
+  return /hết cuốc/i.test(text);
+}
+
 const ROOM_DIAMOND = 26;
 const ROOM_WOOD = 22;
 const ROOM_HUB = 17;
@@ -103,10 +114,7 @@ export class AutoMiningRunner {
 
   constructor(
     private readonly client: GameClient,
-    private readonly deps: {
-      accountId: number;
-      onStateChange?: (state: MiningRuntimeState) => void;
-    },
+    private readonly deps: AutoMiningRunnerDeps,
   ) {}
 
   public getRuntimeState(): MiningRuntimeState {
@@ -141,6 +149,7 @@ export class AutoMiningRunner {
         };
         this.emitState();
         this.running = false;
+        this.deps.onRequestStop?.('error', (err as Error).message);
       }
     });
   }
@@ -294,6 +303,17 @@ export class AutoMiningRunner {
         const infoResult = await infoPending;
         if (!this.running || signal.aborted) break;
         for (const d of infoResult.dialogs) {
+          if (isNoToolDialog(d)) {
+            this.state = {
+              ...this.state,
+              status: 'paused_no_tool',
+              lastMessage: `Tạm dừng: ${d}`,
+            };
+            this.emitState();
+            this.running = false;
+            this.deps.onRequestStop?.('no_tool', d);
+            return;
+          }
           const parsed = this.parseHarvestMessage(d);
           if (parsed) {
             this.state = {
@@ -349,8 +369,8 @@ export class AutoMiningRunner {
               node.depleted = true;
             }
 
-            // 3. Kiểm tra lỗi thiếu công cụ (chỉ khi hoàn toàn không có cuốc/rìu)
-            if (/chưa có cuốc|không có cuốc|cần có cuốc|cần cuốc|chưa có rìu|không có rìu|cần rìu/i.test(dialog)) {
+            // 3. Kiểm tra lỗi thiếu công cụ (chỉ bắt từ hết cuốc theo yêu cầu)
+            if (isNoToolDialog(dialog)) {
               this.state = {
                 ...this.state,
                 status: 'paused_no_tool',
@@ -358,6 +378,7 @@ export class AutoMiningRunner {
               };
               this.emitState();
               this.running = false;
+              this.deps.onRequestStop?.('no_tool', dialog);
               return;
             }
 
