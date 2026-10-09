@@ -1933,6 +1933,25 @@ export class AvatarSession {
           this.miningRuntime = state;
           this.emitAutomation();
         },
+        onRequestStop: (_reason, message) => {
+          if (message) this.pushLog(`[khai thác] ${message}`);
+          if (this.miningConfig.config.returnToFarm !== false) {
+            this.pushLog('[khai thác] hết cuốc, chuyển sang chế độ tự động nông trại.');
+            void this.switchAutomationMode({
+              desiredMode: 'auto_farm',
+              findNpcConfig: this.findNpcConfig,
+              fishingConfig: this.fishingConfig,
+              miningConfig: this.miningConfig,
+              mazeConfig: this.mazeConfig,
+              schoolConfig: this.schoolConfig,
+              location: this.automationLocation,
+            });
+          } else {
+            this.pushLog('[khai thác] tạm dừng khai thác.');
+            void this.stopAutomation();
+          }
+        },
+        onLog: (msg) => this.pushLog(msg),
       });
       void this.miningRunner.start(this.miningConfig.config);
       return true;
