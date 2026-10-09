@@ -28,17 +28,17 @@
 - Consumes: `MiningConfig`, `DEFAULT_MINING_CONFIG`
 - Produces: Thuộc tính `returnToFarm?: boolean` trong `MiningConfig` (mặc định `true`)
 
-- [ ] **Step 1: Bổ sung `returnToFarm` vào server `automationTypes.ts`**
+- [x] **Step 1: Bổ sung `returnToFarm` vào server `automationTypes.ts`**
   Thêm `readonly returnToFarm?: boolean;` vào `MiningConfig` và `returnToFarm: true` vào `DEFAULT_MINING_CONFIG`.
 
-- [ ] **Step 2: Bổ sung `returnToFarm` vào client `types.ts`**
+- [x] **Step 2: Bổ sung `returnToFarm` vào client `types.ts`**
   Thêm `readonly returnToFarm?: boolean;` vào `MiningConfig` trong `avatar-web/web/src/types.ts`.
 
-- [ ] **Step 3: Kiểm tra biên dịch**
+- [x] **Step 3: Kiểm tra biên dịch**
   Run: `npm --prefix avatar-web/server run build && npm --prefix avatar-web/web run build`
   Expected: Cả hai package biên dịch sạch, không lỗi type.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
   Run: `git commit -m "feat(mining): add returnToFarm option to MiningConfig contracts"`
 
 ---
@@ -52,10 +52,10 @@
 - Consumes: `AutoMiningRunnerDeps`, `isNoToolDialog`
 - Produces: Callback `onRequestStop` gửi mã `'no_tool'` về session khi gặp dialog hết cuốc
 
-- [ ] **Step 1: Chạy GitNexus impact trước khi sửa**
+- [x] **Step 1: Chạy GitNexus impact trước khi sửa**
   Run: `impact({ target: "AutoMiningRunner", direction: "upstream" })`
 
-- [ ] **Step 2: Cập nhật `AutoMiningRunnerDeps` và hàm `isNoToolDialog`**
+- [x] **Step 2: Cập nhật `AutoMiningRunnerDeps` và hàm `isNoToolDialog`**
   ```typescript
   export interface AutoMiningRunnerDeps {
     accountId: number;
@@ -69,7 +69,7 @@
   }
   ```
 
-- [ ] **Step 3: Cập nhật logic xử lý dialog trong `runLoop`**
+- [x] **Step 3: Cập nhật logic xử lý dialog trong `runLoop`**
   Trong vòng lặp xử lý `result.dialogs`:
   ```typescript
   if (isNoToolDialog(dialog)) {
@@ -85,11 +85,11 @@
   }
   ```
 
-- [ ] **Step 4: Kiểm tra biên dịch server**
+- [x] **Step 4: Kiểm tra biên dịch server**
   Run: `npm --prefix avatar-web/server run build`
   Expected: Build thành công không có lỗi.
 
-- [ ] **Step 5: Phân tích thay đổi đồ thị & Commit**
+- [x] **Step 5: Phân tích thay đổi đồ thị & Commit**
   Run: `detect_changes({ scope: "unstaged" })` và `git commit -m "feat(mining): trigger onRequestStop when pickaxes run out"`
 
 ---
@@ -103,10 +103,10 @@
 - Consumes: `AutoMiningRunner`, `switchAutomationMode`, `this.miningConfig.config.returnToFarm`
 - Produces: Chuyển đổi trạng thái tự động về `auto_farm` khi nhận được sự kiện `no_tool`
 
-- [ ] **Step 1: Chạy GitNexus impact trước khi sửa**
+- [x] **Step 1: Chạy GitNexus impact trước khi sửa**
   Run: `impact({ target: "AvatarSession", direction: "upstream" })`
 
-- [ ] **Step 2: Gắn callback `onRequestStop` cho `miningRunner` trong `startDesiredAutomation`**
+- [x] **Step 2: Gắn callback `onRequestStop` cho `miningRunner` trong `startDesiredAutomation`**
   ```typescript
       this.miningRunner = new AutoMiningRunner(client, {
         accountId: this.opts.accountId,
@@ -135,11 +135,11 @@
       });
   ```
 
-- [ ] **Step 3: Kiểm tra biên dịch server**
+- [x] **Step 3: Kiểm tra biên dịch server**
   Run: `npm --prefix avatar-web/server run build`
   Expected: Build thành công không có lỗi.
 
-- [ ] **Step 4: Phân tích thay đổi đồ thị & Commit**
+- [x] **Step 4: Phân tích thay đổi đồ thị & Commit**
   Run: `detect_changes({ scope: "unstaged" })` và `git commit -m "feat(session): fallback to auto_farm on mining tool depletion"`
 
 ---
@@ -153,11 +153,11 @@
 - Consumes: `MiningConfig.returnToFarm`
 - Produces: Checkbox cho phép người dùng cấu hình tự động quay lại Nông trại khi hết cuốc
 
-- [ ] **Step 1: Thêm state `returnToFarm` và tải giá trị từ config hiện tại**
+- [x] **Step 1: Thêm state `returnToFarm` và tải giá trị từ config hiện tại**
   Thêm `const [returnToFarm, setReturnToFarm] = useState<boolean>(true);` và đồng bộ trong `useEffect` khi load config:
   `setReturnToFarm(data.config.returnToFarm ?? true);`
 
-- [ ] **Step 2: Cập nhật `handleSubmit` gửi `returnToFarm` trong `nextConfig`**
+- [x] **Step 2: Cập nhật `handleSubmit` gửi `returnToFarm` trong `nextConfig`**
   ```typescript
   const nextConfig: MiningConfig = {
     target,
@@ -169,7 +169,7 @@
   };
   ```
 
-- [ ] **Step 3: Thêm Checkbox UI vào form trước nút Submit**
+- [x] **Step 3: Thêm Checkbox UI vào form trước nút Submit**
   ```tsx
   <div>
     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: busy ? 'not-allowed' : 'pointer' }}>
@@ -187,21 +187,21 @@
   </div>
   ```
 
-- [ ] **Step 4: Kiểm tra biên dịch frontend web**
+- [x] **Step 4: Kiểm tra biên dịch frontend web**
   Run: `npm --prefix avatar-web/web run build`
   Expected: Vite build thành công sạch sẽ.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
   Run: `git commit -m "feat(web): add returnToFarm checkbox in MiningTargetModal"`
 
 ---
 
 ### Task 5: Kiểm Tra Toàn Diện & Verification
 
-- [ ] **Step 1: Kiểm tra build toàn bộ dự án**
+- [x] **Step 1: Kiểm tra build toàn bộ dự án**
   Run: `npm --prefix avatar-web/server run build && npm --prefix avatar-web/web run build`
   Expected: Cả server và web đều build thành công không warning/error.
 
-- [ ] **Step 2: Kiểm tra GitNexus detect_changes trên toàn repo**
+- [x] **Step 2: Kiểm tra GitNexus detect_changes trên toàn repo**
   Run: `detect_changes({ scope: "all" })`
   Expected: Không có cảnh báo rủi ro cao bất thường.
