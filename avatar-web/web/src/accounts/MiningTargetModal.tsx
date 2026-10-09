@@ -55,6 +55,7 @@ export function MiningTargetModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [target, setTarget] = useState<MiningTarget>('diamond');
+  const [returnToFarm, setReturnToFarm] = useState<boolean>(true);
   const [revision, setRevision] = useState(0);
   const [currentConfig, setCurrentConfig] = useState<MiningConfig | null>(null);
 
@@ -71,6 +72,7 @@ export function MiningTargetModal({
         if (!active) return;
         setRevision(data.revision);
         setTarget(data.config.target);
+        setReturnToFarm(data.config.returnToFarm ?? true);
         setCurrentConfig(data.config);
       })
       .catch((err) => {
@@ -107,6 +109,7 @@ export function MiningTargetModal({
         switchAreaWhenDepleted: currentConfig?.switchAreaWhenDepleted ?? true,
         maxAreasToScan: currentConfig?.maxAreasToScan ?? 10,
         delayBetweenActionsMs: currentConfig?.delayBetweenActionsMs ?? 3000,
+        returnToFarm,
       };
 
       const putRes = await apiPut<StoredMiningConfigState>(
@@ -209,6 +212,21 @@ export function MiningTargetModal({
                 </label>
               );
             })}
+          </div>
+
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: busy ? 'not-allowed' : 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={returnToFarm}
+                disabled={busy}
+                onChange={(e) => setReturnToFarm(e.target.checked)}
+              />
+              <span style={{ fontWeight: 500 }}>Tự động chuyển về Nông trại khi hết cuốc</span>
+            </label>
+            <p className="hint" style={{ margin: '4px 0 0 24px', fontSize: '0.82rem' }}>
+              Khi máy chủ báo hết cuốc, bot sẽ tự động quay về nông trại để tiếp tục chăm sóc cây và vật nuôi.
+            </p>
           </div>
 
           {error && <p className="err" style={{ margin: 0 }}>{error}</p>}
