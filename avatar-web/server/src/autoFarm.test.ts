@@ -1362,3 +1362,32 @@ test('ô chưa chín vẫn được chăm sóc bình thường', async () => {
     `ô non vẫn phải được tưới: ${JSON.stringify(client.calls)}`,
   );
 });
+
+test('ô pre-spent (time=-1, idTree!= -1) phải được làm đất dọn cây cũ trước khi trồng mới', async () => {
+  const client = new FakeClient({
+    idFarm: 1,
+    cells: [cell(7, { idTree: 2, time: -1 }), cell(10, { idTree: 2, time: -1 })],
+    animals: [],
+    updatedAt: 0,
+  });
+  client.trees = [tree(2, { name: 'Khóm' })];
+  client.inventory = [{ id: 2, num: 10 }];
+
+  const auto = await runOneCycle(client, { seedId: 2, harvest: true });
+
+  // Phải gọi clearCell trước khi trồng
+  assert.ok(client.calls.includes('clearCell:7'), 'phải làm đất ô 7');
+  assert.ok(client.calls.includes('clearCell:10'), 'phải làm đất ô 10');
+  assert.ok(client.calls.includes('plantSeed:7:2'), 'phải trồng lại hạt #2 vào ô 7');
+  assert.ok(client.calls.includes('plantSeed:10:2'), 'phải trồng lại hạt #2 vào ô 10');
+
+  // Thứ tự lệnh: clearCell phải đứng trước plantSeed
+  const clear7Idx = client.calls.indexOf('clearCell:7');
+  const plant7Idx = client.calls.indexOf('plantSeed:7:2');
+  assert.ok(clear7Idx < plant7Idx, 'làm đất ô 7 phải trước khi trồng');
+
+  const actions = auto.state().lastActions;
+  assert.ok(actions.some(l => l.includes('ô 7') && l.includes('làm đất dọn cây cũ')), 'phải log dọn cây cũ ô 7');
+  assert.ok(actions.some(l => l.includes('ô 10') && l.includes('làm đất dọn cây cũ')), 'phải log dọn cây cũ ô 10');
+});
+

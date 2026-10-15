@@ -1092,13 +1092,33 @@ export class AutoFarm extends EventEmitter {
         }
       }
 
+      // Dọn các ô đã spent từ trước (thu hoạch thủ công hoặc từ vòng trước bị ngắt)
+      for (const initialCell of farm.cells) {
+        guard();
+        if (this.client.status !== 'online' || this.client.farmState?.idFarm !== idFarm) {
+          throw new Error('farm hoặc kết nối đã thay đổi — dừng vòng');
+        }
+        const currentCell = this.client.farmState.cells.find(cell => cell.index === initialCell.index);
+        if (!currentCell) continue;
+        const c = currentCell;
+        if (c.idTree !== -1 && (isCellSpent(c) || c.time === -1) && !pendingClearCells.some(p => p.index === c.index)) {
+          if (this.client.farm.clearCell) this.client.farm.clearCell(idFarm, c.index);
+          else this.client.farm.plantSeed(idFarm, c.index, -1);
+          sent += 1;
+          const treeName = c.idTree !== -1 ? nameOf(c.idTree) : '';
+          note(`[cây] ô ${c.index}: làm đất dọn cây cũ${treeName ? ` (${treeName})` : ''}`);
+          pendingClearCells.push({ index: c.index, previousTreeId: c.idTree });
+          await tick();
+        }
+      }
+
       // --- Pha 2: Snapshot Verification Gate ----------------------------------
-      // Thu thập ô đã trống sẵn có (không qua thu hoạch)
+      // Thu thập ô vốn đã trống sẵn có (thực sự không còn cây, không qua thu hoạch/làm đất vòng này)
       const readyToPlant: PendingClearCell[] = [];
       for (const c of farm.cells) {
-        if (c.idTree === -1 || isCellSpent(c) || c.time === -1) {
+        if (c.idTree === -1) {
           if (!pendingClearCells.some(p => p.index === c.index)) {
-            readyToPlant.push({ index: c.index, previousTreeId: c.idTree });
+            readyToPlant.push({ index: c.index, previousTreeId: -1 });
           }
         }
       }
