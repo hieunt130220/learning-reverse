@@ -99,6 +99,7 @@ import {
   type InferenceResult,
 } from '../fishing/autoDecision.js';
 import { ProductionInferenceClient } from '../fishing/productionInference.js';
+import { MyReader } from '../proto/reader.js';
 
 export function isFishingAutoTx43Enabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.FISHING_AUTO_TX43_ENABLED === 'true';
@@ -1068,35 +1069,34 @@ export class AvatarSession {
       }
 
       await this.delayCancellable(1000, signal);
-      const { soldCount, totalXuEarned, hasNoFish, timedOut } = await this.performBancaLoop(
+      const { sold, earnedXu, hasNoFish, timedOut, message } = await this.performNpcSellFish(
         client,
         signal,
-        () => client.status === 'online',
       );
 
-      if (soldCount > 0) {
-        if (totalXuEarned > 0) {
-          this.recordFishingRevenue(totalXuEarned);
+      if (sold) {
+        if (earnedXu > 0) {
+          this.recordFishingRevenue(earnedXu);
         }
-        const xuLog = totalXuEarned > 0 ? ` thu được ~${totalXuEarned.toLocaleString('vi-VN')} xu` : '';
-        const msg = `Đã bán thành công ${soldCount} lượt cá,${xuLog}!`;
+        const xuLog = earnedXu > 0 ? ` thu được ${earnedXu.toLocaleString('vi-VN')} xu` : '';
+        const msg = message || `Đã bán toàn bộ cá thành công,${xuLog}!`;
         this.pushLog(`[bán cá] ${msg}`);
-        return { ok: true, soldCount, earnedXu: totalXuEarned, message: msg };
+        return { ok: true, soldCount: 1, earnedXu, message: msg };
       }
 
       if (hasNoFish) {
-        const msg = 'Rương đồ hiện không có cá để bán';
+        const msg = message || 'Rương đồ hiện không có cá để bán';
         this.pushLog(`[bán cá] ${msg}`);
         return { ok: true, soldCount: 0, earnedXu: 0, message: msg };
       }
 
       if (timedOut) {
-        const msg = 'Máy chủ không phản hồi lệnh bán cá (banca). Vui lòng thử lại sau.';
+        const msg = 'Máy chủ không phản hồi lệnh bán cá từ NPC. Vui lòng thử lại sau.';
         this.pushLog(`[bán cá] ${msg}`);
         return { ok: false, soldCount: 0, earnedXu: 0, message: msg };
       }
 
-      const msg = 'Rương đồ hiện không có cá để bán';
+      const msg = message || 'Rương đồ hiện không có cá để bán';
       this.pushLog(`[bán cá] ${msg}`);
       return { ok: true, soldCount: 0, earnedXu: 0, message: msg };
     } finally {
@@ -3658,153 +3658,161 @@ export class AvatarSession {
     }
   }
 
-  private async performBancaLoop(
+  /**
+   * Bán toàn bộ cá trong rương thông qua NPC 4 (Lái buôn cá) tại Map 13 (Khu sinh thái):
+   * 1. Gửi communicate(4) (TX -59) để mở menu NPC.
+   * 2. Nhận Menu (-61) chứa danh sách các mục:
+   *    [0] Cửa Hàng Cá, [1] Cửa hàng cá bến tàu, [2] Bán Cá, [3] Hướng Dẫn.
+   * 3. Gửi doMenuOption(uid, 0, 2) (TX -61) để chọn mục [2] "Bán Cá".
+   * 4. Server sẽ bán TOÀN BỘ cá trong rương trong 1 lượt và trả về:
+   *    - Có cá: Dialog (-40) "Bạn vừa bán cá và thu về được [X] xu", Money (-3) cộng dồn Xu.
+   *    - Không có cá: Dialog (-40) "Bạn không còn cá để bán".
+   */
+  private async performNpcSellFish(
     client: GameClient,
     signal: AbortSignal,
-    checkActive?: () => boolean,
-  ): Promise<{ soldCount: number; totalXuEarned: number; hasNoFish: boolean; timedOut: boolean }> {
-    let soldCount = 0;
-    let totalXuEarned = 0;
-    let consecutiveNoResponse = 0;
+  ): Promise<{ sold: boolean; earnedXu: number; hasNoFish: boolean; timedOut: boolean; message?: string }> {
+    const startXu = client.money ?? 0;
+    let menuUid = 9; // Fallback UID của menu NPC 4
+    let dialogReceived = '';
+    let isSold = false;
     let hasNoFish = false;
+    let earnedXu = 0;
     let timedOut = false;
-    const MAX_SELL_ATTEMPTS = 40; // Tối đa số ô rương
 
-    for (let attempt = 1; attempt <= MAX_SELL_ATTEMPTS; attempt++) {
-      if (signal.aborted || (checkActive && !checkActive())) break;
+    // Bước 1: Gửi communicate(4) và chờ Menu (-61)
+    const menuPromise = new Promise<number | null>((resolve) => {
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
 
-      let soldInThisTurn = false;
-      let turnXuGained = 0;
-      let turnNoMoreFish = false;
-      const startXu = client.money ?? 0;
+      const cleanup = () => {
+        client.session.removeListener('message', onMsg);
+        signal.removeEventListener('abort', onAbort);
+        if (timer) clearTimeout(timer);
+      };
 
-      const sellTurnPromise = new Promise<void>((resolve) => {
-        let settled = false;
-        let timer: NodeJS.Timeout | undefined;
+      const finish = (uid: number | null) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(uid);
+      };
 
-        const cleanup = () => {
-          client.removeListener('park-chat', onChat);
-          client.removeListener('dialog', onDialog);
-          client.removeListener('metrics', onMetrics);
-          signal.removeEventListener('abort', onAbort);
-          if (timer) clearTimeout(timer);
-        };
-
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          resolve();
-        };
-
-        const onChat = (evt: { idUser: number; text: string }) => {
-          const lower = evt.text.toLowerCase();
-          if (
-            (lower.includes('bán') && (lower.includes('cá') || lower.includes('xu')))
-            || lower.includes('bán được')
-            || lower.includes('vừa bán')
-            || (lower.includes('nhận được') && lower.includes('xu'))
-          ) {
-            soldInThisTurn = true;
-            this.pushLog(`[bán cá] ${evt.text}`);
-            finish();
-          } else if (
-            lower.includes('không còn cá')
-            || lower.includes('không có cá')
-            || lower.includes('hết cá')
-            || lower.includes('không tìm thấy cá')
-            || lower.includes('chưa có cá')
-            || lower.includes('không mang theo cá')
-            || lower.includes('rương không có')
-            || lower.includes('rương trống')
-          ) {
-            turnNoMoreFish = true;
-            this.pushLog(`[bán cá] ${evt.text}`);
-            finish();
-          }
-        };
-
-        const onDialog = (reason: string) => {
-          const lower = reason.toLowerCase();
-          if (
-            lower.includes('không còn cá')
-            || lower.includes('không có cá')
-            || lower.includes('hết cá')
-            || lower.includes('không tìm thấy cá')
-            || lower.includes('chưa có cá')
-            || lower.includes('không mang theo cá')
-            || lower.includes('rương không có')
-            || lower.includes('rương trống')
-          ) {
-            turnNoMoreFish = true;
-            this.pushLog(`[bán cá] ${reason}`);
-            finish();
-          } else if (
-            (lower.includes('bán') && (lower.includes('cá') || lower.includes('xu')))
-            || lower.includes('bán được')
-            || lower.includes('vừa bán')
-            || (lower.includes('nhận được') && lower.includes('xu'))
-          ) {
-            soldInThisTurn = true;
-            this.pushLog(`[bán cá] ${reason}`);
-            finish();
-          }
-        };
-
-        const onMetrics = (m: { xu?: number }) => {
-          if (typeof m.xu === 'number' && m.xu > startXu) {
-            soldInThisTurn = true;
-            turnXuGained = m.xu - startXu;
-            finish();
-          }
-        };
-
-        const onAbort = () => finish();
-
-        client.on('park-chat', onChat);
-        client.on('dialog', onDialog);
-        client.on('metrics', onMetrics);
-        signal.addEventListener('abort', onAbort, { once: true });
-
-        timer = setTimeout(() => finish(), 2500);
-      });
-
-      client.chatPark('banca');
-      await sellTurnPromise;
-
-      if (soldInThisTurn && turnXuGained === 0 && (client.money ?? 0) > startXu) {
-        turnXuGained = (client.money ?? 0) - startXu;
-      }
-
-      if (signal.aborted || (checkActive && !checkActive())) break;
-
-      if (turnNoMoreFish) {
-        hasNoFish = true;
-        break;
-      }
-
-      if (soldInThisTurn) {
-        soldCount++;
-        totalXuEarned += turnXuGained;
-        consecutiveNoResponse = 0;
-        await this.delayCancellable(randomBetween(800, 1200), signal);
-      } else {
-        consecutiveNoResponse++;
-        if (consecutiveNoResponse >= 2) {
-          timedOut = true;
-          break;
+      const onMsg = (msg: { command: number; getData(): Buffer }) => {
+        if (msg.command !== -61) return;
+        try {
+          const r = new MyReader(msg.getData());
+          const uid = r.readInt();
+          finish(uid);
+        } catch {
+          finish(9);
         }
-        await this.delayCancellable(1000, signal);
-      }
+      };
+
+      const onAbort = () => finish(null);
+
+      client.session.on('message', onMsg);
+      signal.addEventListener('abort', onAbort, { once: true });
+      timer = setTimeout(() => finish(null), 3000);
+    });
+
+    this.pushLog('[bán cá] Tương tác NPC Lái buôn cá (TX-59 id=4)…');
+    client.farm.communicate(4);
+    const resolvedUid = await menuPromise;
+    if (resolvedUid !== null) {
+      menuUid = resolvedUid;
     }
 
-    return { soldCount, totalXuEarned, hasNoFish, timedOut };
+    if (signal.aborted) {
+      return { sold: false, earnedXu: 0, hasNoFish: false, timedOut: false };
+    }
+
+    // Bước 2: Chọn mục menu [2] "Bán Cá" (doMenuOption)
+    const sellPromise = new Promise<void>((resolve) => {
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
+
+      const cleanup = () => {
+        client.removeListener('dialog', onDialog);
+        client.removeListener('metrics', onMetrics);
+        signal.removeEventListener('abort', onAbort);
+        if (timer) clearTimeout(timer);
+      };
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+
+      const onDialog = (reason: string) => {
+        dialogReceived = reason;
+        const lower = reason.toLowerCase();
+        if (
+          lower.includes('bán cá')
+          || lower.includes('thu về được')
+          || lower.includes('vừa bán')
+        ) {
+          isSold = true;
+          const match = reason.match(/(\d+)\s*xu/i);
+          if (match && match[1]) {
+            earnedXu = parseInt(match[1], 10);
+          }
+          this.pushLog(`[bán cá] ${reason}`);
+          finish();
+        } else if (
+          lower.includes('không còn cá')
+          || lower.includes('không có cá')
+          || lower.includes('hết cá')
+        ) {
+          hasNoFish = true;
+          this.pushLog(`[bán cá] ${reason}`);
+          finish();
+        }
+      };
+
+      const onMetrics = (m: { xu?: number }) => {
+        if (typeof m.xu === 'number' && m.xu > startXu) {
+          isSold = true;
+          if (earnedXu === 0) {
+            earnedXu = m.xu - startXu;
+          }
+        }
+      };
+
+      const onAbort = () => finish();
+
+      client.on('dialog', onDialog);
+      client.on('metrics', onMetrics);
+      signal.addEventListener('abort', onAbort, { once: true });
+      timer = setTimeout(() => {
+        timedOut = true;
+        finish();
+      }, 4000);
+    });
+
+    this.pushLog(`[bán cá] Chọn menu [2] Bán Cá (doMenuOption uid=${menuUid})…`);
+    client.farm.doMenuOption(menuUid, 0, 2);
+    await sellPromise;
+
+    if (!isSold && earnedXu === 0 && (client.money ?? 0) > startXu) {
+      isSold = true;
+      earnedXu = (client.money ?? 0) - startXu;
+    }
+
+    return {
+      sold: isSold,
+      earnedXu,
+      hasNoFish,
+      timedOut: timedOut && !isSold && !hasNoFish,
+      message: dialogReceived,
+    };
   }
 
   /**
-   * Tự động bán cá khi rương đầy bằng lệnh chat in-game "banca" (TX-85).
-   * Lắng nghe xác nhận qua sự kiện park-chat, dialog và cập nhật metrics (Xu tăng).
-   * Dừng khi hết cá hoặc sau 2 lần không có phản hồi mới.
+   * Tự động bán cá khi rương đầy qua menu NPC 4 (Lái buôn cá) tại Map 13.
+   * Dọn trống toàn bộ cá trong rương trong 1 lượt gọi duy nhất.
    */
   private async executeSellFish(
     client: GameClient,
@@ -3842,18 +3850,17 @@ export class AvatarSession {
     }
     await this.delayCancellable(1000, signal);
 
-    const { soldCount, totalXuEarned } = await this.performBancaLoop(
+    const { sold, earnedXu } = await this.performNpcSellFish(
       client,
       signal,
-      () => this.isCurrent(client, epoch) && this.isFishingAutomationActive(),
     );
 
-    if (soldCount > 0) {
-      if (totalXuEarned > 0) {
-        this.recordFishingRevenue(totalXuEarned);
+    if (sold) {
+      if (earnedXu > 0) {
+        this.recordFishingRevenue(earnedXu);
       }
-      const xuLog = totalXuEarned > 0 ? ` (thu được ~${totalXuEarned.toLocaleString('vi-VN')} xu)` : '';
-      this.pushLog(`[câu cá] Đã bán xong ${soldCount} lượt cá${xuLog}! Rương đã được dọn trống.`);
+      const xuLog = earnedXu > 0 ? ` (thu được ~${earnedXu.toLocaleString('vi-VN')} xu)` : '';
+      this.pushLog(`[câu cá] Đã bán xong cá qua NPC${xuLog}! Rương đã được dọn trống.`);
     }
 
     // Quay trở lại hồ câu mục tiêu
@@ -3867,7 +3874,7 @@ export class AvatarSession {
     }
 
     await this.delayCancellable(1500, signal);
-    return soldCount > 0;
+    return sold;
   }
 
   /**
