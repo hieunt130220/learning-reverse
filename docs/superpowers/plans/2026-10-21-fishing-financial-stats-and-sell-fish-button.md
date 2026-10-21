@@ -29,7 +29,7 @@
 - Consumes: `AutomationSnapshot` hiện có
 - Produces: `FishingFinancialStatistics`, `FISHING_TICKET_PRICES_XU`, `FISHING_ROD_PRICES_XU`, `FISHING_BAIT_PRICES_XU`
 
-- [ ] **Step 1: Thêm bảng `avatar_fishing_financial_statistics` vào `schema.sql`**
+- [x] **Step 1: Thêm bảng `avatar_fishing_financial_statistics` vào `schema.sql`**
   Thêm DDL:
   ```sql
   CREATE TABLE IF NOT EXISTS avatar_fishing_financial_statistics (
@@ -42,7 +42,7 @@
   );
   ```
 
-- [ ] **Step 2: Khai báo interface và bảng giá trong `automationTypes.ts`**
+- [x] **Step 2: Khai báo interface và bảng giá trong `automationTypes.ts`**
   Định nghĩa:
   ```ts
   export interface FishingFinancialStatistics {
@@ -74,14 +74,14 @@
   };
   ```
 
-- [ ] **Step 3: Cập nhật `FishingFinancialStatistics` trong `avatar-web/web/src/types.ts`**
+- [x] **Step 3: Cập nhật `FishingFinancialStatistics` trong `avatar-web/web/src/types.ts`**
   Bổ sung `FishingFinancialStatistics` và cập nhật interface `AutomationSnapshot` phía client tương ứng.
 
-- [ ] **Step 4: Kiểm tra build type**
+- [x] **Step 4: Kiểm tra build type**
   Run: `npm --prefix avatar-web/server run build && npm --prefix avatar-web/web run build`
   Expected: Build thành công không có lỗi type.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
   `git commit -m "feat(fishing): add financial statistics schema and contracts"`
 
 ---
@@ -95,18 +95,18 @@
 - Consumes: `Db` từ `../db/index.js`, `FishingFinancialStatistics` từ `../session/automationTypes.js`
 - Produces: `FishingFinancialStatisticsRepository` với các hàm `read(accountId)`, `recordExpense(accountId, type, amountXu)`, `recordRevenue(accountId, amountXu)`, `reset(accountId)`
 
-- [ ] **Step 1: Tạo `fishingFinancialStatisticsRepo.ts`**
+- [x] **Step 1: Tạo `fishingFinancialStatisticsRepo.ts`**
   Triển khai class `FishingFinancialStatisticsRepository`:
   - `read(accountId: number): FishingFinancialStatistics`: Đọc hàng từ bảng `avatar_fishing_financial_statistics`. Nếu chưa có, trả về 0 cho tất cả các trường. Tính `netProfitXu = earnedFishXu - (spentBaitXu + spentTicketXu + spentRodXu)`.
   - `recordExpense(accountId: number, type: 'bait' | 'ticket' | 'rod', amountXu: number): FishingFinancialStatistics`: Sử dụng `INSERT INTO ... ON CONFLICT(account_id) DO UPDATE SET spent_[type]_xu = spent_[type]_xu + excluded.spent_[type]_xu, updated_at = excluded.updated_at`.
   - `recordRevenue(accountId: number, amountXu: number): FishingFinancialStatistics`: `DO UPDATE SET earned_fish_xu = earned_fish_xu + excluded.earned_fish_xu`.
   - `reset(accountId: number): FishingFinancialStatistics`: Xóa hoặc update tất cả về 0 cho account.
 
-- [ ] **Step 2: Kiểm tra biên dịch**
+- [x] **Step 2: Kiểm tra biên dịch**
   Run: `npm --prefix avatar-web/server run build`
   Expected: Build thành công.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
   `git commit -m "feat(fishing): implement FishingFinancialStatisticsRepository"`
 
 ---
@@ -121,21 +121,21 @@
 - Consumes: `FishingFinancialStatisticsRepository` từ `../accounts/fishingFinancialStatisticsRepo.js`
 - Produces: Tự động ghi chi phí khi mua mồi/vé/cần, ghi doanh thu khi bán cá; hàm `sellAllFish(signal)` trên `AvatarSession`.
 
-- [ ] **Step 1: Truyền `fishingFinancialStatisticsRepo` vào `AvatarSession`**
+- [x] **Step 1: Truyền `fishingFinancialStatisticsRepo` vào `AvatarSession`**
   Cập nhật constructor và dependency injection của `AvatarSession` để nhận instance `FishingFinancialStatisticsRepository`.
 
-- [ ] **Step 2: Ghi nhận chi phí khi bot mua vật phẩm trong `avatarSession.ts`**
+- [x] **Step 2: Ghi nhận chi phí khi bot mua vật phẩm trong `avatarSession.ts`**
   - Tại đoạn mua vé thành công (quanh dòng 3230): Nếu `ticket.typeMoney === 1`, tính `cost = FISHING_TICKET_PRICES_XU[cfg.map] ?? 0`, gọi `this.financeRepo.recordExpense(this.accountId, 'ticket', cost)`.
   - Tại đoạn mua cần câu thành công (quanh dòng 3315): Nếu `rod.typeMoney === 1`, tính `cost = FISHING_ROD_PRICES_XU[cfg.rodType] ?? 0`, gọi `this.financeRepo.recordExpense(this.accountId, 'rod', cost)`.
   - Tại đoạn mua mồi thành công (quanh dòng 3400): Nếu `bait.typeMoney === 1`, tính `unitCost = FISHING_BAIT_PRICES_XU[cfg.baitType] ?? 0`, `totalCost = unitCost * quantity`, gọi `this.financeRepo.recordExpense(this.accountId, 'bait', totalCost)`.
   - Sau mỗi thao tác, gọi `this.emitAutomation()` để đẩy snapshot mới lên UI.
 
-- [ ] **Step 3: Ghi nhận doanh thu khi bán cá trong `executeSellFish`**
+- [x] **Step 3: Ghi nhận doanh thu khi bán cá trong `executeSellFish`**
   Trong `executeSellFish`:
   - Khi hoàn tất bán cá và `totalXuEarned > 0`, gọi `this.financeRepo.recordRevenue(this.accountId, totalXuEarned)`.
   - Gọi `this.emitAutomation()`.
 
-- [ ] **Step 4: Triển khai phương thức `sellAllFish(signal?: AbortSignal)` trên `AvatarSession`**
+- [x] **Step 4: Triển khai phương thức `sellAllFish(signal?: AbortSignal)` trên `AvatarSession`**
   Phương thức public cho phép gọi từ API:
   - Kiểm tra trạng thái kết nối `client.status === 'online'`.
   - Nếu đang quăng cần hoặc cắn câu (`casting` hoặc `hooked`), gọi `client.cauCaXong()`.
@@ -143,14 +143,14 @@
   - Chạy vòng lặp bán cá `chatPark('banca')` (tối đa 40 lượt).
   - Trả về `{ ok: true, soldCount, earnedXu }`.
 
-- [ ] **Step 5: Đưa `fishingFinancialStatistics` vào `getAutomationSnapshot()`**
+- [x] **Step 5: Đưa `fishingFinancialStatistics` vào `getAutomationSnapshot()`**
   Đọc số liệu từ `financeRepo.read(this.accountId)` và gán vào snapshot trả về.
 
-- [ ] **Step 6: Kiểm tra biên dịch**
+- [x] **Step 6: Kiểm tra biên dịch**
   Run: `npm --prefix avatar-web/server run build`
   Expected: Build thành công không có lỗi type.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
   `git commit -m "feat(session): track fishing expenses, revenues and add sellAllFish action"`
 
 ---
@@ -165,10 +165,10 @@
 - Consumes: `sessions.get(id)`, `financeRepo`
 - Produces: `POST /api/accounts/:id/fishing/sell` và `POST /api/accounts/:id/fishing/finance/reset`
 
-- [ ] **Step 1: Khởi tạo và truyền repo vào `sessionRouter`**
+- [x] **Step 1: Khởi tạo và truyền repo vào `sessionRouter`**
   Trong `index.ts`, khởi tạo `fishingFinancialStatisticsRepo = new FishingFinancialStatisticsRepository(db)` và truyền vào `sessionRouter` cùng `sessionManager`.
 
-- [ ] **Step 2: Thêm route `POST /:id/fishing/sell` trong `sessionRouter`**
+- [x] **Step 2: Thêm route `POST /:id/fishing/sell` trong `sessionRouter`**
   Xử lý:
   - Xác thực tài khoản thuộc sở hữu user (`owned`).
   - Lấy session: `const session = sessions.get(accountId)`.
@@ -176,17 +176,17 @@
   - Gọi `await session.sellAllFish()`.
   - Trả về 200 `{ ok: true, soldCount, earnedXu, message: ... }`.
 
-- [ ] **Step 3: Thêm route `POST /:id/fishing/finance/reset` trong `sessionRouter`**
+- [x] **Step 3: Thêm route `POST /:id/fishing/finance/reset` trong `sessionRouter`**
   Xử lý:
   - Reset trong repo: `const stats = financeRepo.reset(accountId)`.
   - Cập nhật session snapshot nếu đang có session: `session?.emitAutomation()`.
   - Trả về 200 `{ ok: true, statistics: stats }`.
 
-- [ ] **Step 4: Kiểm tra biên dịch**
+- [x] **Step 4: Kiểm tra biên dịch**
   Run: `npm --prefix avatar-web/server run build`
   Expected: Build thành công.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
   `git commit -m "feat(api): add fishing sell and finance reset endpoints"`
 
 ---
@@ -201,7 +201,7 @@
 - Consumes: `automation?.fishingFinancialStatistics`, `apiPost` từ `../../api.js`
 - Produces: Thẻ Tài chính câu cá (4 ô chi phí/doanh thu, lợi nhuận ròng, nút bán tất cả cá, nút reset)
 
-- [ ] **Step 1: Thêm CSS cho thẻ tài chính và badge lợi nhuận trong `components.css`**
+- [x] **Step 1: Thêm CSS cho thẻ tài chính và badge lợi nhuận trong `components.css`**
   Bổ sung các class:
   - `.fishing-finance-card`
   - `.fishing-finance-grid`
@@ -210,7 +210,7 @@
   - `.fishing-profit-banner` (lợi nhuận ròng)
   - `.fishing-sell-btn` (nút bán cá)
 
-- [ ] **Step 2: Cập nhật component `FishingPanel.tsx`**
+- [x] **Step 2: Cập nhật component `FishingPanel.tsx`**
   - Đọc `financialStats = automation?.fishingFinancialStatistics`.
   - Quản lý state `sellingFish`, `sellResult`, `resetting`.
   - Thêm handler `handleSellFish()` gọi `POST /api/accounts/${accountId}/fishing/sell`. Hiển thị thông báo kết quả hoặc lỗi.
@@ -223,11 +223,11 @@
   - Render thanh "Lợi nhuận ròng (Lãi / Lỗ)": `netProfitXu >= 0 ? '+...' : '...'` kèm class màu sắc tương ứng.
   - Render nút "🐟 Bán tất cả cá ngay" và "↺ Đặt lại" trên header của card.
 
-- [ ] **Step 3: Kiểm tra biên dịch web**
+- [x] **Step 3: Kiểm tra biên dịch web**
   Run: `npm --prefix avatar-web/web run build`
   Expected: Build thành công không có lỗi type/JSX.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
   `git commit -m "feat(web): add fishing financial stats card and sell fish button"`
 
 ---
@@ -237,12 +237,12 @@
 **Files:**
 - Toàn bộ các file đã sửa/tạo
 
-- [ ] **Step 1: Chạy build toàn bộ dự án**
+- [x] **Step 1: Chạy build toàn bộ dự án**
   Run: `npm --prefix avatar-web/server run build && npm --prefix avatar-web/web run build`
   Expected: Cả 2 module server và web build clean 100%.
 
-- [ ] **Step 2: Chạy GitNexus analyze & detect-changes**
+- [x] **Step 2: Chạy GitNexus analyze & detect-changes**
   Run: `node .gitnexus/run.cjs detect-changes --scope all --repo .`
   Expected: Graph sạch sẽ, các symbol được index đầy đủ.
 
-- [ ] **Step 3: Dọn dẹp tài nguyên và báo cáo hoàn thành**
+- [x] **Step 3: Dọn dẹp tài nguyên và báo cáo hoàn thành**
