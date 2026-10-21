@@ -193,7 +193,11 @@ export function FishingPanel({
       const res = await apiPost<{ ok: boolean; soldCount: number; earnedXu: number; message: string }>(
         `/api/accounts/${accountId}/fishing/sell`,
       );
-      setSellMessage(res.message);
+      if (res.ok) {
+        setSellMessage(res.message);
+      } else {
+        setSellError(res.message);
+      }
       onChanged?.();
     } catch (err) {
       setSellError((err as Error).message);

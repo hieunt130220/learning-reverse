@@ -1022,7 +1022,23 @@ export class AvatarSession {
       throw new Error('Đang trong tiến trình bán cá');
     }
 
-    const prevStatus = this.fishingRuntime.status;
+    const wasFishing = this.isFishingMode();
+    const generation = this.automationGeneration;
+    const epoch = this.connectionEpoch;
+
+    // Nếu đang trong vòng lặp câu cá tự động, tạm dừng an toàn để tránh xung đột socket
+    if (wasFishing) {
+      this.pushLog('[bán cá] Tạm dừng vòng lặp câu cá để thực hiện bán cá…');
+      if (this.fishingAbortController) {
+        this.fishingAbortController.abort();
+        this.fishingAbortController = undefined;
+      }
+      if (this.fishermanQuestAbort) {
+        this.fishermanQuestAbort.abort();
+        this.fishermanQuestAbort = undefined;
+      }
+    }
+
     this.fishingRuntime.status = 'selling';
     this.emitAutomation();
     this.pushLog('[bán cá] Bắt đầu yêu cầu bán toàn bộ cá theo lệnh người dùng…');
@@ -1037,8 +1053,23 @@ export class AvatarSession {
     const signal = controller.signal;
 
     try {
+      // 1. Kiểm tra vị trí: nhân vật phải ở trong map câu cá / khu sinh thái (Map 13, 14, 15, 16, 27)
+      const FISHING_MAPS = [13, 14, 15, 16, 27];
+      const currentRoomId = client.currentParkSnapshot?.roomId;
+      const inFishingMap = client.currentHandlerContext === 9
+        && typeof currentRoomId === 'number'
+        && FISHING_MAPS.includes(currentRoomId);
+
+      if (!inFishingMap) {
+        this.pushLog('[bán cá] Nhân vật chưa ở khu vực câu cá — đang di chuyển vào Khu sinh thái (Map 13)…');
+        const moved = await this.ensureFishingParkMap(client, 13, 0, signal, epoch);
+        if (!moved) {
+          throw new Error('Không thể di chuyển vào Khu sinh thái (Map 13) để bán cá');
+        }
+      }
+
       await this.delayCancellable(1000, signal);
-      const { soldCount, totalXuEarned } = await this.performBancaLoop(
+      const { soldCount, totalXuEarned, hasNoFish, timedOut } = await this.performBancaLoop(
         client,
         signal,
         () => client.status === 'online',
@@ -1054,12 +1085,38 @@ export class AvatarSession {
         return { ok: true, soldCount, earnedXu: totalXuEarned, message: msg };
       }
 
-      const msg = 'Rương đồ không có cá hoặc không thể bán cá qua lệnh banca';
+      if (hasNoFish) {
+        const msg = 'Rương đồ hiện không có cá để bán';
+        this.pushLog(`[bán cá] ${msg}`);
+        return { ok: true, soldCount: 0, earnedXu: 0, message: msg };
+      }
+
+      if (timedOut) {
+        const msg = 'Máy chủ không phản hồi lệnh bán cá (banca). Vui lòng thử lại sau.';
+        this.pushLog(`[bán cá] ${msg}`);
+        return { ok: false, soldCount: 0, earnedXu: 0, message: msg };
+      }
+
+      const msg = 'Rương đồ hiện không có cá để bán';
       this.pushLog(`[bán cá] ${msg}`);
       return { ok: true, soldCount: 0, earnedXu: 0, message: msg };
     } finally {
-      this.fishingRuntime.status = prevStatus;
+      this.fishingRuntime.status = 'idle';
       this.emitAutomation();
+
+      if (
+        wasFishing
+        && this.isCurrent(client, epoch)
+        && this.isAutomationGenerationCurrent(generation)
+        && client.status === 'online'
+      ) {
+        this.pushLog('[bán cá] Hoàn tất bán cá — tiếp tục vòng lặp câu cá tự động…');
+        if (this.desiredMode === 'auto_fishing') {
+          this.startFishingLoop(client, generation, epoch);
+        } else if (this.desiredMode === 'auto_fisherman_quest') {
+          this.startFishermanQuestLoop(client, generation, epoch);
+        }
+      }
     }
   }
 
@@ -3600,10 +3657,12 @@ export class AvatarSession {
     client: GameClient,
     signal: AbortSignal,
     checkActive?: () => boolean,
-  ): Promise<{ soldCount: number; totalXuEarned: number }> {
+  ): Promise<{ soldCount: number; totalXuEarned: number; hasNoFish: boolean; timedOut: boolean }> {
     let soldCount = 0;
     let totalXuEarned = 0;
     let consecutiveNoResponse = 0;
+    let hasNoFish = false;
+    let timedOut = false;
     const MAX_SELL_ATTEMPTS = 40; // Tối đa số ô rương
 
     for (let attempt = 1; attempt <= MAX_SELL_ATTEMPTS; attempt++) {
@@ -3611,7 +3670,7 @@ export class AvatarSession {
 
       let soldInThisTurn = false;
       let turnXuGained = 0;
-      let noMoreFish = false;
+      let turnNoMoreFish = false;
       const startXu = client.money ?? 0;
 
       const sellTurnPromise = new Promise<void>((resolve) => {
@@ -3635,30 +3694,56 @@ export class AvatarSession {
 
         const onChat = (evt: { idUser: number; text: string }) => {
           const lower = evt.text.toLowerCase();
-          if (lower.includes('bán') && (lower.includes('cá') || lower.includes('xu'))) {
+          if (
+            (lower.includes('bán') && (lower.includes('cá') || lower.includes('xu')))
+            || lower.includes('bán được')
+            || (lower.includes('nhận được') && lower.includes('xu'))
+          ) {
             soldInThisTurn = true;
-            this.pushLog(`[câu cá] ${evt.text}`);
+            this.pushLog(`[bán cá] ${evt.text}`);
             finish();
-          } else if (lower.includes('không có cá') || lower.includes('hết cá')) {
-            noMoreFish = true;
+          } else if (
+            lower.includes('không có cá')
+            || lower.includes('hết cá')
+            || lower.includes('không tìm thấy cá')
+            || lower.includes('chưa có cá')
+            || lower.includes('không mang theo cá')
+            || lower.includes('rương không có')
+            || lower.includes('rương trống')
+          ) {
+            turnNoMoreFish = true;
+            this.pushLog(`[bán cá] ${evt.text}`);
             finish();
           }
         };
 
         const onDialog = (reason: string) => {
           const lower = reason.toLowerCase();
-          if (lower.includes('không có cá') || lower.includes('hết cá')) {
-            noMoreFish = true;
+          if (
+            lower.includes('không có cá')
+            || lower.includes('hết cá')
+            || lower.includes('không tìm thấy cá')
+            || lower.includes('chưa có cá')
+            || lower.includes('không mang theo cá')
+            || lower.includes('rương không có')
+            || lower.includes('rương trống')
+          ) {
+            turnNoMoreFish = true;
+            this.pushLog(`[bán cá] ${reason}`);
             finish();
-          } else if (lower.includes('bán') && (lower.includes('cá') || lower.includes('xu'))) {
+          } else if (
+            (lower.includes('bán') && (lower.includes('cá') || lower.includes('xu')))
+            || lower.includes('bán được')
+            || (lower.includes('nhận được') && lower.includes('xu'))
+          ) {
             soldInThisTurn = true;
-            this.pushLog(`[câu cá] ${reason}`);
+            this.pushLog(`[bán cá] ${reason}`);
             finish();
           }
         };
 
-        const onMetrics = (m: { xu: number }) => {
-          if (m.xu > startXu) {
+        const onMetrics = (m: { xu?: number }) => {
+          if (typeof m.xu === 'number' && m.xu > startXu) {
             soldInThisTurn = true;
             turnXuGained = m.xu - startXu;
             finish();
@@ -3678,9 +3763,14 @@ export class AvatarSession {
       client.chatPark('banca');
       await sellTurnPromise;
 
+      if (soldInThisTurn && turnXuGained === 0 && (client.money ?? 0) > startXu) {
+        turnXuGained = (client.money ?? 0) - startXu;
+      }
+
       if (signal.aborted || (checkActive && !checkActive())) break;
 
-      if (noMoreFish) {
+      if (turnNoMoreFish) {
+        hasNoFish = true;
         break;
       }
 
@@ -3692,13 +3782,14 @@ export class AvatarSession {
       } else {
         consecutiveNoResponse++;
         if (consecutiveNoResponse >= 2) {
+          timedOut = true;
           break;
         }
         await this.delayCancellable(1000, signal);
       }
     }
 
-    return { soldCount, totalXuEarned };
+    return { soldCount, totalXuEarned, hasNoFish, timedOut };
   }
 
   /**
@@ -3749,43 +3840,43 @@ export class AvatarSession {
     return false;
   }
 
-  private async enterFishingPark(
+  /**
+   * Đảm bảo nhân vật đã chuyển sang handler Park (9) và đang ở map mục tiêu.
+   * Dùng cho cả auto-fishing lẫn lệnh bán cá chủ động.
+   */
+  private async ensureFishingParkMap(
     client: GameClient,
-    generation: number,
-    epoch: number,
+    map: number,
+    area: number,
     signal: AbortSignal,
+    epoch: number,
   ): Promise<boolean> {
+    if (signal.aborted || !this.isCurrent(client, epoch) || client.status !== 'online') {
+      return false;
+    }
+
+    // 1. Chuyển handler sang Park nếu chưa phải Park context
+    if (client.currentHandlerContext !== 9) {
+      this.pushLog(`[câu cá] handler context hiện tại: ${client.currentHandlerContext} — gửi enterParkContext`);
+      client.enterParkContext();
+      await this.delayCancellable(800, signal);
+    }
+
+    if (signal.aborted || !this.isCurrent(client, epoch)) return false;
+
+    // 2. Kiểm tra nếu đã ở sẵn đúng map và khu vực mong muốn
+    const currentSnap = client.currentParkSnapshot;
     if (
-      signal.aborted
-      || client.status !== 'online'
-      || !this.isCurrent(client, epoch)
-      || !this.isAutomationGenerationCurrent(generation)
-      || !this.isFishingAutomationActive()
-    ) return false;
+      client.currentHandlerContext === 9
+      && currentSnap
+      && currentSnap.roomId === map
+      && currentSnap.boardId === area
+    ) {
+      return true;
+    }
 
-    const config = this.fishingConfig.config;
-    const map = config.map; // 14: Khu cá rô mặc định
-    const area = config.area; // 0
-
-    this.pushLog(`[câu cá] đang di chuyển vào map ${map} (khu vực ${area})…`);
-    this.fishingRuntime.status = 'moving';
-    this.fishingRuntime.currentMap = map;
-    this.fishingRuntime.currentArea = area;
-    this.emitAutomation();
-
-    this.pushLog(`[câu cá] handler context hiện tại: ${client.currentHandlerContext} — gửi enterParkContext`);
-    client.enterParkContext();
-    await this.delayCancellable(800, signal);
-
-    if (
-      signal.aborted
-      || !this.isCurrent(client, epoch)
-      || !this.isAutomationGenerationCurrent(generation)
-      || !this.isFishingAutomationActive()
-    ) return false;
-
-    // Gửi TX90 (board list request) — probe xác nhận server cần bước này trước joinPark
-    this.pushLog(`[câu cá] gửi TX90 board-list request cho map ${map}`);
+    // 3. Gửi TX90 (board list request) — probe xác nhận server cần bước này trước joinPark
+    this.pushLog(`[câu cá] gửi TX90 board-list request cho map ${map}…`);
     const rx90Promise = new Promise<void>((resolve) => {
       let settled = false;
       let timer: NodeJS.Timeout | undefined;
@@ -3811,29 +3902,56 @@ export class AvatarSession {
     });
     client.sendRaw(90, [{ t: 'i8', v: String(map) }]);
     await rx90Promise;
-    this.pushLog(`[câu cá] nhận RX90 — di chuyển vào map ${map} (khu ${area})…`);
 
+    if (signal.aborted || !this.isCurrent(client, epoch)) return false;
+
+    // 4. Tham gia map
+    try {
+      await this.joinParkWithRetry(client, map, area, signal, epoch);
+      this.pushLog(`[câu cá] đã vào map ${map} (khu ${area}) thành công`);
+      return true;
+    } catch (err) {
+      this.pushLog(`[câu cá] lỗi vào map ${map}: ${(err as Error).message}`);
+      return false;
+    }
+  }
+
+  private async enterFishingPark(
+    client: GameClient,
+    generation: number,
+    epoch: number,
+    signal: AbortSignal,
+  ): Promise<boolean> {
     if (
       signal.aborted
+      || client.status !== 'online'
       || !this.isCurrent(client, epoch)
       || !this.isAutomationGenerationCurrent(generation)
       || !this.isFishingAutomationActive()
     ) return false;
 
-    try {
-      await this.joinParkWithRetry(client, map, area, signal, epoch);
-    } catch (err) {
+    const config = this.fishingConfig.config;
+    const map = config.map; // 14: Khu cá rô mặc định
+    const area = config.area; // 0
+
+    this.pushLog(`[câu cá] đang di chuyển vào map ${map} (khu vực ${area})…`);
+    this.fishingRuntime.status = 'moving';
+    this.fishingRuntime.currentMap = map;
+    this.fishingRuntime.currentArea = area;
+    this.emitAutomation();
+
+    const ok = await this.ensureFishingParkMap(client, map, area, signal, epoch);
+    if (!ok) {
       if (
-        signal.aborted
-        || !this.isCurrent(client, epoch)
-        || !this.isAutomationGenerationCurrent(generation)
-        || !this.isFishingAutomationActive()
-      ) return false;
-      const msg = (err as Error).message;
-      this.fishingRuntime.status = 'rejected';
-      this.fishingRuntime.lastError = msg;
-      this.pushLog(`[câu cá] vào map thất bại: ${msg}`);
-      this.emitAutomation();
+        !signal.aborted
+        && this.isCurrent(client, epoch)
+        && this.isAutomationGenerationCurrent(generation)
+        && this.isFishingAutomationActive()
+      ) {
+        this.fishingRuntime.status = 'rejected';
+        this.fishingRuntime.lastError = `Không vào được map ${map}`;
+        this.emitAutomation();
+      }
       return false;
     }
 
@@ -3843,6 +3961,7 @@ export class AvatarSession {
       || !this.isAutomationGenerationCurrent(generation)
       || !this.isFishingAutomationActive()
     ) return false;
+
     this.pushLog(`[câu cá] đã vào khu vực câu cá map ${map} — handler=${client.currentHandlerContext}`);
     // Chờ 3000ms để server đồng bộ hoàn toàn trạng thái thế giới và nhân vật trước khi gọi startFishing.
     // Probe live xác nhận server cần ~3s sau RX80 để sẵn sàng nhận TX45; 2000ms gây timeout RX45.
@@ -3854,7 +3973,6 @@ export class AvatarSession {
       || !this.isAutomationGenerationCurrent(generation)
       || !this.isFishingAutomationActive()
     ) return false;
-
     return true;
   }
 
@@ -4177,6 +4295,11 @@ export class AvatarSession {
         if (this.fishingFarmDue) {
           const action = await this.serviceDueFishingFarm(client, generation, epoch, signal);
           if (action === 'stop') return;
+        }
+
+        if (this.fishingRuntime.status === 'selling') {
+          await this.delayCancellable(1000, signal);
+          continue;
         }
 
         this.fishingRuntime.status = 'casting';
