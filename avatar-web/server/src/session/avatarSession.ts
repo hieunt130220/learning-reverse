@@ -1026,6 +1026,10 @@ export class AvatarSession {
     const generation = this.automationGeneration;
     const epoch = this.connectionEpoch;
 
+    // Lưu lại vị trí ban đầu để quay lại sau khi bán xong
+    const originalRoomId = client.currentParkSnapshot?.roomId ?? this.fishingConfig.config.map ?? 14;
+    const originalAreaId = client.currentParkSnapshot?.boardId ?? this.fishingConfig.config.area ?? 0;
+
     // Nếu đang trong vòng lặp câu cá tự động, tạm dừng an toàn để tránh xung đột socket
     if (wasFishing) {
       this.pushLog('[bán cá] Tạm dừng vòng lặp câu cá để thực hiện bán cá…');
@@ -1053,15 +1057,10 @@ export class AvatarSession {
     const signal = controller.signal;
 
     try {
-      // 1. Kiểm tra vị trí: nhân vật phải ở trong map câu cá / khu sinh thái (Map 13, 14, 15, 16, 27)
-      const FISHING_MAPS = [13, 14, 15, 16, 27];
-      const currentRoomId = client.currentParkSnapshot?.roomId;
-      const inFishingMap = client.currentHandlerContext === 9
-        && typeof currentRoomId === 'number'
-        && FISHING_MAPS.includes(currentRoomId);
-
-      if (!inFishingMap) {
-        this.pushLog('[bán cá] Nhân vật chưa ở khu vực câu cá — đang di chuyển vào Khu sinh thái (Map 13)…');
+      // 1. Kiểm tra vị trí: Bán cá BẮT BUỘC phải thực hiện tại Map 13 (Khu sinh thái) vì NPC bán cá chỉ ở Map 13
+      const inMap13 = client.currentHandlerContext === 9 && client.currentParkSnapshot?.roomId === 13;
+      if (!inMap13) {
+        this.pushLog('[bán cá] Đang di chuyển vào Khu sinh thái (Map 13) để bán cá…');
         const moved = await this.ensureFishingParkMap(client, 13, 0, signal, epoch);
         if (!moved) {
           throw new Error('Không thể di chuyển vào Khu sinh thái (Map 13) để bán cá');
@@ -1110,7 +1109,13 @@ export class AvatarSession {
         && this.isAutomationGenerationCurrent(generation)
         && client.status === 'online'
       ) {
-        this.pushLog('[bán cá] Hoàn tất bán cá — tiếp tục vòng lặp câu cá tự động…');
+        this.pushLog(`[bán cá] Đang quay trở lại hồ câu (Map ${originalRoomId})…`);
+        try {
+          await this.ensureFishingParkMap(client, originalRoomId, originalAreaId, signal, epoch);
+        } catch {
+          /* startFishingLoop sẽ tự khôi phục */
+        }
+        this.pushLog('[bán cá] Tiếp tục vòng lặp câu cá tự động…');
         if (this.desiredMode === 'auto_fishing') {
           this.startFishingLoop(client, generation, epoch);
         } else if (this.desiredMode === 'auto_fisherman_quest') {
@@ -3697,13 +3702,15 @@ export class AvatarSession {
           if (
             (lower.includes('bán') && (lower.includes('cá') || lower.includes('xu')))
             || lower.includes('bán được')
+            || lower.includes('vừa bán')
             || (lower.includes('nhận được') && lower.includes('xu'))
           ) {
             soldInThisTurn = true;
             this.pushLog(`[bán cá] ${evt.text}`);
             finish();
           } else if (
-            lower.includes('không có cá')
+            lower.includes('không còn cá')
+            || lower.includes('không có cá')
             || lower.includes('hết cá')
             || lower.includes('không tìm thấy cá')
             || lower.includes('chưa có cá')
@@ -3720,7 +3727,8 @@ export class AvatarSession {
         const onDialog = (reason: string) => {
           const lower = reason.toLowerCase();
           if (
-            lower.includes('không có cá')
+            lower.includes('không còn cá')
+            || lower.includes('không có cá')
             || lower.includes('hết cá')
             || lower.includes('không tìm thấy cá')
             || lower.includes('chưa có cá')
@@ -3734,6 +3742,7 @@ export class AvatarSession {
           } else if (
             (lower.includes('bán') && (lower.includes('cá') || lower.includes('xu')))
             || lower.includes('bán được')
+            || lower.includes('vừa bán')
             || (lower.includes('nhận được') && lower.includes('xu'))
           ) {
             soldInThisTurn = true;
@@ -3811,12 +3820,25 @@ export class AvatarSession {
 
     this.fishingRuntime.status = 'selling';
     this.emitAutomation();
-    this.pushLog('[câu cá] Rương đầy cá — đang thực hiện tự động bán cá (chat banca)…');
+    this.pushLog('[câu cá] Rương đầy cá — đang di chuyển sang Khu sinh thái (Map 13) để bán cá…');
 
     try {
       client.cauCaXong();
     } catch {
       /* bỏ qua */
+    }
+    await this.delayCancellable(1000, signal);
+
+    const config = this.fishingConfig.config;
+    const targetMap = config.map || 14;
+    const targetArea = config.area || 0;
+
+    // Di chuyển sang Map 13 để bán cá
+    const movedToMap13 = await this.ensureFishingParkMap(client, 13, 0, signal, epoch);
+    if (!movedToMap13) {
+      if (signal.aborted || !this.isCurrent(client, epoch)) return false;
+      this.pushLog('[câu cá] Không vào được Khu sinh thái (Map 13) để bán cá');
+      return false;
     }
     await this.delayCancellable(1000, signal);
 
@@ -3830,14 +3852,22 @@ export class AvatarSession {
       if (totalXuEarned > 0) {
         this.recordFishingRevenue(totalXuEarned);
       }
-      const xuLog = totalXuEarned > 0 ? ` (thu được ~${totalXuEarned} xu)` : '';
+      const xuLog = totalXuEarned > 0 ? ` (thu được ~${totalXuEarned.toLocaleString('vi-VN')} xu)` : '';
       this.pushLog(`[câu cá] Đã bán xong ${soldCount} lượt cá${xuLog}! Rương đã được dọn trống.`);
-      await this.delayCancellable(1500, signal);
-      return true;
     }
 
-    this.pushLog('[câu cá] Không thể bán cá qua lệnh banca hoặc rương không chứa cá');
-    return false;
+    // Quay trở lại hồ câu mục tiêu
+    this.pushLog(`[câu cá] Đang quay trở lại hồ câu (Map ${targetMap})…`);
+    try {
+      await this.ensureFishingParkMap(client, targetMap, targetArea, signal, epoch);
+    } catch (err) {
+      if (signal.aborted || !this.isCurrent(client, epoch)) return false;
+      this.pushLog(`[câu cá] Lỗi quay lại hồ câu: ${(err as Error).message}`);
+      return false;
+    }
+
+    await this.delayCancellable(1500, signal);
+    return soldCount > 0;
   }
 
   /**
