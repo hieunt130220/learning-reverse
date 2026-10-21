@@ -303,6 +303,39 @@ export function sessionRouter(deps: SessionRoutesDeps): Router {
     res.json({ ...saved.state, application: 'immediate' });
   });
 
+  router.post('/:id/fishing/sell', owned, async (req, res) => {
+    const id = accountId(req);
+    const session = sessions.peek(id);
+    if (!session || session.status !== 'online') {
+      res.status(400).json({ error: 'Tài khoản cần kết nối game để bán cá' });
+      return;
+    }
+
+    try {
+      const result = await session.sellAllFish();
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  router.post('/:id/fishing/finance/reset', owned, (req, res) => {
+    const id = accountId(req);
+    const session = sessions.peek(id);
+    let statistics;
+    try {
+      if (session) {
+        statistics = session.resetFishingFinance();
+      } else {
+        const repo = sessions.getFishingFinancialStatisticsRepo();
+        statistics = repo.reset(id);
+      }
+      res.json({ ok: true, statistics });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
   router.get('/:id/automation/mining/config', owned, (req, res) => {
     const state = readAutomationState(db, accountId(req)).miningConfig;
     res.json(state);
