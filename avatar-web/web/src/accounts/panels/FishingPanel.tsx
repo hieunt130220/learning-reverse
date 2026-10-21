@@ -177,6 +177,49 @@ export function FishingPanel({
 
   const [error, setError] = useState('');
   const [refreshingQuest, setRefreshingQuest] = useState(false);
+  const [sellingFish, setSellingFish] = useState(false);
+  const [sellMessage, setSellMessage] = useState('');
+  const [sellError, setSellError] = useState('');
+  const [resettingFinance, setResettingFinance] = useState(false);
+
+  const financialStats = automation?.fishingFinancialStatistics;
+
+  const handleSellFish = async () => {
+    if (!accountId || sellingFish) return;
+    setSellingFish(true);
+    setSellMessage('');
+    setSellError('');
+    try {
+      const res = await apiPost<{ ok: boolean; soldCount: number; earnedXu: number; message: string }>(
+        `/api/accounts/${accountId}/fishing/sell`,
+      );
+      setSellMessage(res.message);
+      onChanged?.();
+    } catch (err) {
+      setSellError((err as Error).message);
+    } finally {
+      setSellingFish(false);
+    }
+  };
+
+  const handleResetFinance = async () => {
+    if (!accountId || resettingFinance) return;
+    const confirmed = window.confirm(
+      'Bạn có chắc chắn muốn đặt lại toàn bộ thống kê chi phí mua mồi, vé, cần và tiền bán cá về 0?',
+    );
+    if (!confirmed) return;
+    setResettingFinance(true);
+    setSellMessage('');
+    setSellError('');
+    try {
+      await apiPost(`/api/accounts/${accountId}/fishing/finance/reset`);
+      onChanged?.();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setResettingFinance(false);
+    }
+  };
 
   useEffect(() => {
     if (!onChanged) return undefined;
@@ -245,6 +288,93 @@ export function FishingPanel({
           Lỗi câu gần nhất: {fishingState.lastError}
         </p>
       )}
+
+      {/* ─── Fishing Financial Statistics Card (Phương án A) ─── */}
+      <div className="fishing-card fishing-finance-card">
+        <div className="fishing-card-head">
+          <div className="fishing-card-title">
+            <span>💰</span>
+            <h4>Thống Kê Tài Chính Câu Cá (Tích Luỹ)</h4>
+          </div>
+
+          <div className="fishing-finance-actions">
+            <button
+              type="button"
+              className="fishing-sell-btn"
+              onClick={handleSellFish}
+              disabled={sellingFish || !accountId || account?.runtime?.status !== 'online'}
+              title={
+                account?.runtime?.status !== 'online'
+                  ? 'Tài khoản cần kết nối game để bán cá'
+                  : 'Bán toàn bộ cá đang có trong rương'
+              }
+            >
+              {sellingFish ? '⏳ Đang bán cá…' : '🐟 Bán tất cả cá ngay'}
+            </button>
+            <button
+              type="button"
+              className="ghost fishing-refresh-btn"
+              onClick={handleResetFinance}
+              disabled={resettingFinance || !accountId}
+              title="Đặt lại thống kê chi phí và doanh thu về 0"
+            >
+              {resettingFinance ? '⏳' : '↺'} Đặt lại
+            </button>
+          </div>
+        </div>
+
+        {sellMessage && <p className="fishing-sell-success">{sellMessage}</p>}
+        {sellError && <p className="err">{sellError}</p>}
+
+        <div className="fishing-metrics">
+          <div className="fishing-metric">
+            <div className="hint">Tiền mua mồi</div>
+            <div className="fishing-metric-value fishing-metric-cost">
+              -{(financialStats?.spentBaitXu ?? 0).toLocaleString('vi-VN')} <span className="unit">xu</span>
+            </div>
+          </div>
+
+          <div className="fishing-metric">
+            <div className="hint">Tiền mua vé</div>
+            <div className="fishing-metric-value fishing-metric-cost">
+              -{(financialStats?.spentTicketXu ?? 0).toLocaleString('vi-VN')} <span className="unit">xu</span>
+            </div>
+          </div>
+
+          <div className="fishing-metric">
+            <div className="hint">Tiền mua cần</div>
+            <div className="fishing-metric-value fishing-metric-cost">
+              -{(financialStats?.spentRodXu ?? 0).toLocaleString('vi-VN')} <span className="unit">xu</span>
+            </div>
+          </div>
+
+          <div className="fishing-metric">
+            <div className="hint">Tiền bán cá</div>
+            <div className="fishing-metric-value fishing-metric-earn">
+              +{(financialStats?.earnedFishXu ?? 0).toLocaleString('vi-VN')} <span className="unit">xu</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="fishing-profit-banner">
+          <div>
+            <span className="hint">Lợi nhuận ròng (Lãi / Lỗ):</span>
+            <strong
+              className={`fishing-profit-value ${
+                (financialStats?.netProfitXu ?? 0) >= 0 ? 'profit-positive' : 'profit-negative'
+              }`}
+            >
+              {(financialStats?.netProfitXu ?? 0) >= 0 ? '+' : ''}
+              {(financialStats?.netProfitXu ?? 0).toLocaleString('vi-VN')} xu
+            </strong>
+          </div>
+          <span className="hint">
+            {financialStats?.updatedAt
+              ? `Cập nhật: ${new Date(financialStats.updatedAt).toLocaleTimeString('vi-VN')}`
+              : 'Tích luỹ qua các phiên'}
+          </span>
+        </div>
+      </div>
 
       {/* ─── Fisherman Quest Card ─── */}
       <div className="fishing-card">

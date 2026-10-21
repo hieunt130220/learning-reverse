@@ -2329,6 +2329,50 @@ button.ghost {
 .fishing-foot { font-size: 0.85rem; color: var(--muted); }
 .fishing-stack { display: flex; flex-direction: column; gap: 0.5rem; }
 .fishing-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fishing-finance-card { border-left: 3px solid var(--gold-deep); }
+.fishing-finance-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fishing-sell-btn {
+  background: #238636;
+  color: #fff;
+  border: 1px solid rgba(240, 246, 252, 0.15);
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+.fishing-sell-btn:hover:not(:disabled) { background: #2ea043; }
+.fishing-sell-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.fishing-sell-success {
+  padding: 0.5rem 0.75rem;
+  background: var(--ok-dim);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ok-line);
+  color: var(--ok);
+  font-size: 0.85rem;
+  margin: 0;
+}
+.fishing-metric-cost { color: var(--err); font-size: 1.15rem; margin-top: 0.25rem; }
+.fishing-metric-earn { color: var(--ok); font-size: 1.15rem; margin-top: 0.25rem; }
+.fishing-metric .unit { font-size: 0.75rem; color: var(--muted); font-weight: 400; }
+.fishing-profit-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--card-inset);
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fishing-profit-value { margin-left: 8px; font-size: 1.05rem; font-weight: 700; }
+.fishing-profit-value.profit-positive { color: var(--ok); }
+.fishing-profit-value.profit-negative { color: var(--err); }
 
 /* --- fishing settings form (tách từ inline FishingSettingsPanel.tsx) --- */
 .fishing-form { display: flex; flex-direction: column; gap: 1rem; }
