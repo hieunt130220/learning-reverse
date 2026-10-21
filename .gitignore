@@ -63,3 +63,4 @@ captcha-solver/data/*
 !captcha-solver/checkpoints/crnn_ctc.pt
 .worktrees/
 .agent-bus/
+.superpowers/
