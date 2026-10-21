@@ -112,6 +112,33 @@ export const FISHING_BAITS: readonly { id: number; name: string; cost: string; t
   { id: 4875, name: 'Mồi câu cá trâm', cost: '50 xu / mồi', typeMoney: 1 },
 ]);
 
+export const FISHING_TICKET_PRICES_XU: Readonly<Record<number, number>> = Object.freeze({
+  14: 1000,
+  15: 10000,
+  27: 12000,
+});
+
+export const FISHING_ROD_PRICES_XU: Readonly<Record<number, number>> = Object.freeze({
+  442: 10000,
+  4874: 20000,
+});
+
+export const FISHING_BAIT_PRICES_XU: Readonly<Record<number, number>> = Object.freeze({
+  443: 5,
+  447: 20,
+  448: 30,
+  4875: 50,
+});
+
+export interface FishingFinancialStatistics {
+  spentBaitXu: number;
+  spentTicketXu: number;
+  spentRodXu: number;
+  earnedFishXu: number;
+  netProfitXu: number;
+  updatedAt: number | null;
+}
+
 export type FishingStatus =
   | 'idle'
   | 'moving'
@@ -413,6 +440,7 @@ export interface AutomationSnapshot {
   fishermanQuestRuntime?: FishermanQuestRuntimeState;
   dailyFishingStatistics?: DailyFishingStatistics;
   mlFishingStatistics?: MlFishingStatistics;
+  fishingFinancialStatistics?: FishingFinancialStatistics;
   miningConfig?: StoredMiningConfigState;
   miningRuntime?: MiningRuntimeState;
   mazeConfig?: StoredMazeConfigState;

@@ -613,6 +613,15 @@ export interface FishermanQuestRuntimeState {
   lastError: string | null;
 }
 
+export interface FishingFinancialStatistics {
+  spentBaitXu: number;
+  spentTicketXu: number;
+  spentRodXu: number;
+  earnedFishXu: number;
+  netProfitXu: number;
+  updatedAt: number | null;
+}
+
 export interface AutomationSnapshot {
   desiredMode: AutomationMode;
   activeMode: AutomationMode;
@@ -622,6 +631,7 @@ export interface AutomationSnapshot {
   fishingConfig?: StoredFishingConfigState;
   fishingRuntime?: FishingRuntimeState;
   fishermanQuestRuntime?: FishermanQuestRuntimeState;
+  fishingFinancialStatistics?: FishingFinancialStatistics;
   miningConfig?: StoredMiningConfigState;
   miningRuntime?: MiningRuntimeState;
   mazeConfig?: StoredMazeConfigState;

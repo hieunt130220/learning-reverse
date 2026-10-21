@@ -150,3 +150,12 @@ CREATE TABLE IF NOT EXISTS avatar_ml_fishing_statistics (
   success_catches INTEGER NOT NULL DEFAULT 0 CHECK (success_catches >= 0),
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS avatar_fishing_financial_statistics (
+  account_id INTEGER PRIMARY KEY REFERENCES avatar_accounts(id) ON DELETE CASCADE,
+  spent_bait_xu INTEGER NOT NULL DEFAULT 0 CHECK (spent_bait_xu >= 0),
+  spent_ticket_xu INTEGER NOT NULL DEFAULT 0 CHECK (spent_ticket_xu >= 0),
+  spent_rod_xu INTEGER NOT NULL DEFAULT 0 CHECK (spent_rod_xu >= 0),
+  earned_fish_xu INTEGER NOT NULL DEFAULT 0 CHECK (earned_fish_xu >= 0),
+  updated_at INTEGER NOT NULL
+);
