@@ -8,6 +8,7 @@ import {
 } from '../accounts/automationRepo.js';
 import { FishingStatisticsRepository } from '../accounts/fishingStatisticsRepo.js';
 import { FishingMlStatisticsRepository } from '../accounts/fishingMlStatisticsRepo.js';
+import { FishingFinancialStatisticsRepository } from '../accounts/fishingFinancialStatisticsRepo.js';
 import { ShopRepository, type ProduceSnapshot, type ShopRuntimeState } from '../accounts/shopRepo.js';
 import type { ShopPolicy } from '../config.js';
 import { updateFarmCells } from '../accounts/farmProfileRepo.js';
@@ -53,6 +54,7 @@ export interface SessionManagerDeps {
   findNpcCatalog?: readonly NpcMapLocation[];
   fishingStatisticsRepository?: FishingStatisticsRepository;
   fishingMlStatisticsRepository?: FishingMlStatisticsRepository;
+  fishingFinancialStatisticsRepository?: FishingFinancialStatisticsRepository;
   onFishingInference?: (accountId: number, payload: CanCauPayload, result: InferenceResult) => void;
   createSession?(opts: AvatarSessionOptions): AvatarSession;
   setTimeoutFn?: typeof setTimeout;
@@ -125,6 +127,7 @@ export class SessionManager {
   private readonly shopPolicy: ShopPolicy;
   private readonly fishingStatisticsRepository: FishingStatisticsRepository;
   private readonly fishingMlStatisticsRepository: FishingMlStatisticsRepository;
+  private readonly fishingFinancialStatisticsRepository: FishingFinancialStatisticsRepository;
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.setTimeoutFn = deps.setTimeoutFn ?? setTimeout;
@@ -134,7 +137,13 @@ export class SessionManager {
       ?? new FishingStatisticsRepository(deps.db);
     this.fishingMlStatisticsRepository = deps.fishingMlStatisticsRepository
       ?? new FishingMlStatisticsRepository(deps.db);
+    this.fishingFinancialStatisticsRepository = deps.fishingFinancialStatisticsRepository
+      ?? new FishingFinancialStatisticsRepository(deps.db);
     this.shopRepository.recoverInterruptedTransactions();
+  }
+
+  getFishingFinancialStatisticsRepo(): FishingFinancialStatisticsRepository {
+    return this.fishingFinancialStatisticsRepository;
   }
 
   size(): number {
@@ -160,6 +169,7 @@ export class SessionManager {
         ...snapshot.automation,
         dailyFishingStatistics: this.fishingStatisticsRepository.readToday(accountId),
         mlFishingStatistics: this.fishingMlStatisticsRepository.read(accountId),
+        fishingFinancialStatistics: this.fishingFinancialStatisticsRepository.read(accountId),
       },
     };
   }
@@ -169,6 +179,7 @@ export class SessionManager {
     const live = this.sessions.get(accountId)?.automationSnapshot();
     const dailyFishingStatistics = this.fishingStatisticsRepository.readToday(accountId);
     const mlFishingStatistics = this.fishingMlStatisticsRepository.read(accountId);
+    const fishingFinancialStatistics = this.fishingFinancialStatisticsRepository.read(accountId);
     return {
       ...(live ?? offlineAutomationSnapshot(persisted)),
       ...(live ? {
@@ -177,6 +188,7 @@ export class SessionManager {
       } : {}),
       dailyFishingStatistics,
       mlFishingStatistics,
+      fishingFinancialStatistics,
     };
   }
 
@@ -304,6 +316,7 @@ export class SessionManager {
     const userId = account.userId;
     const initialDailyFishingStatistics = this.fishingStatisticsRepository.readToday(accountId);
     const initialMlFishingStatistics = this.fishingMlStatisticsRepository.read(accountId);
+    const initialFishingFinancialStatistics = this.fishingFinancialStatisticsRepository.read(accountId);
 
     const opts: AvatarSessionOptions = {
       accountId,
@@ -314,11 +327,21 @@ export class SessionManager {
       cachedSnapshot: readRuntimeSnapshotCache(db, accountId),
       initialDailyFishingStatistics,
       initialMlFishingStatistics,
+      initialFishingFinancialStatistics,
       onFishingCatch: (fishId, caughtAt) => (
         this.fishingStatisticsRepository.recordCatch(accountId, fishId, caughtAt)
       ),
       onMlFishingResult: (isSuccess, updatedAt) => (
         this.fishingMlStatisticsRepository.recordResult(accountId, isSuccess, updatedAt)
+      ),
+      onFishingExpense: (type, amountXu) => (
+        this.fishingFinancialStatisticsRepository.recordExpense(accountId, type, amountXu)
+      ),
+      onFishingRevenue: (amountXu) => (
+        this.fishingFinancialStatisticsRepository.recordRevenue(accountId, amountXu)
+      ),
+      onFishingResetFinance: () => (
+        this.fishingFinancialStatisticsRepository.reset(accountId)
       ),
       onFishingInference: (payload, result) => (
         this.deps.onFishingInference?.(accountId, payload, result)

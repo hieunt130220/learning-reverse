@@ -49,6 +49,9 @@ import {
   FISHING_BAITS,
   FISHING_RODS,
   FISHING_TICKETS,
+  FISHING_TICKET_PRICES_XU,
+  FISHING_ROD_PRICES_XU,
+  FISHING_BAIT_PRICES_XU,
   getFishName,
   idleFindNpcRuntime,
   idleFishermanQuestRuntime,
@@ -63,6 +66,7 @@ import {
   type AutoFindNpcState,
   type DailyFishingStatistics,
   type FishermanQuestRuntimeState,
+  type FishingFinancialStatistics,
   type FishingRuntimeState,
   type LoadedAutomationIntent,
   type MazeRuntimeState,
@@ -225,6 +229,15 @@ export interface AvatarSessionOptions {
     isSuccess: boolean,
     updatedAt: number,
   ) => MlFishingStatistics;
+  initialFishingFinancialStatistics?: FishingFinancialStatistics;
+  onFishingExpense?: (
+    type: 'bait' | 'ticket' | 'rod',
+    amountXu: number,
+  ) => FishingFinancialStatistics;
+  onFishingRevenue?: (
+    amountXu: number,
+  ) => FishingFinancialStatistics;
+  onFishingResetFinance?: () => FishingFinancialStatistics;
   onFishingInference?: (payload: CanCauPayload, result: InferenceResult) => void;
   /** Snapshot nhiệm vụ/tài sản gần nhất để hiển thị khi chờ vòng auto kế tiếp. */
   cachedSnapshot?: CachedRuntimeSnapshot;
@@ -350,6 +363,7 @@ export class AvatarSession {
   private fishermanQuestRuntime: FishermanQuestRuntimeState = idleFishermanQuestRuntime();
   private dailyFishingStatistics: DailyFishingStatistics;
   private mlFishingStatistics: MlFishingStatistics;
+  private fishingFinancialStatistics: FishingFinancialStatistics;
   private currentFishingChallengeSource?: 'ml' | 'random';
   private fishingAbortController?: AbortController;
   private fishingFarmPhase: FishingFarmPhase = 'idle';
@@ -405,6 +419,14 @@ export class AvatarSession {
       ?? emptyDailyFishingStatistics(this.now());
     this.mlFishingStatistics = opts.initialMlFishingStatistics
       ?? emptyMlFishingStatistics();
+    this.fishingFinancialStatistics = opts.initialFishingFinancialStatistics ?? {
+      spentBaitXu: 0,
+      spentTicketXu: 0,
+      spentRodXu: 0,
+      earnedFishXu: 0,
+      netProfitXu: 0,
+      updatedAt: null,
+    };
     if (opts.shopRepository && opts.shopPolicy) {
       this.shop = new ShopCoordinator({
         accountId: opts.accountId,
@@ -916,6 +938,7 @@ export class AvatarSession {
       fishermanQuestRuntime: this.fishermanQuestRuntime,
       dailyFishingStatistics: this.dailyFishingStatistics,
       mlFishingStatistics: this.mlFishingStatistics,
+      fishingFinancialStatistics: this.fishingFinancialStatistics,
       miningConfig: this.miningConfig,
       miningRuntime: this.miningRuntime,
       mazeConfig: this.mazeConfig,
@@ -964,6 +987,80 @@ export class AvatarSession {
       nextRetryAt: this.nextRetryAt,
       desiredConnected: this.wanted,
     };
+  }
+
+  resetFishingFinance(): FishingFinancialStatistics {
+    try {
+      if (this.opts.onFishingResetFinance) {
+        this.fishingFinancialStatistics = this.opts.onFishingResetFinance();
+      } else {
+        this.fishingFinancialStatistics = {
+          spentBaitXu: 0,
+          spentTicketXu: 0,
+          spentRodXu: 0,
+          earnedFishXu: 0,
+          netProfitXu: 0,
+          updatedAt: this.now(),
+        };
+      }
+      this.emitAutomation();
+      this.pushLog('[tài chính câu cá] Đã đặt lại toàn bộ thống kê chi phí và doanh thu câu cá về 0');
+      return this.fishingFinancialStatistics;
+    } catch (err) {
+      this.pushLog(`[tài chính câu cá] Lỗi khi đặt lại thống kê: ${(err as Error).message}`);
+      throw err;
+    }
+  }
+
+  async sellAllFish(): Promise<{ ok: boolean; soldCount: number; earnedXu: number; message: string }> {
+    const client = this.client;
+    if (!client || client.status !== 'online') {
+      throw new Error('Tài khoản cần kết nối game để bán cá');
+    }
+
+    if (this.fishingRuntime.status === 'selling') {
+      throw new Error('Đang trong tiến trình bán cá');
+    }
+
+    const prevStatus = this.fishingRuntime.status;
+    this.fishingRuntime.status = 'selling';
+    this.emitAutomation();
+    this.pushLog('[bán cá] Bắt đầu yêu cầu bán toàn bộ cá theo lệnh người dùng…');
+
+    try {
+      client.cauCaXong();
+    } catch {
+      /* bỏ qua */
+    }
+
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    try {
+      await this.delayCancellable(1000, signal);
+      const { soldCount, totalXuEarned } = await this.performBancaLoop(
+        client,
+        signal,
+        () => client.status === 'online',
+      );
+
+      if (soldCount > 0) {
+        if (totalXuEarned > 0) {
+          this.recordFishingRevenue(totalXuEarned);
+        }
+        const xuLog = totalXuEarned > 0 ? ` thu được ~${totalXuEarned.toLocaleString('vi-VN')} xu` : '';
+        const msg = `Đã bán thành công ${soldCount} lượt cá,${xuLog}!`;
+        this.pushLog(`[bán cá] ${msg}`);
+        return { ok: true, soldCount, earnedXu: totalXuEarned, message: msg };
+      }
+
+      const msg = 'Rương đồ không có cá hoặc không thể bán cá qua lệnh banca';
+      this.pushLog(`[bán cá] ${msg}`);
+      return { ok: true, soldCount: 0, earnedXu: 0, message: msg };
+    } finally {
+      this.fishingRuntime.status = prevStatus;
+      this.emitAutomation();
+    }
   }
 
   // --- nội bộ -------------------------------------------------------------
@@ -3228,6 +3325,10 @@ export class AvatarSession {
         return false;
       }
       this.pushLog(`[câu cá] Đã mua thành công ${ticket.name}`);
+      if (ticket.typeMoney === 1) {
+        const cost = FISHING_TICKET_PRICES_XU[targetMap] ?? 0;
+        if (cost > 0) this.recordFishingExpense('ticket', cost);
+      }
       await this.delayCancellable(1000, signal);
     } else if (missingType === 'rod') {
       const rod = FISHING_RODS.find((r) => r.id === cfg.rodType)!;
@@ -3302,6 +3403,10 @@ export class AvatarSession {
         this.pushLog(`[câu cá] Nhân vật đã sở hữu/đang sử dụng ${rod.name}`);
       } else {
         this.pushLog(`[câu cá] Đã mua thành công ${rod.name}`);
+        if (rod.typeMoney === 1) {
+          const cost = FISHING_ROD_PRICES_XU[rod.id] ?? 0;
+          if (cost > 0) this.recordFishingExpense('rod', cost);
+        }
       }
       await this.delayCancellable(1000, signal);
     } else if (missingType === 'bait') {
@@ -3402,6 +3507,11 @@ export class AvatarSession {
       }
 
       this.pushLog(`[câu cá] Đã mua thành công ${bait.name} (x${quantity})`);
+      if (bait.typeMoney === 1) {
+        const unitCost = FISHING_BAIT_PRICES_XU[bait.id] ?? 0;
+        const totalCost = unitCost * quantity;
+        if (totalCost > 0) this.recordFishingExpense('bait', totalCost);
+      }
 
       if (overrideBaitId && this.fishingConfig.config.baitType !== overrideBaitId) {
         this.fishingConfig = {
@@ -3435,41 +3545,69 @@ export class AvatarSession {
     return true;
   }
 
-  /**
-   * Tự động bán cá khi rương đầy bằng lệnh chat in-game "banca" (TX-85).
-   * Lắng nghe xác nhận qua sự kiện park-chat, dialog và cập nhật metrics (Xu tăng).
-   * Dừng khi hết cá hoặc sau 2 lần không có phản hồi mới.
-   */
-  private async executeSellFish(
-    client: GameClient,
-    epoch: number,
-    signal: AbortSignal,
-  ): Promise<boolean> {
-    if (
-      signal.aborted
-      || client.status !== 'online'
-      || !this.isCurrent(client, epoch)
-      || !this.isFishingAutomationActive()
-    ) return false;
-
-    this.fishingRuntime.status = 'selling';
-    this.emitAutomation();
-    this.pushLog('[câu cá] Rương đầy cá — đang thực hiện tự động bán cá (chat banca)…');
-
+  private recordFishingExpense(type: 'bait' | 'ticket' | 'rod', amountXu: number): void {
+    if (amountXu <= 0) return;
     try {
-      client.cauCaXong();
-    } catch {
-      /* bỏ qua */
+      if (this.opts.onFishingExpense) {
+        this.fishingFinancialStatistics = this.opts.onFishingExpense(type, amountXu);
+      } else {
+        const spentBaitXu = this.fishingFinancialStatistics.spentBaitXu + (type === 'bait' ? amountXu : 0);
+        const spentTicketXu = this.fishingFinancialStatistics.spentTicketXu + (type === 'ticket' ? amountXu : 0);
+        const spentRodXu = this.fishingFinancialStatistics.spentRodXu + (type === 'rod' ? amountXu : 0);
+        const earnedFishXu = this.fishingFinancialStatistics.earnedFishXu;
+        const netProfitXu = earnedFishXu - (spentBaitXu + spentTicketXu + spentRodXu);
+        this.fishingFinancialStatistics = {
+          spentBaitXu,
+          spentTicketXu,
+          spentRodXu,
+          earnedFishXu,
+          netProfitXu,
+          updatedAt: this.now(),
+        };
+      }
+      this.emitAutomation();
+    } catch (err) {
+      this.pushLog(`[tài chính câu cá] Không thể ghi nhận chi phí: ${(err as Error).message}`);
     }
-    await this.delayCancellable(1000, signal);
+  }
 
+  private recordFishingRevenue(amountXu: number): void {
+    if (amountXu <= 0) return;
+    try {
+      if (this.opts.onFishingRevenue) {
+        this.fishingFinancialStatistics = this.opts.onFishingRevenue(amountXu);
+      } else {
+        const earnedFishXu = this.fishingFinancialStatistics.earnedFishXu + amountXu;
+        const totalExpenses =
+          this.fishingFinancialStatistics.spentBaitXu +
+          this.fishingFinancialStatistics.spentTicketXu +
+          this.fishingFinancialStatistics.spentRodXu;
+        const netProfitXu = earnedFishXu - totalExpenses;
+        this.fishingFinancialStatistics = {
+          ...this.fishingFinancialStatistics,
+          earnedFishXu,
+          netProfitXu,
+          updatedAt: this.now(),
+        };
+      }
+      this.emitAutomation();
+    } catch (err) {
+      this.pushLog(`[tài chính câu cá] Không thể ghi nhận doanh thu: ${(err as Error).message}`);
+    }
+  }
+
+  private async performBancaLoop(
+    client: GameClient,
+    signal: AbortSignal,
+    checkActive?: () => boolean,
+  ): Promise<{ soldCount: number; totalXuEarned: number }> {
     let soldCount = 0;
     let totalXuEarned = 0;
     let consecutiveNoResponse = 0;
     const MAX_SELL_ATTEMPTS = 40; // Tối đa số ô rương
 
     for (let attempt = 1; attempt <= MAX_SELL_ATTEMPTS; attempt++) {
-      if (signal.aborted || !this.isCurrent(client, epoch) || !this.isFishingAutomationActive()) return false;
+      if (signal.aborted || (checkActive && !checkActive())) break;
 
       let soldInThisTurn = false;
       let turnXuGained = 0;
@@ -3540,7 +3678,7 @@ export class AvatarSession {
       client.chatPark('banca');
       await sellTurnPromise;
 
-      if (signal.aborted || !this.isCurrent(client, epoch) || !this.isFishingAutomationActive()) return false;
+      if (signal.aborted || (checkActive && !checkActive())) break;
 
       if (noMoreFish) {
         break;
@@ -3560,7 +3698,47 @@ export class AvatarSession {
       }
     }
 
+    return { soldCount, totalXuEarned };
+  }
+
+  /**
+   * Tự động bán cá khi rương đầy bằng lệnh chat in-game "banca" (TX-85).
+   * Lắng nghe xác nhận qua sự kiện park-chat, dialog và cập nhật metrics (Xu tăng).
+   * Dừng khi hết cá hoặc sau 2 lần không có phản hồi mới.
+   */
+  private async executeSellFish(
+    client: GameClient,
+    epoch: number,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    if (
+      signal.aborted
+      || client.status !== 'online'
+      || !this.isCurrent(client, epoch)
+      || !this.isFishingAutomationActive()
+    ) return false;
+
+    this.fishingRuntime.status = 'selling';
+    this.emitAutomation();
+    this.pushLog('[câu cá] Rương đầy cá — đang thực hiện tự động bán cá (chat banca)…');
+
+    try {
+      client.cauCaXong();
+    } catch {
+      /* bỏ qua */
+    }
+    await this.delayCancellable(1000, signal);
+
+    const { soldCount, totalXuEarned } = await this.performBancaLoop(
+      client,
+      signal,
+      () => this.isCurrent(client, epoch) && this.isFishingAutomationActive(),
+    );
+
     if (soldCount > 0) {
+      if (totalXuEarned > 0) {
+        this.recordFishingRevenue(totalXuEarned);
+      }
       const xuLog = totalXuEarned > 0 ? ` (thu được ~${totalXuEarned} xu)` : '';
       this.pushLog(`[câu cá] Đã bán xong ${soldCount} lượt cá${xuLog}! Rương đã được dọn trống.`);
       await this.delayCancellable(1500, signal);
